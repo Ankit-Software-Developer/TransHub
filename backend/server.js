@@ -29,11 +29,20 @@ io.on('connection', (socket) => {
 // Attach io instance to app
 app.set('io', io);
 
+const { initMasterDatabase } = require('./src/config/initDatabase');
+
 const startServer = async () => {
   const isConnected = await testDbConnection();
   if (!isConnected) {
     console.error('❌ Server startup aborted due to MySQL connection failure.');
     process.exit(1);
+  }
+
+  // Automatically check, create, and verify all database tables, columns, and seed records
+  try {
+    await initMasterDatabase();
+  } catch (dbInitErr) {
+    console.error('⚠️ Database table initialization warning:', dbInitErr.message);
   }
 
   server.listen(PORT, () => {

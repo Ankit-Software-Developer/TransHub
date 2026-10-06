@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
+    "sync-db": "node scripts/syncDb.js",
     "seed": "node database/seed.js",
     "test": "node tests/index.js"
   },

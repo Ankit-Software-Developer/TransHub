@@ -726,4 +726,5 @@ module.exports = {
   refreshAccessToken,
   logout,
   logoutAllDevices,
+  ensureDefaultPlans,
 };
