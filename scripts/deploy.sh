@@ -39,6 +39,9 @@ npm install --omit=dev
 # 2. Setup Frontend
 echo "📦 Installing frontend dependencies & building..."
 cd "$APP_DIR/frontend"
+if [ ! -f "$APP_DIR/frontend/.env.local" ] && [ -f "$APP_DIR/frontend/.env.example" ]; then
+    cp "$APP_DIR/frontend/.env.example" "$APP_DIR/frontend/.env.local"
+fi
 npm install
 npm run build
 

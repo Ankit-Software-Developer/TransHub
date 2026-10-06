@@ -48,6 +48,9 @@ jobs:
             # 3. Setup and build frontend
             echo "⚙️ Setting up & building frontend..."
             cd "$APP_DIR/frontend"
+            if [ ! -f .env.local ] && [ -f .env.example ]; then
+              cp .env.example .env.local
+            fi
             npm install
             npm run build
 
