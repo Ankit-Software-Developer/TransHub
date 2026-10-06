@@ -47,20 +47,25 @@ export function useAuth() {
   }, [setUser]);
 
   const login = async (email, password) => {
-    const res = await api.post('/auth/login', { email, password });
-    if (res.data.success) {
-      const { user: userData, subscription: subData, accessToken, refreshToken } = res.data.data;
-      if (subData) {
-        userData.subscription = subData;
-        localStorage.setItem('transporter_subscription', JSON.stringify(subData));
+    try {
+      const res = await api.post('/auth/login', { email, password });
+      if (res.data.success) {
+        const { user: userData, subscription: subData, accessToken, refreshToken } = res.data.data;
+        if (subData) {
+          userData.subscription = subData;
+          localStorage.setItem('transporter_subscription', JSON.stringify(subData));
+        }
+        localStorage.setItem('transporter_access_token', accessToken);
+        localStorage.setItem('transporter_refresh_token', refreshToken);
+        localStorage.setItem('transporter_user', JSON.stringify(userData));
+        setUser(userData);
+        return userData;
       }
-      localStorage.setItem('transporter_access_token', accessToken);
-      localStorage.setItem('transporter_refresh_token', refreshToken);
-      localStorage.setItem('transporter_user', JSON.stringify(userData));
-      setUser(userData);
-      return userData;
+      throw new Error(res.data.message || 'Login failed');
+    } catch (err) {
+      const backendMsg = err.response?.data?.message || err.response?.data?.error;
+      throw new Error(backendMsg || err.message || 'Login failed');
     }
-    throw new Error(res.data.message || 'Login failed');
   };
 
   const logout = async () => {
