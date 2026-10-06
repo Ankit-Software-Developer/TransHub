@@ -5,7 +5,7 @@ const { successResponse, paginatedResponse, errorResponse } = require('../utils/
 
 const listTrips = async (req, res) => {
   try {
-    const { status, page = 1, limit = 20, search, sort_by, sort_order } = req.query;
+    const { status, page = 1, limit = 20, search, sort_by, sort_order, from_date, to_date } = req.query;
     const { Trip, Vehicle, Driver, Branch } = req.tenantDb || defaultModels;
     const where = {
       tenant_id: req.tenant.tenantId,
@@ -14,6 +14,13 @@ const listTrips = async (req, res) => {
     if (status) where.status = status;
     if (search) {
       where.trip_number = { [Op.like]: `%${search}%` };
+    }
+    if (from_date && to_date) {
+      where.trip_date = { [Op.between]: [from_date, to_date] };
+    } else if (from_date) {
+      where.trip_date = { [Op.gte]: from_date };
+    } else if (to_date) {
+      where.trip_date = { [Op.lte]: to_date };
     }
 
     const allowedSort = {
@@ -216,8 +223,125 @@ const createTripAndDispatch = async (req, res) => {
   }
 };
 
+const createTrip = async (req, res) => {
+  try {
+    const { Trip, Vehicle, Driver, Branch } = req.tenantDb || defaultModels;
+    const {
+      origin_branch_id,
+      dest_branch_id,
+      vehicle_id,
+      driver_id,
+      trip_date,
+      driver_advance = 0,
+      start_odometer = 0,
+      remarks = '',
+      status = 'PLANNED',
+    } = req.body;
+
+    if (!vehicle_id) {
+      return errorResponse(res, 'Please select a vehicle to assign to this trip', null, 400);
+    }
+
+    const { formattedNumber: tripNumber } = await generateNextNumber({
+      tenantId: req.tenant.tenantId,
+      organizationId: req.tenant.organizationId,
+      branchId: origin_branch_id || null,
+      documentType: 'TRIP',
+    });
+
+    const originBranch = origin_branch_id ? await Branch.findByPk(origin_branch_id) : null;
+    const destBranch = dest_branch_id ? await Branch.findByPk(dest_branch_id) : null;
+
+    const newTrip = await Trip.create({
+      tenant_id: req.tenant.tenantId,
+      organization_id: req.tenant.organizationId,
+      trip_number: tripNumber,
+      trip_date: trip_date || new Date().toISOString().slice(0, 10),
+      origin_branch_id: origin_branch_id || null,
+      dest_branch_id: dest_branch_id || null,
+      origin_city: originBranch ? originBranch.city : 'Origin Hub',
+      destination_city: destBranch ? destBranch.city : 'Destination Hub',
+      vehicle_id,
+      driver_id: driver_id || null,
+      driver_advance: parseFloat(driver_advance) || 0,
+      start_odometer: parseInt(start_odometer, 10) || 0,
+      status: status || 'PLANNED',
+      remarks: remarks || '',
+      created_by: req.user.id,
+    });
+
+    // Mark vehicle as ON_TRIP if status is RUNNING
+    if (status === 'RUNNING' && vehicle_id) {
+      await Vehicle.update({ status: 'ON_TRIP' }, { where: { id: vehicle_id } });
+    }
+
+    const fullTrip = await Trip.findByPk(newTrip.id, {
+      include: [
+        { model: Vehicle, as: 'vehicle' },
+        { model: Driver, as: 'driver' },
+        { model: Branch, as: 'originBranch' },
+        { model: Branch, as: 'destBranch' },
+      ],
+    });
+
+    return successResponse(res, 'Trip created and vehicle assigned successfully', fullTrip, 201);
+  } catch (error) {
+    return errorResponse(res, error.message, null, 500);
+  }
+};
+
+const assignVehicleToTrip = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { vehicle_id, driver_id } = req.body;
+    const { Trip, Vehicle, Driver } = req.tenantDb || defaultModels;
+
+    const trip = await Trip.findOne({
+      where: { id, tenant_id: req.tenant.tenantId },
+    });
+
+    if (!trip) {
+      return errorResponse(res, 'Trip not found', null, 404);
+    }
+
+    const previousVehicleId = trip.vehicle_id;
+
+    if (vehicle_id) {
+      trip.vehicle_id = vehicle_id;
+    }
+    if (driver_id) {
+      trip.driver_id = driver_id;
+    }
+
+    await trip.save();
+
+    // If trip was RUNNING and vehicle changed, update statuses
+    if (trip.status === 'RUNNING') {
+      if (previousVehicleId && previousVehicleId !== vehicle_id) {
+        await Vehicle.update({ status: 'AVAILABLE' }, { where: { id: previousVehicleId } });
+      }
+      if (vehicle_id) {
+        await Vehicle.update({ status: 'ON_TRIP' }, { where: { id: vehicle_id } });
+      }
+    }
+
+    const updatedTrip = await Trip.findByPk(trip.id, {
+      include: [
+        { model: Vehicle, as: 'vehicle' },
+        { model: Driver, as: 'driver' },
+      ],
+    });
+
+    return successResponse(res, 'Vehicle assigned to trip successfully', updatedTrip);
+  } catch (error) {
+    return errorResponse(res, error.message, null, 500);
+  }
+};
+
 module.exports = {
   listTrips,
   getTripDetail,
   createTripAndDispatch,
+  createTrip,
+  assignVehicleToTrip,
 };

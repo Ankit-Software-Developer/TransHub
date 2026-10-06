@@ -336,21 +336,27 @@ export default function FleetCommsDrawer() {
     return match;
   });
 
-  if (!isFleetCommsOpen) return null;
-
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden">
+    <div
+      className={`fixed inset-0 z-50 overflow-hidden transition-all duration-300 ${
+        isFleetCommsOpen ? 'pointer-events-auto visible' : 'pointer-events-none invisible delay-300'
+      }`}
+    >
       {/* Backdrop overlay */}
       <div
-        className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
+        className={`fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity duration-300 ease-out ${
+          isFleetCommsOpen ? 'opacity-100' : 'opacity-0'
+        }`}
         onClick={() => setFleetCommsOpen(false)}
       />
 
       {/* Right Drawer Panel */}
       <div
-        className={`fixed inset-y-0 right-0 w-full sm:w-[500px] lg:w-[540px] flex flex-col z-50 shadow-2xl transition-all duration-300 transform translate-x-0 border-l ${
+        className={`fixed inset-y-0 right-0 w-full sm:w-[500px] lg:w-[540px] flex flex-col z-50 shadow-2xl border-l transition-transform duration-300 ease-out transform ${
+          isFleetCommsOpen ? 'translate-x-0' : 'translate-x-full'
+        } ${
           isDark
-            ? 'bg-[#090D18] border-slate-800 text-slate-100 shadow-cyan-950/50'
+            ? 'bg-[#090D18] border-slate-800 text-slate-100 shadow-2xl'
             : 'bg-white border-slate-200 text-slate-900 shadow-2xl'
         }`}
       >

@@ -5,6 +5,7 @@ import './globals.css';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState } from 'react';
 import { ThemeProvider } from '../components/ThemeProvider';
+import { AlertModalProvider } from '../components/ui/AlertModalProvider';
 
 export default function RootLayout({ children }) {
   const [queryClient] = useState(() => new QueryClient({
@@ -47,9 +48,11 @@ export default function RootLayout({ children }) {
       </head>
       <body className="bg-white text-slate-900 dark:bg-[#070C18] dark:text-slate-100 transition-colors duration-200 antialiased min-h-screen">
         <ThemeProvider>
-          <QueryClientProvider client={queryClient}>
-            {children}
-          </QueryClientProvider>
+          <AlertModalProvider>
+            <QueryClientProvider client={queryClient}>
+              {children}
+            </QueryClientProvider>
+          </AlertModalProvider>
         </ThemeProvider>
       </body>
     </html>

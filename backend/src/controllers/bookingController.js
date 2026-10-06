@@ -4,30 +4,18 @@ const { successResponse, paginatedResponse, errorResponse } = require('../utils/
 
 const createBooking = async (req, res) => {
   try {
-    let branchId = req.body.branch_id || req.branchId;
+    let branchId = req.body.origin_branch_id || req.body.branch_id || req.branchId;
     if (!branchId && req.tenantDb?.Branch) {
-      let defaultBranch = await req.tenantDb.Branch.findOne({
-        where: { organization_id: req.tenant.organizationId },
+      const defaultBranch = await req.tenantDb.Branch.findOne({
+        where: { organization_id: req.tenant.organizationId, is_active: true },
         order: [['created_at', 'ASC']],
       });
-      if (!defaultBranch) {
-        defaultBranch = await req.tenantDb.Branch.create({
-          tenant_id: req.tenant.tenantId,
-          organization_id: req.tenant.organizationId,
-          branch_code: 'HQ-DEL',
-          branch_name: 'Head Office (Delhi Hub)',
-          city: req.body.origin_city || 'Delhi',
-          state: 'Delhi',
-          is_hub: true,
-          is_active: true,
-        });
-      }
       if (defaultBranch) {
         branchId = defaultBranch.id;
       }
     }
     if (!branchId) {
-      return errorResponse(res, 'Origin branch is required for booking', null, 400);
+      return errorResponse(res, 'Origin branch is required. Please add your first branch/hub in Branches settings before creating bookings.', null, 400);
     }
 
     const consignment = await bookingService.createBooking({
@@ -48,8 +36,23 @@ const createBooking = async (req, res) => {
 
 const listBookings = async (req, res) => {
   try {
-    const { status, search, payment_type, page = 1, limit = 20, branch_id, sort_by, sort_order } = req.query;
+    const {
+      status,
+      search,
+      payment_type,
+      page = 1,
+      limit = 20,
+      branch_id,
+      sort_by,
+      sort_order,
+      from_date,
+      to_date,
+      start_date,
+      end_date,
+    } = req.query;
     const branchId = branch_id || req.branchId || null;
+    const fromDate = from_date || start_date || null;
+    const toDate = to_date || end_date || null;
 
     const result = await bookingService.listConsignments({
       tenantId: req.tenant.tenantId,
@@ -58,6 +61,8 @@ const listBookings = async (req, res) => {
       status,
       search,
       paymentType: payment_type,
+      fromDate,
+      toDate,
       page,
       limit,
       sortBy: sort_by || 'created_at',

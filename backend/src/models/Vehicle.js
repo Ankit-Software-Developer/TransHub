@@ -77,6 +77,28 @@ module.exports = (sequelize) => {
       type: DataTypes.INTEGER,
       defaultValue: 0,
     },
+    make_model: {
+      type: DataTypes.STRING(100),
+    },
+    manufacturing_year: {
+      type: DataTypes.INTEGER,
+    },
+    fuel_type: {
+      type: DataTypes.STRING(20),
+      defaultValue: 'DIESEL',
+    },
+    owner_name: {
+      type: DataTypes.STRING(100),
+    },
+    owner_phone: {
+      type: DataTypes.STRING(20),
+    },
+    chassis_number: {
+      type: DataTypes.STRING(50),
+    },
+    engine_number: {
+      type: DataTypes.STRING(50),
+    },
     assigned_driver_id: {
       type: DataTypes.UUID,
       allowNull: true,

@@ -35,6 +35,8 @@ export default function DispatchesPage() {
   const [sortBy, setSortBy] = useState('created_at');
   const [sortOrder, setSortOrder] = useState('DESC');
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
 
   const fetchTrips = async (overrides = {}) => {
     setLoading(true);
@@ -44,11 +46,15 @@ export default function DispatchesPage() {
     const so = overrides.sortOrder !== undefined ? overrides.sortOrder : sortOrder;
     const sq = overrides.search !== undefined ? overrides.search : search;
     const sf = overrides.status !== undefined ? overrides.status : statusFilter;
+    const fd = overrides.fromDate !== undefined ? overrides.fromDate : fromDate;
+    const td = overrides.toDate !== undefined ? overrides.toDate : toDate;
 
     try {
       let url = `/trips?page=${p}&limit=${ps}&sort_by=${sb}&sort_order=${so}`;
       if (sq) url += `&search=${encodeURIComponent(sq)}`;
       if (sf && sf !== 'ALL') url += `&status=${sf}`;
+      if (fd) url += `&from_date=${fd}`;
+      if (td) url += `&to_date=${td}`;
       const res = await api.get(url);
       if (res.data?.success) {
         setTrips(res.data.data || []);
@@ -110,10 +116,10 @@ export default function DispatchesPage() {
         sortable: false,
         width: 150,
         minWidth: 120,
-        exportValue: (row) => row.originBranch?.city || row.originBranch?.branch_name || 'Delhi Hub',
+        exportValue: (row) => row.originBranch?.city || row.originBranch?.branch_name || '—',
         render: (val, row) => (
-          <span className="text-xs font-semibold text-slate-300">
-            {row.originBranch?.city || row.originBranch?.branch_name || 'Delhi Hub'}
+          <span className={`text-xs font-semibold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+            {row.originBranch?.city || row.originBranch?.branch_name || '—'}
           </span>
         ),
       },
@@ -123,10 +129,10 @@ export default function DispatchesPage() {
         sortable: false,
         width: 150,
         minWidth: 120,
-        exportValue: (row) => row.destBranch?.city || row.destBranch?.branch_name || 'Mumbai Hub',
+        exportValue: (row) => row.destBranch?.city || row.destBranch?.branch_name || '—',
         render: (val, row) => (
-          <span className="text-xs font-semibold text-slate-300">
-            {row.destBranch?.city || row.destBranch?.branch_name || 'Mumbai Hub'}
+          <span className={`text-xs font-semibold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+            {row.destBranch?.city || row.destBranch?.branch_name || '—'}
           </span>
         ),
       },
@@ -138,7 +144,7 @@ export default function DispatchesPage() {
         minWidth: 130,
         exportValue: (row) => row.vehicle?.vehicle_number || 'Unassigned',
         render: (val, row) => (
-          <div className="font-mono font-bold text-xs text-cyan-400">
+          <div className={`font-mono font-bold text-xs ${isDark ? 'text-cyan-400' : 'text-blue-600'}`}>
             {row.vehicle?.vehicle_number || 'Unassigned'}
           </div>
         ),
@@ -151,7 +157,7 @@ export default function DispatchesPage() {
         minWidth: 120,
         exportValue: (row) => row.driver?.name || 'Pending',
         render: (val, row) => (
-          <span className="text-xs text-slate-300 font-medium">
+          <span className={`text-xs font-medium ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
             {row.driver?.name || 'Pending'}
           </span>
         ),
@@ -166,10 +172,10 @@ export default function DispatchesPage() {
         exportValue: (row) => `${row.total_packages || 0} Pkgs (${row.total_weight || 0} KG)`,
         render: (val, row) => (
           <div className="text-right whitespace-nowrap">
-            <span className="font-bold text-xs text-white">
+            <span className={`font-bold text-xs ${isDark ? 'text-white' : 'text-slate-900'}`}>
               {row.total_packages || 0} Pkgs
             </span>
-            <div className="text-[10px] text-slate-400">
+            <div className={`text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
               {row.total_weight || 0} KG
             </div>
           </div>
@@ -190,7 +196,7 @@ export default function DispatchesPage() {
         ),
       },
     ],
-    []
+    [isDark]
   );
 
   return (
@@ -249,6 +255,14 @@ export default function DispatchesPage() {
             searchQuery={search}
             onSearchChange={(val) => setSearch(val)}
             searchPlaceholder="Search dispatch #, vehicle, driver..."
+            fromDate={fromDate}
+            toDate={toDate}
+            onDateChange={({ fromDate: newFrom, toDate: newTo }) => {
+              setFromDate(newFrom);
+              setToDate(newTo);
+              setPage(1);
+              fetchTrips({ page: 1, fromDate: newFrom, toDate: newTo });
+            }}
             exportFilename="Dispatch_Manifest_Register"
             emptyTitle="No Dispatches Found"
             emptySubtitle="No outbound line-haul trips match your current filter parameters."

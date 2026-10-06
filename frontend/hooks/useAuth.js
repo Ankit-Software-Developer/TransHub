@@ -118,7 +118,7 @@ export function useAuth() {
         email: registrationData.email,
         firstName: registrationData.fullName || 'Transporter',
         organizationName: registrationData.companyName || 'Apex Roadways',
-        roles: ['TRANSPORT_OWNER'],
+        roles: ['ADMIN'],
         subscription: mockSubscription,
       };
       const mockResult = {

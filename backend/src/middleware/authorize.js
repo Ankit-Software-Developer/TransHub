@@ -11,9 +11,10 @@ const authorize = (requiredPermissions = []) => {
       return errorResponse(res, 'User not authenticated', null, 401);
     }
 
-    // Super Admin and Transport Owner have full system access
+    // Super Admin, Admin, and Transport Owner have full system access
     if (
       req.userRoles.includes('SUPER_ADMIN') ||
+      req.userRoles.includes('ADMIN') ||
       req.userRoles.includes('TRANSPORT_OWNER')
     ) {
       return next();

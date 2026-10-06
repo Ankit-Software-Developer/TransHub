@@ -4,6 +4,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useTheme } from '../ThemeProvider';
 import { usePermissions } from '../../hooks/usePermissions';
+import DateRangeFilter from './DateRangeFilter';
 import {
   Search,
   X,
@@ -19,7 +20,8 @@ import {
   FileText,
   Loader2,
   Lock,
-  ChevronDown
+  ChevronDown,
+  Calendar
 } from 'lucide-react';
 
 /**
@@ -32,6 +34,7 @@ import {
  * - Data Export (Native CSV & Microsoft Excel .xls with UTF-8 BOM)
  * - Role & Permission Gating
  * - Light / Dark Mode Support
+ * - Built-in Date Range Filter positioned before Export button
  */
 export default function DataTable({
   columns = [],
@@ -64,6 +67,15 @@ export default function DataTable({
   emptySubtitle = 'There are no records matching your criteria.',
   emptyActionSlot = null,
   requiredExportPermission = 'data.export',
+  onExportDateRange = null,
+  onExportAll = null,
+  dateFilterSlot = null,
+  dateFilterable = true,
+  fromDate = '',
+  toDate = '',
+  onDateChange = null,
+  onDateFilterChange = null,
+  dateFilterKey = '',
 }) {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
@@ -81,7 +93,118 @@ export default function DataTable({
   const isServerPaged = Boolean(onPageChange);
   const effectivePage = isServerPaged ? page : internalPage;
   const effectivePageSize = isServerPaged ? pageSize : internalPageSize;
-  const effectiveTotalCount = totalCount !== undefined ? totalCount : (totalItems !== undefined ? totalItems : data.length);
+
+  // Date Range Filter State
+  const [internalFromDate, setInternalFromDate] = useState(fromDate || '');
+  const [internalToDate, setInternalToDate] = useState(toDate || '');
+
+  useEffect(() => {
+    if (fromDate !== undefined) setInternalFromDate(fromDate || '');
+    if (toDate !== undefined) setInternalToDate(toDate || '');
+  }, [fromDate, toDate]);
+
+  const effectiveFromDate = fromDate !== undefined && fromDate !== '' ? fromDate : internalFromDate;
+  const effectiveToDate = toDate !== undefined && toDate !== '' ? toDate : internalToDate;
+
+  const handleDateFilterChange = ({ fromDate: newFrom, toDate: newTo, label }) => {
+    setInternalFromDate(newFrom);
+    setInternalToDate(newTo);
+    if (onDateFilterChange) {
+      onDateFilterChange({ fromDate: newFrom, toDate: newTo, label });
+    } else if (onDateChange) {
+      onDateChange({ fromDate: newFrom, toDate: newTo, label });
+    } else {
+      setInternalPage(1);
+    }
+  };
+
+  const handleDateFilterClear = () => {
+    setInternalFromDate('');
+    setInternalToDate('');
+    if (onDateFilterChange) {
+      onDateFilterChange({ fromDate: '', toDate: '', label: 'All Dates' });
+    } else if (onDateChange) {
+      onDateChange({ fromDate: '', toDate: '', label: 'All Dates' });
+    } else {
+      setInternalPage(1);
+    }
+  };
+
+  // Client-side date filtered data if uncontrolled or not server paged with date handler
+  const clientFilteredData = useMemo(() => {
+    if (isServerPaged && (onDateFilterChange || onDateChange)) {
+      return data;
+    }
+    if (!effectiveFromDate && !effectiveToDate) {
+      return data;
+    }
+
+    return data.filter((row) => {
+      let val = null;
+      if (dateFilterKey && row[dateFilterKey]) {
+        val = row[dateFilterKey];
+      } else {
+        const candidateKeys = [
+          'trip_date',
+          'expense_date',
+          'invoice_date',
+          'booking_date',
+          'delivery_date',
+          'uploaded_at',
+          'date',
+          'created_at',
+          'createdAt',
+          'registration_date',
+          'updated_at',
+        ];
+        for (const k of candidateKeys) {
+          if (row[k]) {
+            val = row[k];
+            break;
+          }
+        }
+        if (!val) {
+          for (const k in row) {
+            if ((k.endsWith('_date') || k.endsWith('_at') || k === 'date') && row[k]) {
+              val = row[k];
+              break;
+            }
+          }
+        }
+      }
+
+      if (!val) return true;
+
+      let rowDateStr = '';
+      try {
+        if (typeof val === 'string') {
+          if (/^\d{4}-\d{2}-\d{2}/.test(val)) {
+            rowDateStr = val.slice(0, 10);
+          } else {
+            const parsed = new Date(val);
+            if (!isNaN(parsed.getTime())) {
+              rowDateStr = parsed.toISOString().slice(0, 10);
+            }
+          }
+        } else if (val instanceof Date) {
+          rowDateStr = val.toISOString().slice(0, 10);
+        }
+      } catch (e) {
+        return true;
+      }
+
+      if (!rowDateStr) return true;
+      if (effectiveFromDate && rowDateStr < effectiveFromDate) return false;
+      if (effectiveToDate && rowDateStr > effectiveToDate) return false;
+      return true;
+    });
+  }, [data, isServerPaged, onDateFilterChange, onDateChange, effectiveFromDate, effectiveToDate, dateFilterKey]);
+
+  const effectiveTotalCount = totalCount !== undefined
+    ? totalCount
+    : (totalItems !== undefined
+      ? totalItems
+      : (isServerPaged ? data.length : clientFilteredData.length));
 
   // Column Resizing State
   const [columnWidths, setColumnWidths] = useState({});
@@ -182,8 +305,8 @@ export default function DataTable({
   const displayData = useMemo(() => {
     if (isServerPaged) return data;
     const start = (effectivePage - 1) * effectivePageSize;
-    return data.slice(start, start + effectivePageSize);
-  }, [data, isServerPaged, effectivePage, effectivePageSize]);
+    return clientFilteredData.slice(start, start + effectivePageSize);
+  }, [data, clientFilteredData, isServerPaged, effectivePage, effectivePageSize]);
 
   // Calculate Pagination Numbers
   const totalPages = Math.max(1, Math.ceil(effectiveTotalCount / effectivePageSize));
@@ -221,17 +344,29 @@ export default function DataTable({
   };
 
   // Export to CSV
-  const handleExportCSV = () => {
+  const handleExportCSV = async () => {
     if (!canExport) {
       alert('Permission Denied: Only users with Administrator or Export permissions can download this dataset.');
       return;
     }
     setIsExportOpen(false);
 
+    let exportRowsData = isServerPaged ? data : clientFilteredData;
+    if (onExportAll) {
+      try {
+        const allData = await onExportAll();
+        if (Array.isArray(allData) && allData.length > 0) {
+          exportRowsData = allData;
+        }
+      } catch (e) {
+        console.error('Error fetching all data for CSV export:', e);
+      }
+    }
+
     const exportCols = columns.filter((c) => !c.excludeFromExport && c.key !== 'actions');
     const headers = exportCols.map((c) => `"${(c.header || c.label || c.key).replace(/"/g, '""')}"`);
 
-    const rows = data.map((row) =>
+    const rows = exportRowsData.map((row) =>
       exportCols
         .map((col) => {
           const raw = getCellExportText(row, col);
@@ -254,12 +389,24 @@ export default function DataTable({
   };
 
   // Export to Excel (.xls XML Format)
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
     if (!canExport) {
       alert('Permission Denied: Only users with Administrator or Export permissions can download this dataset.');
       return;
     }
     setIsExportOpen(false);
+
+    let exportRowsData = isServerPaged ? data : clientFilteredData;
+    if (onExportAll) {
+      try {
+        const allData = await onExportAll();
+        if (Array.isArray(allData) && allData.length > 0) {
+          exportRowsData = allData;
+        }
+      } catch (e) {
+        console.error('Error fetching all data for Excel export:', e);
+      }
+    }
 
     const exportCols = columns.filter((c) => !c.excludeFromExport && c.key !== 'actions');
 
@@ -298,7 +445,7 @@ export default function DataTable({
             </tr>
           </thead>
           <tbody>
-            ${data
+            ${exportRowsData
               .map(
                 (row) => `
               <tr>
@@ -339,33 +486,48 @@ export default function DataTable({
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
           
           {/* Left: Search Box */}
-          {onSearchChange && (
-            <div className="relative flex-1 max-w-md">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3 pointer-events-none" />
-              <input
-                type="text"
-                value={effectiveSearch}
-                onChange={(e) => onSearchChange(e.target.value)}
-                placeholder={searchPlaceholder}
-                className={`w-full pl-9 pr-8 py-2 rounded-xl border text-xs focus:outline-none transition-all ${
-                  isDark
-                    ? 'bg-slate-900/80 border-slate-800 text-white placeholder-slate-500 focus:border-cyan-400'
-                    : 'bg-white border-slate-200 text-slate-900 placeholder-slate-400 focus:border-blue-500'
-                }`}
-              />
-              {effectiveSearch && (
-                <button
-                  onClick={() => onSearchChange('')}
-                  className="absolute right-3 top-2.5 text-slate-400 hover:text-white"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
-          )}
+          <div className="flex flex-wrap items-center gap-2.5 flex-1 max-w-2xl">
+            {onSearchChange && (
+              <div className="relative flex-1 min-w-[220px]">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3 pointer-events-none" />
+                <input
+                  type="text"
+                  value={effectiveSearch}
+                  onChange={(e) => onSearchChange(e.target.value)}
+                  placeholder={searchPlaceholder}
+                  className={`w-full pl-9 pr-8 py-2 rounded-xl border text-xs focus:outline-none transition-all ${
+                    isDark
+                      ? 'bg-slate-900/80 border-slate-800 text-white placeholder-slate-500 focus:border-cyan-400'
+                      : 'bg-white border-slate-200 text-slate-900 placeholder-slate-400 focus:border-blue-500'
+                  }`}
+                />
+                {effectiveSearch && (
+                  <button
+                    onClick={() => onSearchChange('')}
+                    className={`absolute right-3 top-2.5 ${isDark ? 'text-slate-400 hover:text-white' : 'text-slate-400 hover:text-slate-700'}`}
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
 
-          {/* Right Action Tools: Export & Custom Actions */}
+          {/* Right Action Tools: Date Filter, Export & Custom Actions */}
           <div className="flex flex-wrap items-center gap-2.5">
+            {/* Date Filter: Render custom slot if provided, or built-in DateRangeFilter */}
+            {dateFilterSlot ? (
+              dateFilterSlot
+            ) : dateFilterable ? (
+              <DateRangeFilter
+                fromDate={effectiveFromDate}
+                toDate={effectiveToDate}
+                align="right"
+                onChange={handleDateFilterChange}
+                onClear={handleDateFilterClear}
+              />
+            ) : null}
+
             {/* Export Dropdown (Excel & CSV) */}
             {exportable && (
               <div className="relative" ref={exportRef}>
@@ -414,6 +576,22 @@ export default function DataTable({
                       <FileText className="w-4 h-4 text-cyan-400" />
                       <span>Standard CSV (.csv)</span>
                     </button>
+
+                    {onExportDateRange && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsExportOpen(false);
+                          onExportDateRange();
+                        }}
+                        className={`w-full px-3 py-2 text-left text-xs font-semibold flex items-center space-x-2 border-t transition-colors ${
+                          isDark ? 'border-slate-800 hover:bg-slate-800 text-blue-400' : 'border-slate-100 hover:bg-slate-50 text-blue-600'
+                        }`}
+                      >
+                        <Calendar className="w-4 h-4 text-blue-500" />
+                        <span>Filter & Export by Date...</span>
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -495,7 +673,7 @@ export default function DataTable({
           </thead>
 
           {/* Table Body */}
-          <tbody className="divide-y divide-slate-800/40">
+          <tbody className={`divide-y ${isDark ? 'divide-slate-800/40' : 'divide-slate-200'}`}>
             {effectiveLoading ? (
               <tr>
                 <td colSpan={columns.length} className="py-24 text-center">
@@ -599,8 +777,8 @@ export default function DataTable({
               }`}
             >
               {pageSizeOptions.map((opt) => (
-                <option key={opt} value={opt} className="bg-slate-900 text-white">
-                  {opt} per page
+                <option key={opt} value={opt} className={isDark ? "bg-slate-900 text-white" : "bg-white text-slate-900"}>
+                  {opt}
                 </option>
               ))}
             </select>

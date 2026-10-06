@@ -111,6 +111,12 @@ module.exports = (sequelize) => {
       type: DataTypes.ENUM('DOOR_DELIVERY', 'GODOWN_DELIVERY'),
       defaultValue: 'GODOWN_DELIVERY',
     },
+    transport_mode: {
+      type: DataTypes.STRING(30),
+      allowNull: true,
+      defaultValue: 'ROAD',
+      comment: 'Mode of transport: ROAD, RAIL, AIR',
+    },
     rate_type: {
       type: DataTypes.STRING(30),
       defaultValue: 'PER_KG',

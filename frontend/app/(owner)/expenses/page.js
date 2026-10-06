@@ -35,6 +35,8 @@ export default function ExpensesPage() {
   const [pageSize, setPageSize] = useState(15);
   const [sortBy, setSortBy] = useState('expense_date');
   const [sortOrder, setSortOrder] = useState('DESC');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
 
   const [formData, setFormData] = useState({
     category_id: '',
@@ -47,8 +49,14 @@ export default function ExpensesPage() {
   const fetchData = async () => {
     setLoading(true);
     try {
+      let expUrl = '/expenses';
+      const params = [];
+      if (fromDate) params.push(`from_date=${fromDate}`);
+      if (toDate) params.push(`to_date=${toDate}`);
+      if (params.length > 0) expUrl += `?${params.join('&')}`;
+
       const [expRes, catRes, vehRes] = await Promise.all([
-        api.get('/expenses'),
+        api.get(expUrl),
         api.get('/expenses/categories'),
         api.get('/fleet/vehicles'),
       ]);
@@ -70,7 +78,7 @@ export default function ExpensesPage() {
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [fromDate, toDate]);
 
   const handleAddExpense = async (e) => {
     e.preventDefault();
@@ -287,6 +295,13 @@ export default function ExpensesPage() {
               setPage(1);
             }}
             searchPlaceholder="Search by category, trip #, vehicle, remarks..."
+            fromDate={fromDate}
+            toDate={toDate}
+            onDateChange={({ fromDate: newFrom, toDate: newTo }) => {
+              setFromDate(newFrom);
+              setToDate(newTo);
+              setPage(1);
+            }}
             exportFilename="Operating_Expenses_Ledger"
             emptyTitle="No Expenses Logged"
             emptySubtitle="No operating or trip expenses match your search criteria."

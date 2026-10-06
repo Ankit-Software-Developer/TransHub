@@ -48,7 +48,7 @@ module.exports = (sequelize) => {
       defaultValue: 'India',
     },
     logo_url: {
-      type: DataTypes.STRING(500),
+      type: DataTypes.TEXT('long'),
     },
     currency: {
       type: DataTypes.STRING(10),

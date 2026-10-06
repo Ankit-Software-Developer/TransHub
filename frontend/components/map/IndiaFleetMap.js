@@ -124,6 +124,52 @@ const CORRIDOR_ACTIVE_STATES = {
   'ahmedabad-chennai': ['Gujarat', 'Maharashtra', 'Karnataka', 'Telangana', 'Andhra Pradesh', 'Tamil Nadu']
 };
 
+// Map logistics hubs to their respective Indian States
+const CITY_STATE_MAP = {
+  delhi: 'Delhi',
+  'new delhi': 'Delhi',
+  mumbai: 'Maharashtra',
+  pune: 'Maharashtra',
+  nagpur: 'Maharashtra',
+  bengaluru: 'Karnataka',
+  bangalore: 'Karnataka',
+  kolkata: 'West Bengal',
+  chennai: 'Tamil Nadu',
+  coimbatore: 'Tamil Nadu',
+  hyderabad: 'Telangana',
+  ahmedabad: 'Gujarat',
+  surat: 'Gujarat',
+  vadodara: 'Gujarat',
+  jaipur: 'Rajasthan',
+  udaipur: 'Rajasthan',
+  indore: 'Madhya Pradesh',
+  bhopal: 'Madhya Pradesh',
+  gwalior: 'Madhya Pradesh',
+  lucknow: 'Uttar Pradesh',
+  kanpur: 'Uttar Pradesh',
+  agra: 'Uttar Pradesh',
+  varanasi: 'Uttar Pradesh',
+  chandigarh: 'Chandigarh',
+  ludhiana: 'Punjab',
+  guwahati: 'Assam',
+  patna: 'Bihar',
+  ranchi: 'Jharkhand',
+  raipur: 'Chhattisgarh',
+  visakhapatnam: 'Andhra Pradesh',
+  kochi: 'Kerala'
+};
+
+function getCityState(cityName) {
+  if (!cityName) return null;
+  const normalized = String(cityName).toLowerCase().trim();
+  for (const [key, state] of Object.entries(CITY_STATE_MAP)) {
+    if (normalized.includes(key) || key.includes(normalized)) {
+      return state;
+    }
+  }
+  return null;
+}
+
 function getCityCoords(name, defaultCoords = [28.6139, 77.2090]) {
   if (!name) return defaultCoords;
   const normalized = String(name).toLowerCase().trim();
@@ -354,19 +400,29 @@ export default function IndiaFleetMap({
         routeLayerRef.current.clearLayers();
       }
 
-      // Determine active states for highlighting
+      // Determine active states for highlighting:
+      // ONLY highlight states if a vehicle is explicitly selected!
+      // If NO vehicle is selected or no vehicles exist, do NOT highlight any state.
       let activeStateNames = [];
       if (selectedTrip) {
-        const { corridorKey, reverseKey, originCity } = getTripRouteData(selectedTrip);
-        activeStateNames = CORRIDOR_ACTIVE_STATES[corridorKey] || CORRIDOR_ACTIVE_STATES[reverseKey] || [
-          'Delhi', 'Haryana', 'Rajasthan', 'Gujarat', 'Maharashtra', 'Karnataka'
-        ];
+        const routeData = getTripRouteData(selectedTrip);
+        if (routeData.isStationary) {
+          const homeState = getCityState(routeData.originCity);
+          activeStateNames = homeState ? [homeState] : [];
+        } else {
+          activeStateNames = CORRIDOR_ACTIVE_STATES[routeData.corridorKey] || CORRIDOR_ACTIVE_STATES[routeData.reverseKey] || [];
+          if (activeStateNames.length === 0) {
+            const oState = getCityState(routeData.originCity);
+            const dState = getCityState(routeData.destCity);
+            const fallback = [];
+            if (oState) fallback.push(oState);
+            if (dState && dState !== oState) fallback.push(dState);
+            activeStateNames = fallback;
+          }
+        }
       } else {
-        // When showing all vehicles, highlight all major transit states
-        activeStateNames = [
-          'Delhi', 'Haryana', 'Rajasthan', 'Gujarat', 'Maharashtra',
-          'Karnataka', 'Chhattisgarh', 'Odisha', 'West Bengal', 'Tamil Nadu', 'Telangana'
-        ];
+        // No vehicle selected: map remains in clean, neutral standby state
+        activeStateNames = [];
       }
 
       // State Style: Active corridor states highlighted in blue/cyan
@@ -376,20 +432,20 @@ export default function IndiaFleetMap({
 
         if (isActiveState) {
           return {
-            fillColor: '#0284C7',     // Solid vibrant cyan/blue
-            fillOpacity: 0.65,
-            color: '#00F0FF',         // Neon cyan boundary outline
+            fillColor: isDark ? '#0284C7' : '#38BDF8',
+            fillOpacity: isDark ? 0.65 : 0.5,
+            color: isDark ? '#00F0FF' : '#0284C7',
             weight: 1.5,
             opacity: 0.9,
           };
         }
 
         return {
-          fillColor: '#090F1E',       // Sleek dark navy state body
-          fillOpacity: 0.85,
-          color: '#1E293B',           // State boundary border
+          fillColor: isDark ? '#090F1E' : '#F1F5F9',
+          fillOpacity: isDark ? 0.85 : 0.8,
+          color: isDark ? '#1E293B' : '#CBD5E1',
           weight: 1,
-          opacity: 0.65,
+          opacity: isDark ? 0.65 : 0.9,
         };
       };
 
@@ -400,8 +456,8 @@ export default function IndiaFleetMap({
           const stateName = feature.properties?.ST_NM || 'State of India';
           
           layer.bindTooltip(`
-            <div style="font-family: inherit; font-size: 11px; font-weight: 700; color: #fff;">
-              <span style="color: #00F0FF;">●</span> ${stateName}
+            <div style="font-family: inherit; font-size: 11px; font-weight: 700; color: ${isDark ? '#fff' : '#0f172a'};">
+              <span style="color: #0284C7;">●</span> ${stateName}
             </div>
           `, {
             sticky: true,
@@ -452,45 +508,52 @@ export default function IndiaFleetMap({
             opacity: 0.95,
           }).addTo(routeLayer);
 
-          // Point A: START PIN (Green Badge with pulse)
+          // Point A: START PIN (Where to start)
           const startHtml = `
             <div class="flex items-center gap-1.5 -translate-x-1/2 -translate-y-full cursor-pointer pointer-events-auto">
-              <div class="px-2.5 py-1 rounded-xl bg-slate-950/95 border-2 border-emerald-400 text-white text-[11px] font-bold shadow-2xl flex items-center gap-1.5 backdrop-blur-md">
-                <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shadow-md"></span>
-                <span class="text-emerald-400 uppercase text-[9px] font-black">START:</span>
-                <span>${routeData.originCity}</span>
+              <div class="px-2.5 py-1 rounded-xl ${isDark ? 'bg-slate-950/95 border-2 border-emerald-400 text-white shadow-emerald-950/50' : 'bg-white border-2 border-emerald-500 text-slate-900 shadow-xl'} text-[11px] font-bold shadow-2xl flex items-center gap-1.5 backdrop-blur-md">
+                <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shadow-md"></span>
+                <div class="flex flex-col text-left leading-tight">
+                  <span class="text-emerald-500 uppercase text-[9px] font-black tracking-wider">START (ORIGIN)</span>
+                  <span class="text-xs font-bold">${routeData.originCity} Hub</span>
+                </div>
               </div>
             </div>
           `;
-          const startIcon = L.divIcon({ html: startHtml, className: 'custom-start-pin', iconSize: [120, 36], iconAnchor: [60, 36] });
+          const startIcon = L.divIcon({ html: startHtml, className: 'custom-start-pin', iconSize: [140, 42], iconAnchor: [70, 42] });
           L.marker(routeData.originCoords, { icon: startIcon, zIndexOffset: 850 }).addTo(routeLayer);
 
-          // Point B: CURRENT PIN (Glowing Cyan Truck with Dual Radar Wave Rings)
+          // Point B: CURRENT PIN (Where is it right now with radar pulse)
           const currentHtml = `
             <div class="relative flex flex-col items-center justify-center -translate-x-1/2 -translate-y-1/2 cursor-pointer group">
               <!-- Animated dual radar wave rings -->
-              <span class="absolute w-14 h-14 rounded-full bg-cyan-400/40 animate-ping pointer-events-none"></span>
-              <span class="absolute w-20 h-20 rounded-full bg-cyan-400/20 animate-pulse pointer-events-none"></span>
+              <span class="absolute w-14 h-14 rounded-full ${isDark ? 'bg-cyan-400/40' : 'bg-blue-400/40'} animate-ping pointer-events-none"></span>
+              <span class="absolute w-20 h-20 rounded-full ${isDark ? 'bg-cyan-400/20' : 'bg-blue-400/20'} animate-pulse pointer-events-none"></span>
               
-              <!-- Floating CURRENT badge -->
-              <div class="mb-1 px-2 py-0.5 rounded-lg bg-slate-950/95 border border-cyan-400 text-cyan-300 text-[10px] font-bold shadow-xl whitespace-nowrap flex items-center gap-1">
-                <span class="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping"></span>
-                <span>CURRENT: ${selVehicleId}</span>
+              <!-- Floating CURRENT live location badge -->
+              <div class="mb-1.5 px-2.5 py-1 rounded-xl ${isDark ? 'bg-slate-950/95 border border-cyan-400 text-white shadow-cyan-950/60' : 'bg-white border-2 border-blue-600 text-slate-900 shadow-xl'} text-[10px] font-bold shadow-2xl whitespace-nowrap flex flex-col items-center">
+                <div class="flex items-center gap-1.5 ${isDark ? 'text-cyan-400' : 'text-blue-600'} font-black text-[9px] uppercase tracking-wider">
+                  <span class="w-2 h-2 rounded-full ${isDark ? 'bg-cyan-400' : 'bg-blue-600'} animate-ping"></span>
+                  <span>CURRENT: ${selVehicleId}</span>
+                </div>
+                <div class="text-[11px] font-bold ${isDark ? 'text-white' : 'text-slate-900'} mt-0.5">
+                  ${routeData.currentLocation} • <span class="font-mono text-cyan-400 font-bold">${selectedTrip.speed || '68 km/h'}</span>
+                </div>
               </div>
 
               <!-- Truck Icon Pin -->
-              <div class="relative w-10 h-10 rounded-full bg-[#060D1E] border-2 border-cyan-400 text-cyan-300 flex items-center justify-center shadow-2xl shadow-cyan-400/80 transition-transform group-hover:scale-110">
-                <svg class="w-5 h-5 text-cyan-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+              <div class="relative w-10 h-10 rounded-full ${isDark ? 'bg-[#060D1E] border-2 border-cyan-400 text-cyan-300 shadow-cyan-400/80' : 'bg-white border-2 border-blue-600 text-blue-600 shadow-blue-500/40'} flex items-center justify-center shadow-2xl transition-transform group-hover:scale-110">
+                <svg class="w-5 h-5 ${isDark ? 'text-cyan-300' : 'text-blue-600'}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
                   <rect x="1" y="3" width="15" height="13"></rect>
                   <polygon points="16 8 20 8 23 11 23 16 16 8"></polygon>
                   <circle cx="5.5" cy="18.5" r="2.5"></circle>
                   <circle cx="18.5" cy="18.5" r="2.5"></circle>
                 </svg>
-                <span class="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-emerald-400 border border-slate-900 animate-pulse"></span>
+                <span class="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-emerald-500 border ${isDark ? 'border-slate-900' : 'border-white'} animate-pulse"></span>
               </div>
             </div>
           `;
-          const currentIcon = L.divIcon({ html: currentHtml, className: 'custom-truck-current', iconSize: [140, 70], iconAnchor: [70, 45] });
+          const currentIcon = L.divIcon({ html: currentHtml, className: 'custom-truck-current', iconSize: [160, 80], iconAnchor: [80, 52] });
           const currentMarker = L.marker(routeData.truckCoords, { icon: currentIcon, zIndexOffset: 1200 }).addTo(routeLayer);
 
           currentMarker.on('mouseover', () => {
@@ -501,17 +564,19 @@ export default function IndiaFleetMap({
             setIsVehicleHovered(false);
           });
 
-          // Point C: NEXT PIN (Rose/Red Destination Pin)
+          // Point C: NEXT PIN (Where it is going)
           const nextHtml = `
             <div class="flex items-center gap-1.5 -translate-x-1/2 -translate-y-full cursor-pointer pointer-events-auto">
-              <div class="px-2.5 py-1 rounded-xl bg-slate-950/95 border-2 border-rose-500 text-white text-[11px] font-bold shadow-2xl flex items-center gap-1.5 backdrop-blur-md">
+              <div class="px-2.5 py-1 rounded-xl ${isDark ? 'bg-slate-950/95 border-2 border-rose-500 text-white shadow-rose-950/50' : 'bg-white border-2 border-rose-500 text-slate-900 shadow-xl'} text-[11px] font-bold shadow-2xl flex items-center gap-1.5 backdrop-blur-md">
                 <span class="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse shadow-md"></span>
-                <span class="text-rose-400 uppercase text-[9px] font-black">NEXT:</span>
-                <span>${routeData.destCity}</span>
+                <div class="flex flex-col text-left leading-tight">
+                  <span class="text-rose-500 uppercase text-[9px] font-black tracking-wider">GOING TO (DESTINATION)</span>
+                  <span class="text-xs font-bold">${routeData.destCity} Hub</span>
+                </div>
               </div>
             </div>
           `;
-          const nextIcon = L.divIcon({ html: nextHtml, className: 'custom-next-pin', iconSize: [120, 36], iconAnchor: [60, 36] });
+          const nextIcon = L.divIcon({ html: nextHtml, className: 'custom-next-pin', iconSize: [150, 42], iconAnchor: [75, 42] });
           L.marker(routeData.destCoords, { icon: nextIcon, zIndexOffset: 850 }).addTo(routeLayer);
 
           // Smoothly fit map to the 3 points (Start, Current, Next)
@@ -525,13 +590,13 @@ export default function IndiaFleetMap({
           // Stationary at Yard (Available)
           const yardHtml = `
             <div class="relative flex flex-col items-center justify-center -translate-x-1/2 -translate-y-1/2 cursor-pointer group">
-              <span class="absolute w-12 h-12 rounded-full bg-blue-400/30 animate-pulse"></span>
-              <div class="mb-1 px-2.5 py-1 rounded-xl bg-slate-950/95 border-2 border-blue-400 text-white text-[11px] font-bold shadow-2xl flex items-center gap-1.5 backdrop-blur-md">
-                <span class="w-2 h-2 rounded-full bg-blue-400"></span>
+              <span class="absolute w-12 h-12 rounded-full ${isDark ? 'bg-blue-400/30' : 'bg-blue-500/20'} animate-pulse"></span>
+              <div class="mb-1 px-2.5 py-1 rounded-xl ${isDark ? 'bg-slate-950/95 border-2 border-blue-400 text-white' : 'bg-white border-2 border-blue-500 text-slate-900 shadow-xl'} text-[11px] font-bold shadow-2xl flex items-center gap-1.5 backdrop-blur-md">
+                <span class="w-2 h-2 rounded-full bg-blue-500"></span>
                 <span>${selVehicleId} • Stationed at ${routeData.originCity} Hub</span>
               </div>
-              <div class="w-10 h-10 rounded-full bg-[#060D1E] border-2 border-blue-400 text-blue-300 flex items-center justify-center shadow-lg">
-                <svg class="w-5 h-5 text-blue-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <div class="w-10 h-10 rounded-full ${isDark ? 'bg-[#060D1E] border-2 border-blue-400 text-blue-300' : 'bg-white border-2 border-blue-500 text-blue-600 shadow-md'} flex items-center justify-center shadow-lg">
+                <svg class="w-5 h-5 ${isDark ? 'text-blue-300' : 'text-blue-600'}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
                   <polyline points="9 22 9 12 15 12 15 22"></polyline>
                 </svg>
@@ -564,13 +629,13 @@ export default function IndiaFleetMap({
         const vData = getTripRouteData(veh);
         const vId = veh.vehicleNumber || veh.vehicle?.vehicle_number || veh.id || 'FLEET';
         const isTransit = !vData.isStationary;
-        const statusColor = isTransit ? 'bg-cyan-400' : 'bg-emerald-400';
+        const statusColor = isTransit ? (isDark ? 'bg-cyan-400' : 'bg-blue-500') : 'bg-emerald-500';
 
         const markerHtml = `
           <div class="relative flex items-center justify-center -translate-x-1/2 -translate-y-1/2 cursor-pointer group">
-            <span class="absolute w-7 h-7 rounded-full ${isTransit ? 'bg-cyan-400/20' : 'bg-emerald-400/20'} animate-ping"></span>
-            <div class="relative px-2 py-1 rounded-xl bg-[#060D1E]/95 border ${isTransit ? 'border-cyan-500/60' : 'border-slate-700'} text-white text-[10px] font-bold flex items-center gap-1.5 shadow-xl transition-all group-hover:scale-110 group-hover:border-cyan-300">
-              <svg class="w-3 h-3 ${isTransit ? 'text-cyan-300' : 'text-emerald-400'}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <span class="absolute w-7 h-7 rounded-full ${isTransit ? (isDark ? 'bg-cyan-400/20' : 'bg-blue-400/20') : 'bg-emerald-400/20'} animate-ping"></span>
+            <div class="relative px-2 py-1 rounded-xl ${isDark ? 'bg-[#060D1E]/95 text-white' : 'bg-white text-slate-800 shadow-md border-slate-300'} border ${isTransit ? (isDark ? 'border-cyan-500/60' : 'border-blue-400') : (isDark ? 'border-slate-700' : 'border-slate-300')} text-[10px] font-bold flex items-center gap-1.5 shadow-xl transition-all group-hover:scale-110">
+              <svg class="w-3 h-3 ${isTransit ? (isDark ? 'text-cyan-300' : 'text-blue-600') : (isDark ? 'text-emerald-400' : 'text-emerald-600')}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <rect x="1" y="3" width="15" height="13"></rect>
                 <polygon points="16 8 20 8 23 11 23 16 16 8"></polygon>
                 <circle cx="5.5" cy="18.5" r="2.5"></circle>
@@ -657,20 +722,22 @@ export default function IndiaFleetMap({
   const hudSpeedText = activeHudTrip?.speed || (activeHudTrip ? '60 km/h' : '0 km/h');
 
   return (
-    <div className={`relative rounded-2xl bg-[#070B14] border border-slate-800 overflow-hidden flex flex-col justify-between ${isModal ? 'h-full min-h-[550px]' : 'min-h-[460px]'} ${className}`}>
+    <div className={`relative rounded-2xl ${isDark ? 'bg-[#070B14] border-slate-800' : 'bg-slate-50 border-slate-200'} border overflow-hidden flex flex-col justify-between ${isModal ? 'h-full min-h-[550px]' : 'min-h-[460px]'} ${className}`}>
       
       {/* Top Header Status Badges & Action Buttons */}
       <div className="absolute top-3.5 left-3.5 right-3.5 flex items-center justify-between gap-2 z-[400] pointer-events-none">
         
         {/* Left Side: Status Counter + Expand Radar at Same Height */}
         <div className="flex items-center gap-2 pointer-events-auto">
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-950/90 border border-slate-800 text-[11px] font-semibold text-white shadow-xl backdrop-blur-md">
-            <span className={`w-2 h-2 rounded-full ${allTrips && allTrips.length > 0 ? 'bg-cyan-400 animate-pulse' : 'bg-slate-600'}`} />
+          <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-[11px] font-semibold shadow-xl backdrop-blur-md ${
+            isDark ? 'bg-slate-950/90 border-slate-800 text-white' : 'bg-white/95 border-slate-200 text-slate-800'
+          }`}>
+            <span className={`w-2 h-2 rounded-full ${allTrips && allTrips.length > 0 ? (isDark ? 'bg-cyan-400' : 'bg-blue-600') + ' animate-pulse' : 'bg-slate-400'}`} />
             <span>{activeTripsCount} Active</span>
-            <span className="text-slate-500">•</span>
-            <span className="text-emerald-400">{onTimeCount} On Time</span>
-            <span className="text-slate-500">•</span>
-            <span className="text-rose-400">{delayedCount} Delayed</span>
+            <span className={isDark ? 'text-slate-500' : 'text-slate-300'}>•</span>
+            <span className="text-emerald-500 dark:text-emerald-400 font-bold">{onTimeCount} On Time</span>
+            <span className={isDark ? 'text-slate-500' : 'text-slate-300'}>•</span>
+            <span className="text-rose-500 dark:text-rose-400 font-bold">{delayedCount} Delayed</span>
           </div>
 
           {/* Modal / Fullscreen Expand Button: Same Height on Left Side */}
@@ -678,10 +745,14 @@ export default function IndiaFleetMap({
             <button
               type="button"
               onClick={onOpenModal}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 hover:text-white border border-cyan-400/40 shadow-xl backdrop-blur-md text-[11px] font-bold transition-all hover:scale-105 active:scale-95 cursor-pointer"
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border shadow-xl backdrop-blur-md text-[11px] font-bold transition-all hover:scale-105 active:scale-95 cursor-pointer ${
+                isDark
+                  ? 'bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 hover:text-white border-cyan-400/40'
+                  : 'bg-white hover:bg-blue-50 text-blue-600 border-blue-200'
+              }`}
               title="Open Large Fleet Telemetry Modal"
             >
-              <Maximize2 className="w-3.5 h-3.5 text-cyan-400" />
+              <Maximize2 className={`w-3.5 h-3.5 ${isDark ? 'text-cyan-400' : 'text-blue-600'}`} />
               <span>Expand Radar</span>
             </button>
           )}
@@ -693,30 +764,34 @@ export default function IndiaFleetMap({
         <div
           onMouseEnter={() => setIsVehicleHovered(true)}
           onMouseLeave={() => setIsVehicleHovered(false)}
-          className="absolute top-16 left-3.5 z-[400] p-3.5 rounded-2xl bg-slate-950/95 border border-cyan-400 text-white text-xs shadow-2xl backdrop-blur-md min-w-[270px] max-w-[320px] pointer-events-auto transition-all animate-in fade-in zoom-in-95 duration-150"
+          className={`absolute top-16 left-3.5 z-[400] p-3.5 rounded-2xl border text-xs shadow-2xl backdrop-blur-md min-w-[270px] max-w-[320px] pointer-events-auto transition-all animate-in fade-in zoom-in-95 duration-150 ${
+            isDark ? 'bg-slate-950/95 border-cyan-400 text-white' : 'bg-white/95 border-blue-400 text-slate-900'
+          }`}
         >
-          <div className="flex items-center justify-between gap-3 font-bold text-cyan-300">
+          <div className={`flex items-center justify-between gap-3 font-bold ${isDark ? 'text-cyan-300' : 'text-blue-600'}`}>
             <div className="flex items-center gap-1.5 truncate">
-              <Truck className="w-4 h-4 text-cyan-400 shrink-0" />
-              <span className="truncate text-white text-sm tracking-wide font-mono">{hudVehicleId}</span>
+              <Truck className={`w-4 h-4 shrink-0 ${isDark ? 'text-cyan-400' : 'text-blue-600'}`} />
+              <span className={`truncate text-sm tracking-wide font-mono ${isDark ? 'text-white' : 'text-slate-900'}`}>{hudVehicleId}</span>
             </div>
             <span className={`text-[9px] px-2 py-0.5 rounded font-bold uppercase tracking-wider shrink-0 ${
               activeHudTrip.status === 'DELAYED'
-                ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40'
-                : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                ? 'bg-rose-500/20 text-rose-500 dark:text-rose-400 border border-rose-500/40'
+                : 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/40'
             }`}>
               ● {activeHudTrip.status === 'DELAYED' ? 'Delayed' : 'Live'}
             </span>
           </div>
 
-          <div className="text-[11px] text-slate-300 mt-1.5 font-medium truncate">
+          <div className={`text-[11px] mt-1.5 font-medium truncate ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
             {hudRouteText}
           </div>
 
-          <div className="flex items-center justify-between gap-3 text-[10px] text-emerald-400 font-mono font-semibold mt-2 pt-2 border-t border-slate-800/80">
-            <span className="truncate text-cyan-300">{hudRemainingText}</span>
-            <span className="shrink-0 text-slate-400 font-normal">
-              ETA: <span className="text-emerald-400 font-bold">{hudEtaText}</span>
+          <div className={`flex items-center justify-between gap-3 text-[10px] font-mono font-semibold mt-2 pt-2 border-t ${
+            isDark ? 'border-slate-800/80 text-emerald-400' : 'border-slate-200 text-emerald-600'
+          }`}>
+            <span className={`truncate ${isDark ? 'text-cyan-300' : 'text-blue-600'}`}>{hudRemainingText}</span>
+            <span className={`shrink-0 font-normal ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+              ETA: <span className="font-bold text-emerald-600 dark:text-emerald-400">{hudEtaText}</span>
             </span>
           </div>
         </div>
@@ -724,12 +799,16 @@ export default function IndiaFleetMap({
 
       {/* Center Empty State Banner: Shown when NO vehicles are present/registered */}
       {(!allTrips || allTrips.length === 0) && (
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[400] px-5 py-4 rounded-2xl bg-slate-950/90 border border-slate-800 text-center shadow-2xl backdrop-blur-md pointer-events-none max-w-xs animate-in fade-in duration-200">
-          <div className="w-10 h-10 mx-auto mb-2.5 rounded-2xl bg-slate-900 border border-slate-700/80 flex items-center justify-center text-slate-400 shadow-inner">
+        <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[400] px-5 py-4 rounded-2xl border text-center shadow-2xl backdrop-blur-md pointer-events-none max-w-xs animate-in fade-in duration-200 ${
+          isDark ? 'bg-slate-950/90 border-slate-800 text-white' : 'bg-white/95 border-slate-200 text-slate-900'
+        }`}>
+          <div className={`w-10 h-10 mx-auto mb-2.5 rounded-2xl border flex items-center justify-center shadow-inner ${
+            isDark ? 'bg-slate-900 border-slate-700/80 text-slate-400' : 'bg-slate-100 border-slate-200 text-slate-500'
+          }`}>
             <Truck className="w-5 h-5 text-slate-400" />
           </div>
-          <div className="text-xs font-bold text-white">No Vehicles to Track</div>
-          <div className="text-[11px] text-slate-400 mt-1 leading-relaxed">
+          <div className={`text-xs font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>No Vehicles to Track</div>
+          <div className={`text-[11px] mt-1 leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
             Register commercial vehicles with GPS to view live highway tracking, radar pulse, and corridor route.
           </div>
         </div>
@@ -739,25 +818,63 @@ export default function IndiaFleetMap({
       <div
         ref={mapContainerRef}
         className={`w-full ${isModal ? 'h-full min-h-[550px]' : 'h-[460px]'} z-0 focus:outline-none`}
-        style={{ background: '#070B14' }}
+        style={{ background: isDark ? '#070B14' : '#F8FAFC' }}
       />
 
       {/* Bottom Map Floating Telemetry & Controls Toolbar */}
-      <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-800/80 pt-2 z-[400] pointer-events-none">
+      <div className={`absolute bottom-3 left-3 right-3 flex items-center justify-between text-[11px] border-t pt-2 z-[400] pointer-events-none ${
+        isDark ? 'text-slate-400 border-slate-800/80' : 'text-slate-600 border-slate-200'
+      }`}>
         
         {/* Speed / Status Badge */}
-        <div className="flex items-center gap-2 pointer-events-auto">
-          <div className="px-2.5 py-1 rounded-lg bg-slate-950/90 border border-slate-800 text-slate-400 font-mono shadow-md backdrop-blur-sm">
-            {selectedTrip ? (
-              <>Corridor Speed: <span className="text-cyan-400 font-bold">{hudSpeedText || '68 km/h'}</span></>
-            ) : (
-              <>Radar Status: <span className="text-slate-300 font-bold">Standby (No Vehicle Selected)</span></>
-            )}
-          </div>
+        <div className="flex items-center gap-2 pointer-events-auto flex-wrap">
+          {selectedTrip ? (
+            <div className={`flex flex-wrap items-center gap-2 px-3 py-1.5 rounded-xl border text-[11px] font-bold shadow-lg backdrop-blur-md ${
+              isDark ? 'bg-slate-950/95 border-cyan-400/40 text-white' : 'bg-white/95 border-blue-400 text-slate-900 shadow-md'
+            }`}>
+              <div className="flex items-center gap-1.5 text-emerald-500">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span className="text-[10px] text-slate-400 font-normal">Start:</span>
+                <span>{selectedTrip.originCity || selectedTrip.branchCity || 'Origin'}</span>
+              </div>
+
+              <span className={isDark ? 'text-slate-600' : 'text-slate-300'}>➔</span>
+
+              <div className={`flex items-center gap-1.5 ${isDark ? 'text-cyan-400' : 'text-blue-600'}`}>
+                <Truck className="w-3.5 h-3.5" />
+                <span className="text-[10px] text-slate-400 font-normal">Current:</span>
+                <span className="font-mono">{selectedTrip.currentLocation || selectedTrip.route || selectedTrip.speed}</span>
+              </div>
+
+              <span className={isDark ? 'text-slate-600' : 'text-slate-300'}>➔</span>
+
+              <div className="flex items-center gap-1.5 text-rose-500">
+                <span className="w-2 h-2 rounded-full bg-rose-500"></span>
+                <span className="text-[10px] text-slate-400 font-normal">Going To:</span>
+                <span>{selectedTrip.destCity || selectedTrip.originCity || 'Destination'}</span>
+              </div>
+
+              {selectedTrip.speed && (
+                <span className={`ml-1 text-[10px] font-mono px-2 py-0.5 rounded-md ${
+                  isDark ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30' : 'bg-blue-50 text-blue-600 border border-blue-200'
+                }`}>
+                  {selectedTrip.speed}
+                </span>
+              )}
+            </div>
+          ) : (
+            <div className={`px-2.5 py-1 rounded-lg border font-mono shadow-md backdrop-blur-sm ${
+              isDark ? 'bg-slate-950/90 border-slate-800 text-slate-400' : 'bg-white/95 border-slate-200 text-slate-700'
+            }`}>
+              Radar Status: <span className={`font-bold ${isDark ? 'text-slate-300' : 'text-slate-800'}`}>Standby (No Vehicle Selected)</span>
+            </div>
+          )}
           {selectedTrip && (
             <button
               onClick={handleFocusVehicle}
-              className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-lg bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-500/40 text-cyan-300 text-[11px] font-semibold transition-all shadow-md"
+              className={`hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-lg border text-[11px] font-semibold transition-all shadow-md cursor-pointer ${
+                isDark ? 'bg-cyan-950/80 hover:bg-cyan-900 border-cyan-500/40 text-cyan-300' : 'bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-600'
+              }`}
               title="Zoom to Selected Vehicle"
             >
               <Navigation className="w-3 h-3" />
@@ -770,21 +887,27 @@ export default function IndiaFleetMap({
         <div className="flex items-center space-x-1.5 pointer-events-auto">
           <button
             onClick={handleZoomIn}
-            className="w-7 h-7 rounded-lg bg-slate-900/90 border border-slate-700 text-white flex items-center justify-center hover:bg-slate-800 hover:border-cyan-400 transition-colors shadow-md cursor-pointer"
+            className={`w-7 h-7 rounded-lg border flex items-center justify-center transition-colors shadow-md cursor-pointer ${
+              isDark ? 'bg-slate-900/90 border-slate-700 text-white hover:bg-slate-800 hover:border-cyan-400' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100 hover:border-blue-400'
+            }`}
             title="Zoom In"
           >
             <ZoomIn className="w-3.5 h-3.5" />
           </button>
           <button
             onClick={handleZoomOut}
-            className="w-7 h-7 rounded-lg bg-slate-900/90 border border-slate-700 text-white flex items-center justify-center hover:bg-slate-800 hover:border-cyan-400 transition-colors shadow-md cursor-pointer"
+            className={`w-7 h-7 rounded-lg border flex items-center justify-center transition-colors shadow-md cursor-pointer ${
+              isDark ? 'bg-slate-900/90 border-slate-700 text-white hover:bg-slate-800 hover:border-cyan-400' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100 hover:border-blue-400'
+            }`}
             title="Zoom Out"
           >
             <ZoomOut className="w-3.5 h-3.5" />
           </button>
           <button
             onClick={handleReset}
-            className="w-7 h-7 rounded-lg bg-slate-900/90 border border-slate-700 text-white flex items-center justify-center hover:bg-slate-800 hover:border-cyan-400 transition-colors shadow-md cursor-pointer"
+            className={`w-7 h-7 rounded-lg border flex items-center justify-center transition-colors shadow-md cursor-pointer ${
+              isDark ? 'bg-slate-900/90 border-slate-700 text-white hover:bg-slate-800 hover:border-cyan-400' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100 hover:border-blue-400'
+            }`}
             title="Fit India Boundaries"
           >
             <RotateCcw className="w-3.5 h-3.5" />
@@ -795,7 +918,7 @@ export default function IndiaFleetMap({
       {/* Global CSS for Leaflet State & Popup Customizations */}
       <style jsx global>{`
         .leaflet-container {
-          background-color: #070B14 !important;
+          background-color: ${isDark ? '#070B14' : '#F8FAFC'} !important;
           font-family: inherit !important;
         }
         .custom-fleet-popup .leaflet-popup-content-wrapper {

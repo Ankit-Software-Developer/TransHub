@@ -11,5 +11,7 @@ router.post('/login', authController.login);
 router.post('/refresh', authController.refresh);
 router.post('/logout', authenticate, authController.logout);
 router.get('/me', authenticate, tenantResolver, authController.me);
+router.patch('/profile', authenticate, tenantResolver, authController.updateProfile);
+router.patch('/change-password', authenticate, tenantResolver, authController.changePassword);
 
 module.exports = router;

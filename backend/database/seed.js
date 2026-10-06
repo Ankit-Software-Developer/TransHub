@@ -308,7 +308,7 @@ const seed = async () => {
     password_hash: hashedPassword,
     status: 'ACTIVE',
   });
-  await ownerUser.setRoles([roleInstances[ROLES.TRANSPORT_OWNER]]);
+  await ownerUser.setRoles([roleInstances[ROLES.ADMIN]]);
 
   const delhiManager = await User.create({
     tenant_id: tenant.id,

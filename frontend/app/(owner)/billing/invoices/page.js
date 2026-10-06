@@ -471,9 +471,9 @@ export default function InvoicesMasterPage() {
 
       {/* Record Payment Modal */}
       {paymentModalInvoice && (
-        <div className="fixed inset-0 z-50 overflow-hidden flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 overflow-y-auto flex min-h-full items-center justify-center p-4 sm:p-6">
           <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setPaymentModalInvoice(null)} />
-          <div className="relative w-full max-w-md rounded-3xl bg-white dark:bg-[#0A0E1A] border border-slate-200 dark:border-slate-800 p-6 shadow-2xl z-10 text-slate-900 dark:text-white space-y-4">
+          <div className="relative w-full max-w-md my-auto max-h-[90vh] overflow-y-auto rounded-3xl bg-white dark:bg-[#0A0E1A] border border-slate-200 dark:border-slate-800 p-6 shadow-2xl z-10 text-slate-900 dark:text-white space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
               <h3 className="text-base font-bold">Record Customer Remittance</h3>
               <button onClick={() => setPaymentModalInvoice(null)} className="text-slate-400 hover:text-slate-600 dark:hover:text-white">

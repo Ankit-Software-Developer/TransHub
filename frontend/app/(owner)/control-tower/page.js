@@ -48,9 +48,9 @@ const IndiaFleetMap = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="w-full h-[460px] rounded-2xl bg-[#070B14] border border-slate-800 flex flex-col items-center justify-center text-slate-400">
-        <div className="w-8 h-8 rounded-full border-2 border-cyan-400 border-t-transparent animate-spin mb-2" />
-        <span className="text-xs font-mono text-cyan-400">Connecting to India Highway Telemetry...</span>
+      <div className="w-full h-[460px] rounded-2xl bg-slate-50 dark:bg-[#070B14] border border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center text-slate-600 dark:text-slate-400">
+        <div className="w-8 h-8 rounded-full border-2 border-blue-600 dark:border-cyan-400 border-t-transparent animate-spin mb-2" />
+        <span className="text-xs font-mono text-blue-600 dark:text-cyan-400">Connecting to India Highway Telemetry...</span>
       </div>
     )
   }
@@ -386,7 +386,9 @@ export default function ControlTowerPage() {
 
             <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
               <div className="text-[11px] font-semibold text-slate-400 mb-1">Total Trips MTD</div>
-              <div className="text-2xl font-black text-white font-mono">{tripsData.length}</div>
+              <div className={`text-2xl font-black font-mono ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                {tripsData.length}
+              </div>
               <div className="text-[10px] text-slate-500 mt-1">Logged in database</div>
             </div>
 
@@ -405,37 +407,57 @@ export default function ControlTowerPage() {
               
               {/* Real Interactive Leaflet India Map (Same as Dashboard, Showing only Running Trips) */}
               <div className={`p-5 rounded-3xl border shadow-xl relative overflow-hidden flex flex-col justify-between ${
-                isDark ? 'bg-[#070B14] border-slate-800' : 'bg-white border-slate-200 text-slate-900'
+                isDark ? 'bg-[#070B14] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
               }`}>
                 {/* Map Toolbar */}
-                <div className="flex flex-wrap items-center justify-between gap-3 z-10 pb-3 border-b border-slate-800/80">
+                <div className={`flex flex-wrap items-center justify-between gap-3 z-10 pb-3 border-b ${
+                  isDark ? 'border-slate-800/80' : 'border-slate-200'
+                }`}>
                   <div className="flex items-center space-x-2">
                     <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
                     <span className={`text-sm font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
                       Live Highway Corridor Map (Running Trips Only)
                     </span>
-                    <span className="text-[10px] font-mono text-cyan-400 px-2 py-0.5 rounded bg-cyan-950/80 border border-cyan-500/30">
+                    <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold border ${
+                      isDark 
+                        ? 'text-cyan-400 bg-cyan-950/80 border-cyan-500/30' 
+                        : 'text-blue-700 bg-blue-50 border-blue-200'
+                    }`}>
                       GPS REFRESH 5S
                     </span>
                   </div>
 
                   <div className="flex items-center gap-1.5">
-                    <div className="flex items-center gap-1 text-[11px] font-semibold bg-slate-950/80 p-1 rounded-xl border border-slate-800">
+                    <div className={`flex items-center gap-1 text-[11px] font-semibold p-1 rounded-xl border ${
+                      isDark ? 'bg-slate-950/80 border-slate-800' : 'bg-slate-100 border-slate-200'
+                    }`}>
                       <button
                         onClick={() => setActiveLayer('ALL')}
-                        className={`px-2.5 py-1 rounded-lg ${activeLayer === 'ALL' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                        className={`px-2.5 py-1 rounded-lg transition-colors ${
+                          activeLayer === 'ALL' 
+                            ? 'bg-blue-600 text-white shadow-xs' 
+                            : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+                        }`}
                       >
                         All Running ({runningTrips.length})
                       </button>
                       <button
                         onClick={() => setActiveLayer('CORRIDORS')}
-                        className={`px-2.5 py-1 rounded-lg ${activeLayer === 'CORRIDORS' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                        className={`px-2.5 py-1 rounded-lg transition-colors ${
+                          activeLayer === 'CORRIDORS' 
+                            ? 'bg-blue-600 text-white shadow-xs' 
+                            : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+                        }`}
                       >
                         In Transit
                       </button>
                       <button
                         onClick={() => setActiveLayer('GEOFENCE')}
-                        className={`px-2.5 py-1 rounded-lg ${activeLayer === 'GEOFENCE' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                        className={`px-2.5 py-1 rounded-lg transition-colors ${
+                          activeLayer === 'GEOFENCE' 
+                            ? 'bg-blue-600 text-white shadow-xs' 
+                            : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+                        }`}
                       >
                         Moving
                       </button>
@@ -443,10 +465,14 @@ export default function ControlTowerPage() {
 
                     <button
                       onClick={() => setIsMapModalOpen(true)}
-                      className="p-1.5 rounded-xl border border-slate-800 bg-slate-900 text-slate-300 hover:text-white hover:border-slate-700 transition-colors"
+                      className={`p-1.5 rounded-xl border transition-colors ${
+                        isDark 
+                          ? 'border-slate-800 bg-slate-900 text-slate-300 hover:text-white hover:border-slate-700' 
+                          : 'border-slate-200 bg-slate-100 text-slate-600 hover:text-slate-900 hover:bg-slate-200'
+                      }`}
                       title="Expand Map to Fullscreen"
                     >
-                      <Maximize2 className="w-4 h-4 text-cyan-400" />
+                      <Maximize2 className={`w-4 h-4 ${isDark ? 'text-cyan-400' : 'text-blue-600'}`} />
                     </button>
                   </div>
                 </div>
@@ -454,17 +480,27 @@ export default function ControlTowerPage() {
                 {/* Leaflet Map Body */}
                 <div className="w-full mt-3">
                   {runningTrips.length === 0 ? (
-                    <div className="w-full h-[460px] rounded-2xl bg-[#070B14] border border-slate-800 flex flex-col items-center justify-center p-6 text-center text-slate-400">
-                      <div className="w-14 h-14 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center mb-3">
-                        <Truck className="w-7 h-7 text-cyan-400" />
+                    <div className={`w-full h-[460px] rounded-2xl border flex flex-col items-center justify-center p-6 text-center transition-colors ${
+                      isDark 
+                        ? 'bg-[#070B14] border-slate-800 text-slate-400' 
+                        : 'bg-slate-50 border-slate-200 text-slate-600'
+                    }`}>
+                      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-3 border ${
+                        isDark 
+                          ? 'bg-cyan-500/10 border-cyan-500/20 text-cyan-400' 
+                          : 'bg-blue-50 border-blue-200 text-blue-600'
+                      }`}>
+                        <Truck className="w-7 h-7" />
                       </div>
-                      <h4 className="text-base font-bold text-white mb-1">No Active Running Trips</h4>
-                      <p className="text-xs text-slate-400 max-w-sm mb-4">
+                      <h4 className={`text-base font-bold mb-1 ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                        No Active Running Trips
+                      </h4>
+                      <p className={`text-xs max-w-sm mb-4 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                         All commercial vehicles are currently halted or at yard. Vehicles without an active trip sheet are hidden from the live highway radar.
                       </p>
                       <Link
                         href="/load-planning"
-                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-md transition-all"
+                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-md shadow-blue-600/30 transition-all active:scale-95"
                       >
                         <Plus className="w-3.5 h-3.5" />
                         <span>Create Trip & Dispatch</span>
@@ -485,48 +521,22 @@ export default function ControlTowerPage() {
                 </div>
 
                 {/* Map Bottom Status Bar */}
-                <div className="flex items-center justify-between text-[11px] pt-3 mt-2 border-t border-slate-800/80">
-                  <div className="flex items-center space-x-3 text-slate-400 font-mono text-[10px]">
+                <div className={`flex items-center justify-between text-[11px] pt-3 mt-2 border-t ${
+                  isDark ? 'border-slate-800/80' : 'border-slate-200'
+                }`}>
+                  <div className={`flex items-center space-x-3 font-mono text-[10px] ${
+                    isDark ? 'text-slate-400' : 'text-slate-600'
+                  }`}>
                     <span className="flex items-center gap-1">
                       <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
                       Running Vehicles: {runningTrips.length} Units
                     </span>
                     <span>• Stationary / Idle vehicles excluded</span>
                   </div>
-                  <div className="text-slate-400 text-[10px] font-mono">
+                  <div className={`text-[10px] font-mono ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                     Real-time GIS Coordinates (WGS-84)
                   </div>
                 </div>
-              </div>
-
-              {/* Active Dispatch Queue Table (Powered by Database & DataTable) */}
-              <div className={`p-5 rounded-3xl border shadow-xl ${
-                isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200'
-              }`}>
-                <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-800/80">
-                  <div className="flex items-center space-x-2">
-                    <Activity className="w-4 h-4 text-cyan-400" />
-                    <h3 className={`text-base font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                      Active Running Dispatch Queue ({runningTrips.length} Active Trips)
-                    </h3>
-                  </div>
-                  <Link href="/trips" className="text-xs text-cyan-400 hover:underline font-bold flex items-center gap-1">
-                    <span>Manage All Trips Register</span>
-                    <ArrowUpRight className="w-3.5 h-3.5" />
-                  </Link>
-                </div>
-
-                <DataTable
-                  columns={queueColumns}
-                  data={displayedTrips}
-                  pageSizeOptions={[5, 10, 15, 25]}
-                  searchable={true}
-                  searchPlaceholder="Search running trips by vehicle, route, driver..."
-                  exportable={true}
-                  exportFileName="Active_Running_Trips_Queue"
-                  emptyMessage="No active running trips found. Create a dispatch to track on highway radar."
-                  onRowClick={(row) => setSelectedTrip(row)}
-                />
               </div>
 
             </div>
@@ -538,14 +548,20 @@ export default function ControlTowerPage() {
               <div className={`p-5 rounded-3xl border shadow-xl ${
                 isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200'
               }`}>
-                <div className="flex items-center justify-between pb-3 border-b border-slate-800/80 mb-3.5">
+                <div className={`flex items-center justify-between pb-3 border-b mb-3.5 ${
+                  isDark ? 'border-slate-800/80' : 'border-slate-200'
+                }`}>
                   <div className="flex items-center space-x-2">
                     <Radio className="w-4 h-4 text-cyan-400 animate-pulse" />
                     <h3 className={`text-sm font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
                       Vehicle Telemetry HUD
                     </h3>
                   </div>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-500/30">
+                  <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
+                    isDark 
+                      ? 'bg-cyan-950 text-cyan-300 border-cyan-500/30' 
+                      : 'bg-slate-100 text-slate-700 border-slate-200'
+                  }`}>
                     {selectedTrip ? selectedTrip.vehicleNumber : 'No Selection'}
                   </span>
                 </div>
@@ -559,7 +575,7 @@ export default function ControlTowerPage() {
                       <div className="text-xs text-cyan-400 font-mono mt-0.5 font-bold">
                         {selectedTrip.trip_number} • {selectedTrip.route}
                       </div>
-                      <div className="text-xs text-slate-400 mt-0.5">
+                      <div className={`text-xs mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                         Payload: {selectedTrip.cargo}
                       </div>
                     </div>
@@ -571,21 +587,21 @@ export default function ControlTowerPage() {
                         <div className={`font-mono font-black text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>
                           {selectedTrip.speed}
                         </div>
-                        <div className="text-[9px] text-slate-400">Current Speed</div>
+                        <div className={`text-[9px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Current Speed</div>
                       </div>
                       <div className={`p-2.5 rounded-2xl border ${isDark ? 'bg-slate-900/80 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
                         <Fuel className="w-4 h-4 text-amber-400 mx-auto mb-1" />
                         <div className={`font-mono font-black text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>
                           {selectedTrip.fuel}
                         </div>
-                        <div className="text-[9px] text-slate-400">Fuel Level</div>
+                        <div className={`text-[9px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Fuel Level</div>
                       </div>
                       <div className={`p-2.5 rounded-2xl border ${isDark ? 'bg-slate-900/80 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
                         <Clock className="w-4 h-4 text-emerald-400 mx-auto mb-1" />
                         <div className={`font-mono font-black text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>
                           {selectedTrip.on_time_buffer}
                         </div>
-                        <div className="text-[9px] text-slate-400">ETA Buffer</div>
+                        <div className={`text-[9px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>ETA Buffer</div>
                       </div>
                     </div>
 
@@ -597,7 +613,7 @@ export default function ControlTowerPage() {
                         <div className={`text-xs font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
                           {selectedTrip.driver}
                         </div>
-                        <div className="text-[10px] text-slate-400 font-mono">
+                        <div className={`text-[10px] font-mono ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                           {selectedTrip.driver_phone}
                         </div>
                       </div>
@@ -626,46 +642,46 @@ export default function ControlTowerPage() {
                       isDark ? 'bg-slate-900/40 border-slate-800' : 'bg-slate-50 border-slate-200'
                     }`}>
                       <div className="flex justify-between">
-                        <span className="text-slate-400">Driver Cash Advance:</span>
-                        <span className="font-mono font-bold text-cyan-400">
+                        <span className={isDark ? 'text-slate-400' : 'text-slate-600'}>Driver Cash Advance:</span>
+                        <span className="font-mono font-bold text-cyan-500 dark:text-cyan-400">
                           ₹{Number(selectedTrip.driver_advance || 0).toLocaleString('en-IN')}
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-slate-400">Reported Expenses:</span>
-                        <span className="font-mono font-bold text-amber-400">
+                        <span className={isDark ? 'text-slate-400' : 'text-slate-600'}>Reported Expenses:</span>
+                        <span className="font-mono font-bold text-amber-500 dark:text-amber-400">
                           ₹{Number(selectedTrip.total_expenses || 0).toLocaleString('en-IN')}
                         </span>
                       </div>
                     </div>
 
                     {/* Journey Milestone Tracker */}
-                    <div className="space-y-2 pt-2 border-t border-slate-800">
-                      <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                    <div className={`space-y-2 pt-2 border-t ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
+                      <div className={`text-[11px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                         Journey Corridor Pipeline
                       </div>
                       <div className="space-y-2 text-xs">
-                        <div className="flex items-center gap-2 text-emerald-400">
+                        <div className="flex items-center gap-2 text-emerald-500 dark:text-emerald-400">
                           <CheckCircle2 className="w-3.5 h-3.5" />
                           <span>Origin Hub: {selectedTrip.originCity}</span>
-                          <span className="text-[10px] font-mono text-slate-500 ml-auto">Dispatched</span>
+                          <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500 ml-auto">Dispatched</span>
                         </div>
-                        <div className="flex items-center gap-2 text-cyan-400 font-bold">
-                          <div className="w-3.5 h-3.5 rounded-full border-2 border-cyan-400 flex items-center justify-center animate-ping" />
+                        <div className="flex items-center gap-2 text-blue-600 dark:text-cyan-400 font-bold">
+                          <div className="w-3.5 h-3.5 rounded-full border-2 border-blue-600 dark:border-cyan-400 flex items-center justify-center animate-ping" />
                           <span>Highway Transit: {selectedTrip.route}</span>
-                          <span className="text-[10px] font-mono text-cyan-300 ml-auto">{selectedTrip.speed}</span>
+                          <span className="text-[10px] font-mono text-blue-600 dark:text-cyan-300 ml-auto">{selectedTrip.speed}</span>
                         </div>
-                        <div className="flex items-center gap-2 text-slate-500">
-                          <div className="w-3.5 h-3.5 rounded-full border border-slate-700" />
+                        <div className="flex items-center gap-2 text-slate-400 dark:text-slate-500">
+                          <div className={`w-3.5 h-3.5 rounded-full border ${isDark ? 'border-slate-700' : 'border-slate-300'}`} />
                           <span>Destination Hub: {selectedTrip.destCity}</span>
-                          <span className="text-[10px] font-mono text-slate-600 ml-auto">Pending Arrival</span>
+                          <span className="text-[10px] font-mono text-slate-400 dark:text-slate-600 ml-auto">Pending Arrival</span>
                         </div>
                       </div>
                     </div>
 
                   </div>
                 ) : (
-                  <div className="py-12 text-center text-slate-500 text-xs">
+                  <div className={`py-12 text-center text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
                     Select a running trip from the queue or map to inspect cabin telemetry.
                   </div>
                 )}
@@ -675,9 +691,11 @@ export default function ControlTowerPage() {
               <div className={`p-5 rounded-3xl border shadow-xl ${
                 isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200'
               }`}>
-                <div className="flex items-center justify-between pb-3 border-b border-slate-800/80 mb-3.5">
+                <div className={`flex items-center justify-between pb-3 border-b mb-3.5 ${
+                  isDark ? 'border-slate-800/80' : 'border-slate-200'
+                }`}>
                   <div className="flex items-center space-x-2">
-                    <AlertTriangle className="w-4 h-4 text-rose-400" />
+                    <AlertTriangle className="w-4 h-4 text-rose-500 dark:text-rose-400" />
                     <h3 className={`text-sm font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
                       Exceptions & Incident Center
                     </h3>
@@ -692,23 +710,31 @@ export default function ControlTowerPage() {
                     runningTrips
                       .filter((t) => t.status === 'DELAYED')
                       .map((t, idx) => (
-                        <div key={idx} className="p-3 rounded-2xl bg-rose-500/10 border border-rose-500/20 space-y-1">
-                          <div className="flex items-center justify-between text-xs font-bold text-rose-300">
+                        <div key={idx} className={`p-3 rounded-2xl border space-y-1 ${
+                          isDark ? 'bg-rose-500/10 border-rose-500/20' : 'bg-rose-50 border-rose-200'
+                        }`}>
+                          <div className={`flex items-center justify-between text-xs font-bold ${
+                            isDark ? 'text-rose-300' : 'text-rose-700'
+                          }`}>
                             <span>Corridor Delay ({t.vehicleNumber})</span>
-                            <span className="text-[10px] font-mono text-slate-400">Live</span>
+                            <span className={`text-[10px] font-mono ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Live</span>
                           </div>
-                          <div className="text-[11px] text-slate-300">
+                          <div className={`text-[11px] ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
                             Trip {t.trip_number} on {t.route} reported stationary halt. Driver: {t.driver}.
                           </div>
                         </div>
                       ))
                   ) : (
-                    <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 space-y-1">
-                      <div className="flex items-center justify-between text-xs font-bold text-emerald-400">
+                    <div className={`p-3 rounded-2xl border space-y-1 ${
+                      isDark ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-emerald-50 border-emerald-200'
+                    }`}>
+                      <div className={`flex items-center justify-between text-xs font-bold ${
+                        isDark ? 'text-emerald-400' : 'text-emerald-700'
+                      }`}>
                         <span>All Corridors Clear</span>
-                        <span className="text-[10px] font-mono text-slate-400">Active</span>
+                        <span className={`text-[10px] font-mono ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Active</span>
                       </div>
-                      <div className="text-[11px] text-slate-300">
+                      <div className={`text-[11px] ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
                         No critical highway exceptions or geo-fence violations currently detected across running fleet.
                       </div>
                     </div>
@@ -720,22 +746,66 @@ export default function ControlTowerPage() {
 
           </div>
 
+          {/* Active Dispatch Queue Table - Full Width (100% across the cockpit) */}
+          <div className={`w-full p-5 rounded-3xl border shadow-xl ${
+            isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200'
+          }`}>
+            <div className={`flex items-center justify-between mb-4 pb-3 border-b ${
+              isDark ? 'border-slate-800/80' : 'border-slate-200'
+            }`}>
+              <div className="flex items-center space-x-2">
+                <Activity className="w-4 h-4 text-cyan-400" />
+                <h3 className={`text-base font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                  Active Running Dispatch Queue ({runningTrips.length} Active Trips)
+                </h3>
+              </div>
+              <Link href="/trips" className="text-xs text-cyan-400 hover:underline font-bold flex items-center gap-1">
+                <span>Manage All Trips Register</span>
+                <ArrowUpRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
+
+            <DataTable
+              columns={queueColumns}
+              data={displayedTrips}
+              pageSizeOptions={[5, 10, 15, 25]}
+              searchable={true}
+              searchPlaceholder="Search running trips by vehicle, route, driver..."
+              exportable={true}
+              exportFileName="Active_Running_Trips_Queue"
+              emptyMessage="No active running trips found. Create a dispatch to track on highway radar."
+              onRowClick={(row) => setSelectedTrip(row)}
+            />
+          </div>
+
         </main>
       </div>
 
       {/* Fullscreen Map Modal */}
       {isMapModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-          <div className="relative w-full max-w-7xl h-[85vh] bg-[#070B14] border border-slate-800 rounded-3xl p-5 flex flex-col shadow-2xl">
-            <div className="flex items-center justify-between pb-3 mb-2 border-b border-slate-800">
+          <div className={`relative w-full max-w-7xl h-[85vh] rounded-3xl p-5 flex flex-col shadow-2xl border ${
+            isDark ? 'bg-[#070B14] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
+          }`}>
+            <div className={`flex items-center justify-between pb-3 mb-2 border-b ${
+              isDark ? 'border-slate-800' : 'border-slate-200'
+            }`}>
               <div className="flex items-center space-x-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
-                <h3 className="text-base font-bold text-white">Full-Screen Highway Corridor Radar</h3>
-                <span className="text-xs font-mono text-slate-400">({runningTrips.length} Running Trips)</span>
+                <h3 className={`text-base font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                  Full-Screen Highway Corridor Radar
+                </h3>
+                <span className={`text-xs font-mono ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                  ({runningTrips.length} Running Trips)
+                </span>
               </div>
               <button
                 onClick={() => setIsMapModalOpen(false)}
-                className="p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-white"
+                className={`p-2 rounded-xl border transition-colors ${
+                  isDark 
+                    ? 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white' 
+                    : 'bg-slate-100 border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-200'
+                }`}
               >
                 <X className="w-4 h-4" />
               </button>
@@ -748,7 +818,7 @@ export default function ControlTowerPage() {
                 activeTripsCount={runningTrips.length}
                 onTimeCount={onScheduleCount}
                 delayedCount={delayedCount}
-                isDark={true}
+                isDark={isDark}
               />
             </div>
           </div>

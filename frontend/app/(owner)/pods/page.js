@@ -35,6 +35,8 @@ export default function PodManagementPage() {
   const [pageSize, setPageSize] = useState(15);
   const [sortBy, setSortBy] = useState('uploaded_at');
   const [sortOrder, setSortOrder] = useState('DESC');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
 
   const fetchPods = async () => {
     setLoading(true);
@@ -42,6 +44,8 @@ export default function PodManagementPage() {
       let url = `/pods?page=${page}&limit=${pageSize}&sort_by=${sortBy}&sort_order=${sortOrder}`;
       if (selectedStatus) url += `&status=${selectedStatus}`;
       if (search && search.trim()) url += `&search=${encodeURIComponent(search.trim())}`;
+      if (fromDate) url += `&from_date=${fromDate}`;
+      if (toDate) url += `&to_date=${toDate}`;
       
       const res = await api.get(url);
       if (res.data?.success) {
@@ -63,7 +67,7 @@ export default function PodManagementPage() {
 
   useEffect(() => {
     fetchPods();
-  }, [page, pageSize, sortBy, sortOrder, selectedStatus, search]);
+  }, [page, pageSize, sortBy, sortOrder, selectedStatus, search, fromDate, toDate]);
 
   const handleVerify = async (podId) => {
     try {
@@ -265,6 +269,13 @@ export default function PodManagementPage() {
                 ))}
               </div>
             }
+            fromDate={fromDate}
+            toDate={toDate}
+            onDateChange={({ fromDate: newFrom, toDate: newTo }) => {
+              setFromDate(newFrom);
+              setToDate(newTo);
+              setPage(1);
+            }}
             exportable={true}
             exportFileName="POD_Registers"
             emptyMessage="No Proof of Delivery records found."

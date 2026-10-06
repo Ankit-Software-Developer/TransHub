@@ -225,6 +225,8 @@ const initTenantModels = (targetSequelize) => {
 
   Organization.hasMany(Driver, { foreignKey: 'organization_id', as: 'drivers' });
   Driver.belongsTo(Organization, { foreignKey: 'organization_id', as: 'organization' });
+  Driver.belongsTo(Branch, { foreignKey: 'branch_id', as: 'branch' });
+  Branch.hasMany(Driver, { foreignKey: 'branch_id', as: 'drivers' });
 
   // Trips, Dispatches & Load Planning
   Organization.hasMany(Trip, { foreignKey: 'organization_id', as: 'trips' });
@@ -276,11 +278,14 @@ const initTenantModels = (targetSequelize) => {
 
 // Initialize Master Models on Default Master DB instance
 const masterModels = initMasterModels(sequelize);
+// Initialize Operational Tenant Models on Default Master DB instance as well
+const operationalModels = initTenantModels(sequelize);
 
 module.exports = {
   sequelize,
   initModels: initMasterModels,
   initMasterModels,
   initTenantModels,
+  ...operationalModels,
   ...masterModels,
 };

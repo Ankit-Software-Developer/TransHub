@@ -166,7 +166,7 @@ export default function DeliveriesPage() {
         minWidth: 130,
         exportValue: (row) => `${row.origin_city} → ${row.destination_city}`,
         render: (val, row) => (
-          <span className="text-xs font-semibold text-slate-300">
+          <span className={`text-xs font-semibold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
             {row.origin_city} → {row.destination_city}
           </span>
         ),
@@ -199,7 +199,7 @@ export default function DeliveriesPage() {
         exportValue: (row) => `${row.packages_count} Pkgs (${row.charged_weight || row.actual_weight} KG)`,
         render: (val, row) => (
           <div className="text-right whitespace-nowrap">
-            <span className="font-bold text-xs text-white">
+            <span className={`font-bold text-xs ${isDark ? 'text-white' : 'text-slate-900'}`}>
               {row.packages_count} Pkgs
             </span>
             <div className="text-[10px] text-slate-400">

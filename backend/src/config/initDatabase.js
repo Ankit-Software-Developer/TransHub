@@ -28,6 +28,20 @@ const initMasterDatabase = async () => {
       console.log('✅ Master Database tables created successfully.');
     }
 
+    // Ensure logo_url is LONGTEXT in master DB organizations table
+    try {
+      await sequelize.query('ALTER TABLE organizations MODIFY COLUMN logo_url LONGTEXT;');
+    } catch (colErr) {
+      // Ignored if table does not exist yet or already LONGTEXT
+    }
+
+    // Ensure transport_mode exists in consignments table
+    try {
+      await sequelize.query("ALTER TABLE consignments ADD COLUMN transport_mode VARCHAR(30) DEFAULT 'ROAD';");
+    } catch (colErr) {
+      // Ignored if column already exists
+    }
+
     // 3. Ensure standard SaaS plans exist in database
     if (typeof ensureDefaultPlans === 'function') {
       try {
@@ -42,15 +56,9 @@ const initMasterDatabase = async () => {
     try {
       const systemRoles = [
         { name: ROLES.SUPER_ADMIN, display_name: 'Super Admin', description: 'Platform Administrator' },
-        { name: ROLES.TRANSPORT_OWNER, display_name: 'Transport Owner', description: 'Complete administrative access to transport operations' },
-        { name: ROLES.ADMIN, display_name: 'Admin', description: 'Organization Administrator' },
+        { name: ROLES.ADMIN, display_name: 'Admin', description: 'Tenant administrator with full access to tenant features' },
         { name: ROLES.BRANCH_MANAGER, display_name: 'Branch Manager', description: 'Branch Operational Management' },
-        { name: ROLES.BOOKING_OPERATOR, display_name: 'Booking Operator', description: 'Bilty & Booking Creator' },
-        { name: ROLES.DISPATCH_OPERATOR, display_name: 'Dispatch Operator', description: 'Trip & Dispatch Handler' },
-        { name: ROLES.DELIVERY_OPERATOR, display_name: 'Delivery Operator', description: 'Delivery & POD Operator' },
-        { name: ROLES.ACCOUNTANT, display_name: 'Accountant', description: 'Invoices, Expenses & Settlements' },
-        { name: ROLES.FLEET_MANAGER, display_name: 'Fleet Manager', description: 'Vehicles & Maintenance Manager' },
-        { name: ROLES.DRIVER, display_name: 'Driver', description: 'Vehicle Operator' },
+        { name: ROLES.DRIVER, display_name: 'Driver', description: 'Vehicle Operator & Driver' },
       ];
 
       for (const r of systemRoles) {
@@ -75,8 +83,8 @@ const initMasterDatabase = async () => {
           where: { code: permCode },
           defaults: {
             code: permCode,
-            name: permCode.replace('.', ' ').toUpperCase(),
             module: permCode.split('.')[0].toUpperCase(),
+            description: permCode.replace('.', ' ').toUpperCase(),
           },
         });
       }
@@ -84,10 +92,33 @@ const initMasterDatabase = async () => {
       console.warn('⚠️ System permissions verification warning:', permErr.message);
     }
 
-    console.log('🚀 Master Database initialization complete: All tables, columns & seed records verified.');
+    // 6. Ensure all registered tenant databases are auto-migrated with new tables & columns on startup
+    try {
+      const { Tenant } = require('../models');
+      const { getTenantConnection, applyEssentialPatches } = require('../services/tenantDbManager');
+      await applyEssentialPatches(sequelize);
+      if (Tenant && typeof Tenant.findAll === 'function') {
+        const allTenants = await Tenant.findAll({ attributes: ['id', 'company_name', 'database_name'] });
+        for (const t of allTenants) {
+          if (t.database_name && t.database_name !== dbName) {
+            try {
+              const tConn = await getTenantConnection(t.database_name);
+              await tConn.sequelize.sync({ alter: true });
+              console.log(`✅ [Multi-Tenant Sync] Verified & synced tenant DB: ${t.database_name}`);
+            } catch (tSyncErr) {
+              console.warn(`⚠️ [Multi-Tenant Sync] Sync notice for ${t.database_name}:`, tSyncErr.message);
+            }
+          }
+        }
+      }
+    } catch (tenantsErr) {
+      console.warn('⚠️ [Multi-Tenant Sync] Tenant DB check notice:', tenantsErr.message);
+    }
+
+    console.log('🚀 Database initialization complete: All master & tenant tables, columns & seed records verified.');
     return true;
   } catch (error) {
-    console.error('❌ Master Database initialization error:', error.message);
+    console.error('❌ Database initialization error:', error.message);
     throw error;
   }
 };

@@ -19,7 +19,7 @@ export const getApiBaseUrl = () => {
     return `${protocol}//${host}/api/v1`;
   }
 
-  return envUrl || 'http://localhost:5005/api/v1';
+  return envUrl || 'http://localhost:5000/api/v1';
 };
 
 const api = axios.create({

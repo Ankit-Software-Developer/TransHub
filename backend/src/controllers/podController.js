@@ -5,7 +5,7 @@ const { successResponse, paginatedResponse, errorResponse } = require('../utils/
 const listPods = async (req, res) => {
   try {
     const { Pod, Consignment, Customer } = req.tenantDb || defaultModels;
-    const { status, search, sort_by = 'uploaded_at', sort_order = 'DESC', page = 1, limit = 20 } = req.query;
+    const { status, search, sort_by = 'uploaded_at', sort_order = 'DESC', page = 1, limit = 20, from_date, to_date } = req.query;
     const { Op } = require('sequelize');
 
     const where = {
@@ -18,6 +18,14 @@ const listPods = async (req, res) => {
       where[Op.or] = [
         { receiver_name: { [Op.iLike || Op.like]: `%${search.trim()}%` } },
       ];
+    }
+
+    if (from_date && to_date) {
+      where.uploaded_at = { [Op.between]: [new Date(`${from_date}T00:00:00.000Z`), new Date(`${to_date}T23:59:59.999Z`)] };
+    } else if (from_date) {
+      where.uploaded_at = { [Op.gte]: new Date(`${from_date}T00:00:00.000Z`) };
+    } else if (to_date) {
+      where.uploaded_at = { [Op.lte]: new Date(`${to_date}T23:59:59.999Z`) };
     }
 
     const allowedSortFields = ['uploaded_at', 'status', 'receiver_name', 'created_at'];

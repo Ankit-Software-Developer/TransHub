@@ -6,13 +6,21 @@ const { roundToTwo } = require('../utils/decimalUtils');
 const listExpenses = async (req, res) => {
   try {
     const { Expense, ExpenseCategory, Trip, Vehicle } = req.tenantDb || defaultModels;
-    const { trip_id, vehicle_id } = req.query;
+    const { trip_id, vehicle_id, from_date, to_date } = req.query;
+    const { Op } = require('sequelize');
     const where = {
       tenant_id: req.tenant.tenantId,
       organization_id: req.tenant.organizationId,
     };
     if (trip_id) where.trip_id = trip_id;
     if (vehicle_id) where.vehicle_id = vehicle_id;
+    if (from_date && to_date) {
+      where.expense_date = { [Op.between]: [from_date, to_date] };
+    } else if (from_date) {
+      where.expense_date = { [Op.gte]: from_date };
+    } else if (to_date) {
+      where.expense_date = { [Op.lte]: to_date };
+    }
 
     const includeList = [];
     if (ExpenseCategory) includeList.push({ model: ExpenseCategory, as: 'category' });

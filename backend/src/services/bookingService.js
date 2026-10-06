@@ -13,6 +13,13 @@ const createBooking = async ({ tenantId, organizationId, branchId, userId, paylo
   const ConsignmentStatusHistory = models?.ConsignmentStatusHistory || defaultModels.ConsignmentStatusHistory;
   const AuditLog = models?.AuditLog || defaultModels.AuditLog;
 
+  // Ensure transport_mode column exists in the tenant's MySQL database (outside transaction to avoid MySQL implicit commit)
+  try {
+    await db.query("ALTER TABLE consignments ADD COLUMN transport_mode VARCHAR(30) DEFAULT 'ROAD';");
+  } catch (e) {
+    // Column already exists or alter ignored
+  }
+
   const transaction = await db.transaction();
 
   try {
@@ -28,6 +35,21 @@ const createBooking = async ({ tenantId, organizationId, branchId, userId, paylo
         models,
       });
       finalDocketNumber = formattedNumber;
+    } else {
+      // Check for duplicate docket number in this organization
+      const ConsignmentModel = models?.Consignment || Consignment;
+      if (ConsignmentModel) {
+        const existing = await ConsignmentModel.findOne({
+          where: {
+            organization_id: organizationId,
+            docket_number: finalDocketNumber,
+          },
+          transaction,
+        });
+        if (existing) {
+          throw new Error(`Docket / LR number "${finalDocketNumber}" already exists. Please enter a unique docket number.`);
+        }
+      }
     }
 
     // 2. Financial calculation
@@ -124,7 +146,8 @@ const createBooking = async ({ tenantId, organizationId, branchId, userId, paylo
     }, { transaction });
 
     // 4. Create Consignment (The digital Docket / LR / Bilty record)
-    const consignment = await Consignment.create({
+    let consignment;
+    const consignmentData = {
       tenant_id: tenantId,
       organization_id: organizationId,
       booking_id: booking.id,
@@ -151,6 +174,7 @@ const createBooking = async ({ tenantId, organizationId, branchId, userId, paylo
       eway_bill_expiry: payload.eway_bill_expiry,
       payment_type: payload.payment_type || 'TO_PAY',
       delivery_type: payload.delivery_type || 'GODOWN_DELIVERY',
+      transport_mode: (payload.transport_mode || payload.transportMode || 'ROAD').toUpperCase(),
       rate_type: payload.rate_type || 'PER_KG',
       rate,
       freight_amount: freightAmount,
@@ -168,7 +192,19 @@ const createBooking = async ({ tenantId, organizationId, branchId, userId, paylo
       barcode_data: finalDocketNumber,
       qr_data: JSON.stringify({ lr: finalDocketNumber, origin: payload.origin_city, dest: payload.destination_city, pkgs: packagesCount }),
       created_by: userId,
-    }, { transaction });
+    };
+
+    try {
+      consignment = await Consignment.create(consignmentData, { transaction });
+    } catch (createErr) {
+      if (createErr.message && createErr.message.includes('transport_mode')) {
+        // Safe fallback if column is not yet propagated in MySQL
+        delete consignmentData.transport_mode;
+        consignment = await Consignment.create(consignmentData, { transaction });
+      } else {
+        throw createErr;
+      }
+    }
 
     // 5. Create Consignment Item
     await ConsignmentItem.create({
@@ -207,6 +243,8 @@ const listConsignments = async ({
   status = null,
   search = null,
   paymentType = null,
+  fromDate = null,
+  toDate = null,
   page = 1,
   limit = 20,
   sortBy = 'created_at',
@@ -239,6 +277,20 @@ const listConsignments = async ({
     where.payment_type = paymentType;
   }
 
+  if (fromDate && toDate) {
+    where.booking_date = {
+      [Op.between]: [fromDate, toDate],
+    };
+  } else if (fromDate) {
+    where.booking_date = {
+      [Op.gte]: fromDate,
+    };
+  } else if (toDate) {
+    where.booking_date = {
+      [Op.lte]: toDate,
+    };
+  }
+
   if (search) {
     where[Op.and] = [
       ...(where[Op.and] || []),
@@ -256,7 +308,10 @@ const listConsignments = async ({
     ];
   }
 
-  const offset = (page - 1) * limit;
+  const isAll = limit === 'all' || String(limit).toLowerCase() === 'all';
+  const parsedLimit = isAll ? 10000 : (parseInt(limit, 10) || 20);
+  const parsedPage = isAll ? 1 : (parseInt(page, 10) || 1);
+  const offset = (parsedPage - 1) * parsedLimit;
 
   const includeList = [];
   if (Branch) {
@@ -291,7 +346,7 @@ const listConsignments = async ({
 
   const { count, rows } = await Consignment.findAndCountAll({
     where,
-    limit: parseInt(limit, 10),
+    limit: parsedLimit,
     offset: parseInt(offset, 10),
     order: [[orderCol, orderDir]],
     include: includeList,
@@ -301,9 +356,9 @@ const listConsignments = async ({
     consignments: rows,
     pagination: {
       total: count,
-      page: parseInt(page, 10),
-      limit: parseInt(limit, 10),
-      pages: Math.ceil(count / limit),
+      page: parsedPage,
+      limit: parsedLimit,
+      pages: Math.ceil(count / parsedLimit),
     },
   };
 };
@@ -385,6 +440,13 @@ const updateBooking = async ({ id, tenantId, organizationId, payload, models, se
     throw new Error('Docket / Consignment not found');
   }
 
+  // Ensure transport_mode column exists outside transaction
+  try {
+    await db.query("ALTER TABLE consignments ADD COLUMN transport_mode VARCHAR(30) DEFAULT 'ROAD';");
+  } catch (e) {
+    // Column already exists or alter ignored
+  }
+
   const transaction = await db.transaction();
 
   try {
@@ -435,9 +497,17 @@ const updateBooking = async ({ id, tenantId, organizationId, payload, models, se
     const chargedWeight = payload.charged_weight !== undefined ? parseFloat(payload.charged_weight) : consignment.charged_weight;
     const rate = payload.rate !== undefined ? parseFloat(payload.rate) : consignment.rate;
     const freightAmount = payload.freight_amount !== undefined ? parseFloat(payload.freight_amount) : consignment.freight_amount;
-    const totalAmount = payload.total_amount !== undefined ? parseFloat(payload.total_amount) : consignment.total_amount;
+    const loadingCharges = payload.loading_charges !== undefined ? parseFloat(payload.loading_charges) : consignment.loading_charges;
+    const unloadingCharges = payload.unloading_charges !== undefined ? parseFloat(payload.unloading_charges) : consignment.unloading_charges;
+    const handlingCharges = payload.handling_charges !== undefined ? parseFloat(payload.handling_charges) : consignment.handling_charges;
+    const hamaliCharges = payload.hamali_charges !== undefined ? parseFloat(payload.hamali_charges) : consignment.hamali_charges;
+    const doorDeliveryCharges = payload.door_delivery_charges !== undefined ? parseFloat(payload.door_delivery_charges) : consignment.door_delivery_charges;
+    const otherCharges = payload.other_charges !== undefined ? parseFloat(payload.other_charges) : consignment.other_charges;
+    const taxPercent = payload.tax_percent !== undefined ? parseFloat(payload.tax_percent) : consignment.tax_percent;
+    const taxAmount = payload.tax_amount !== undefined ? parseFloat(payload.tax_amount) : consignment.tax_amount;
+    const discountAmount = payload.discount_amount !== undefined ? parseFloat(payload.discount_amount) : consignment.discount_amount;
 
-    await consignment.update({
+    const updateFields = {
       docket_number: payload.docket_number || payload.lr_number || consignment.docket_number,
       lr_number: payload.lr_number || payload.docket_number || consignment.lr_number,
       origin_city: payload.origin_city || consignment.origin_city,
@@ -451,10 +521,31 @@ const updateBooking = async ({ id, tenantId, organizationId, payload, models, se
       charged_weight: chargedWeight,
       rate,
       freight_amount: freightAmount,
+      loading_charges: loadingCharges,
+      unloading_charges: unloadingCharges,
+      handling_charges: handlingCharges,
+      hamali_charges: hamaliCharges,
+      door_delivery_charges: doorDeliveryCharges,
+      other_charges: otherCharges,
+      tax_percent: taxPercent,
+      tax_amount: taxAmount,
+      discount_amount: discountAmount,
       total_amount: totalAmount,
       payment_type: payload.payment_type || payload.payment_mode || consignment.payment_type,
+      transport_mode: payload.transport_mode || payload.transportMode || consignment.transport_mode || 'ROAD',
       status: payload.status || consignment.status,
-    }, { transaction });
+    };
+
+    try {
+      await consignment.update(updateFields, { transaction });
+    } catch (updateErr) {
+      if (updateErr.message && updateErr.message.includes('transport_mode')) {
+        delete updateFields.transport_mode;
+        await consignment.update(updateFields, { transaction });
+      } else {
+        throw updateErr;
+      }
+    }
 
     if (consignment.booking_id && Booking) {
       await Booking.update({

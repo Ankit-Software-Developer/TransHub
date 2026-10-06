@@ -184,6 +184,12 @@ const register = async ({
   accountType = 'FLEET_OWNER',
   planCode = null,
   billingCycle = 'MONTHLY',
+  city = null,
+  state = null,
+  pincode = null,
+  address = null,
+  branchName = null,
+  branchCode = null,
   ipAddress = null,
   userAgent = null,
 }) => {
@@ -284,8 +290,12 @@ const register = async ({
 
     // Generate branch ID & details for Default Branch (HQ) in tenant operational database
     const branchId = crypto.randomUUID();
-    const branchName = `${businessName} - Head Office`;
-    const branchCode = 'HQ';
+    const finalBranchName = (branchName || '').trim() || `${businessName} - Head Office`;
+    const finalBranchCode = (branchCode || '').trim().toUpperCase() || 'HQ';
+    const finalBranchCity = (city || '').trim() || 'Head Office';
+    const finalBranchState = (state || '').trim() || 'General';
+    const finalBranchPincode = (pincode || '').trim() || '110001';
+    const finalBranchAddress = (address || '').trim() || 'Head Office Terminal';
 
     // 4. Create Primary User in Master DB
     const user = await User.create({
@@ -300,22 +310,22 @@ const register = async ({
       status: 'ACTIVE',
     }, { transaction: t });
 
-    // 5. Find or Create Role: TRANSPORT_OWNER in Master DB
-    let ownerRole = await Role.findOne({
-      where: { name: ROLES.TRANSPORT_OWNER },
+    // 5. Find or Create Role: ADMIN in Master DB
+    let adminRole = await Role.findOne({
+      where: { name: ROLES.ADMIN },
       transaction: t,
     });
 
-    if (!ownerRole) {
-      ownerRole = await Role.create({
-        name: ROLES.TRANSPORT_OWNER,
-        display_name: 'Transport Owner',
+    if (!adminRole) {
+      adminRole = await Role.create({
+        name: ROLES.ADMIN,
+        display_name: 'Admin',
         description: 'Complete administrative access to transport operations and settings',
         is_system: true,
       }, { transaction: t });
     }
 
-    await user.setRoles([ownerRole], { transaction: t });
+    await user.setRoles([adminRole], { transaction: t });
 
     await t.commit();
 
@@ -341,14 +351,14 @@ const register = async ({
           id: branchId,
           tenant_id: tenant.id,
           organization_id: organization.id,
-          branch_code: branchCode,
-          branch_name: branchName,
+          branch_code: finalBranchCode,
+          branch_name: finalBranchName,
           phone: phone || null,
           email: email.toLowerCase().trim(),
-          address: 'Main Transport Terminal',
-          city: 'Delhi',
-          state: 'Delhi',
-          pincode: '110001',
+          address: finalBranchAddress,
+          city: finalBranchCity,
+          state: finalBranchState,
+          pincode: finalBranchPincode,
           is_hub: true,
           is_active: true,
         });
@@ -370,15 +380,15 @@ const register = async ({
         }
       }
 
-      let tenantOwnerRole = null;
+      let tenantAdminRole = null;
       if (tenantDb.models.Role) {
-        tenantOwnerRole = await tenantDb.models.Role.findOne({
-          where: { name: ROLES.TRANSPORT_OWNER },
+        tenantAdminRole = await tenantDb.models.Role.findOne({
+          where: { name: ROLES.ADMIN },
         });
-        if (!tenantOwnerRole) {
-          tenantOwnerRole = await tenantDb.models.Role.create({
-            name: ROLES.TRANSPORT_OWNER,
-            display_name: 'Transport Owner',
+        if (!tenantAdminRole) {
+          tenantAdminRole = await tenantDb.models.Role.create({
+            name: ROLES.ADMIN,
+            display_name: 'Admin',
             description: 'Complete administrative access to transport operations and settings',
             is_system: true,
           });
@@ -393,14 +403,14 @@ const register = async ({
             where: { code: permCode },
             defaults: {
               code: permCode,
-              name: permCode.replace('.', ' ').toUpperCase(),
               module: permCode.split('.')[0].toUpperCase(),
+              description: permCode.replace('.', ' ').toUpperCase(),
             },
           });
         }
-        if (tenantOwnerRole && tenantOwnerRole.setPermissions) {
+        if (tenantAdminRole && tenantAdminRole.setPermissions) {
           const allPermRecords = await tenantDb.models.Permission.findAll();
-          await tenantOwnerRole.setPermissions(allPermRecords);
+          await tenantAdminRole.setPermissions(allPermRecords);
         }
       }
 
@@ -441,8 +451,8 @@ const register = async ({
           status: 'ACTIVE',
         });
 
-        if (tenantOwnerRole && tenantUser.setRoles) {
-          await tenantUser.setRoles([tenantOwnerRole]);
+        if (tenantAdminRole && tenantUser.setRoles) {
+          await tenantUser.setRoles([tenantAdminRole]);
         }
       }
     } catch (seedErr) {
@@ -543,9 +553,11 @@ const login = async ({ email, password, ipAddress, userAgent }) => {
     r.permissions.forEach((p) => permissions.add(p.code));
   });
 
-  // Resolve branch details from tenant database if available
+  // Resolve branch and organization details from tenant database if available
   let branchName = `${user.organization?.business_name || 'Transport'} - Head Office`;
   let branchCode = 'HQ';
+  let orgData = user.organization;
+
   if (user.tenant_id) {
     try {
       const tenant = await Tenant.findByPk(user.tenant_id);
@@ -556,6 +568,12 @@ const login = async ({ email, password, ipAddress, userAgent }) => {
           if (branch) {
             branchName = branch.branch_name;
             branchCode = branch.branch_code;
+          }
+        }
+        if (tenantConn?.models?.Organization && user.organization_id) {
+          const tOrg = await tenantConn.models.Organization.findByPk(user.organization_id);
+          if (tOrg) {
+            orgData = tOrg;
           }
         }
       }
@@ -610,8 +628,12 @@ const login = async ({ email, password, ipAddress, userAgent }) => {
       phone: user.phone,
       tenantId: user.tenant_id,
       organizationId: user.organization_id,
-      organizationName: user.organization?.business_name,
-      documentTerminology: user.organization?.document_terminology || 'Bilty',
+      organizationName: orgData?.business_name || user.organization?.business_name || 'Fleet Operations',
+      businessName: orgData?.business_name || user.organization?.business_name || 'Fleet Operations',
+      logoUrl: orgData?.logo_url || user.organization?.logo_url || null,
+      tagline: orgData?.settings?.tagline || user.organization?.settings?.tagline || null,
+      themeColor: orgData?.settings?.themeColor || user.organization?.settings?.themeColor || null,
+      documentTerminology: orgData?.document_terminology || user.organization?.document_terminology || 'Bilty',
       branchId: user.branch_id,
       branchName,
       branchCode,
@@ -719,6 +741,130 @@ const logoutAllDevices = async (userId) => {
   await RefreshToken.update({ is_revoked: true }, { where: { user_id: userId } });
 };
 
+const updateProfile = async ({ userId, tenantId, organizationId, payload, models }) => {
+  const masterUser = await User.findByPk(userId);
+  if (!masterUser) {
+    throw new Error('User not found');
+  }
+
+  const { firstName, lastName, phone, businessName, tagline, themeColor, logoUrl } = payload;
+
+  if (firstName) masterUser.first_name = firstName.trim();
+  if (lastName !== undefined) masterUser.last_name = (lastName || '').trim();
+  if (phone) masterUser.phone = phone.trim();
+  await masterUser.save();
+
+  // If models has User in tenant DB, sync it
+  if (models?.User) {
+    try {
+      const tenantUser = await models.User.findByPk(userId);
+      if (tenantUser) {
+        if (firstName) tenantUser.first_name = firstName.trim();
+        if (lastName !== undefined) tenantUser.last_name = (lastName || '').trim();
+        if (phone) tenantUser.phone = phone.trim();
+        await tenantUser.save();
+      }
+    } catch (e) {
+      console.warn('Could not sync user to tenant DB:', e.message);
+    }
+  }
+
+  // Update Organization branding / logo / themeColor in both Master DB and Tenant DB
+  let updatedOrg = null;
+  if (organizationId) {
+    // 1. Update in Master DB Organization
+    try {
+      if (masterUser.sequelize) {
+        await masterUser.sequelize.query('ALTER TABLE organizations MODIFY COLUMN logo_url LONGTEXT;').catch(() => { });
+      }
+      const masterOrg = await Organization.findByPk(organizationId);
+      if (masterOrg) {
+        if (businessName) masterOrg.business_name = businessName.trim();
+        if (logoUrl !== undefined) masterOrg.logo_url = logoUrl;
+        const currentSettings = masterOrg.settings || {};
+        if (tagline !== undefined) currentSettings.tagline = tagline;
+        if (themeColor) currentSettings.themeColor = themeColor;
+        masterOrg.settings = currentSettings;
+        await masterOrg.save();
+        updatedOrg = masterOrg;
+      }
+    } catch (e) {
+      console.warn('Could not update master org settings:', e.message);
+    }
+
+    // 2. Also update in Tenant DB Organization if available
+    if (models?.Organization) {
+      try {
+        if (models.Organization.sequelize) {
+          await models.Organization.sequelize.query('ALTER TABLE organizations MODIFY COLUMN logo_url LONGTEXT;').catch(() => { });
+        }
+        const tenantOrg = await models.Organization.findByPk(organizationId);
+        if (tenantOrg) {
+          if (businessName) tenantOrg.business_name = businessName.trim();
+          if (logoUrl !== undefined) tenantOrg.logo_url = logoUrl;
+          const currentSettings = tenantOrg.settings || {};
+          if (tagline !== undefined) currentSettings.tagline = tagline;
+          if (themeColor) currentSettings.themeColor = themeColor;
+          tenantOrg.settings = currentSettings;
+          await tenantOrg.save();
+          if (!updatedOrg) updatedOrg = tenantOrg;
+        }
+      } catch (e) {
+        console.warn('Could not update tenant org settings:', e.message);
+      }
+    }
+  }
+
+  return {
+    id: masterUser.id,
+    firstName: masterUser.first_name,
+    lastName: masterUser.last_name,
+    email: masterUser.email,
+    phone: masterUser.phone,
+    businessName: updatedOrg?.business_name || businessName,
+    logoUrl: updatedOrg?.logo_url !== undefined ? updatedOrg.logo_url : logoUrl,
+    tagline: updatedOrg?.settings?.tagline || tagline,
+    themeColor: updatedOrg?.settings?.themeColor || themeColor,
+  };
+};
+
+const changePassword = async ({ userId, currentPassword, newPassword, models }) => {
+  const masterUser = await User.findByPk(userId);
+  if (!masterUser) {
+    throw new Error('User not found');
+  }
+
+  const isCurrentValid = await bcrypt.compare(currentPassword, masterUser.password_hash);
+  if (!isCurrentValid) {
+    throw new Error('Current password is incorrect');
+  }
+
+  if (!newPassword || newPassword.length < 6) {
+    throw new Error('New password must be at least 6 characters long');
+  }
+
+  const salt = await bcrypt.genSalt(10);
+  const newHash = await bcrypt.hash(newPassword, salt);
+
+  masterUser.password_hash = newHash;
+  await masterUser.save();
+
+  // Also sync to tenant DB if exists
+  if (models?.User) {
+    try {
+      const tenantUser = await models.User.findByPk(userId);
+      if (tenantUser) {
+        tenantUser.password_hash = newHash;
+        await tenantUser.save();
+      }
+    } catch (e) {
+      console.warn('Could not sync password to tenant DB:', e.message);
+    }
+  }
+
+  return { success: true, message: 'Password updated successfully' };
+};
+
 module.exports = {
   register,
   getPlans,
@@ -727,4 +873,6 @@ module.exports = {
   logout,
   logoutAllDevices,
   ensureDefaultPlans,
+  updateProfile,
+  changePassword,
 };

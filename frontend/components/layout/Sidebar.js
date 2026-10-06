@@ -23,14 +23,20 @@ import {
   ChevronRight,
   Crown,
   Sparkles,
-  Compass
+  Compass,
+  Warehouse,
+  ShieldCheck,
+  Route,
+  UserCheck
 } from 'lucide-react';
+import { usePermissions } from '../../hooks/usePermissions';
 
 export default function Sidebar() {
   const pathname = usePathname();
   const { plural } = useTerminology();
   const user = useStore((state) => state.user);
   const { theme } = useTheme();
+  const { isAdmin } = usePermissions();
   const [collapsed, setCollapsed] = useState(false);
 
   const isDark = theme === 'dark';
@@ -38,11 +44,13 @@ export default function Sidebar() {
   const navItems = [
     { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     { label: plural || 'Bookings', href: '/bookings', icon: FileText },
+    { label: 'Branches & Hubs', href: '/branches', icon: Warehouse },
+    { label: 'Fleet Management', href: '/fleet', icon: Truck },
+    { label: 'Users & Drivers', href: '/users', icon: UserCheck },
     { label: 'Control Tower', href: '/control-tower', icon: Compass },
     { label: 'Load Planning', href: '/load-planning', icon: Boxes },
     { label: 'Dispatches', href: '/dispatches', icon: Send },
-    { label: 'Trips', href: '/trips', icon: Truck },
-    { label: 'Fleet', href: '/fleet', icon: Truck },
+    { label: 'Trips', href: '/trips', icon: Route },
     { label: 'Customers', href: '/customers', icon: Users },
     { label: 'Invoices', href: '/billing/invoices', icon: Receipt },
     { label: 'Expenses', href: '/expenses', icon: Wallet },
@@ -65,20 +73,26 @@ export default function Sidebar() {
         isDark ? 'border-slate-800/80 bg-[#0B1020]' : 'border-slate-200/80 bg-slate-50/50'
       }`}>
         <Link href="/" className="flex items-center space-x-3 overflow-hidden">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-cyan-400 flex items-center justify-center text-white font-black shadow-md shadow-cyan-500/25 shrink-0">
-            <Truck className="w-5 h-5 text-white" />
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-cyan-400 flex items-center justify-center text-white font-black shadow-md shadow-cyan-500/25 shrink-0 overflow-hidden">
+            {user?.logoUrl ? (
+              <img src={user.logoUrl} alt="Logo" className="w-full h-full object-cover" />
+            ) : (
+              <Truck className="w-5 h-5 text-white" />
+            )}
           </div>
           {!collapsed && (
             <div className="min-w-0">
               <div className="flex items-center">
-                <span className={`text-lg font-black tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                  Trans<span className="text-cyan-400">Hub</span>
+                <span className={`text-lg font-black tracking-tight truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                  {user?.businessName || user?.organizationName || (
+                    <>Trans<span className="text-cyan-400">Hub</span></>
+                  )}
                 </span>
               </div>
               <p className={`text-[10px] font-semibold tracking-wider uppercase truncate ${
                 isDark ? 'text-slate-400' : 'text-slate-500'
               }`}>
-                Logistics Without Limits
+                {user?.tagline || 'Logistics Without Limits'}
               </p>
             </div>
           )}

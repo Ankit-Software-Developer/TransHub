@@ -10,5 +10,7 @@ router.use(authenticate, tenantResolver);
 router.get('/profile', organizationController.getOrganizationProfile);
 router.patch('/terminology', organizationController.updateTerminology);
 router.get('/branches', organizationController.listBranches);
+router.get('/docket-series', organizationController.getDocketSeries);
+router.patch('/docket-series', organizationController.updateDocketSeries);
 
 module.exports = router;

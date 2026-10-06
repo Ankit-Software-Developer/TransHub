@@ -117,6 +117,20 @@ const me = async (req, res) => {
     } catch (sErr) {}
   }
 
+  let orgData = null;
+  if (user.organization_id) {
+    try {
+      const OrgModel = req.tenantDb?.Organization;
+      if (OrgModel) {
+        orgData = await OrgModel.findByPk(user.organization_id);
+      }
+      if (!orgData) {
+        const { Organization } = require('../models');
+        orgData = await Organization.findByPk(user.organization_id);
+      }
+    } catch (oErr) {}
+  }
+
   return successResponse(res, 'User session active', {
     id: user.id,
     email: user.email,
@@ -125,12 +139,17 @@ const me = async (req, res) => {
     phone: user.phone,
     tenantId: user.tenant_id,
     organizationId: user.organization_id,
+    organizationName: orgData?.business_name || 'Fleet Operations',
+    businessName: orgData?.business_name || 'Fleet Operations',
+    logoUrl: orgData?.logo_url || null,
+    tagline: orgData?.settings?.tagline || null,
+    themeColor: orgData?.settings?.themeColor || null,
     branchId: user.branch_id,
     branchCode: user.branch?.branch_code,
     branchName: user.branch?.branch_name,
     roles: req.userRoles,
     permissions: req.userPermissions,
-    documentTerminology: req.tenant?.documentTerminology || 'Bilty',
+    documentTerminology: orgData?.document_terminology || req.tenant?.documentTerminology || 'Bilty',
     subscription: subscriptionData,
   });
 };
@@ -146,6 +165,12 @@ const register = async (req, res, next) => {
       accountType,
       planCode,
       billingCycle,
+      city,
+      state,
+      pincode,
+      address,
+      branchName,
+      branchCode,
     } = req.body;
 
     if (!fullName || !email || !password) {
@@ -164,6 +189,12 @@ const register = async (req, res, next) => {
       accountType,
       planCode,
       billingCycle,
+      city,
+      state,
+      pincode,
+      address,
+      branchName,
+      branchCode,
       ipAddress,
       userAgent,
     });
@@ -202,6 +233,39 @@ const getPlans = async (req, res, next) => {
   }
 };
 
+const updateProfile = async (req, res) => {
+  try {
+    const result = await authService.updateProfile({
+      userId: req.user.id,
+      tenantId: req.tenant.tenantId,
+      organizationId: req.tenant.organizationId,
+      payload: req.body,
+      models: req.tenantDb,
+    });
+    return successResponse(res, 'Profile and branding updated successfully', result);
+  } catch (error) {
+    return errorResponse(res, error.message, null, 400);
+  }
+};
+
+const changePassword = async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+      return errorResponse(res, 'Current password and new password are required', null, 400);
+    }
+    const result = await authService.changePassword({
+      userId: req.user.id,
+      currentPassword,
+      newPassword,
+      models: req.tenantDb,
+    });
+    return successResponse(res, result.message, null);
+  } catch (error) {
+    return errorResponse(res, error.message, null, 400);
+  }
+};
+
 module.exports = {
   register,
   getPlans,
@@ -209,4 +273,6 @@ module.exports = {
   refresh,
   logout,
   me,
+  updateProfile,
+  changePassword,
 };

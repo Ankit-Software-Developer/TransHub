@@ -30,6 +30,7 @@ export default function NewBookingPage() {
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [docketSeriesPreview, setDocketSeriesPreview] = useState(null);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -70,10 +71,14 @@ export default function NewBookingPage() {
   useEffect(() => {
     const fetchMasterData = async () => {
       try {
-        const [branchRes, custRes] = await Promise.all([
+        const [branchRes, custRes, seriesRes] = await Promise.all([
           api.get('/organizations/branches'),
           api.get('/customers?limit=100'),
+          api.get('/organizations/docket-series').catch(() => null),
         ]);
+        if (seriesRes?.data?.success && seriesRes.data.data) {
+          setDocketSeriesPreview(seriesRes.data.data);
+        }
         if (branchRes.data.success) {
           setBranches(branchRes.data.data);
           if (branchRes.data.data.length > 0) {
@@ -150,7 +155,13 @@ export default function NewBookingPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await api.post('/bookings', formData);
+      const customNum = formData.docket_number ? formData.docket_number.trim().toUpperCase() : undefined;
+      const payload = {
+        ...formData,
+        docket_number: customNum || undefined,
+        lr_number: customNum || undefined,
+      };
+      const res = await api.post('/bookings', payload);
       if (res.data.success) {
         const createdId = res.data.data.id;
         if (shouldPrint) {
@@ -234,15 +245,20 @@ export default function NewBookingPage() {
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center justify-between">
                     <span>Docket Number (LR / Bilty)</span>
-                    <span className="text-[10px] text-slate-400 font-normal">Optional / Auto</span>
+                    <span className="text-[10px] text-blue-600 font-bold">
+                      {docketSeriesPreview?.nextNumber ? `Next: ${docketSeriesPreview.nextNumber}` : 'Auto / Manual'}
+                    </span>
                   </label>
                   <input
                     type="text"
                     value={formData.docket_number}
-                    onChange={(e) => handleChange('docket_number', e.target.value)}
+                    onChange={(e) => handleChange('docket_number', e.target.value.toUpperCase().replace(/\s+/g, ''))}
                     className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none font-mono font-semibold"
-                    placeholder="Auto (or enter physical No.)"
+                    placeholder={docketSeriesPreview?.nextNumber ? `Auto (${docketSeriesPreview.nextNumber}) or Manual No.` : "Auto or enter physical No."}
                   />
+                  <span className="text-[10px] text-slate-400 mt-1 block">
+                    Leave blank to auto-generate sequentially.
+                  </span>
                 </div>
 
                 <div>
@@ -257,7 +273,7 @@ export default function NewBookingPage() {
                       if (b) handleChange('origin_city', b.city);
                     }}
                     className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none font-medium"
-                  >
+                    <option value="">{branches.length === 0 ? '-- No branches added yet (Add Branch first) --' : '-- Select Origin Branch --'}</option>
                     {branches.map((b) => (
                       <option key={b.id} value={b.id}>{b.branch_name} ({b.branch_code})</option>
                     ))}
@@ -277,6 +293,7 @@ export default function NewBookingPage() {
                     }}
                     className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none font-medium"
                   >
+                    <option value="">{branches.length === 0 ? '-- No branches added yet (Add Branch first) --' : '-- Select Destination Branch --'}</option>
                     {branches.map((b) => (
                       <option key={b.id} value={b.id}>{b.branch_name} ({b.branch_code})</option>
                     ))}
