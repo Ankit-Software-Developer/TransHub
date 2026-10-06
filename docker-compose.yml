@@ -44,7 +44,7 @@ services:
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-transporter_secret_jwt_access_2026}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-transporter_secret_jwt_refresh_2026}
       REDIS_URL: redis://redis:6379
-      FRONTEND_URL: http://localhost:3000
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
     ports:
       - "5000:5000"
 
@@ -52,12 +52,14 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
     container_name: transporter_frontend
     restart: always
     depends_on:
       - backend
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:5000/api/v1
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
     ports:
       - "3000:3000"
 

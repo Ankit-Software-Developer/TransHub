@@ -1,8 +1,31 @@
 // frontend/services/api.js
 import axios from 'axios';
 
+export const getApiBaseUrl = () => {
+  const envUrl = process.env.NEXT_PUBLIC_API_URL;
+
+  if (typeof window !== 'undefined') {
+    // If a custom API URL is explicitly configured in localStorage
+    const customApiUrl = localStorage.getItem('transporter_api_url');
+    if (customApiUrl) return customApiUrl;
+
+    // If NEXT_PUBLIC_API_URL was set to a real external domain/IP (not localhost)
+    if (envUrl && !envUrl.includes('localhost') && !envUrl.includes('127.0.0.1')) {
+      return envUrl;
+    }
+
+    // If running in browser and accessed via remote IP or domain (e.g. http://187.127.157.120:3005)
+    const { protocol, hostname } = window.location;
+    if (hostname && hostname !== 'localhost' && hostname !== '127.0.0.1') {
+      return `${protocol}//${hostname}:5000/api/v1`;
+    }
+  }
+
+  return envUrl || 'http://localhost:5000/api/v1';
+};
+
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api/v1',
+  baseURL: getApiBaseUrl(),
   withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
@@ -11,6 +34,7 @@ const api = axios.create({
 
 // Request interceptor to attach bearer token from localStorage if available
 api.interceptors.request.use((config) => {
+  config.baseURL = getApiBaseUrl();
   if (typeof window !== 'undefined') {
     const token = localStorage.getItem('transporter_access_token');
     if (token) {
@@ -31,7 +55,7 @@ api.interceptors.response.use(
         const refreshToken = localStorage.getItem('transporter_refresh_token');
         if (refreshToken) {
           try {
-            const refreshRes = await axios.post(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api/v1'}/auth/refresh`, {
+            const refreshRes = await axios.post(`${getApiBaseUrl()}/auth/refresh`, {
               refreshToken,
             });
             const newAccessToken = refreshRes.data.data.accessToken;

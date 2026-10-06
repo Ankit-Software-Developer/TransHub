@@ -28,10 +28,7 @@ export default function RootLayout({ children }) {
               (function() {
                 try {
                   var saved = localStorage.getItem('transporter_theme');
-                  var theme = saved;
-                  if (!theme) {
-                    theme = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
-                  }
+                  var theme = saved === 'dark' ? 'dark' : 'light';
                   var root = document.documentElement;
                   if (theme === 'dark') {
                     root.classList.add('dark');

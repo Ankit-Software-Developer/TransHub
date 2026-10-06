@@ -32,12 +32,7 @@ export function ThemeProvider({ children }) {
   useEffect(() => {
     try {
       const savedTheme = localStorage.getItem('transporter_theme');
-      let initialTheme = 'light';
-      if (savedTheme === 'light' || savedTheme === 'dark') {
-        initialTheme = savedTheme;
-      } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-        initialTheme = 'dark';
-      }
+      const initialTheme = savedTheme === 'dark' ? 'dark' : 'light';
       setThemeState(initialTheme);
       applyTheme(initialTheme);
       useStore.getState().setTheme?.(initialTheme);

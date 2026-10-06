@@ -10,7 +10,7 @@ const server = http.createServer(app);
 // Initialize Socket.io for real-time tracking updates
 const io = new Server(server, {
   cors: {
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    origin: (origin, callback) => callback(null, true),
     credentials: true,
   },
 });
