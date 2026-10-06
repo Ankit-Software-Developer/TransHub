@@ -1,0 +1,60 @@
+name: Deploy to VPS (PM2 & Nginx)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to VPS via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_PORT || 22 }}
+          script_stop: true
+          script: |
+            APP_DIR="/home/transhub"
+            REPO_URL="https://github.com/Ankit-Software-Developer/TransHub.git"
+
+            # 1. Clone repository if not already present, otherwise fetch & pull
+            if [ ! -d "$APP_DIR/.git" ]; then
+              echo "📦 Cloning TransHub repository..."
+              mkdir -p "$APP_DIR"
+              git clone "$REPO_URL" "$APP_DIR"
+            fi
+
+            cd "$APP_DIR"
+            echo "🔄 Updating code from main branch..."
+            git fetch --all
+            git reset --hard origin/main
+            git pull origin main
+
+            # 2. Setup backend
+            echo "⚙️ Setting up backend..."
+            cd "$APP_DIR/backend"
+            if [ ! -f .env ] && [ -f .env.example ]; then
+              cp .env.example .env
+            fi
+            npm install --omit=dev
+
+            # 3. Setup and build frontend
+            echo "⚙️ Setting up & building frontend..."
+            cd "$APP_DIR/frontend"
+            npm install
+            npm run build
+
+            # 4. PM2 Start / Reload
+            echo "🚀 Reloading PM2 services..."
+            cd "$APP_DIR"
+            pm2 startOrReload ecosystem.config.js --env production || pm2 reload ecosystem.config.js --env production || pm2 start ecosystem.config.js --env production
+            pm2 save
+
+            echo "🎉 TransHub successfully deployed!"
