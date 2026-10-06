@@ -130,8 +130,12 @@ const getPlans = async () => {
 const generateTokens = async (user, ipAddress = null, deviceInfo = null, databaseName = null) => {
   let dbName = databaseName;
   if (!dbName && user.tenant_id) {
-    const tenantRecord = await Tenant.findByPk(user.tenant_id);
-    dbName = tenantRecord?.database_name || null;
+    try {
+      const tenantRecord = await Tenant.findByPk(user.tenant_id);
+      dbName = tenantRecord?.database_name || null;
+    } catch (tErr) {
+      console.warn('⚠️ Tenant database resolution warning during token generation:', tErr.message);
+    }
   }
 
   const payload = {
@@ -475,7 +479,7 @@ const register = async ({
         branchId: branchId,
         branchName: branchName,
         branchCode: branchCode,
-        roles: [ownerRole.name],
+        roles: [adminRole.name],
         permissions: ['*'],
         documentTerminology: organization.document_terminology,
         subscription: {
@@ -547,10 +551,12 @@ const login = async ({ email, password, ipAddress, userAgent }) => {
   const tokens = await generateTokens(user, ipAddress, userAgent);
 
   // Extract roles and permissions
-  const roles = user.roles.map((r) => r.name);
+  const roles = (user.roles && user.roles.length > 0) ? user.roles.map((r) => r.name) : ['ADMIN'];
   const permissions = new Set();
-  user.roles.forEach((r) => {
-    r.permissions.forEach((p) => permissions.add(p.code));
+  (user.roles || []).forEach((r) => {
+    (r.permissions || []).forEach((p) => {
+      if (p && p.code) permissions.add(p.code);
+    });
   });
 
   // Resolve branch and organization details from tenant database if available

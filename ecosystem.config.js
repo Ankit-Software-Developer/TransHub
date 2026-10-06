@@ -27,6 +27,7 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
         PORT: 3005,
+        BACKEND_URL: 'http://localhost:5005',
       },
     },
   ],

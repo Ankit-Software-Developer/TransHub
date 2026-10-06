@@ -98,7 +98,7 @@ const initMasterDatabase = async () => {
       const { getTenantConnection, applyEssentialPatches } = require('../services/tenantDbManager');
       await applyEssentialPatches(sequelize);
       if (Tenant && typeof Tenant.findAll === 'function') {
-        const allTenants = await Tenant.findAll({ attributes: ['id', 'company_name', 'database_name'] });
+        const allTenants = await Tenant.findAll({ attributes: ['id', 'name', 'database_name'] });
         for (const t of allTenants) {
           if (t.database_name && t.database_name !== dbName) {
             try {

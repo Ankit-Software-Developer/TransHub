@@ -31,7 +31,13 @@ const login = async (req, res, next) => {
 
     return successResponse(res, 'Login successful', result);
   } catch (error) {
-    return errorResponse(res, error.message, null, 401);
+    console.error('❌ Login error:', error.message);
+    const isAuthError =
+      error.message.includes('Invalid email or password') ||
+      error.message.includes('suspended') ||
+      error.message.includes('required');
+    const statusCode = isAuthError ? 401 : 500;
+    return errorResponse(res, error.message || 'Login failed', null, statusCode);
   }
 };
 

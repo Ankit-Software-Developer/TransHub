@@ -167,8 +167,8 @@ const initTenantModels = (targetSequelize) => {
   Organization.hasMany(User, { foreignKey: 'organization_id', as: 'users' });
   User.belongsTo(Organization, { foreignKey: 'organization_id', as: 'organization' });
 
-  Branch.hasMany(User, { foreignKey: 'branch_id', as: 'staff' });
-  User.belongsTo(Branch, { foreignKey: 'branch_id', as: 'branch' });
+  Branch.hasMany(User, { foreignKey: 'branch_id', constraints: false, as: 'staff' });
+  User.belongsTo(Branch, { foreignKey: 'branch_id', constraints: false, as: 'branch' });
 
   User.belongsToMany(Role, { through: UserRole, foreignKey: 'user_id', as: 'roles' });
   Role.belongsToMany(User, { through: UserRole, foreignKey: 'role_id', as: 'users' });
