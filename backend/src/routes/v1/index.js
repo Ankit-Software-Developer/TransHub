@@ -17,6 +17,8 @@ const trackingRoutes = require('./trackingRoutes');
 const branchRoutes = require('./branchRoutes');
 const roleRoutes = require('./roleRoutes');
 const userRoutes = require('./userRoutes');
+const approvalRoutes = require('./approvalRoutes');
+const auditLogRoutes = require('./auditLogRoutes');
 
 router.use('/auth', authRoutes);
 router.use('/dashboard', dashboardRoutes);
@@ -32,6 +34,8 @@ router.use('/deliveries', deliveryRoutes);
 router.use('/pods', podRoutes);
 router.use('/billing', billingRoutes);
 router.use('/expenses', expenseRoutes);
+router.use('/approvals', approvalRoutes);
+router.use('/audit-logs', auditLogRoutes);
 router.use('/organizations', organizationRoutes);
 router.use('/tracking', trackingRoutes);
 router.use('/roles', roleRoutes);

@@ -453,6 +453,11 @@ const register = async ({
           phone: phone || null,
           password_hash: hashedPassword,
           status: 'ACTIVE',
+          staff_code: 'ADM-001',
+          designation: 'Owner / Administrator',
+          joining_date: now.toISOString().split('T')[0],
+          salary_amount: 0.00,
+          salary_type: 'MONTHLY',
         });
 
         if (tenantAdminRole && tenantUser.setRoles) {
@@ -550,8 +555,8 @@ const login = async ({ email, password, ipAddress, userAgent }) => {
   // Generate tokens
   const tokens = await generateTokens(user, ipAddress, userAgent);
 
-  // Extract roles and permissions
-  const roles = (user.roles && user.roles.length > 0) ? user.roles.map((r) => r.name) : ['ADMIN'];
+  // Default roles and permissions from master
+  let resolvedRoles = (user.roles && user.roles.length > 0) ? user.roles.map((r) => r.name) : ['ADMIN'];
   const permissions = new Set();
   (user.roles || []).forEach((r) => {
     (r.permissions || []).forEach((p) => {
@@ -559,7 +564,9 @@ const login = async ({ email, password, ipAddress, userAgent }) => {
     });
   });
 
-  // Resolve branch and organization details from tenant database if available
+  // Resolve staff profile, roles, permissions, branch, and organization from isolated Tenant DB
+  let staffProfile = null;
+  let activeBranchId = user.branch_id;
   let branchName = `${user.organization?.business_name || 'Transport'} - Head Office`;
   let branchCode = 'HQ';
   let orgData = user.organization;
@@ -569,23 +576,98 @@ const login = async ({ email, password, ipAddress, userAgent }) => {
       const tenant = await Tenant.findByPk(user.tenant_id);
       if (tenant?.database_name) {
         const tenantConn = await getTenantConnection(tenant.database_name);
-        if (tenantConn?.models?.Branch && user.branch_id) {
-          const branch = await tenantConn.models.Branch.findByPk(user.branch_id);
+        const tModels = tenantConn?.models;
+
+        if (tModels?.User) {
+          let tenantStaff = await tModels.User.findOne({
+            where: { email: user.email },
+            include: [
+              ...(tModels.Role ? [{
+                model: tModels.Role,
+                as: 'roles',
+                include: tModels.Permission ? [{ model: tModels.Permission, as: 'permissions' }] : [],
+              }] : []),
+              ...(tModels.Branch ? [{
+                model: tModels.Branch,
+                as: 'branch',
+              }] : []),
+            ],
+          });
+
+          // Auto-provision primary owner in Tenant DB if not present
+          if (!tenantStaff) {
+            try {
+              tenantStaff = await tModels.User.create({
+                id: user.id,
+                tenant_id: user.tenant_id,
+                organization_id: user.organization_id,
+                branch_id: user.branch_id || null,
+                first_name: user.first_name,
+                last_name: user.last_name,
+                email: user.email,
+                phone: user.phone,
+                staff_code: 'OWNER-001',
+                designation: 'Fleet Owner & Admin',
+                status: 'ACTIVE',
+              });
+
+              if (tModels.Role) {
+                const adminRole = await tModels.Role.findOne({ where: { name: 'ADMIN' } });
+                if (adminRole && tenantStaff.setRoles) {
+                  await tenantStaff.setRoles([adminRole]);
+                }
+              }
+            } catch (autoProvErr) {
+              console.warn('⚠️ Auto-provision owner in tenant DB notice:', autoProvErr.message);
+            }
+          }
+
+          if (tenantStaff) {
+            staffProfile = tenantStaff;
+            if (tenantStaff.branch_id) activeBranchId = tenantStaff.branch_id;
+            if (tenantStaff.branch) {
+              branchName = tenantStaff.branch.branch_name;
+              branchCode = tenantStaff.branch.branch_code;
+            }
+
+            // Override with tenant-specific roles & permissions from Tenant DB
+            if (tenantStaff.roles && tenantStaff.roles.length > 0) {
+              resolvedRoles = tenantStaff.roles.map((r) => r.name);
+              permissions.clear();
+              tenantStaff.roles.forEach((r) => {
+                (r.permissions || []).forEach((p) => {
+                  if (p && p.code) permissions.add(p.code);
+                });
+              });
+            }
+          }
+        }
+
+        // Branch fallback if branch relation was not loaded
+        if (tModels?.Branch && activeBranchId && branchCode === 'HQ') {
+          const branch = await tModels.Branch.findByPk(activeBranchId);
           if (branch) {
             branchName = branch.branch_name;
             branchCode = branch.branch_code;
           }
         }
-        if (tenantConn?.models?.Organization && user.organization_id) {
-          const tOrg = await tenantConn.models.Organization.findByPk(user.organization_id);
+
+        // Organization profile from Tenant DB
+        if (tModels?.Organization && user.organization_id) {
+          const tOrg = await tModels.Organization.findByPk(user.organization_id);
           if (tOrg) {
             orgData = tOrg;
           }
         }
       }
     } catch (bErr) {
-      // Ignore branch resolution error and fallback to defaults
+      console.warn('⚠️ Tenant database profile lookup notice:', bErr.message);
     }
+  }
+
+  // Administrators always receive full access
+  if (resolvedRoles.includes('ADMIN') || resolvedRoles.includes('SUPER_ADMIN')) {
+    permissions.add('*');
   }
 
   // Resolve active subscription
@@ -629,9 +711,9 @@ const login = async ({ email, password, ipAddress, userAgent }) => {
     user: {
       id: user.id,
       email: user.email,
-      firstName: user.first_name,
-      lastName: user.last_name,
-      phone: user.phone,
+      firstName: staffProfile?.first_name || user.first_name,
+      lastName: staffProfile?.last_name || user.last_name,
+      phone: staffProfile?.phone || user.phone,
       tenantId: user.tenant_id,
       organizationId: user.organization_id,
       organizationName: orgData?.business_name || user.organization?.business_name || 'Fleet Operations',
@@ -640,10 +722,12 @@ const login = async ({ email, password, ipAddress, userAgent }) => {
       tagline: orgData?.settings?.tagline || user.organization?.settings?.tagline || null,
       themeColor: orgData?.settings?.themeColor || user.organization?.settings?.themeColor || null,
       documentTerminology: orgData?.document_terminology || user.organization?.document_terminology || 'Bilty',
-      branchId: user.branch_id,
+      branchId: activeBranchId,
       branchName,
       branchCode,
-      roles,
+      staffCode: staffProfile?.staff_code || null,
+      designation: staffProfile?.designation || null,
+      roles: resolvedRoles,
       permissions: Array.from(permissions),
       subscription: subscriptionData,
     },

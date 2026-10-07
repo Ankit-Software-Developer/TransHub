@@ -1,12 +1,13 @@
 // frontend/components/layout/Sidebar.js
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useTerminology } from '../../hooks/useTerminology';
 import { useStore } from '../../store/useStore';
 import { useTheme } from '../ThemeProvider';
+import approvalService from '../../services/approvalService';
 import {
   LayoutDashboard,
   FileText,
@@ -27,7 +28,8 @@ import {
   Warehouse,
   ShieldCheck,
   Route,
-  UserCheck
+  UserCheck,
+  History
 } from 'lucide-react';
 import { usePermissions } from '../../hooks/usePermissions';
 
@@ -36,18 +38,41 @@ export default function Sidebar() {
   const { plural } = useTerminology();
   const user = useStore((state) => state.user);
   const { theme } = useTheme();
-  const { isAdmin } = usePermissions();
+  const { isAdmin, canAccessRoute } = usePermissions();
   const [collapsed, setCollapsed] = useState(false);
+  const [pendingApprovals, setPendingApprovals] = useState(0);
 
   const isDark = theme === 'dark';
 
+  useEffect(() => {
+    let isSubscribed = true;
+    const fetchCounters = async () => {
+      try {
+        const counts = await approvalService.getBadgeCounts();
+        if (isSubscribed && counts) {
+          setPendingApprovals(counts.pendingAction || 0);
+        }
+      } catch (e) {
+        // Silently ignore if unauthenticated or error
+      }
+    };
+
+    fetchCounters();
+    const timer = setInterval(fetchCounters, 30000);
+    return () => {
+      isSubscribed = false;
+      clearInterval(timer);
+    };
+  }, [user]);
+
   const navItems = [
     { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+    { label: 'Control Tower', href: '/control-tower', icon: Compass },
+    { label: 'Approvals', href: '/approvals', icon: ShieldCheck, badge: pendingApprovals },
     { label: plural || 'Bookings', href: '/bookings', icon: FileText },
     { label: 'Branches & Hubs', href: '/branches', icon: Warehouse },
     { label: 'Fleet Management', href: '/fleet', icon: Truck },
     { label: 'Users & Drivers', href: '/users', icon: UserCheck },
-    { label: 'Control Tower', href: '/control-tower', icon: Compass },
     { label: 'Load Planning', href: '/load-planning', icon: Boxes },
     { label: 'Dispatches', href: '/dispatches', icon: Send },
     { label: 'Trips', href: '/trips', icon: Route },
@@ -55,6 +80,7 @@ export default function Sidebar() {
     { label: 'Invoices', href: '/billing/invoices', icon: Receipt },
     { label: 'Expenses', href: '/expenses', icon: Wallet },
     { label: 'Reports', href: '/reports', icon: BarChart3 },
+    ...(isAdmin ? [{ label: 'Audit & Activity Logs', href: '/audit-logs', icon: History }] : []),
     { label: 'Settings', href: '/settings', icon: Settings },
   ];
 
@@ -112,7 +138,7 @@ export default function Sidebar() {
 
       {/* Navigation List */}
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        {navItems.map((item) => {
+        {navItems.filter((item) => canAccessRoute(item.href)).map((item) => {
           const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href));
           const Icon = item.icon;
 
@@ -121,7 +147,7 @@ export default function Sidebar() {
               key={item.href}
               href={item.href}
               title={collapsed ? item.label : undefined}
-              className={`flex items-center rounded-xl text-xs font-semibold transition-all group ${
+              className={`flex items-center relative rounded-xl text-xs font-semibold transition-all group ${
                 collapsed ? 'justify-center p-3' : 'px-3.5 py-2.5 space-x-3'
               } ${
                 isActive
@@ -134,7 +160,18 @@ export default function Sidebar() {
               <Icon className={`w-4 h-4 shrink-0 transition-colors ${
                 isActive ? 'text-white' : isDark ? 'text-slate-400 group-hover:text-cyan-400' : 'text-slate-500 group-hover:text-blue-600'
               }`} />
-              {!collapsed && <span className="truncate">{item.label}</span>}
+              {!collapsed && <span className="truncate flex-1">{item.label}</span>}
+              {item.badge > 0 && (
+                <span className={`text-[10px] font-bold rounded-full flex items-center justify-center ${
+                  collapsed
+                    ? 'absolute top-1 right-1 w-4 h-4 bg-amber-500 text-white'
+                    : 'px-1.5 py-0.2 min-w-5 h-5 bg-amber-500 text-white ml-auto shadow-sm shadow-amber-500/40'
+                } ${
+                  isActive ? 'bg-white text-blue-700' : ''
+                }`}>
+                  {item.badge > 99 ? '99+' : item.badge}
+                </span>
+              )}
             </Link>
           );
         })}

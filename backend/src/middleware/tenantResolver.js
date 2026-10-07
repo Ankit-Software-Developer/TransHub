@@ -67,6 +67,40 @@ const tenantResolver = async (req, res, next) => {
     req.tenantDb = tenantConn.models;
     req.tenantSequelize = tenantConn.sequelize;
 
+    // Enrich roles & permissions from tenant DB if user exists in tenant DB
+    try {
+      if (req.tenantDb?.User && req.user?.id) {
+        const tenantStaff = await req.tenantDb.User.findByPk(req.user.id, {
+          include: [
+            ...(req.tenantDb.Role ? [{
+              model: req.tenantDb.Role,
+              as: 'roles',
+              include: req.tenantDb.Permission ? [{ model: req.tenantDb.Permission, as: 'permissions' }] : [],
+            }] : []),
+            ...(req.tenantDb.Branch ? [{
+              model: req.tenantDb.Branch,
+              as: 'branch',
+            }] : []),
+          ],
+        });
+
+        if (tenantStaff && tenantStaff.roles && tenantStaff.roles.length > 0) {
+          req.userRoles = tenantStaff.roles.map((r) => r.name);
+          const tPerms = new Set(req.userPermissions || []);
+          tenantStaff.roles.forEach((r) => {
+            (r.permissions || []).forEach((p) => tPerms.add(p.code));
+          });
+          if (req.userRoles.includes('ADMIN') || req.userRoles.includes('SUPER_ADMIN')) {
+            tPerms.add('*');
+          }
+          req.userPermissions = Array.from(tPerms);
+          if (tenantStaff.branch) {
+            req.user.branch = tenantStaff.branch;
+          }
+        }
+      }
+    } catch (enrichErr) {}
+
     next();
   } catch (error) {
     return errorResponse(res, 'Error verifying tenant context', error.message, 500);

@@ -240,6 +240,7 @@ const listConsignments = async ({
   tenantId,
   organizationId,
   branchId = null,
+  originBranchId = null,
   status = null,
   search = null,
   paymentType = null,
@@ -261,7 +262,9 @@ const listConsignments = async ({
     organization_id: organizationId,
   };
 
-  if (branchId) {
+  if (originBranchId && originBranchId !== 'ALL') {
+    where.origin_branch_id = originBranchId;
+  } else if (branchId && branchId !== 'ALL') {
     where[Op.or] = [
       { origin_branch_id: branchId },
       { dest_branch_id: branchId },
@@ -270,7 +273,13 @@ const listConsignments = async ({
   }
 
   if (status) {
-    where.status = status;
+    if (typeof status === 'string' && status.includes(',')) {
+      where.status = { [Op.in]: status.split(',').map((s) => s.trim()) };
+    } else if (Array.isArray(status)) {
+      where.status = { [Op.in]: status };
+    } else if (status !== 'ALL') {
+      where.status = status;
+    }
   }
 
   if (paymentType) {

@@ -6,6 +6,7 @@ const defineTenant = require('./Tenant');
 const defineOrganization = require('./Organization');
 const defineBranch = require('./Branch');
 const defineUser = require('./User');
+const defineTenantStaff = require('./TenantStaff');
 const defineRole = require('./Role');
 const definePermission = require('./Permission');
 const defineUserRole = require('./UserRole');
@@ -45,6 +46,7 @@ const defineAuditLog = require('./AuditLog');
 const defineSaaSPlan = require('./SaaSPlan');
 const defineSaaSSubscription = require('./SaaSSubscription');
 const defineDailyBrief = require('./DailyBrief');
+const defineApprovalRequest = require('./ApprovalRequest');
 
 /**
  * Initializes and associates strictly Master Database models (12 tables)
@@ -102,6 +104,13 @@ const initMasterModels = (targetSequelize) => {
   Organization.hasMany(Payment, { foreignKey: 'organization_id', as: 'payments' });
   Payment.belongsTo(Organization, { foreignKey: 'organization_id', as: 'organization' });
 
+  // Audit Logs
+  if (m.AuditLog) {
+    m.AuditLog.belongsTo(User, { foreignKey: 'user_id', as: 'performer' });
+    User.hasMany(m.AuditLog, { foreignKey: 'user_id', as: 'auditLogs' });
+    m.AuditLog.belongsTo(Organization, { foreignKey: 'organization_id', as: 'organization' });
+  }
+
   return m;
 };
 
@@ -110,10 +119,12 @@ const initMasterModels = (targetSequelize) => {
  * Excludes Master-only tables: Tenant, SaaSPlan, SaaSSubscription, RefreshToken
  */
 const initTenantModels = (targetSequelize) => {
+  const tenantStaffModel = defineTenantStaff(targetSequelize);
   const m = {
     Organization: defineOrganization(targetSequelize),
     Branch: defineBranch(targetSequelize),
-    User: defineUser(targetSequelize),
+    User: tenantStaffModel,
+    Staff: tenantStaffModel,
     Role: defineRole(targetSequelize),
     Permission: definePermission(targetSequelize),
     UserRole: defineUserRole(targetSequelize),
@@ -150,6 +161,7 @@ const initTenantModels = (targetSequelize) => {
     Notification: defineNotification(targetSequelize),
     AuditLog: defineAuditLog(targetSequelize),
     DailyBrief: defineDailyBrief(targetSequelize),
+    ApprovalRequest: defineApprovalRequest(targetSequelize),
   };
 
   const {
@@ -158,7 +170,7 @@ const initTenantModels = (targetSequelize) => {
     Booking, Consignment, ConsignmentItem, ConsignmentStatusHistory, Trip, TripConsignment,
     Dispatch, DeliveryRecord, Pod, Warehouse, WarehouseMovement, Invoice, InvoiceItem,
     Payment, CustomerLedger, Expense, ExpenseCategory, DriverAdvance, TripSettlement,
-    FuelEntry, VehicleMaintenance, Claim
+    FuelEntry, VehicleMaintenance, Claim, ApprovalRequest
   } = m;
 
   Organization.hasMany(Branch, { foreignKey: 'organization_id', as: 'branches' });
@@ -272,6 +284,27 @@ const initTenantModels = (targetSequelize) => {
 
   Vehicle.hasMany(VehicleMaintenance, { foreignKey: 'vehicle_id', as: 'maintenances' });
   VehicleMaintenance.belongsTo(Vehicle, { foreignKey: 'vehicle_id', as: 'vehicle' });
+
+  // Approvals & Workflows
+  Organization.hasMany(ApprovalRequest, { foreignKey: 'organization_id', as: 'approvalRequests' });
+  ApprovalRequest.belongsTo(Organization, { foreignKey: 'organization_id', as: 'organization' });
+
+  Branch.hasMany(ApprovalRequest, { foreignKey: 'branch_id', as: 'approvalRequests' });
+  ApprovalRequest.belongsTo(Branch, { foreignKey: 'branch_id', as: 'branch' });
+
+  User.hasMany(ApprovalRequest, { foreignKey: 'requester_id', as: 'submittedApprovals' });
+  ApprovalRequest.belongsTo(User, { foreignKey: 'requester_id', as: 'requester' });
+
+  User.hasMany(ApprovalRequest, { foreignKey: 'reviewer_id', as: 'reviewedApprovals' });
+  ApprovalRequest.belongsTo(User, { foreignKey: 'reviewer_id', as: 'reviewer' });
+
+  // Audit Logs
+  if (m.AuditLog) {
+    m.AuditLog.belongsTo(User, { foreignKey: 'user_id', as: 'performer' });
+    User.hasMany(m.AuditLog, { foreignKey: 'user_id', as: 'auditLogs' });
+    m.AuditLog.belongsTo(Branch, { foreignKey: 'branch_id', as: 'branch' });
+    m.AuditLog.belongsTo(Organization, { foreignKey: 'organization_id', as: 'organization' });
+  }
 
   return m;
 };

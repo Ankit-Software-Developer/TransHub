@@ -8,6 +8,7 @@ import { useTerminology } from '../../../../hooks/useTerminology';
 import Sidebar from '../../../../components/layout/Sidebar';
 import Navbar from '../../../../components/layout/Navbar';
 import Badge from '../../../../components/ui/Badge';
+import LoadingState from '../../../../components/ui/LoadingState';
 import BiltyPrint from '../../../../components/documents/BiltyPrint';
 import {
   Printer,
@@ -64,7 +65,11 @@ function ConsignmentDetailContent() {
   if (loading) {
     return (
       <div className="flex-1 p-8 flex items-center justify-center">
-        <div className="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full"></div>
+        <LoadingState
+          title={`Loading ${term} details...`}
+          description="Fetching shipment records, tracking timeline, and billing data"
+          minHeight="min-h-[340px]"
+        />
       </div>
     );
   }

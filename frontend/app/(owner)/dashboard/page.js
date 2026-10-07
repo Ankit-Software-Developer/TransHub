@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
+import LoadingState from '../../../components/ui/LoadingState';
 import Sidebar from '../../../components/layout/Sidebar';
 import Navbar from '../../../components/layout/Navbar';
 import { useTheme } from '../../../components/ThemeProvider';
@@ -48,10 +49,11 @@ const IndiaFleetMap = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="w-full h-[420px] rounded-2xl bg-slate-100 dark:bg-[#070B14] border border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center text-slate-500 dark:text-slate-400">
-        <div className="w-8 h-8 rounded-full border-2 border-blue-600 dark:border-cyan-400 border-t-transparent animate-spin mb-2" />
-        <span className="text-xs font-mono text-blue-600 dark:text-cyan-400">Connecting to India Highway Telemetry...</span>
-      </div>
+      <LoadingState
+        title="Connecting to India Highway Telemetry..."
+        description="Streaming real-time GPS coordinates and route waypoints"
+        minHeight="min-h-[420px]"
+      />
     )
   }
 );

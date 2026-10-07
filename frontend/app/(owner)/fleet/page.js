@@ -47,129 +47,13 @@ import Link from 'next/link';
 import DataTable from '../../../components/ui/DataTable';
 import { usePermissions } from '../../../hooks/usePermissions';
 
-const FLEET_VEHICLES = [
-  {
-    id: 'veh-01',
-    plate: 'HR 55 AB 1234',
-    model: 'TATA Prima 5530.S',
-    type: '40 FT Container',
-    capacity: '28 Tons',
-    year: '2023',
-    status: 'ON_ROAD',
-    status_label: 'On Road (72 km/h)',
-    location: 'NH-48 near Vadodara, GJ',
-    driver: 'Amit Kumar',
-    driver_rating: '4.8 ★',
-    fuel_level: 78,
-    mileage_mtd: '14,240 km',
-    avg_fuel_economy: '4.6 km/L',
-    insurance_expiry: '12 Nov 2025',
-    insurance_days: 38,
-    fitness_expiry: '18 Jan 2026',
-    fitness_days: 105,
-    puc_expiry: '08 Dec 2025',
-    puc_days: 64,
-    maintenance_status: 'HEALTHY'
-  },
-  {
-    id: 'veh-02',
-    plate: 'MH 12 CD 5678',
-    model: 'Ashok Leyland 4220',
-    type: '32 FT Multi-Axle',
-    capacity: '22 Tons',
-    year: '2022',
-    status: 'ON_ROAD',
-    status_label: 'On Road (66 km/h)',
-    location: 'Gwalior Highway, MP',
-    driver: 'Suresh Patil',
-    driver_rating: '4.9 ★',
-    fuel_level: 64,
-    mileage_mtd: '12,890 km',
-    avg_fuel_economy: '4.8 km/L',
-    insurance_expiry: '24 Oct 2025',
-    insurance_days: 19,
-    fitness_expiry: '14 May 2026',
-    fitness_days: 220,
-    puc_expiry: '15 Nov 2025',
-    puc_days: 41,
-    maintenance_status: 'HEALTHY'
-  },
-  {
-    id: 'veh-03',
-    plate: 'MH 31 GH 3456',
-    model: 'BharatBenz 2823',
-    type: '32 FT Closed Box',
-    capacity: '24 Tons',
-    year: '2021',
-    status: 'MAINTENANCE',
-    status_label: 'Under Service',
-    location: 'Nagpur Central Workshop',
-    driver: 'Manoj Verma (Assigned)',
-    driver_rating: '4.6 ★',
-    fuel_level: 52,
-    mileage_mtd: '9,450 km',
-    avg_fuel_economy: '4.2 km/L',
-    insurance_expiry: '05 Nov 2025',
-    insurance_days: 31,
-    fitness_expiry: '10 Feb 2026',
-    fitness_days: 128,
-    puc_expiry: '02 Oct 2025',
-    puc_days: -2,
-    maintenance_status: 'SERVICE_DUE'
-  },
-  {
-    id: 'veh-04',
-    plate: 'GJ 01 EF 9012',
-    model: 'Eicher Pro 6028',
-    type: '24 FT Open Bed',
-    capacity: '16 Tons',
-    year: '2024',
-    status: 'ON_ROAD',
-    status_label: 'On Road (68 km/h)',
-    location: 'Surat Ring Road, GJ',
-    driver: 'Ramesh Dave',
-    driver_rating: '4.7 ★',
-    fuel_level: 82,
-    mileage_mtd: '16,210 km',
-    avg_fuel_economy: '5.1 km/L',
-    insurance_expiry: '15 Mar 2026',
-    insurance_days: 162,
-    fitness_expiry: '20 Apr 2026',
-    fitness_days: 198,
-    puc_expiry: '12 Jan 2026',
-    puc_days: 99,
-    maintenance_status: 'HEALTHY'
-  },
-  {
-    id: 'veh-05',
-    plate: 'TS 09 IJ 7890',
-    model: 'Tata Signa 2823 Reefer',
-    type: '20 FT Cold Chain',
-    capacity: '14 Tons',
-    year: '2023',
-    status: 'YARD',
-    status_label: 'In Yard (Available)',
-    location: 'Hyderabad Regional Hub',
-    driver: 'Venkatesh Rao',
-    driver_rating: '5.0 ★',
-    fuel_level: 95,
-    mileage_mtd: '11,400 km',
-    avg_fuel_economy: '4.4 km/L',
-    insurance_expiry: '08 Dec 2025',
-    insurance_days: 64,
-    fitness_expiry: '19 Jun 2026',
-    fitness_days: 258,
-    puc_expiry: '28 Nov 2025',
-    puc_days: 54,
-    maintenance_status: 'HEALTHY'
-  }
-];
+
 
 export default function FleetManagementPage() {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
 
-  const [vehicles, setVehicles] = useState(FLEET_VEHICLES);
+  const [vehicles, setVehicles] = useState([]);
   const [branches, setBranches] = useState([]);
   const [drivers, setDrivers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -476,6 +360,7 @@ export default function FleetManagementPage() {
   };
 
   const handleOpenDelete = (row) => {
+    if (!canDeleteVehicle) return;
     setVehicleToDelete(row);
     setIsDeleteModalOpen(true);
   };
@@ -502,7 +387,14 @@ export default function FleetManagementPage() {
     setIsDetailsModalOpen(true);
   };
 
-  const { canExport, isAdmin } = usePermissions();
+  const {
+    canExport,
+    isAdmin,
+    canCreateVehicle,
+    canEditVehicle,
+    canDeleteVehicle,
+    canViewFleet,
+  } = usePermissions();
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(15);
   const [sortBy, setSortBy] = useState('plate');
@@ -555,15 +447,13 @@ export default function FleetManagementPage() {
         exportValue: (row) => `${row.plate} (${row.model}, ${row.year})`,
         render: (val, row) => (
           <div>
-            <div className={`font-mono font-bold text-xs flex items-center gap-1.5 ${
-              isDark ? 'text-cyan-400' : 'text-blue-600'
-            }`}>
+            <div className={`font-mono font-bold text-xs flex items-center gap-1.5 ${isDark ? 'text-cyan-400' : 'text-blue-600'
+              }`}>
               <Truck className="w-3.5 h-3.5 shrink-0" />
               <span>{row.plate}</span>
             </div>
-            <div className={`text-[10px] font-semibold mt-0.5 ${
-              isDark ? 'text-slate-300' : 'text-slate-600'
-            }`}>
+            <div className={`text-[10px] font-semibold mt-0.5 ${isDark ? 'text-slate-300' : 'text-slate-600'
+              }`}>
               {row.model} ({row.year})
             </div>
           </div>
@@ -597,11 +487,10 @@ export default function FleetManagementPage() {
             <div className={`text-xs font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
               {row.location}
             </div>
-            <span className={`text-[10px] font-mono font-bold ${
-              row.status === 'ON_ROAD'
+            <span className={`text-[10px] font-mono font-bold ${row.status === 'ON_ROAD'
                 ? isDark ? 'text-emerald-400' : 'text-emerald-600'
                 : isDark ? 'text-slate-400' : 'text-slate-500'
-            }`}>
+              }`}>
               {row.status_label}
             </span>
           </div>
@@ -638,9 +527,8 @@ export default function FleetManagementPage() {
                 {row.fuel_level}%
               </span>
             </div>
-            <div className={`w-16 h-1 rounded-full mt-1 overflow-hidden ${
-              isDark ? 'bg-slate-800' : 'bg-slate-200'
-            }`}>
+            <div className={`w-16 h-1 rounded-full mt-1 overflow-hidden ${isDark ? 'bg-slate-800' : 'bg-slate-200'
+              }`}>
               <div
                 style={{ width: `${row.fuel_level}%` }}
                 className={`h-full ${row.fuel_level > 30 ? (isDark ? 'bg-cyan-400' : 'bg-blue-600') : 'bg-rose-500'}`}
@@ -676,23 +564,20 @@ export default function FleetManagementPage() {
         exportValue: (row) => `INS:${row.insurance_days}d, FIT:${row.fitness_days}d, PUC:${row.puc_days}d`,
         render: (val, row) => (
           <div className="flex items-center gap-1.5 text-[10px] font-mono whitespace-nowrap">
-            <span className={`px-1.5 py-0.5 rounded border ${
-              row.insurance_days < 30
+            <span className={`px-1.5 py-0.5 rounded border ${row.insurance_days < 30
                 ? 'bg-amber-500/10 text-amber-500 border-amber-500/20'
                 : isDark ? 'bg-slate-900 text-slate-300 border-slate-800' : 'bg-slate-100 text-slate-700 border-slate-200'
-            }`}>
+              }`}>
               INS: {row.insurance_days}d
             </span>
-            <span className={`px-1.5 py-0.5 rounded border ${
-              isDark ? 'bg-slate-900 text-slate-300 border-slate-800' : 'bg-slate-100 text-slate-700 border-slate-200'
-            }`}>
+            <span className={`px-1.5 py-0.5 rounded border ${isDark ? 'bg-slate-900 text-slate-300 border-slate-800' : 'bg-slate-100 text-slate-700 border-slate-200'
+              }`}>
               FIT: {row.fitness_days}d
             </span>
-            <span className={`px-1.5 py-0.5 rounded border ${
-              row.puc_days < 0
+            <span className={`px-1.5 py-0.5 rounded border ${row.puc_days < 0
                 ? 'bg-rose-500/20 text-rose-500 border-rose-500/30'
                 : isDark ? 'bg-slate-900 text-slate-300 border-slate-800' : 'bg-slate-100 text-slate-700 border-slate-200'
-            }`}>
+              }`}>
               PUC: {row.puc_days < 0 ? 'EXP' : `${row.puc_days}d`}
             </span>
           </div>
@@ -708,15 +593,14 @@ export default function FleetManagementPage() {
         exportValue: (row) => row.status,
         render: (val, row) => (
           <div className="text-center whitespace-nowrap">
-            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-              row.status === 'ON_ROAD'
+            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${row.status === 'ON_ROAD'
                 ? isDark ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' : 'bg-emerald-50 text-emerald-700 border-emerald-200'
                 : row.status === 'YARD'
-                ? isDark ? 'bg-blue-500/15 text-blue-300 border-blue-500/30' : 'bg-blue-50 text-blue-700 border-blue-200'
-                : row.status === 'INACTIVE'
-                ? isDark ? 'bg-rose-500/15 text-rose-400 border-rose-500/30' : 'bg-rose-50 text-rose-700 border-rose-200'
-                : isDark ? 'bg-amber-500/15 text-amber-300 border-amber-500/30' : 'bg-amber-50 text-amber-700 border-amber-200'
-            }`}>
+                  ? isDark ? 'bg-blue-500/15 text-blue-300 border-blue-500/30' : 'bg-blue-50 text-blue-700 border-blue-200'
+                  : row.status === 'INACTIVE'
+                    ? isDark ? 'bg-rose-500/15 text-rose-400 border-rose-500/30' : 'bg-rose-50 text-rose-700 border-rose-200'
+                    : isDark ? 'bg-amber-500/15 text-amber-300 border-amber-500/30' : 'bg-amber-50 text-amber-700 border-amber-200'
+              }`}>
               <span className={`w-1.5 h-1.5 rounded-full mr-1 ${row.status === 'INACTIVE' ? 'bg-rose-500' : 'bg-current animate-pulse'}`} />
               {row.status === 'YARD' ? 'IN YARD' : row.status}
             </span>
@@ -728,66 +612,65 @@ export default function FleetManagementPage() {
         header: 'Actions',
         align: 'center',
         width: 170,
-        minWidth: 150,
-        excludeFromExport: true,
         resizable: false,
         render: (val, row) => (
           <div className="flex items-center justify-center space-x-1" onClick={(e) => e.stopPropagation()}>
             {/* Edit Button */}
-            <button
-              onClick={() => handleOpenEdit(row)}
-              className={`p-1.5 rounded-lg border text-xs font-semibold transition-colors cursor-pointer ${
-                isDark
-                  ? 'border-slate-800 bg-slate-900 text-amber-400 hover:text-amber-300 hover:bg-slate-800'
-                  : 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
-              }`}
-              title="Edit Vehicle Details (Admin)"
-            >
-              <Pencil className="w-3.5 h-3.5" />
-            </button>
+            {canEditVehicle && (
+              <button
+                onClick={() => handleOpenEdit(row)}
+                className={`p-1.5 rounded-lg border text-xs font-semibold transition-colors cursor-pointer ${isDark
+                    ? 'border-slate-800 bg-slate-900 text-amber-400 hover:text-amber-300 hover:bg-slate-800'
+                    : 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                  }`}
+                title="Edit Vehicle Details (Admin)"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+              </button>
+            )}
 
             {/* Active (Green) / Deactive (Red) Toggle Switch Button */}
-            <div className="flex items-center px-1" title={row.status !== 'INACTIVE' ? 'Vehicle Active (Click to Deactivate)' : 'Vehicle Deactivated (Click to Activate)'}>
-              <button
-                type="button"
-                onClick={() => handleToggleStatus(row)}
-                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                  row.status !== 'INACTIVE'
-                    ? 'bg-emerald-500 shadow-sm shadow-emerald-500/40 hover:bg-emerald-400'
-                    : 'bg-rose-500 shadow-sm shadow-rose-500/40 hover:bg-rose-400'
-                }`}
-              >
-                <span className="sr-only">Toggle Vehicle Active Status</span>
-                <span
-                  aria-hidden="true"
-                  className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
-                    row.status !== 'INACTIVE' ? 'translate-x-4' : 'translate-x-0'
-                  }`}
-                />
-              </button>
-            </div>
+            {canEditVehicle && (
+              <div className="flex items-center px-1" title={row.status !== 'INACTIVE' ? 'Vehicle Active (Click to Deactivate)' : 'Vehicle Deactivated (Click to Activate)'}>
+                <button
+                  type="button"
+                  onClick={() => handleToggleStatus(row)}
+                  className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${row.status !== 'INACTIVE'
+                      ? 'bg-emerald-500 shadow-sm shadow-emerald-500/40 hover:bg-emerald-400'
+                      : 'bg-rose-500 shadow-sm shadow-rose-500/40 hover:bg-rose-400'
+                    }`}
+                >
+                  <span className="sr-only">Toggle Vehicle Active Status</span>
+                  <span
+                    aria-hidden="true"
+                    className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${row.status !== 'INACTIVE' ? 'translate-x-4' : 'translate-x-0'
+                      }`}
+                  />
+                </button>
+              </div>
+            )}
 
             {/* Delete Button */}
-            <button
-              onClick={() => handleOpenDelete(row)}
-              className={`p-1.5 rounded-lg border text-xs font-semibold transition-colors cursor-pointer ${
-                isDark
-                  ? 'border-slate-800 bg-slate-900 text-rose-400 hover:text-rose-300 hover:bg-rose-500/10'
-                  : 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100'
-              }`}
-              title="Remove Vehicle (Admin)"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
+            {canDeleteVehicle && (
+              <button
+                onClick={() => handleOpenDelete(row)}
+                className={`p-1.5 rounded-lg border text-xs font-semibold transition-colors cursor-pointer ${isDark
+                    ? 'border-slate-800 bg-slate-900 text-rose-400 hover:text-rose-300 hover:bg-rose-500/10'
+                    : 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100'
+                  }`}
+                title="Remove Vehicle (Admin)"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            )}
 
             {/* View Details Asset Modal */}
             <button
               onClick={() => handleOpenDetails(row)}
-              className={`p-1.5 rounded-lg border text-xs font-semibold transition-colors cursor-pointer ${
-                isDark
+              className={`p-1.5 rounded-lg border text-xs font-semibold transition-colors cursor-pointer ${isDark
                   ? 'border-slate-800 bg-slate-900 text-cyan-400 hover:text-white'
                   : 'border-slate-200 bg-slate-100 text-blue-600 hover:bg-blue-50'
-              }`}
+                }`}
               title="View Asset Telematics & Specs"
             >
               <Eye className="w-3.5 h-3.5" />
@@ -800,23 +683,21 @@ export default function FleetManagementPage() {
   );
 
   return (
-    <div className={`flex min-h-screen transition-colors duration-300 ${
-      isDark ? 'bg-[#06080F] text-slate-100' : 'bg-[#F4F6FB] text-slate-900'
-    } font-sans`}>
+    <div className={`flex min-h-screen transition-colors duration-300 ${isDark ? 'bg-[#06080F] text-slate-100' : 'bg-[#F4F6FB] text-slate-900'
+      } font-sans`}>
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0">
         <Navbar />
 
         <main className="flex-1 p-5 sm:p-6 lg:p-8 space-y-6 max-w-[1720px] mx-auto w-full">
-          
+
           {/* Header Action Bar */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <div className="flex items-center space-x-2.5">
                 <Truck className="w-6 h-6 text-cyan-400" />
-                <h1 className={`text-2xl sm:text-3xl font-black tracking-tight ${
-                  isDark ? 'text-white' : 'text-slate-900'
-                }`}>
+                <h1 className={`text-2xl sm:text-3xl font-black tracking-tight ${isDark ? 'text-white' : 'text-slate-900'
+                  }`}>
                   Fleet & Vehicle Asset Management
                 </h1>
               </div>
@@ -826,13 +707,15 @@ export default function FleetManagementPage() {
             </div>
 
             <div className="flex items-center space-x-3">
-              <button
-                onClick={() => setIsAddModalOpen(true)}
-                className="flex items-center space-x-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 transition-all active:scale-95 cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Add Vehicle</span>
-              </button>
+              {canCreateVehicle && (
+                <button
+                  onClick={() => setIsAddModalOpen(true)}
+                  className="flex items-center space-x-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 transition-all active:scale-95 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Add Vehicle</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -913,55 +796,50 @@ export default function FleetManagementPage() {
                 <button
                   type="button"
                   onClick={() => { setFilterType('ALL'); setPage(1); }}
-                  className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
-                    filterType === 'ALL'
+                  className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${filterType === 'ALL'
                       ? 'bg-blue-600 text-white shadow-sm'
                       : isDark ? 'bg-slate-900 text-slate-400 hover:text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
+                    }`}
                 >
                   All Vehicles ({vehicles.length})
                 </button>
                 <button
                   type="button"
                   onClick={() => { setFilterType('ON_ROAD'); setPage(1); }}
-                  className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
-                    filterType === 'ON_ROAD'
+                  className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${filterType === 'ON_ROAD'
                       ? 'bg-emerald-600 text-white shadow-sm'
                       : isDark ? 'bg-slate-900 text-slate-400 hover:text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
+                    }`}
                 >
                   On Road ({vehicles.filter((v) => v.status === 'ON_ROAD').length})
                 </button>
                 <button
                   type="button"
                   onClick={() => { setFilterType('YARD'); setPage(1); }}
-                  className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
-                    filterType === 'YARD'
+                  className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${filterType === 'YARD'
                       ? 'bg-blue-600 text-white shadow-sm'
                       : isDark ? 'bg-slate-900 text-slate-400 hover:text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
+                    }`}
                 >
                   In Yard ({vehicles.filter((v) => v.status === 'YARD').length})
                 </button>
                 <button
                   type="button"
                   onClick={() => { setFilterType('MAINTENANCE'); setPage(1); }}
-                  className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
-                    filterType === 'MAINTENANCE'
+                  className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${filterType === 'MAINTENANCE'
                       ? 'bg-amber-600 text-white shadow-sm'
                       : isDark ? 'bg-slate-900 text-slate-400 hover:text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
+                    }`}
                 >
                   Maintenance ({vehicles.filter((v) => v.status === 'MAINTENANCE').length})
                 </button>
                 <button
                   type="button"
                   onClick={() => { setFilterType('INACTIVE'); setPage(1); }}
-                  className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
-                    filterType === 'INACTIVE'
+                  className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${filterType === 'INACTIVE'
                       ? 'bg-rose-600 text-white shadow-sm'
                       : isDark ? 'bg-slate-900 text-slate-400 hover:text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
+                    }`}
                 >
                   Inactive ({vehicles.filter((v) => v.status === 'INACTIVE').length})
                 </button>
@@ -974,21 +852,17 @@ export default function FleetManagementPage() {
 
       {/* Add Vehicle Modal */}
       {isAddModalOpen && (
-        <div className={`fixed inset-0 z-[9999] backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-150 ${
-          isDark ? 'bg-slate-950/80' : 'bg-slate-900/50'
-        }`}>
-          <div className={`relative w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden border ${
-            isDark ? 'bg-[#0B1020] border-cyan-500/40 text-white' : 'bg-white border-slate-200 text-slate-900'
+        <div className={`fixed inset-0 z-[9999] backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-150 ${isDark ? 'bg-slate-950/80' : 'bg-slate-900/50'
           }`}>
-            
-            {/* Modal Header */}
-            <div className={`px-6 py-4 border-b flex items-center justify-between ${
-              isDark ? 'border-slate-800 bg-[#0E1528]' : 'border-slate-100 bg-slate-50/70'
+          <div className={`relative w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden border ${isDark ? 'bg-[#0B1020] border-cyan-500/40 text-white' : 'bg-white border-slate-200 text-slate-900'
             }`}>
+
+            {/* Modal Header */}
+            <div className={`px-6 py-4 border-b flex items-center justify-between ${isDark ? 'border-slate-800 bg-[#0E1528]' : 'border-slate-100 bg-slate-50/70'
+              }`}>
               <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-2xl flex items-center justify-center border shadow-xs ${
-                  isDark ? 'bg-blue-600/20 text-cyan-400 border-cyan-400/30' : 'bg-blue-50 text-blue-600 border-blue-200'
-                }`}>
+                <div className={`w-10 h-10 rounded-2xl flex items-center justify-center border shadow-xs ${isDark ? 'bg-blue-600/20 text-cyan-400 border-cyan-400/30' : 'bg-blue-50 text-blue-600 border-blue-200'
+                  }`}>
                   <Truck className="w-5 h-5" />
                 </div>
                 <div>
@@ -1003,9 +877,8 @@ export default function FleetManagementPage() {
               <button
                 type="button"
                 onClick={() => setIsAddModalOpen(false)}
-                className={`w-8 h-8 rounded-xl flex items-center justify-center transition-colors cursor-pointer ${
-                  isDark ? 'bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800'
-                }`}
+                className={`w-8 h-8 rounded-xl flex items-center justify-center transition-colors cursor-pointer ${isDark ? 'bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800'
+                  }`}
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1013,9 +886,8 @@ export default function FleetManagementPage() {
 
             {/* Transporter Category Navigation Tabs (Only shown for Company Owned fleet) */}
             {vehicleForm.ownership === 'OWN' ? (
-              <div className={`flex border-b px-6 gap-1 overflow-x-auto text-xs font-bold ${
-                isDark ? 'border-slate-800 bg-slate-950/40' : 'border-slate-100 bg-slate-50/50'
-              }`}>
+              <div className={`flex border-b px-6 gap-1 overflow-x-auto text-xs font-bold ${isDark ? 'border-slate-800 bg-slate-950/40' : 'border-slate-100 bg-slate-50/50'
+                }`}>
                 {[
                   { id: 'basic', label: '1. Basic & Ownership', icon: ShieldCheck },
                   { id: 'specs', label: '2. Body & Specs', icon: SlidersHorizontal },
@@ -1029,11 +901,10 @@ export default function FleetManagementPage() {
                       key={tab.id}
                       type="button"
                       onClick={() => setAddModalTab(tab.id)}
-                      className={`py-3 px-3 border-b-2 flex items-center gap-1.5 whitespace-nowrap transition-all cursor-pointer ${
-                        isActive
+                      className={`py-3 px-3 border-b-2 flex items-center gap-1.5 whitespace-nowrap transition-all cursor-pointer ${isActive
                           ? isDark ? 'border-cyan-400 text-cyan-400' : 'border-blue-600 text-blue-600'
                           : isDark ? 'border-transparent text-slate-400 hover:text-slate-200' : 'border-transparent text-slate-500 hover:text-slate-800'
-                      }`}
+                        }`}
                     >
                       <Icon className="w-3.5 h-3.5" />
                       <span>{tab.label}</span>
@@ -1042,13 +913,11 @@ export default function FleetManagementPage() {
                 })}
               </div>
             ) : (
-              <div className={`px-6 py-3 border-b flex items-center justify-between gap-3 text-xs ${
-                isDark ? 'border-slate-800/80 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent text-amber-200' : 'border-amber-200/80 bg-gradient-to-r from-amber-50 via-amber-50/60 to-white text-amber-900'
-              }`}>
+              <div className={`px-6 py-3 border-b flex items-center justify-between gap-3 text-xs ${isDark ? 'border-slate-800/80 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent text-amber-200' : 'border-amber-200/80 bg-gradient-to-r from-amber-50 via-amber-50/60 to-white text-amber-900'
+                }`}>
                 <div className="flex items-center gap-2.5 min-w-0">
-                  <div className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 border ${
-                    isDark ? 'bg-amber-500/15 border-amber-500/30 text-amber-400' : 'bg-amber-100 border-amber-200 text-amber-700'
-                  }`}>
+                  <div className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 border ${isDark ? 'bg-amber-500/15 border-amber-500/30 text-amber-400' : 'bg-amber-100 border-amber-200 text-amber-700'
+                    }`}>
                     <CheckCircle2 className="w-4 h-4" />
                   </div>
                   <div className="min-w-0">
@@ -1061,11 +930,10 @@ export default function FleetManagementPage() {
                     </div>
                   </div>
                 </div>
-                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider whitespace-nowrap shrink-0 border shadow-xs ${
-                  isDark
+                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider whitespace-nowrap shrink-0 border shadow-xs ${isDark
                     ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
                     : 'bg-amber-100 text-amber-800 border-amber-200'
-                }`}>
+                  }`}>
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0 animate-pulse" />
                   {vehicleForm.ownership === 'MARKET' ? 'Market Hired' : 'Attached Partner'}
                 </span>
@@ -1096,11 +964,10 @@ export default function FleetManagementPage() {
                           placeholder="e.g. RJ 14 GB 9921 or MH 12 AB 1234"
                           value={vehicleForm.vehicle_number}
                           onChange={(e) => setVehicleForm({ ...vehicleForm, vehicle_number: e.target.value.toUpperCase() })}
-                          className={`w-full px-3.5 py-2.5 rounded-xl border text-sm font-mono font-bold uppercase focus:outline-none transition-colors ${
-                            isDark
+                          className={`w-full px-3.5 py-2.5 rounded-xl border text-sm font-mono font-bold uppercase focus:outline-none transition-colors ${isDark
                               ? 'bg-slate-900 border-slate-700 text-white placeholder-slate-500 focus:border-cyan-400'
                               : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400 focus:border-blue-500'
-                          }`}
+                            }`}
                         />
                         <p className="text-[10px] text-slate-400 mt-1">Official vehicle registration plate issued by RTO</p>
                       </div>
@@ -1112,11 +979,10 @@ export default function FleetManagementPage() {
                         <select
                           value={vehicleForm.ownership}
                           onChange={(e) => setVehicleForm({ ...vehicleForm, ownership: e.target.value })}
-                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors font-semibold ${
-                            isDark
+                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors font-semibold ${isDark
                               ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
                               : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
-                          }`}
+                            }`}
                         >
                           <option value="OWN">Own Fleet (Company Owned)</option>
                           <option value="ATTACHED">Attached Truck (Partner Transporter)</option>
@@ -1142,9 +1008,8 @@ export default function FleetManagementPage() {
                               placeholder="e.g. Ramesh Yadav / Apex Logistics"
                               value={vehicleForm.owner_name}
                               onChange={(e) => setVehicleForm({ ...vehicleForm, owner_name: e.target.value })}
-                              className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                                isDark ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400' : 'bg-white border-slate-200 text-slate-900 focus:border-blue-500'
-                              }`}
+                              className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${isDark ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400' : 'bg-white border-slate-200 text-slate-900 focus:border-blue-500'
+                                }`}
                             />
                           </div>
 
@@ -1158,9 +1023,8 @@ export default function FleetManagementPage() {
                               placeholder="e.g. +91 98290 12345"
                               value={vehicleForm.owner_phone}
                               onChange={(e) => setVehicleForm({ ...vehicleForm, owner_phone: e.target.value })}
-                              className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                                isDark ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400' : 'bg-white border-slate-200 text-slate-900 focus:border-blue-500'
-                              }`}
+                              className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${isDark ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400' : 'bg-white border-slate-200 text-slate-900 focus:border-blue-500'
+                                }`}
                             />
                           </div>
                         </div>
@@ -1173,11 +1037,10 @@ export default function FleetManagementPage() {
                             <select
                               value={vehicleForm.vehicle_type}
                               onChange={(e) => setVehicleForm({ ...vehicleForm, vehicle_type: e.target.value })}
-                              className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors font-medium ${
-                                isDark
+                              className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors font-medium ${isDark
                                   ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
                                   : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
-                              }`}
+                                }`}
                             >
                               <option value="TRUCK">Heavy Truck (16T - 25T Taurus)</option>
                               <option value="CONTAINER">Container (28T - 40T Closed Body)</option>
@@ -1201,11 +1064,10 @@ export default function FleetManagementPage() {
                               placeholder="e.g. 16.0"
                               value={vehicleForm.capacity_ton}
                               onChange={(e) => setVehicleForm({ ...vehicleForm, capacity_ton: e.target.value })}
-                              className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                                isDark
+                              className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
                                   ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
                                   : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
-                              }`}
+                                }`}
                             />
                           </div>
                         </div>
@@ -1223,11 +1085,10 @@ export default function FleetManagementPage() {
                             <select
                               value={vehicleForm.assigned_driver_id}
                               onChange={(e) => setVehicleForm({ ...vehicleForm, assigned_driver_id: e.target.value })}
-                              className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                                isDark
+                              className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
                                   ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
                                   : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
-                              }`}
+                                }`}
                             >
                               <option value="">Unassigned (Open Pool)</option>
                               {drivers.map((d) => (
@@ -1245,11 +1106,10 @@ export default function FleetManagementPage() {
                             <select
                               value={vehicleForm.branch_id}
                               onChange={(e) => setVehicleForm({ ...vehicleForm, branch_id: e.target.value })}
-                              className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                                isDark
+                              className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
                                   ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
                                   : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
-                              }`}
+                                }`}
                             >
                               <option value="">{branches.length === 0 ? 'No branches configured yet (Main Yard)' : 'Main Yard / Unassigned'}</option>
                               {branches.map((b) => (
@@ -1268,11 +1128,10 @@ export default function FleetManagementPage() {
                           <select
                             value={vehicleForm.status}
                             onChange={(e) => setVehicleForm({ ...vehicleForm, status: e.target.value })}
-                            className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-bold focus:outline-none transition-colors ${
-                              isDark
+                            className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-bold focus:outline-none transition-colors ${isDark
                                 ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
                                 : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
-                            }`}
+                              }`}
                           >
                             <option value="AVAILABLE">At Yard / Standby (Available for Dispatch)</option>
                             <option value="ON_ROAD">In Transit (Active On Road)</option>
@@ -1293,11 +1152,10 @@ export default function FleetManagementPage() {
                               placeholder="e.g. Tata Signa 4825.T / BharatBenz 2823R"
                               value={vehicleForm.make_model}
                               onChange={(e) => setVehicleForm({ ...vehicleForm, make_model: e.target.value })}
-                              className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                                isDark
+                              className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
                                   ? 'bg-slate-900 border-slate-700 text-white placeholder-slate-500 focus:border-cyan-400'
                                   : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400 focus:border-blue-500'
-                              }`}
+                                }`}
                             />
                           </div>
 
@@ -1312,11 +1170,10 @@ export default function FleetManagementPage() {
                               max={new Date().getFullYear() + 1}
                               value={vehicleForm.manufacturing_year}
                               onChange={(e) => setVehicleForm({ ...vehicleForm, manufacturing_year: e.target.value })}
-                              className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                                isDark
+                              className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
                                   ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
                                   : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
-                              }`}
+                                }`}
                             />
                           </div>
                         </div>
@@ -1328,11 +1185,10 @@ export default function FleetManagementPage() {
                           <select
                             value={vehicleForm.fuel_type}
                             onChange={(e) => setVehicleForm({ ...vehicleForm, fuel_type: e.target.value })}
-                            className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                              isDark
+                            className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
                                 ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
                                 : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
-                            }`}
+                              }`}
                           >
                             <option value="DIESEL">Diesel</option>
                             <option value="CNG">CNG (Clean Fuel)</option>
@@ -1357,11 +1213,10 @@ export default function FleetManagementPage() {
                         <select
                           value={vehicleForm.vehicle_type}
                           onChange={(e) => setVehicleForm({ ...vehicleForm, vehicle_type: e.target.value })}
-                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors font-medium ${
-                            isDark
+                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors font-medium ${isDark
                               ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
                               : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
-                          }`}
+                            }`}
                         >
                           <option value="TRUCK">Heavy Truck (16T - 25T Taurus)</option>
                           <option value="CONTAINER">Container (28T - 40T Closed Body)</option>
@@ -1384,11 +1239,10 @@ export default function FleetManagementPage() {
                           placeholder="e.g. 16.0"
                           value={vehicleForm.capacity_ton}
                           onChange={(e) => setVehicleForm({ ...vehicleForm, capacity_ton: e.target.value })}
-                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors font-bold ${
-                            isDark
+                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors font-bold ${isDark
                               ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
                               : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
-                          }`}
+                            }`}
                         />
                       </div>
                     </div>
@@ -1404,11 +1258,10 @@ export default function FleetManagementPage() {
                           placeholder="e.g. 22 or 32"
                           value={vehicleForm.length_ft}
                           onChange={(e) => setVehicleForm({ ...vehicleForm, length_ft: e.target.value })}
-                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                            isDark
+                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
                               ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
                               : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
-                          }`}
+                            }`}
                         />
                         <p className="text-[10px] text-slate-400 mt-1">Cargo bed length (e.g. 19ft, 22ft, 32ft)</p>
                       </div>
@@ -1422,11 +1275,10 @@ export default function FleetManagementPage() {
                           placeholder="e.g. MAT622159P8K12345"
                           value={vehicleForm.chassis_number}
                           onChange={(e) => setVehicleForm({ ...vehicleForm, chassis_number: e.target.value.toUpperCase() })}
-                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono uppercase focus:outline-none transition-colors ${
-                            isDark
+                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono uppercase focus:outline-none transition-colors ${isDark
                               ? 'bg-slate-900 border-slate-700 text-white placeholder-slate-500 focus:border-cyan-400'
                               : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400 focus:border-blue-500'
-                          }`}
+                            }`}
                         />
                       </div>
 
@@ -1439,11 +1291,10 @@ export default function FleetManagementPage() {
                           placeholder="e.g. 697TC56P812345"
                           value={vehicleForm.engine_number}
                           onChange={(e) => setVehicleForm({ ...vehicleForm, engine_number: e.target.value.toUpperCase() })}
-                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono uppercase focus:outline-none transition-colors ${
-                            isDark
+                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono uppercase focus:outline-none transition-colors ${isDark
                               ? 'bg-slate-900 border-slate-700 text-white placeholder-slate-500 focus:border-cyan-400'
                               : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400 focus:border-blue-500'
-                          }`}
+                            }`}
                         />
                       </div>
                     </div>
@@ -1453,9 +1304,8 @@ export default function FleetManagementPage() {
                 {/* TAB 3: STATUTORY & LEGAL COMPLIANCE EXPIRIES (Company Owned Fleet) */}
                 {vehicleForm.ownership === 'OWN' && addModalTab === 'compliance' && (
                   <div className="space-y-4 animate-in fade-in duration-150">
-                    <div className={`p-3 rounded-xl border text-xs flex items-center gap-2 ${
-                      isDark ? 'bg-blue-950/20 border-blue-500/30 text-blue-300' : 'bg-blue-50/70 border-blue-200 text-blue-800'
-                    }`}>
+                    <div className={`p-3 rounded-xl border text-xs flex items-center gap-2 ${isDark ? 'bg-blue-950/20 border-blue-500/30 text-blue-300' : 'bg-blue-50/70 border-blue-200 text-blue-800'
+                      }`}>
                       <FileCheck2 className="w-4 h-4 shrink-0" />
                       <span>Transporters are alerted before statutory expiries to avoid RTO roadside seizure and highway penalties.</span>
                     </div>
@@ -1470,11 +1320,10 @@ export default function FleetManagementPage() {
                           placeholder="e.g. RC-RJ14GB9921"
                           value={vehicleForm.rc_number}
                           onChange={(e) => setVehicleForm({ ...vehicleForm, rc_number: e.target.value.toUpperCase() })}
-                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono uppercase focus:outline-none transition-colors ${
-                            isDark
+                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono uppercase focus:outline-none transition-colors ${isDark
                               ? 'bg-slate-900 border-slate-700 text-white placeholder-slate-500 focus:border-cyan-400'
                               : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400 focus:border-blue-500'
-                          }`}
+                            }`}
                         />
                       </div>
 
@@ -1486,11 +1335,10 @@ export default function FleetManagementPage() {
                           type="date"
                           value={vehicleForm.rc_expiry}
                           onChange={(e) => setVehicleForm({ ...vehicleForm, rc_expiry: e.target.value })}
-                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                            isDark
+                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
                               ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
                               : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
-                          }`}
+                            }`}
                         />
                       </div>
                     </div>
@@ -1504,11 +1352,10 @@ export default function FleetManagementPage() {
                           type="date"
                           value={vehicleForm.insurance_expiry}
                           onChange={(e) => setVehicleForm({ ...vehicleForm, insurance_expiry: e.target.value })}
-                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                            isDark
+                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
                               ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
                               : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
-                          }`}
+                            }`}
                         />
                       </div>
 
@@ -1520,11 +1367,10 @@ export default function FleetManagementPage() {
                           type="date"
                           value={vehicleForm.fitness_expiry}
                           onChange={(e) => setVehicleForm({ ...vehicleForm, fitness_expiry: e.target.value })}
-                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                            isDark
+                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
                               ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
                               : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
-                          }`}
+                            }`}
                         />
                       </div>
                     </div>
@@ -1538,11 +1384,10 @@ export default function FleetManagementPage() {
                           type="date"
                           value={vehicleForm.permit_expiry}
                           onChange={(e) => setVehicleForm({ ...vehicleForm, permit_expiry: e.target.value })}
-                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                            isDark
+                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
                               ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
                               : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
-                          }`}
+                            }`}
                         />
                       </div>
 
@@ -1554,11 +1399,10 @@ export default function FleetManagementPage() {
                           type="date"
                           value={vehicleForm.puc_expiry}
                           onChange={(e) => setVehicleForm({ ...vehicleForm, puc_expiry: e.target.value })}
-                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                            isDark
+                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
                               ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
                               : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
-                          }`}
+                            }`}
                         />
                       </div>
                     </div>
@@ -1579,11 +1423,10 @@ export default function FleetManagementPage() {
                             placeholder="e.g. 600101-3482-9901"
                             value={vehicleForm.fastag_id}
                             onChange={(e) => setVehicleForm({ ...vehicleForm, fastag_id: e.target.value })}
-                            className={`w-full pl-3.5 pr-20 py-2.5 rounded-xl border text-xs font-mono focus:outline-none transition-colors ${
-                              isDark
+                            className={`w-full pl-3.5 pr-20 py-2.5 rounded-xl border text-xs font-mono focus:outline-none transition-colors ${isDark
                                 ? 'bg-slate-900 border-slate-700 text-white placeholder-slate-500 focus:border-cyan-400'
                                 : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400 focus:border-blue-500'
-                            }`}
+                              }`}
                           />
                           <div className="absolute right-3 top-2.5 text-[10px] text-blue-500 font-bold uppercase">
                             NETC RFID
@@ -1605,18 +1448,15 @@ export default function FleetManagementPage() {
                             placeholder="e.g. GPS-TRK-9921 (leave blank if no GPS fitted)"
                             value={vehicleForm.gps_device_id}
                             onChange={(e) => setVehicleForm({ ...vehicleForm, gps_device_id: e.target.value })}
-                            className={`w-full pl-3.5 pr-28 py-2.5 rounded-xl border text-xs font-mono focus:outline-none transition-colors ${
-                              isDark
+                            className={`w-full pl-3.5 pr-28 py-2.5 rounded-xl border text-xs font-mono focus:outline-none transition-colors ${isDark
                                 ? 'bg-slate-900 border-slate-700 text-white placeholder-slate-500 focus:border-cyan-400'
                                 : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400 focus:border-blue-500'
-                            }`}
+                              }`}
                           />
-                          <div className={`absolute right-3 top-2.5 flex items-center gap-1 text-[10px] font-bold ${
-                            vehicleForm.gps_device_id?.trim() ? 'text-emerald-500' : isDark ? 'text-slate-500' : 'text-slate-400'
-                          }`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${
-                              vehicleForm.gps_device_id?.trim() ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
-                            }`} />
+                          <div className={`absolute right-3 top-2.5 flex items-center gap-1 text-[10px] font-bold ${vehicleForm.gps_device_id?.trim() ? 'text-emerald-500' : isDark ? 'text-slate-500' : 'text-slate-400'
+                            }`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${vehicleForm.gps_device_id?.trim() ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
+                              }`} />
                             {vehicleForm.gps_device_id?.trim() ? 'AIS-140 Live' : 'No GPS'}
                           </div>
                         </div>
@@ -1636,11 +1476,10 @@ export default function FleetManagementPage() {
                           placeholder="e.g. 12450"
                           value={vehicleForm.current_odometer}
                           onChange={(e) => setVehicleForm({ ...vehicleForm, current_odometer: e.target.value })}
-                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                            isDark
+                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
                               ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
                               : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
-                          }`}
+                            }`}
                         />
                       </div>
 
@@ -1651,11 +1490,10 @@ export default function FleetManagementPage() {
                         <select
                           value={vehicleForm.branch_id}
                           onChange={(e) => setVehicleForm({ ...vehicleForm, branch_id: e.target.value })}
-                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                            isDark
+                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
                               ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
                               : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
-                          }`}
+                            }`}
                         >
                           {branches.length === 0 ? (
                             <option value="">{branches.length === 0 ? 'No branches configured yet (Main Yard)' : 'Main Yard / Unassigned'}</option>
@@ -1681,11 +1519,10 @@ export default function FleetManagementPage() {
                         <select
                           value={vehicleForm.assigned_driver_id}
                           onChange={(e) => setVehicleForm({ ...vehicleForm, assigned_driver_id: e.target.value })}
-                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                            isDark
+                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
                               ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
                               : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
-                          }`}
+                            }`}
                         >
                           <option value="">Unassigned (Open Pool)</option>
                           {drivers.map((d) => (
@@ -1704,11 +1541,10 @@ export default function FleetManagementPage() {
                       <select
                         value={vehicleForm.status}
                         onChange={(e) => setVehicleForm({ ...vehicleForm, status: e.target.value })}
-                        className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-bold focus:outline-none transition-colors ${
-                          isDark
+                        className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-bold focus:outline-none transition-colors ${isDark
                             ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
                             : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
-                        }`}
+                          }`}
                       >
                         <option value="AVAILABLE">At Yard (Available for Line-Haul Dispatch)</option>
                         <option value="ON_ROAD">In Transit (Active On Road)</option>
@@ -1721,15 +1557,14 @@ export default function FleetManagementPage() {
               </div>
 
               {/* Form Action Footer */}
-              <div className={`px-6 py-4 border-t flex items-center justify-between ${
-                isDark ? 'border-slate-800 bg-[#0E1528]' : 'border-slate-100 bg-slate-50/80'
-              }`}>
+              <div className={`px-6 py-4 border-t flex items-center justify-between ${isDark ? 'border-slate-800 bg-[#0E1528]' : 'border-slate-100 bg-slate-50/80'
+                }`}>
                 <div className="text-[11px] text-slate-400 font-medium">
                   {vehicleForm.ownership === 'OWN' ? (
                     addModalTab === 'basic' ? 'Step 1 of 4: Vehicle & Ownership' :
-                    addModalTab === 'specs' ? 'Step 2 of 4: Body Dimensions & Weight' :
-                    addModalTab === 'compliance' ? 'Step 3 of 4: Legal & RTO Expiries' :
-                    'Step 4 of 4: FASTag & Operational Hub'
+                      addModalTab === 'specs' ? 'Step 2 of 4: Body Dimensions & Weight' :
+                        addModalTab === 'compliance' ? 'Step 3 of 4: Legal & RTO Expiries' :
+                          'Step 4 of 4: FASTag & Operational Hub'
                   ) : (
                     'Market / Attached Truck: Ready for dispatch'
                   )}
@@ -1745,9 +1580,8 @@ export default function FleetManagementPage() {
                         else if (addModalTab === 'compliance') setAddModalTab('specs');
                         else if (addModalTab === 'telematics') setAddModalTab('compliance');
                       }}
-                      className={`px-3.5 py-2 rounded-xl border text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
-                        isDark ? 'border-slate-700 hover:bg-slate-800 text-slate-300' : 'border-slate-200 hover:bg-slate-100 text-slate-700'
-                      }`}
+                      className={`px-3.5 py-2 rounded-xl border text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${isDark ? 'border-slate-700 hover:bg-slate-800 text-slate-300' : 'border-slate-200 hover:bg-slate-100 text-slate-700'
+                        }`}
                     >
                       <ArrowLeft className="w-3.5 h-3.5" />
                       <span>Back</span>
@@ -1757,9 +1591,8 @@ export default function FleetManagementPage() {
                   <button
                     type="button"
                     onClick={() => setIsAddModalOpen(false)}
-                    className={`px-4 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
-                      isDark ? 'bg-slate-800 hover:bg-slate-700 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                    }`}
+                    className={`px-4 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${isDark ? 'bg-slate-800 hover:bg-slate-700 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                      }`}
                   >
                     Cancel
                   </button>
@@ -1818,13 +1651,11 @@ export default function FleetManagementPage() {
       {isEditModalOpen && editingVehicle && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-200">
           <div
-            className={`w-full max-w-2xl rounded-3xl border shadow-2xl overflow-hidden transition-all ${
-              isDark ? 'bg-[#0B1020] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
-            }`}
+            className={`w-full max-w-2xl rounded-3xl border shadow-2xl overflow-hidden transition-all ${isDark ? 'bg-[#0B1020] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
+              }`}
           >
-            <div className={`px-6 py-4 border-b flex items-center justify-between ${
-              isDark ? 'border-slate-800 bg-[#0E1528]' : 'border-slate-100 bg-slate-50'
-            }`}>
+            <div className={`px-6 py-4 border-b flex items-center justify-between ${isDark ? 'border-slate-800 bg-[#0E1528]' : 'border-slate-100 bg-slate-50'
+              }`}>
               <div className="flex items-center space-x-3">
                 <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-500 flex items-center justify-center border border-amber-500/30">
                   <Pencil className="w-5 h-5" />
@@ -1841,9 +1672,8 @@ export default function FleetManagementPage() {
               </div>
               <button
                 onClick={() => setIsEditModalOpen(false)}
-                className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${
-                  isDark ? 'border-slate-800 hover:bg-slate-800 text-slate-400' : 'border-slate-200 hover:bg-slate-100 text-slate-600'
-                }`}
+                className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${isDark ? 'border-slate-800 hover:bg-slate-800 text-slate-400' : 'border-slate-200 hover:bg-slate-100 text-slate-600'
+                  }`}
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1851,9 +1681,8 @@ export default function FleetManagementPage() {
 
             {/* Edit Modal Tabs (Only shown for Company Owned fleet) */}
             {editingVehicle.ownership === 'OWN' ? (
-              <div className={`flex border-b px-6 gap-1 overflow-x-auto text-xs font-bold ${
-                isDark ? 'border-slate-800 bg-slate-950/40' : 'border-slate-100 bg-slate-50/50'
-              }`}>
+              <div className={`flex border-b px-6 gap-1 overflow-x-auto text-xs font-bold ${isDark ? 'border-slate-800 bg-slate-950/40' : 'border-slate-100 bg-slate-50/50'
+                }`}>
                 {[
                   { id: 'basic', label: '1. Basic & Ownership', icon: ShieldCheck },
                   { id: 'specs', label: '2. Body & Specs', icon: SlidersHorizontal },
@@ -1867,11 +1696,10 @@ export default function FleetManagementPage() {
                       key={tab.id}
                       type="button"
                       onClick={() => setEditModalTab(tab.id)}
-                      className={`py-3 px-3 border-b-2 flex items-center gap-1.5 whitespace-nowrap transition-all cursor-pointer ${
-                        isActive
+                      className={`py-3 px-3 border-b-2 flex items-center gap-1.5 whitespace-nowrap transition-all cursor-pointer ${isActive
                           ? isDark ? 'border-amber-400 text-amber-400' : 'border-amber-600 text-amber-600'
                           : isDark ? 'border-transparent text-slate-400 hover:text-slate-200' : 'border-transparent text-slate-500 hover:text-slate-800'
-                      }`}
+                        }`}
                     >
                       <Icon className="w-3.5 h-3.5" />
                       <span>{tab.label}</span>
@@ -1880,13 +1708,11 @@ export default function FleetManagementPage() {
                 })}
               </div>
             ) : (
-              <div className={`px-6 py-3 border-b flex items-center justify-between gap-3 text-xs ${
-                isDark ? 'border-slate-800/80 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent text-amber-200' : 'border-amber-200/80 bg-gradient-to-r from-amber-50 via-amber-50/60 to-white text-amber-900'
-              }`}>
+              <div className={`px-6 py-3 border-b flex items-center justify-between gap-3 text-xs ${isDark ? 'border-slate-800/80 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent text-amber-200' : 'border-amber-200/80 bg-gradient-to-r from-amber-50 via-amber-50/60 to-white text-amber-900'
+                }`}>
                 <div className="flex items-center gap-2.5 min-w-0">
-                  <div className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 border ${
-                    isDark ? 'bg-amber-500/15 border-amber-500/30 text-amber-400' : 'bg-amber-100 border-amber-200 text-amber-700'
-                  }`}>
+                  <div className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 border ${isDark ? 'bg-amber-500/15 border-amber-500/30 text-amber-400' : 'bg-amber-100 border-amber-200 text-amber-700'
+                    }`}>
                     <CheckCircle2 className="w-4 h-4" />
                   </div>
                   <div className="min-w-0">
@@ -1899,11 +1725,10 @@ export default function FleetManagementPage() {
                     </div>
                   </div>
                 </div>
-                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider whitespace-nowrap shrink-0 border shadow-xs ${
-                  isDark
+                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider whitespace-nowrap shrink-0 border shadow-xs ${isDark
                     ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
                     : 'bg-amber-100 text-amber-800 border-amber-200'
-                }`}>
+                  }`}>
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0 animate-pulse" />
                   {editingVehicle.ownership === 'MARKET' ? 'Market Hired' : 'Attached Partner'}
                 </span>
@@ -1932,11 +1757,10 @@ export default function FleetManagementPage() {
                           required
                           value={editingVehicle.vehicle_number}
                           onChange={(e) => setEditingVehicle({ ...editingVehicle, vehicle_number: e.target.value.toUpperCase() })}
-                          className={`w-full px-3.5 py-2.5 rounded-xl border text-sm font-mono font-bold uppercase focus:outline-none transition-colors ${
-                            isDark
+                          className={`w-full px-3.5 py-2.5 rounded-xl border text-sm font-mono font-bold uppercase focus:outline-none transition-colors ${isDark
                               ? 'bg-slate-900 border-slate-700 text-white focus:border-amber-400'
                               : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-amber-500'
-                          }`}
+                            }`}
                         />
                       </div>
 
@@ -1947,11 +1771,10 @@ export default function FleetManagementPage() {
                         <select
                           value={editingVehicle.ownership}
                           onChange={(e) => setEditingVehicle({ ...editingVehicle, ownership: e.target.value })}
-                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors font-semibold ${
-                            isDark
+                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors font-semibold ${isDark
                               ? 'bg-slate-900 border-slate-700 text-white focus:border-amber-400'
                               : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-amber-500'
-                          }`}
+                            }`}
                         >
                           <option value="OWN">Own Fleet (Company Owned)</option>
                           <option value="ATTACHED">Attached Truck (Partner Transporter)</option>
@@ -1972,9 +1795,8 @@ export default function FleetManagementPage() {
                               required
                               value={editingVehicle.owner_name || ''}
                               onChange={(e) => setEditingVehicle({ ...editingVehicle, owner_name: e.target.value })}
-                              className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                                isDark ? 'bg-slate-900 border-slate-700 text-white focus:border-amber-400' : 'bg-white border-slate-200 text-slate-900 focus:border-amber-500'
-                              }`}
+                              className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${isDark ? 'bg-slate-900 border-slate-700 text-white focus:border-amber-400' : 'bg-white border-slate-200 text-slate-900 focus:border-amber-500'
+                                }`}
                             />
                           </div>
                           <div>
@@ -1986,9 +1808,8 @@ export default function FleetManagementPage() {
                               required
                               value={editingVehicle.owner_phone || ''}
                               onChange={(e) => setEditingVehicle({ ...editingVehicle, owner_phone: e.target.value })}
-                              className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                                isDark ? 'bg-slate-900 border-slate-700 text-white focus:border-amber-400' : 'bg-white border-slate-200 text-slate-900 focus:border-amber-500'
-                              }`}
+                              className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${isDark ? 'bg-slate-900 border-slate-700 text-white focus:border-amber-400' : 'bg-white border-slate-200 text-slate-900 focus:border-amber-500'
+                                }`}
                             />
                           </div>
                         </div>
@@ -2001,11 +1822,10 @@ export default function FleetManagementPage() {
                             <select
                               value={editingVehicle.vehicle_type}
                               onChange={(e) => setEditingVehicle({ ...editingVehicle, vehicle_type: e.target.value })}
-                              className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors font-medium ${
-                                isDark
+                              className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors font-medium ${isDark
                                   ? 'bg-slate-900 border-slate-700 text-white focus:border-amber-400'
                                   : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-amber-500'
-                              }`}
+                                }`}
                             >
                               <option value="TRUCK">Heavy Truck (16T - 25T Taurus)</option>
                               <option value="CONTAINER">Container (28T - 40T Closed Body)</option>
@@ -2027,11 +1847,10 @@ export default function FleetManagementPage() {
                               min="0.5"
                               value={editingVehicle.capacity_ton}
                               onChange={(e) => setEditingVehicle({ ...editingVehicle, capacity_ton: e.target.value })}
-                              className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                                isDark
+                              className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
                                   ? 'bg-slate-900 border-slate-700 text-white focus:border-amber-400'
                                   : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-amber-500'
-                              }`}
+                                }`}
                             />
                           </div>
                         </div>
@@ -2049,11 +1868,10 @@ export default function FleetManagementPage() {
                             <select
                               value={editingVehicle.assigned_driver_id || ''}
                               onChange={(e) => setEditingVehicle({ ...editingVehicle, assigned_driver_id: e.target.value })}
-                              className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                                isDark
+                              className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
                                   ? 'bg-slate-900 border-slate-700 text-white focus:border-amber-400'
                                   : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-amber-500'
-                              }`}
+                                }`}
                             >
                               <option value="">Unassigned (Open Pool)</option>
                               {drivers.map((d) => (
@@ -2071,11 +1889,10 @@ export default function FleetManagementPage() {
                             <select
                               value={editingVehicle.branch_id || ''}
                               onChange={(e) => setEditingVehicle({ ...editingVehicle, branch_id: e.target.value })}
-                              className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                                isDark
+                              className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
                                   ? 'bg-slate-900 border-slate-700 text-white focus:border-amber-400'
                                   : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-amber-500'
-                              }`}
+                                }`}
                             >
                               <option value="">{branches.length === 0 ? 'No branches configured yet (Main Yard)' : 'Main Yard / Unassigned'}</option>
                               {branches.map((b) => (
@@ -2094,11 +1911,10 @@ export default function FleetManagementPage() {
                           <select
                             value={editingVehicle.status}
                             onChange={(e) => setEditingVehicle({ ...editingVehicle, status: e.target.value })}
-                            className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-bold focus:outline-none transition-colors ${
-                              isDark
+                            className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-bold focus:outline-none transition-colors ${isDark
                                 ? 'bg-slate-900 border-slate-700 text-white focus:border-amber-400'
                                 : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-amber-500'
-                            }`}
+                              }`}
                           >
                             <option value="AVAILABLE">At Yard (Ready for Dispatch)</option>
                             <option value="ON_ROAD">In Transit (Active On Road)</option>
@@ -2116,11 +1932,10 @@ export default function FleetManagementPage() {
                             <select
                               value={editingVehicle.fuel_type}
                               onChange={(e) => setEditingVehicle({ ...editingVehicle, fuel_type: e.target.value })}
-                              className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                                isDark
+                              className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
                                   ? 'bg-slate-900 border-slate-700 text-white focus:border-amber-400'
                                   : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-amber-500'
-                              }`}
+                                }`}
                             >
                               <option value="DIESEL">Diesel</option>
                               <option value="CNG">CNG</option>
@@ -2138,11 +1953,10 @@ export default function FleetManagementPage() {
                               type="text"
                               value={editingVehicle.make_model || ''}
                               onChange={(e) => setEditingVehicle({ ...editingVehicle, make_model: e.target.value })}
-                              className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                                isDark
+                              className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
                                   ? 'bg-slate-900 border-slate-700 text-white focus:border-amber-400'
                                   : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-amber-500'
-                              }`}
+                                }`}
                             />
                           </div>
                         </div>
@@ -2155,11 +1969,10 @@ export default function FleetManagementPage() {
                             type="number"
                             value={editingVehicle.manufacturing_year || ''}
                             onChange={(e) => setEditingVehicle({ ...editingVehicle, manufacturing_year: e.target.value })}
-                            className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                              isDark
+                            className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
                                 ? 'bg-slate-900 border-slate-700 text-white focus:border-amber-400'
                                 : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-amber-500'
-                            }`}
+                              }`}
                           />
                         </div>
                       </>
@@ -2178,11 +1991,10 @@ export default function FleetManagementPage() {
                         <select
                           value={editingVehicle.vehicle_type}
                           onChange={(e) => setEditingVehicle({ ...editingVehicle, vehicle_type: e.target.value })}
-                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors font-medium ${
-                            isDark
+                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors font-medium ${isDark
                               ? 'bg-slate-900 border-slate-700 text-white focus:border-amber-400'
                               : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-amber-500'
-                          }`}
+                            }`}
                         >
                           <option value="TRUCK">Heavy Truck (16T - 25T Taurus)</option>
                           <option value="CONTAINER">Container (28T - 40T Closed Body)</option>
@@ -2204,11 +2016,10 @@ export default function FleetManagementPage() {
                           min="0.5"
                           value={editingVehicle.capacity_ton}
                           onChange={(e) => setEditingVehicle({ ...editingVehicle, capacity_ton: e.target.value })}
-                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors font-bold ${
-                            isDark
+                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors font-bold ${isDark
                               ? 'bg-slate-900 border-slate-700 text-white focus:border-amber-400'
                               : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-amber-500'
-                          }`}
+                            }`}
                         />
                       </div>
                     </div>
@@ -2223,11 +2034,10 @@ export default function FleetManagementPage() {
                           step="1"
                           value={editingVehicle.length_ft}
                           onChange={(e) => setEditingVehicle({ ...editingVehicle, length_ft: e.target.value })}
-                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                            isDark
+                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
                               ? 'bg-slate-900 border-slate-700 text-white focus:border-amber-400'
                               : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-amber-500'
-                          }`}
+                            }`}
                         />
                       </div>
 
@@ -2239,11 +2049,10 @@ export default function FleetManagementPage() {
                           type="text"
                           value={editingVehicle.chassis_number}
                           onChange={(e) => setEditingVehicle({ ...editingVehicle, chassis_number: e.target.value.toUpperCase() })}
-                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono uppercase focus:outline-none transition-colors ${
-                            isDark
+                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono uppercase focus:outline-none transition-colors ${isDark
                               ? 'bg-slate-900 border-slate-700 text-white focus:border-amber-400'
                               : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-amber-500'
-                          }`}
+                            }`}
                         />
                       </div>
 
@@ -2255,11 +2064,10 @@ export default function FleetManagementPage() {
                           type="text"
                           value={editingVehicle.engine_number}
                           onChange={(e) => setEditingVehicle({ ...editingVehicle, engine_number: e.target.value.toUpperCase() })}
-                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono uppercase focus:outline-none transition-colors ${
-                            isDark
+                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono uppercase focus:outline-none transition-colors ${isDark
                               ? 'bg-slate-900 border-slate-700 text-white focus:border-amber-400'
                               : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-amber-500'
-                          }`}
+                            }`}
                         />
                       </div>
                     </div>
@@ -2278,11 +2086,10 @@ export default function FleetManagementPage() {
                           type="text"
                           value={editingVehicle.rc_number}
                           onChange={(e) => setEditingVehicle({ ...editingVehicle, rc_number: e.target.value.toUpperCase() })}
-                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono uppercase focus:outline-none transition-colors ${
-                            isDark
+                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono uppercase focus:outline-none transition-colors ${isDark
                               ? 'bg-slate-900 border-slate-700 text-white focus:border-amber-400'
                               : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-amber-500'
-                          }`}
+                            }`}
                         />
                       </div>
 
@@ -2294,11 +2101,10 @@ export default function FleetManagementPage() {
                           type="date"
                           value={editingVehicle.rc_expiry}
                           onChange={(e) => setEditingVehicle({ ...editingVehicle, rc_expiry: e.target.value })}
-                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                            isDark
+                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
                               ? 'bg-slate-900 border-slate-700 text-white focus:border-amber-400'
                               : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-amber-500'
-                          }`}
+                            }`}
                         />
                       </div>
                     </div>
@@ -2312,11 +2118,10 @@ export default function FleetManagementPage() {
                           type="date"
                           value={editingVehicle.insurance_expiry}
                           onChange={(e) => setEditingVehicle({ ...editingVehicle, insurance_expiry: e.target.value })}
-                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                            isDark
+                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
                               ? 'bg-slate-900 border-slate-700 text-white focus:border-amber-400'
                               : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-amber-500'
-                          }`}
+                            }`}
                         />
                       </div>
 
@@ -2328,11 +2133,10 @@ export default function FleetManagementPage() {
                           type="date"
                           value={editingVehicle.fitness_expiry}
                           onChange={(e) => setEditingVehicle({ ...editingVehicle, fitness_expiry: e.target.value })}
-                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                            isDark
+                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
                               ? 'bg-slate-900 border-slate-700 text-white focus:border-amber-400'
                               : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-amber-500'
-                          }`}
+                            }`}
                         />
                       </div>
                     </div>
@@ -2346,11 +2150,10 @@ export default function FleetManagementPage() {
                           type="date"
                           value={editingVehicle.permit_expiry}
                           onChange={(e) => setEditingVehicle({ ...editingVehicle, permit_expiry: e.target.value })}
-                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                            isDark
+                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
                               ? 'bg-slate-900 border-slate-700 text-white focus:border-amber-400'
                               : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-amber-500'
-                          }`}
+                            }`}
                         />
                       </div>
 
@@ -2362,11 +2165,10 @@ export default function FleetManagementPage() {
                           type="date"
                           value={editingVehicle.puc_expiry}
                           onChange={(e) => setEditingVehicle({ ...editingVehicle, puc_expiry: e.target.value })}
-                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                            isDark
+                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
                               ? 'bg-slate-900 border-slate-700 text-white focus:border-amber-400'
                               : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-amber-500'
-                          }`}
+                            }`}
                         />
                       </div>
                     </div>
@@ -2385,11 +2187,10 @@ export default function FleetManagementPage() {
                           type="text"
                           value={editingVehicle.fastag_id}
                           onChange={(e) => setEditingVehicle({ ...editingVehicle, fastag_id: e.target.value })}
-                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono focus:outline-none transition-colors ${
-                            isDark
+                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono focus:outline-none transition-colors ${isDark
                               ? 'bg-slate-900 border-slate-700 text-white focus:border-amber-400'
                               : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-amber-500'
-                          }`}
+                            }`}
                         />
                       </div>
 
@@ -2406,18 +2207,15 @@ export default function FleetManagementPage() {
                             placeholder="e.g. GPS-TRK-9921 (leave blank if no GPS fitted)"
                             value={editingVehicle.gps_device_id}
                             onChange={(e) => setEditingVehicle({ ...editingVehicle, gps_device_id: e.target.value })}
-                            className={`w-full pl-3.5 pr-28 py-2.5 rounded-xl border text-xs font-mono focus:outline-none transition-colors ${
-                              isDark
+                            className={`w-full pl-3.5 pr-28 py-2.5 rounded-xl border text-xs font-mono focus:outline-none transition-colors ${isDark
                                 ? 'bg-slate-900 border-slate-700 text-white focus:border-amber-400'
                                 : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-amber-500'
-                            }`}
+                              }`}
                           />
-                          <div className={`absolute right-3 top-2.5 flex items-center gap-1 text-[10px] font-bold ${
-                            editingVehicle.gps_device_id?.trim() ? 'text-emerald-500' : isDark ? 'text-slate-500' : 'text-slate-400'
-                          }`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${
-                              editingVehicle.gps_device_id?.trim() ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
-                            }`} />
+                          <div className={`absolute right-3 top-2.5 flex items-center gap-1 text-[10px] font-bold ${editingVehicle.gps_device_id?.trim() ? 'text-emerald-500' : isDark ? 'text-slate-500' : 'text-slate-400'
+                            }`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${editingVehicle.gps_device_id?.trim() ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
+                              }`} />
                             {editingVehicle.gps_device_id?.trim() ? 'AIS-140 Live' : 'No GPS'}
                           </div>
                         </div>
@@ -2433,11 +2231,10 @@ export default function FleetManagementPage() {
                           type="number"
                           value={editingVehicle.current_odometer}
                           onChange={(e) => setEditingVehicle({ ...editingVehicle, current_odometer: e.target.value })}
-                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                            isDark
+                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
                               ? 'bg-slate-900 border-slate-700 text-white focus:border-amber-400'
                               : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-amber-500'
-                          }`}
+                            }`}
                         />
                       </div>
 
@@ -2448,11 +2245,10 @@ export default function FleetManagementPage() {
                         <select
                           value={editingVehicle.branch_id}
                           onChange={(e) => setEditingVehicle({ ...editingVehicle, branch_id: e.target.value })}
-                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                            isDark
+                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
                               ? 'bg-slate-900 border-slate-700 text-white focus:border-amber-400'
                               : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-amber-500'
-                          }`}
+                            }`}
                         >
                           <option value="">{branches.length === 0 ? 'No branches configured yet (Main Yard)' : 'Main Yard / Unassigned'}</option>
                           {branches.map((b) => (
@@ -2475,11 +2271,10 @@ export default function FleetManagementPage() {
                         <select
                           value={editingVehicle.assigned_driver_id}
                           onChange={(e) => setEditingVehicle({ ...editingVehicle, assigned_driver_id: e.target.value })}
-                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                            isDark
+                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
                               ? 'bg-slate-900 border-slate-700 text-white focus:border-amber-400'
                               : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-amber-500'
-                          }`}
+                            }`}
                         >
                           <option value="">Unassigned</option>
                           {drivers.map((d) => (
@@ -2498,11 +2293,10 @@ export default function FleetManagementPage() {
                       <select
                         value={editingVehicle.status}
                         onChange={(e) => setEditingVehicle({ ...editingVehicle, status: e.target.value })}
-                        className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors font-bold ${
-                          isDark
+                        className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors font-bold ${isDark
                             ? 'bg-slate-900 border-slate-700 text-white focus:border-amber-400'
                             : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-amber-500'
-                        }`}
+                          }`}
                       >
                         <option value="AVAILABLE">At Yard (Ready for Dispatch)</option>
                         <option value="ON_TRIP">In Transit (On Highway)</option>
@@ -2514,15 +2308,14 @@ export default function FleetManagementPage() {
                 )}
               </div>
 
-              <div className={`px-6 py-4 border-t flex items-center justify-between ${
-                isDark ? 'border-slate-800 bg-[#0E1528]' : 'border-slate-100 bg-slate-50'
-              }`}>
+              <div className={`px-6 py-4 border-t flex items-center justify-between ${isDark ? 'border-slate-800 bg-[#0E1528]' : 'border-slate-100 bg-slate-50'
+                }`}>
                 <div className="text-[11px] text-slate-400 font-medium">
                   {editingVehicle.ownership === 'OWN' ? (
                     editModalTab === 'basic' ? 'Step 1 of 4: Vehicle & Ownership' :
-                    editModalTab === 'specs' ? 'Step 2 of 4: Body Dimensions & Weight' :
-                    editModalTab === 'compliance' ? 'Step 3 of 4: Legal & RTO Expiries' :
-                    'Step 4 of 4: FASTag & Operational Hub'
+                      editModalTab === 'specs' ? 'Step 2 of 4: Body Dimensions & Weight' :
+                        editModalTab === 'compliance' ? 'Step 3 of 4: Legal & RTO Expiries' :
+                          'Step 4 of 4: FASTag & Operational Hub'
                   ) : (
                     'Market / Attached Truck: Ready for dispatch'
                   )}
@@ -2538,9 +2331,8 @@ export default function FleetManagementPage() {
                         else if (editModalTab === 'compliance') setEditModalTab('specs');
                         else if (editModalTab === 'telematics') setEditModalTab('compliance');
                       }}
-                      className={`px-3.5 py-2.5 rounded-xl border text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
-                        isDark ? 'border-slate-700 hover:bg-slate-800 text-slate-300' : 'border-slate-200 hover:bg-slate-100 text-slate-700'
-                      }`}
+                      className={`px-3.5 py-2.5 rounded-xl border text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${isDark ? 'border-slate-700 hover:bg-slate-800 text-slate-300' : 'border-slate-200 hover:bg-slate-100 text-slate-700'
+                        }`}
                     >
                       <ArrowLeft className="w-3.5 h-3.5" />
                       <span>Back</span>
@@ -2550,9 +2342,8 @@ export default function FleetManagementPage() {
                   <button
                     type="button"
                     onClick={() => setIsEditModalOpen(false)}
-                    className={`px-4 py-2.5 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
-                      isDark ? 'bg-slate-800 hover:bg-slate-700 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                    }`}
+                    className={`px-4 py-2.5 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${isDark ? 'bg-slate-800 hover:bg-slate-700 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                      }`}
                   >
                     Cancel
                   </button>
@@ -2611,9 +2402,8 @@ export default function FleetManagementPage() {
       {isDeleteModalOpen && vehicleToDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-200">
           <div
-            className={`w-full max-w-md rounded-2xl border shadow-2xl overflow-hidden transition-all ${
-              isDark ? 'bg-[#0B1020] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
-            }`}
+            className={`w-full max-w-md rounded-2xl border shadow-2xl overflow-hidden transition-all ${isDark ? 'bg-[#0B1020] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
+              }`}
           >
             <div className="p-6 text-center space-y-4">
               <div className="w-12 h-12 rounded-2xl bg-rose-500/20 text-rose-500 flex items-center justify-center mx-auto">
@@ -2633,9 +2423,8 @@ export default function FleetManagementPage() {
                 <button
                   type="button"
                   onClick={() => setIsDeleteModalOpen(false)}
-                  className={`px-4 py-2 rounded-xl text-xs font-semibold ${
-                    isDark ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                  }`}
+                  className={`px-4 py-2 rounded-xl text-xs font-semibold ${isDark ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    }`}
                 >
                   Cancel
                 </button>
@@ -2657,29 +2446,25 @@ export default function FleetManagementPage() {
       {isDetailsModalOpen && selectedAsset && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-200">
           <div
-            className={`w-full max-w-xl rounded-3xl border shadow-2xl overflow-hidden transition-all ${
-              isDark ? 'bg-[#0B1020] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
-            }`}
+            className={`w-full max-w-xl rounded-3xl border shadow-2xl overflow-hidden transition-all ${isDark ? 'bg-[#0B1020] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
+              }`}
           >
-            <div className={`px-6 py-4 border-b flex items-center justify-between ${
-              isDark ? 'border-slate-800 bg-[#0E1528]' : 'border-slate-100 bg-slate-50'
-            }`}>
+            <div className={`px-6 py-4 border-b flex items-center justify-between ${isDark ? 'border-slate-800 bg-[#0E1528]' : 'border-slate-100 bg-slate-50'
+              }`}>
               <div className="flex items-center space-x-3">
-                <div className={`w-10 h-10 rounded-2xl flex items-center justify-center border shadow-xs ${
-                  isDark ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30' : 'bg-blue-50 text-blue-600 border-blue-200'
-                }`}>
+                <div className={`w-10 h-10 rounded-2xl flex items-center justify-center border shadow-xs ${isDark ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30' : 'bg-blue-50 text-blue-600 border-blue-200'
+                  }`}>
                   <Truck className="w-5 h-5" />
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
                     <h2 className="text-base font-black tracking-tight font-mono">{selectedAsset.plate}</h2>
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
-                      selectedAsset.ownership === 'OWN'
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${selectedAsset.ownership === 'OWN'
                         ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
                         : selectedAsset.ownership === 'ATTACHED'
-                        ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30'
-                        : 'bg-purple-500/10 text-purple-400 border border-purple-500/30'
-                    }`}>
+                          ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30'
+                          : 'bg-purple-500/10 text-purple-400 border border-purple-500/30'
+                      }`}>
                       {selectedAsset.ownership === 'OWN' ? 'Own Fleet' : selectedAsset.ownership === 'ATTACHED' ? 'Attached Truck' : 'Market Hired'}
                     </span>
                   </div>
@@ -2690,9 +2475,8 @@ export default function FleetManagementPage() {
               </div>
               <button
                 onClick={() => setIsDetailsModalOpen(false)}
-                className={`p-1.5 rounded-xl border transition-colors cursor-pointer ${
-                  isDark ? 'border-slate-800 hover:bg-slate-800 text-slate-400' : 'border-slate-200 hover:bg-slate-100 text-slate-600'
-                }`}
+                className={`p-1.5 rounded-xl border transition-colors cursor-pointer ${isDark ? 'border-slate-800 hover:bg-slate-800 text-slate-400' : 'border-slate-200 hover:bg-slate-100 text-slate-600'
+                  }`}
               >
                 <X className="w-4 h-4" />
               </button>
@@ -2700,9 +2484,8 @@ export default function FleetManagementPage() {
 
             <div className="p-6 space-y-4 max-h-[75vh] overflow-y-auto text-xs">
               {/* Status & Location Bar */}
-              <div className={`p-3.5 rounded-2xl border flex items-center justify-between ${
-                isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200'
-              }`}>
+              <div className={`p-3.5 rounded-2xl border flex items-center justify-between ${isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200'
+                }`}>
                 <div>
                   <span className="text-[10px] text-slate-400 uppercase font-bold block">Current Operational Status</span>
                   <span className="font-bold text-sm text-blue-500">{selectedAsset.status_label || selectedAsset.status}</span>
@@ -2715,9 +2498,8 @@ export default function FleetManagementPage() {
 
               {/* Attached Owner / Partner Details (if applicable) */}
               {(selectedAsset.ownership === 'ATTACHED' || selectedAsset.ownership === 'MARKET') && (
-                <div className={`p-3.5 rounded-2xl border ${
-                  isDark ? 'bg-amber-950/20 border-amber-500/30' : 'bg-amber-50/70 border-amber-200'
-                }`}>
+                <div className={`p-3.5 rounded-2xl border ${isDark ? 'bg-amber-950/20 border-amber-500/30' : 'bg-amber-50/70 border-amber-200'
+                  }`}>
                   <span className="text-[10px] font-bold text-amber-500 uppercase tracking-wider block mb-1">
                     Partner / Attached Transporter Contact
                   </span>

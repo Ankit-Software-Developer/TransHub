@@ -1,6 +1,7 @@
 // src/controllers/bookingController.js
 const bookingService = require('../services/bookingService');
 const { successResponse, paginatedResponse, errorResponse } = require('../utils/apiResponse');
+const { logAudit } = require('../middleware/auditLogger');
 
 const createBooking = async (req, res) => {
   try {
@@ -28,6 +29,26 @@ const createBooking = async (req, res) => {
       sequelize: req.tenantSequelize,
     });
 
+    logAudit({
+      req,
+      action: 'CREATE',
+      entityType: 'BOOKING',
+      entityId: consignment.docket_number || consignment.id,
+      entityName: `Bilty #${consignment.docket_number || consignment.lr_number}`,
+      summary: `Created ${req.tenant?.documentTerminology || 'Bilty'} #${consignment.docket_number || consignment.lr_number} (${consignment.origin_city} ➔ ${consignment.destination_city}, ₹${consignment.total_amount || 0})`,
+      newValues: {
+        docket_number: consignment.docket_number,
+        origin_city: consignment.origin_city,
+        destination_city: consignment.destination_city,
+        consignor_name: consignment.consignor?.name || req.body.consignor_name,
+        consignee_name: consignment.consignee?.name || req.body.consignee_name,
+        charged_weight: consignment.charged_weight,
+        total_amount: consignment.total_amount,
+        payment_type: consignment.payment_type,
+        status: consignment.status,
+      },
+    });
+
     return successResponse(res, `${req.tenant.documentTerminology || 'Bilty'} created successfully`, consignment, 201);
   } catch (error) {
     return errorResponse(res, error.message, null, 500);
@@ -50,7 +71,7 @@ const listBookings = async (req, res) => {
       start_date,
       end_date,
     } = req.query;
-    const branchId = branch_id || req.branchId || null;
+    const branchId = (branch_id && branch_id !== 'ALL') ? branch_id : (branch_id === 'ALL' ? null : (req.branchId && req.branchId !== 'ALL' ? req.branchId : null));
     const fromDate = from_date || start_date || null;
     const toDate = to_date || end_date || null;
 
@@ -58,7 +79,8 @@ const listBookings = async (req, res) => {
       tenantId: req.tenant.tenantId,
       organizationId: req.tenant.organizationId,
       branchId,
-      status,
+      originBranchId: (req.query.origin_branch_id && req.query.origin_branch_id !== 'ALL') ? req.query.origin_branch_id : null,
+      status: (status && status !== 'ALL') ? status : null,
       search,
       paymentType: payment_type,
       fromDate,
@@ -92,6 +114,10 @@ const getBookingDetail = async (req, res) => {
 const updateBooking = async (req, res) => {
   try {
     const { id } = req.params;
+    const ConsignmentModel = req.tenantDb?.Consignment;
+    const existing = ConsignmentModel ? await ConsignmentModel.findByPk(id) : null;
+    const oldSnapshot = existing ? existing.toJSON() : null;
+
     const updated = await bookingService.updateBooking({
       id,
       tenantId: req.tenant.tenantId,
@@ -100,6 +126,32 @@ const updateBooking = async (req, res) => {
       models: req.tenantDb,
       sequelize: req.tenantSequelize,
     });
+
+    logAudit({
+      req,
+      action: 'UPDATE',
+      entityType: 'BOOKING',
+      entityId: updated.docket_number || id,
+      entityName: `Bilty #${updated.docket_number || id}`,
+      summary: `Modified Bilty #${updated.docket_number || id} details`,
+      oldValues: oldSnapshot ? {
+        docket_number: oldSnapshot.docket_number,
+        charged_weight: oldSnapshot.charged_weight,
+        freight_amount: oldSnapshot.freight_amount,
+        total_amount: oldSnapshot.total_amount,
+        payment_type: oldSnapshot.payment_type,
+        status: oldSnapshot.status,
+      } : null,
+      newValues: {
+        docket_number: updated.docket_number,
+        charged_weight: updated.charged_weight,
+        freight_amount: updated.freight_amount,
+        total_amount: updated.total_amount,
+        payment_type: updated.payment_type,
+        status: updated.status,
+      },
+    });
+
     return successResponse(res, 'Docket updated successfully', updated);
   } catch (error) {
     return errorResponse(res, error.message, null, 500);
@@ -109,6 +161,10 @@ const updateBooking = async (req, res) => {
 const deleteBooking = async (req, res) => {
   try {
     const { id } = req.params;
+    const ConsignmentModel = req.tenantDb?.Consignment;
+    const existing = ConsignmentModel ? await ConsignmentModel.findByPk(id) : null;
+    const oldSnapshot = existing ? existing.toJSON() : null;
+
     const result = await bookingService.deleteBooking({
       id,
       tenantId: req.tenant.tenantId,
@@ -116,6 +172,17 @@ const deleteBooking = async (req, res) => {
       models: req.tenantDb,
       sequelize: req.tenantSequelize,
     });
+
+    logAudit({
+      req,
+      action: 'DELETE',
+      entityType: 'BOOKING',
+      entityId: oldSnapshot?.docket_number || id,
+      entityName: `Bilty #${oldSnapshot?.docket_number || id}`,
+      summary: `Permanently deleted Bilty #${oldSnapshot?.docket_number || id} (${oldSnapshot?.origin_city || ''} ➔ ${oldSnapshot?.destination_city || ''}, ₹${oldSnapshot?.total_amount || 0})`,
+      oldValues: oldSnapshot,
+    });
+
     return successResponse(res, 'Docket deleted successfully', result);
   } catch (error) {
     return errorResponse(res, error.message, null, 500);

@@ -29,7 +29,7 @@ import Link from 'next/link';
 export default function TripsPage() {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
-  const { canEdit, canExport } = usePermissions();
+  const { canEdit, canExport, isAdmin, canCreateTrip, canEditTrip, canSettleTrip } = usePermissions();
 
   const [trips, setTrips] = useState([]);
   const [totalRecords, setTotalRecords] = useState(0);
@@ -128,6 +128,7 @@ export default function TripsPage() {
 
   const handleCreateTrip = async (e) => {
     e.preventDefault();
+    if (!canCreateTrip) return;
     setFormError('');
     if (!tripForm.vehicle_id) {
       setFormError('Please select a vehicle from the fleet register');
@@ -184,6 +185,7 @@ export default function TripsPage() {
   };
 
   const handleSettle = async (tripId) => {
+    if (!canSettleTrip) return;
     setSettling(true);
     try {
       const res = await api.post('/expenses/settle', {
@@ -383,27 +385,29 @@ export default function TripsPage() {
             </div>
 
             <div className="flex items-center space-x-2.5">
-              <button
-                onClick={() => {
-                  setTripForm({
-                    origin_branch_id: branchesList[0]?.id || '',
-                    dest_branch_id: branchesList[1]?.id || branchesList[0]?.id || '',
-                    vehicle_id: vehiclesList.find(v => v.status === 'AVAILABLE')?.id || vehiclesList[0]?.id || '',
-                    driver_id: driversList[0]?.id || '',
-                    trip_date: new Date().toISOString().slice(0, 10),
-                    driver_advance: 1500,
-                    start_odometer: 0,
-                    status: 'RUNNING',
-                    remarks: ''
-                  });
-                  setFormError('');
-                  setIsCreateTripOpen(true);
-                }}
-                className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md shadow-blue-600/30 transition-all cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Create Line-Haul Trip</span>
-              </button>
+              {canCreateTrip && (
+                <button
+                  onClick={() => {
+                    setTripForm({
+                      origin_branch_id: branchesList[0]?.id || '',
+                      dest_branch_id: branchesList[1]?.id || branchesList[0]?.id || '',
+                      vehicle_id: vehiclesList.find(v => v.status === 'AVAILABLE')?.id || vehiclesList[0]?.id || '',
+                      driver_id: driversList[0]?.id || '',
+                      trip_date: new Date().toISOString().slice(0, 10),
+                      driver_advance: 1500,
+                      start_odometer: 0,
+                      status: 'RUNNING',
+                      remarks: ''
+                    });
+                    setFormError('');
+                    setIsCreateTripOpen(true);
+                  }}
+                  className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md shadow-blue-600/30 transition-all cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Create Line-Haul Trip</span>
+                </button>
+              )}
 
               <Link
                 href="/load-planning"
@@ -515,13 +519,15 @@ export default function TripsPage() {
                   >
                     Cancel
                   </button>
-                  <button
-                    disabled={settling}
-                    onClick={() => handleSettle(selectedTrip.id)}
-                    className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-sm"
-                  >
-                    {settling ? 'Settling...' : 'Confirm & Settle'}
-                  </button>
+                  {canSettleTrip && (
+                    <button
+                      disabled={settling}
+                      onClick={() => handleSettle(selectedTrip.id)}
+                      className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-sm"
+                    >
+                      {settling ? 'Settling...' : 'Confirm & Settle'}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

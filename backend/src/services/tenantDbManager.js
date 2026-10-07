@@ -121,7 +121,11 @@ const ensureTableColumns = async (sequelize, models) => {
  */
 const applyEssentialPatches = async (sequelize) => {
   if (!sequelize) return;
-  const queries = [
+  const masterDbName = process.env.DB_NAME || 'transporter_master';
+  const currentDbName = sequelize.config?.database || masterDbName;
+  const isMaster = currentDbName === masterDbName;
+
+  const commonQueries = [
     'ALTER TABLE organizations MODIFY COLUMN logo_url LONGTEXT;',
     "ALTER TABLE consignments ADD COLUMN transport_mode VARCHAR(30) DEFAULT 'ROAD';",
     'ALTER TABLE vehicles ADD COLUMN make_model VARCHAR(100);',
@@ -136,20 +140,73 @@ const applyEssentialPatches = async (sequelize) => {
     'ALTER TABLE vehicles ADD COLUMN engine_number VARCHAR(50);',
     'ALTER TABLE vehicles ADD COLUMN assigned_driver_id CHAR(36);',
     'ALTER TABLE drivers ADD COLUMN branch_id CHAR(36);',
-    'ALTER TABLE users ADD COLUMN staff_code VARCHAR(50);',
-    'ALTER TABLE users ADD COLUMN designation VARCHAR(100);',
-    'ALTER TABLE users ADD COLUMN joining_date DATE;',
-    'ALTER TABLE users ADD COLUMN aadhaar_number VARCHAR(30);',
-    'ALTER TABLE users ADD COLUMN pan_number VARCHAR(30);',
-    'ALTER TABLE users ADD COLUMN address TEXT;',
-    'ALTER TABLE users ADD COLUMN emergency_contact VARCHAR(100);',
-    'ALTER TABLE users ADD COLUMN salary_amount DECIMAL(12, 2) DEFAULT 0;',
-    "ALTER TABLE users ADD COLUMN salary_type VARCHAR(30) DEFAULT 'MONTHLY';",
-    'ALTER TABLE users ADD COLUMN document_url LONGTEXT;',
+    `CREATE TABLE IF NOT EXISTS approval_requests (
+      id VARCHAR(36) NOT NULL PRIMARY KEY,
+      tenant_id VARCHAR(36) NOT NULL,
+      organization_id VARCHAR(36) NOT NULL,
+      branch_id VARCHAR(36) NOT NULL,
+      request_type VARCHAR(50) NOT NULL DEFAULT 'EXPENSE_CLAIM',
+      reference_id VARCHAR(36) NULL,
+      reference_code VARCHAR(50) NULL,
+      amount DECIMAL(12, 2) DEFAULT 0.00,
+      requester_id VARCHAR(36) NOT NULL,
+      approval_level VARCHAR(50) NOT NULL DEFAULT 'BRANCH_MANAGER',
+      assigned_user_id VARCHAR(36) NULL,
+      status VARCHAR(50) NOT NULL DEFAULT 'PENDING',
+      priority VARCHAR(20) NOT NULL DEFAULT 'NORMAL',
+      reviewer_id VARCHAR(36) NULL,
+      reviewed_at DATETIME NULL,
+      requester_notes TEXT NULL,
+      reviewer_comments TEXT NULL,
+      supporting_document_url VARCHAR(500) NULL,
+      meta_data JSON NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      deleted_at DATETIME NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`,
   ];
 
-  for (const q of queries) {
-    await sequelize.query(q).catch(() => {});
+  if (isMaster) {
+    // 1. Run common master patches
+    for (const q of commonQueries) {
+      await sequelize.query(q).catch(() => {});
+    }
+
+    // 2. Clean Master DB users table: Drop operational/HR/KYC columns
+    const extraStaffColumns = [
+      'staff_code',
+      'designation',
+      'joining_date',
+      'aadhaar_number',
+      'pan_number',
+      'address',
+      'emergency_contact',
+      'salary_amount',
+      'salary_type',
+      'document_url',
+    ];
+    for (const col of extraStaffColumns) {
+      await sequelize.query(`ALTER TABLE \`users\` DROP COLUMN \`${col}\`;`).catch(() => {});
+    }
+  } else {
+    // Tenant DB: Ensure operational staff & driver columns are present
+    const tenantQueries = [
+      ...commonQueries,
+      'ALTER TABLE users ADD COLUMN staff_code VARCHAR(50);',
+      'ALTER TABLE users ADD COLUMN designation VARCHAR(100);',
+      'ALTER TABLE users ADD COLUMN joining_date DATE;',
+      'ALTER TABLE users ADD COLUMN aadhaar_number VARCHAR(30);',
+      'ALTER TABLE users ADD COLUMN pan_number VARCHAR(30);',
+      'ALTER TABLE users ADD COLUMN address TEXT;',
+      'ALTER TABLE users ADD COLUMN emergency_contact VARCHAR(100);',
+      'ALTER TABLE users ADD COLUMN salary_amount DECIMAL(12, 2) DEFAULT 0;',
+      "ALTER TABLE users ADD COLUMN salary_type VARCHAR(30) DEFAULT 'MONTHLY';",
+      'ALTER TABLE users ADD COLUMN document_url LONGTEXT;',
+    ];
+
+    for (const q of tenantQueries) {
+      await sequelize.query(q).catch(() => {});
+    }
   }
 };
 

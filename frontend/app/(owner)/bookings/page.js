@@ -188,7 +188,7 @@ export default function BookingsMasterPage() {
   const activeBranch = useStore((state) => state.activeBranch);
 
   const isDark = theme === 'dark';
-  const { canEdit, canDelete, canExport, isAdmin } = usePermissions();
+  const { canEdit, canDelete, canExport, isAdmin, canCreateBooking } = usePermissions();
 
   // Server-side Pagination & Sorting State
   const [consignments, setConsignments] = useState([]);
@@ -1584,18 +1584,20 @@ export default function BookingsMasterPage() {
             </div>
 
             <div className="flex items-center space-x-3">
-              <button
-                onClick={() => {
-                  setBookingStep(1);
-                  setFormData(prev => ({ ...prev, docketNumberMode: 'auto', customDocketNumber: '' }));
-                  fetchDocketSeriesPreview();
-                  setIsDrawerOpen(true);
-                }}
-                className="flex items-center space-x-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 transition-all active:scale-95"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Create New Booking</span>
-              </button>
+              {canCreateBooking && (
+                <button
+                  onClick={() => {
+                    setBookingStep(1);
+                    setFormData(prev => ({ ...prev, docketNumberMode: 'auto', customDocketNumber: '' }));
+                    fetchDocketSeriesPreview();
+                    setIsDrawerOpen(true);
+                  }}
+                  className="flex items-center space-x-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 transition-all active:scale-95"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Create New Booking</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -1682,16 +1684,18 @@ export default function BookingsMasterPage() {
             emptyTitle="No Dockets (LR / Bilty) Found"
             emptySubtitle="Your database is clean or no consignments match the active filters. Register your first consignment note to issue an official digital bilty."
             emptyActionSlot={
-              <button
-                onClick={() => {
-                  setBookingStep(1);
-                  setIsDrawerOpen(true);
-                }}
-                className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 transition-all active:scale-95"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Create First Booking</span>
-              </button>
+              canCreateBooking ? (
+                <button
+                  onClick={() => {
+                    setBookingStep(1);
+                    setIsDrawerOpen(true);
+                  }}
+                  className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 transition-all active:scale-95"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Create First Booking</span>
+                </button>
+              ) : null
             }
             filtersSlot={
               <div className="flex flex-wrap items-center gap-1.5 text-xs font-bold">
@@ -1980,14 +1984,16 @@ export default function BookingsMasterPage() {
                         </button>
                       </div>
 
-                      <Link
-                        href="/settings?tab=terminology"
-                        target="_blank"
-                        className="text-[11px] font-semibold text-blue-600 dark:text-cyan-400 hover:underline flex items-center gap-1"
-                      >
-                        <span>Configure Series</span>
-                        <span>↗</span>
-                      </Link>
+                      {isAdmin && (
+                        <Link
+                          href="/settings?tab=terminology"
+                          target="_blank"
+                          className="text-[11px] font-semibold text-blue-600 dark:text-cyan-400 hover:underline flex items-center gap-1"
+                        >
+                          <span>Configure Series</span>
+                          <span>↗</span>
+                        </Link>
+                      )}
                     </div>
 
                     {/* Input box shown when Enter Manually is active */}

@@ -4,7 +4,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Sidebar from '../../../components/layout/Sidebar';
 import Navbar from '../../../components/layout/Navbar';
+import LoadingState from '../../../components/ui/LoadingState';
 import { useTheme } from '../../../components/ThemeProvider';
+import { usePermissions } from '../../../hooks/usePermissions';
 import api from '../../../services/api';
 import {
   Warehouse,
@@ -34,6 +36,7 @@ import {
 export default function BranchesPage() {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
+  const { canCreateBranch, canEditBranch, canDeleteBranch, canViewBranch, isAdmin } = usePermissions();
 
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -121,6 +124,7 @@ export default function BranchesPage() {
   };
 
   const openCreateModal = () => {
+    if (!canCreateBranch) return;
     setEditingBranch(null);
     setFormData(initialForm);
     setModalError('');
@@ -129,6 +133,7 @@ export default function BranchesPage() {
   };
 
   const openEditModal = (branch) => {
+    if (!canEditBranch) return;
     setEditingBranch(branch);
     setFormData({
       branch_name: branch.branch_name || '',
@@ -149,6 +154,14 @@ export default function BranchesPage() {
 
   const handleSave = async (e) => {
     e.preventDefault();
+    if (editingBranch && !canEditBranch) {
+      setModalError('You do not have permission to edit branches or hubs');
+      return;
+    }
+    if (!editingBranch && !canCreateBranch) {
+      setModalError('You do not have permission to add new branches or hubs');
+      return;
+    }
     if (!formData.branch_name.trim()) {
       setModalError('Branch or Hub Name is required');
       return;
@@ -231,7 +244,7 @@ export default function BranchesPage() {
   };
 
   const handleDelete = async () => {
-    if (!deleteTarget) return;
+    if (!deleteTarget || !canDeleteBranch) return;
     setDeleting(true);
     try {
       const res = await api.delete(`/branches/${deleteTarget.id}`);
@@ -275,6 +288,30 @@ export default function BranchesPage() {
   const branchesCount = totalCount - hubsCount;
   const activeCount = branches.filter((b) => b.is_active).length;
 
+  if (!canViewBranch) {
+    return (
+      <div className={`flex min-h-screen ${isDark ? 'bg-[#06080F] text-slate-100' : 'bg-[#F4F6FB] text-slate-900'} font-sans`}>
+        <Sidebar />
+        <div className="flex-1 flex flex-col min-w-0">
+          <Navbar />
+          <main className="flex-1 flex items-center justify-center p-6">
+            <div className={`max-w-md w-full p-8 rounded-3xl border text-center space-y-4 ${
+              isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200 shadow-xl'
+            }`}>
+              <div className="w-14 h-14 mx-auto rounded-2xl bg-amber-500/10 text-amber-500 flex items-center justify-center">
+                <AlertTriangle className="w-7 h-7" />
+              </div>
+              <h2 className="text-lg font-bold">Access Denied</h2>
+              <p className="text-xs text-slate-400">
+                You do not have permission to view Branches & Logistics Hubs. Please contact your organization administrator.
+              </p>
+            </div>
+          </main>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={`flex min-h-screen transition-colors duration-300 ${
       isDark ? 'bg-[#06080F] text-slate-100' : 'bg-[#F4F6FB] text-slate-900'
@@ -311,16 +348,18 @@ export default function BranchesPage() {
                 }`}
                 title="Refresh branches list"
               >
-                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`w-4 h-4 ${loading ? (isDark ? 'animate-spin text-cyan-400' : 'animate-spin text-blue-600') : ''}`} />
               </button>
 
-              <button
-                onClick={openCreateModal}
-                className="flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 transition-all active:scale-95 cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Add Branch / Hub</span>
-              </button>
+              {canCreateBranch && (
+                <button
+                  onClick={openCreateModal}
+                  className="flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 transition-all active:scale-95 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Add Branch / Hub</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -424,14 +463,11 @@ export default function BranchesPage() {
 
           {/* Locations Grid */}
           {loading ? (
-            <div className={`p-12 rounded-3xl border text-center flex flex-col items-center justify-center ${
-              isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200'
-            }`}>
-              <RefreshCw className="w-8 h-8 text-blue-500 animate-spin mb-3" />
-              <p className={`text-sm font-semibold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                Loading branches & logistics hubs...
-              </p>
-            </div>
+            <LoadingState
+              title="Loading branches & logistics hubs..."
+              description="Fetching terminal facilities, contacts, and origin routing network"
+              minHeight="min-h-[280px]"
+            />
           ) : filteredBranches.length === 0 ? (
             <div className={`p-12 rounded-3xl border text-center flex flex-col items-center justify-center ${
               isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200'
@@ -447,7 +483,7 @@ export default function BranchesPage() {
                   ? 'Try adjusting your search criteria or filter tags.' 
                   : 'Add your primary transshipment hub and branch offices with pincodes to start creating bilties and line-haul dispatches.'}
               </p>
-              {!search && (
+              {!search && canCreateBranch && (
                 <button
                   onClick={openCreateModal}
                   className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-600/30"
@@ -545,31 +581,43 @@ export default function BranchesPage() {
                       ID: {branch.id?.slice(0, 8)}...
                     </span>
 
-                    <div className="flex items-center space-x-2">
-                      <button
-                        onClick={() => openEditModal(branch)}
-                        className={`p-1.5 rounded-lg border text-xs font-semibold transition-all ${
-                          isDark
-                            ? 'border-slate-800 bg-slate-900/80 text-slate-300 hover:text-white hover:border-slate-700'
-                            : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                        }`}
-                        title="Edit Branch / Hub"
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
+                    {(canEditBranch || canDeleteBranch) ? (
+                      <div className="flex items-center space-x-2">
+                        {canEditBranch && (
+                          <button
+                            onClick={() => openEditModal(branch)}
+                            className={`p-1.5 rounded-lg border text-xs font-semibold transition-all ${
+                              isDark
+                                ? 'border-slate-800 bg-slate-900/80 text-slate-300 hover:text-white hover:border-slate-700'
+                                : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                            }`}
+                            title="Edit Branch / Hub"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
 
-                      <button
-                        onClick={() => setDeleteTarget(branch)}
-                        className={`p-1.5 rounded-lg border text-xs font-semibold transition-all ${
-                          isDark
-                            ? 'border-rose-950/60 bg-rose-950/20 text-rose-400 hover:bg-rose-900/40'
-                            : 'border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100'
-                        }`}
-                        title="Delete Branch / Hub"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
+                        {canDeleteBranch && (
+                          <button
+                            onClick={() => setDeleteTarget(branch)}
+                            className={`p-1.5 rounded-lg border text-xs font-semibold transition-all ${
+                              isDark
+                                ? 'border-rose-950/60 bg-rose-950/20 text-rose-400 hover:bg-rose-900/40'
+                                : 'border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100'
+                            }`}
+                            title="Delete Branch / Hub"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <span className={`text-[10px] px-2 py-0.5 rounded border font-medium ${
+                        isDark ? 'border-slate-800 bg-slate-900/60 text-slate-400' : 'border-slate-200 bg-slate-50 text-slate-500'
+                      }`}>
+                        View only
+                      </span>
+                    )}
                   </div>
                 </div>
               ))}

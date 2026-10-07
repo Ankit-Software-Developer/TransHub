@@ -7,6 +7,7 @@ import Navbar from '../../../components/layout/Navbar';
 import { useTheme } from '../../../components/ThemeProvider';
 import { usePermissions } from '../../../hooks/usePermissions';
 import api from '../../../services/api';
+import LoadingState from '../../../components/ui/LoadingState';
 import {
   Users,
   UserPlus,
@@ -41,13 +42,31 @@ import {
   Briefcase,
   Paperclip,
   ExternalLink,
-  FileCheck
+  FileCheck,
+  ChevronDown
 } from 'lucide-react';
+
+const COUNTRY_CODES = [
+  { code: '+91', country: 'India', flag: '🇮🇳', short: 'IN' },
+  { code: '+971', country: 'UAE', flag: '🇦🇪', short: 'AE' },
+  { code: '+966', country: 'Saudi Arabia', flag: '🇸🇦', short: 'SA' },
+  { code: '+1', country: 'USA / Canada', flag: '🇺🇸', short: 'US' },
+  { code: '+44', country: 'UK', flag: '🇬🇧', short: 'GB' },
+  { code: '+65', country: 'Singapore', flag: '🇸🇬', short: 'SG' },
+  { code: '+974', country: 'Qatar', flag: '🇶🇦', short: 'QA' },
+  { code: '+968', country: 'Oman', flag: '🇴🇲', short: 'OM' },
+  { code: '+965', country: 'Kuwait', flag: '🇰🇼', short: 'KW' },
+  { code: '+973', country: 'Bahrain', flag: '🇧🇭', short: 'BH' },
+  { code: '+61', country: 'Australia', flag: '🇦🇺', short: 'AU' },
+  { code: '+49', country: 'Germany', flag: '🇩🇪', short: 'DE' },
+];
+
+const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
 export default function UsersAndDriversPage() {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
-  const { isAdmin, user: currentUser } = usePermissions();
+  const { isAdmin, user: currentUser, canManageUsers, canManageDriver, canExport } = usePermissions();
 
   // Active Tab: 'drivers', 'staff'
   const [activeTab, setActiveTab] = useState('drivers');
@@ -115,6 +134,88 @@ export default function UsersAndDriversPage() {
     status: 'ACTIVE',
   };
   const [userForm, setUserForm] = useState(initialUserForm);
+
+  // Country code & Phone states for Staff Modal
+  const [userCountryCode, setUserCountryCode] = useState('+91');
+  const [userPhone, setUserPhone] = useState('');
+  const [userEmailError, setUserEmailError] = useState('');
+  const [userPhoneError, setUserPhoneError] = useState('');
+
+  // Country code & Phone states for Driver Modal
+  const [driverCountryCode, setDriverCountryCode] = useState('+91');
+  const [driverPhone, setDriverPhone] = useState('');
+  const [driverPhoneError, setDriverPhoneError] = useState('');
+
+  const parsePhoneAndCountry = (rawPhone) => {
+    if (!rawPhone) return { countryCode: '+91', digits: '' };
+    const str = String(rawPhone).trim();
+    const matched = COUNTRY_CODES.find((c) => str.startsWith(c.code));
+    if (matched) {
+      const digits = str.slice(matched.code.length).replace(/[^0-9]/g, '');
+      return { countryCode: matched.code, digits };
+    }
+    if (str.startsWith('0') && str.length === 11) {
+      return { countryCode: '+91', digits: str.slice(1) };
+    }
+    const digits = str.replace(/[^0-9]/g, '');
+    return { countryCode: '+91', digits };
+  };
+
+  const handleUserPhoneChange = (val) => {
+    let digits = val.replace(/[^0-9]/g, '');
+    if (userCountryCode === '+91') {
+      if (digits.startsWith('91') && digits.length === 12) {
+        digits = digits.slice(2);
+      } else if (digits.startsWith('0') && digits.length === 11) {
+        digits = digits.slice(1);
+      }
+      digits = digits.slice(0, 10);
+    } else {
+      digits = digits.slice(0, 15);
+    }
+    setUserPhone(digits);
+    if (userPhoneError) setUserPhoneError('');
+  };
+
+  const handleDriverPhoneChange = (val) => {
+    let digits = val.replace(/[^0-9]/g, '');
+    if (driverCountryCode === '+91') {
+      if (digits.startsWith('91') && digits.length === 12) {
+        digits = digits.slice(2);
+      } else if (digits.startsWith('0') && digits.length === 11) {
+        digits = digits.slice(1);
+      }
+      digits = digits.slice(0, 10);
+    } else {
+      digits = digits.slice(0, 15);
+    }
+    setDriverPhone(digits);
+    if (driverPhoneError) setDriverPhoneError('');
+  };
+
+  const validateEmailFormat = (email) => {
+    if (!email || !email.trim()) {
+      return 'Login email address is required';
+    }
+    if (!EMAIL_REGEX.test(email.trim())) {
+      return 'Please enter a valid email address (e.g. name@company.com)';
+    }
+    return '';
+  };
+
+  const validatePhoneNumber = (phoneDigits, code, required = false) => {
+    if (!phoneDigits || !phoneDigits.trim()) {
+      if (required) return 'Mobile phone number is required';
+      return '';
+    }
+    if (code === '+91' && phoneDigits.trim().length !== 10) {
+      return 'Please enter a valid 10-digit mobile number';
+    }
+    if (phoneDigits.trim().length < 7 || phoneDigits.trim().length > 15) {
+      return 'Phone number must be between 7 and 15 digits';
+    }
+    return '';
+  };
 
   // Fetch all initial data
   const fetchData = async () => {
@@ -217,10 +318,11 @@ export default function UsersAndDriversPage() {
     const total = staffUsers.length;
     const active = staffUsers.filter((u) => u.status === 'ACTIVE').length;
     const admins = staffUsers.filter((u) =>
-      u.roles?.some((r) => r.name === 'ADMIN' || r.name === 'SUPER_ADMIN')
+      u.roles?.some((r) => (r.name || '').toUpperCase().includes('ADMIN'))
     ).length;
     const managers = staffUsers.filter((u) =>
-      u.roles?.some((r) => r.name === 'BRANCH_MANAGER')
+      u.roles?.some((r) => (r.name || '').toUpperCase().includes('MANAGER')) ||
+      (u.designation || '').toLowerCase().includes('manager')
     ).length;
 
     return { total, active, admins, managers };
@@ -242,12 +344,19 @@ export default function UsersAndDriversPage() {
       ...initialDriverForm,
       driver_code: `DRV-${String(drivers.length + 1).padStart(3, '0')}`,
     });
+    setDriverCountryCode('+91');
+    setDriverPhone('');
+    setDriverPhoneError('');
     setFormError('');
     setIsDriverModalOpen(true);
   };
 
   const openEditDriverModal = (driver) => {
     setEditingDriver(driver);
+    const parsed = parsePhoneAndCountry(driver.phone);
+    setDriverCountryCode(parsed.countryCode);
+    setDriverPhone(parsed.digits);
+    setDriverPhoneError('');
     setDriverForm({
       name: driver.name || '',
       driver_code: driver.driver_code || '',
@@ -269,8 +378,14 @@ export default function UsersAndDriversPage() {
 
   const handleSaveDriver = async (e) => {
     e.preventDefault();
-    if (!driverForm.name.trim() || !driverForm.phone.trim() || !driverForm.license_number.trim()) {
-      setFormError('Please enter driver name, phone number, and commercial license number.');
+    if (!driverForm.name.trim() || !driverForm.license_number.trim()) {
+      setFormError('Please enter driver name and commercial license number.');
+      return;
+    }
+    const phoneErr = validatePhoneNumber(driverPhone, driverCountryCode, true);
+    if (phoneErr) {
+      setDriverPhoneError(phoneErr);
+      setFormError(phoneErr);
       return;
     }
 
@@ -278,8 +393,14 @@ export default function UsersAndDriversPage() {
       setIsSubmitting(true);
       setFormError('');
 
+      const finalPhone = `${driverCountryCode} ${driverPhone.trim()}`;
+      const payload = {
+        ...driverForm,
+        phone: finalPhone,
+      };
+
       if (editingDriver) {
-        const res = await api.put(`/fleet/drivers/${editingDriver.id}`, driverForm);
+        const res = await api.put(`/fleet/drivers/${editingDriver.id}`, payload);
         if (res.data?.success) {
           setDrivers((prev) =>
             prev.map((d) => (d.id === editingDriver.id ? { ...d, ...res.data.data } : d))
@@ -287,7 +408,7 @@ export default function UsersAndDriversPage() {
           setIsDriverModalOpen(false);
         }
       } else {
-        const res = await api.post('/fleet/drivers', driverForm);
+        const res = await api.post('/fleet/drivers', payload);
         if (res.data?.success) {
           setDrivers((prev) => [res.data.data, ...prev]);
           setIsDriverModalOpen(false);
@@ -326,6 +447,10 @@ export default function UsersAndDriversPage() {
       joining_date: today,
       role_id: defaultRoleId,
     });
+    setUserCountryCode('+91');
+    setUserPhone('');
+    setUserEmailError('');
+    setUserPhoneError('');
     setFormError('');
     setShowPassword(false);
     setIsUserModalOpen(true);
@@ -334,6 +459,11 @@ export default function UsersAndDriversPage() {
   const openEditUserModal = (staff) => {
     setEditingUser(staff);
     const assignedRoleId = staff.roles?.[0]?.id || staffRoles[0]?.id || '';
+    const parsed = parsePhoneAndCountry(staff.phone);
+    setUserCountryCode(parsed.countryCode);
+    setUserPhone(parsed.digits);
+    setUserEmailError('');
+    setUserPhoneError('');
     setUserForm({
       first_name: staff.first_name || '',
       last_name: staff.last_name || '',
@@ -375,8 +505,22 @@ export default function UsersAndDriversPage() {
 
   const handleSaveUser = async (e) => {
     e.preventDefault();
-    if (!userForm.first_name.trim() || !userForm.email.trim()) {
-      setFormError('Please enter first name and a valid login email address.');
+    const emailErr = validateEmailFormat(userForm.email);
+    if (emailErr) {
+      setUserEmailError(emailErr);
+      setFormError(emailErr);
+      return;
+    }
+
+    const phoneErr = validatePhoneNumber(userPhone, userCountryCode, false);
+    if (phoneErr) {
+      setUserPhoneError(phoneErr);
+      setFormError(phoneErr);
+      return;
+    }
+
+    if (!userForm.first_name.trim()) {
+      setFormError('Please enter first name.');
       return;
     }
     if (!editingUser && (!userForm.password || userForm.password.length < 6)) {
@@ -388,8 +532,14 @@ export default function UsersAndDriversPage() {
       setIsSubmitting(true);
       setFormError('');
 
+      const finalPhone = userPhone.trim() ? `${userCountryCode} ${userPhone.trim()}` : '';
+      const payload = {
+        ...userForm,
+        email: userForm.email.toLowerCase().trim(),
+        phone: finalPhone,
+      };
+
       if (editingUser) {
-        const payload = { ...userForm };
         if (!payload.password) delete payload.password;
         const res = await api.put(`/users/${editingUser.id}`, payload);
         if (res.data?.success) {
@@ -399,7 +549,7 @@ export default function UsersAndDriversPage() {
           setIsUserModalOpen(false);
         }
       } else {
-        const res = await api.post('/users', userForm);
+        const res = await api.post('/users', payload);
         if (res.data?.success) {
           setStaffUsers((prev) => [...prev, res.data.data]);
           setIsUserModalOpen(false);
@@ -541,33 +691,39 @@ export default function UsersAndDriversPage() {
 
             {/* Quick Action Buttons */}
             <div className="flex items-center gap-2.5 flex-wrap">
-              <button
-                onClick={exportData}
-                className={`inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl border text-xs font-semibold transition-all ${
-                  isDark
-                    ? 'border-slate-800 bg-[#0B1020] hover:bg-slate-800 text-slate-300'
-                    : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700 shadow-sm'
-                }`}
-              >
-                <Download className="w-3.5 h-3.5 text-cyan-500" />
-                <span>Export CSV</span>
-              </button>
+              {canExport && (
+                <button
+                  onClick={exportData}
+                  className={`inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl border text-xs font-semibold transition-all ${
+                    isDark
+                      ? 'border-slate-800 bg-[#0B1020] hover:bg-slate-800 text-slate-300'
+                      : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700 shadow-sm'
+                  }`}
+                >
+                  <Download className="w-3.5 h-3.5 text-cyan-500" />
+                  <span>Export CSV</span>
+                </button>
+              )}
 
-              <button
-                onClick={openAddDriverModal}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold shadow-md shadow-emerald-500/25 transition-all active:scale-[0.98]"
-              >
-                <Truck className="w-4 h-4" />
-                <span>+ Register Driver</span>
-              </button>
+              {canManageDriver && (
+                <button
+                  onClick={openAddDriverModal}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold shadow-md shadow-emerald-500/25 transition-all active:scale-[0.98]"
+                >
+                  <Truck className="w-4 h-4" />
+                  <span>+ Register Driver</span>
+                </button>
+              )}
 
-              <button
-                onClick={openAddUserModal}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white text-xs font-bold shadow-md shadow-blue-500/25 transition-all active:scale-[0.98]"
-              >
-                <UserPlus className="w-4 h-4" />
-                <span>+ Add Staff User</span>
-              </button>
+              {canManageUsers && (
+                <button
+                  onClick={openAddUserModal}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white text-xs font-bold shadow-md shadow-blue-500/25 transition-all active:scale-[0.98]"
+                >
+                  <UserPlus className="w-4 h-4" />
+                  <span>+ Add Staff User</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -671,19 +827,33 @@ export default function UsersAndDriversPage() {
           </div>
 
           {/* Navigation Tab Pills */}
-          <div className="flex items-center justify-between border-b pb-2 flex-wrap gap-3 border-slate-800/40">
-            <div className="flex items-center gap-2 p-1 rounded-2xl bg-slate-900/40 border border-slate-800/60">
+          <div className={`flex items-center justify-between border-b pb-2 flex-wrap gap-3 ${
+            isDark ? 'border-slate-800/60' : 'border-slate-200'
+          }`}>
+            <div className={`flex items-center gap-1.5 p-1 rounded-2xl border transition-all ${
+              isDark
+                ? 'bg-slate-900/60 border-slate-800/80'
+                : 'bg-slate-100 border-slate-200/90 shadow-sm'
+            }`}>
               <button
                 onClick={() => { setActiveTab('drivers'); setStatusFilter('ALL'); }}
                 className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
                   activeTab === 'drivers'
-                    ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md shadow-emerald-500/20'
-                    : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+                    ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md shadow-emerald-500/25 ring-1 ring-emerald-500/30'
+                    : isDark
+                      ? 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                      : 'text-slate-700 hover:text-slate-950 hover:bg-white/90'
                 }`}
               >
                 <Truck className="w-3.5 h-3.5" />
                 <span>Commercial Drivers</span>
-                <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-black/20 font-black">
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-black transition-all ${
+                  activeTab === 'drivers'
+                    ? 'bg-black/20 text-white'
+                    : isDark
+                      ? 'bg-slate-800 text-slate-300'
+                      : 'bg-slate-200 text-slate-800'
+                }`}>
                   {drivers.length}
                 </span>
               </button>
@@ -692,13 +862,21 @@ export default function UsersAndDriversPage() {
                 onClick={() => { setActiveTab('staff'); setStatusFilter('ALL'); }}
                 className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
                   activeTab === 'staff'
-                    ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-md shadow-blue-500/20'
-                    : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+                    ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-md shadow-blue-500/25 ring-1 ring-blue-500/30'
+                    : isDark
+                      ? 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                      : 'text-slate-700 hover:text-slate-950 hover:bg-white/90'
                 }`}
               >
                 <Users className="w-3.5 h-3.5" />
                 <span>Transporter Staff</span>
-                <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-black/20 font-black">
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-black transition-all ${
+                  activeTab === 'staff'
+                    ? 'bg-black/20 text-white'
+                    : isDark
+                      ? 'bg-slate-800 text-slate-300'
+                      : 'bg-slate-200 text-slate-800'
+                }`}>
                   {staffUsers.length}
                 </span>
               </button>
@@ -713,7 +891,7 @@ export default function UsersAndDriversPage() {
               }`}
               title="Refresh Directory"
             >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-cyan-400' : ''}`} />
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-blue-600 dark:text-cyan-400' : ''}`} />
             </button>
           </div>
 
@@ -792,12 +970,15 @@ export default function UsersAndDriversPage() {
                         <th className="py-3.5 px-4 text-right">Actions</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-800/40 text-xs">
+                    <tbody className={`divide-y text-xs ${isDark ? 'divide-slate-800/40 text-slate-400' : 'divide-slate-200 text-slate-600'}`}>
                       {loading ? (
                         <tr>
-                          <td colSpan="7" className="py-12 text-center text-slate-400">
-                            <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-emerald-400" />
-                            Loading fleet drivers...
+                          <td colSpan="7" className="py-8 text-center">
+                            <LoadingState
+                              title="Loading fleet drivers..."
+                              description="Fetching licensed drivers, assigned vehicles, and documents"
+                              minHeight="min-h-[160px]"
+                            />
                           </td>
                         </tr>
                       ) : filteredDrivers.length === 0 ? (
@@ -829,10 +1010,10 @@ export default function UsersAndDriversPage() {
                                     {driver.name ? driver.name.charAt(0).toUpperCase() : 'D'}
                                   </div>
                                   <div>
-                                    <span className="font-bold text-sm block">
+                                    <span className={`font-bold text-sm block ${isDark ? 'text-white' : 'text-slate-900'}`}>
                                       {driver.name}
                                     </span>
-                                    <span className="text-[11px] text-emerald-400 font-mono font-semibold">
+                                    <span className={`text-[11px] font-mono font-semibold ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>
                                       {driver.driver_code || 'DRV-NA'}
                                     </span>
                                   </div>
@@ -842,12 +1023,12 @@ export default function UsersAndDriversPage() {
                               {/* Contact */}
                               <td className="py-3.5 px-4">
                                 <div className="space-y-0.5">
-                                  <div className="flex items-center gap-1.5 font-medium">
+                                  <div className={`flex items-center gap-1.5 font-medium ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
                                     <Phone className="w-3 h-3 text-slate-400" />
                                     <span>{driver.phone}</span>
                                   </div>
                                   {driver.alt_phone && (
-                                    <span className="text-[10px] text-slate-400 block">
+                                    <span className={`text-[10px] block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                                       Alt: {driver.alt_phone}
                                     </span>
                                   )}
@@ -858,10 +1039,10 @@ export default function UsersAndDriversPage() {
                               <td className="py-3.5 px-4">
                                 <div>
                                   <div className="flex items-center gap-1.5">
-                                    <Award className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                                    <span className="font-mono font-bold">{driver.license_number}</span>
+                                    <Award className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                                    <span className={`font-mono font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{driver.license_number}</span>
                                   </div>
-                                  <div className="text-[10px] text-slate-400 mt-0.5">
+                                  <div className={`text-[10px] mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-600 font-medium'}`}>
                                     {driver.license_type || 'Heavy Commercial'}
                                   </div>
                                   {driver.license_expiry && (
@@ -897,10 +1078,10 @@ export default function UsersAndDriversPage() {
                               {/* Remuneration */}
                               <td className="py-3.5 px-4">
                                 <div className="text-xs">
-                                  <span className="font-bold text-emerald-400">
+                                  <span className={`font-bold ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>
                                     ₹{Number(driver.salary_amount || 0).toLocaleString('en-IN')}
                                   </span>
-                                  <span className="text-[10px] text-slate-400 block uppercase">
+                                  <span className={`text-[10px] block uppercase ${isDark ? 'text-slate-400' : 'text-slate-500 font-medium'}`}>
                                     {driver.salary_type || 'MONTHLY'}
                                   </span>
                                 </div>
@@ -909,16 +1090,21 @@ export default function UsersAndDriversPage() {
                               {/* Status Badge */}
                               <td className="py-3.5 px-4">
                                 <button
-                                  onClick={() => handleToggleDriverStatus(driver)}
-                                  title="Click to toggle driver status"
+                                  onClick={() => canManageDriver && handleToggleDriverStatus(driver)}
+                                  disabled={!canManageDriver}
+                                  title={canManageDriver ? "Click to toggle driver status" : "Driver status"}
                                   className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold transition-all ${
+                                    !canManageDriver ? 'cursor-default' : ''
+                                  } ${
                                     driver.status === 'ON_TRIP'
-                                      ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30'
+                                      ? 'bg-blue-500/15 text-blue-500 dark:text-blue-400 border border-blue-500/30'
                                       : driver.status === 'ACTIVE'
-                                      ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                                      ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
                                       : driver.status === 'LEAVE'
-                                      ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
-                                      : 'bg-slate-700/30 text-slate-400 border border-slate-700/40'
+                                      ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30'
+                                      : isDark
+                                      ? 'bg-slate-700/30 text-slate-400 border border-slate-700/40'
+                                      : 'bg-slate-100 text-slate-600 border border-slate-300'
                                   }`}
                                 >
                                   <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
@@ -934,33 +1120,37 @@ export default function UsersAndDriversPage() {
 
                               {/* Actions */}
                               <td className="py-3.5 px-4 text-right">
-                                <div className="flex items-center justify-end gap-1.5">
-                                  <button
-                                    onClick={() => openEditDriverModal(driver)}
-                                    className={`p-1.5 rounded-lg border transition-colors ${
-                                      isDark
-                                        ? 'border-slate-800 text-slate-300 hover:bg-slate-800 hover:text-white'
-                                        : 'border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                                    }`}
-                                    title="Edit Driver"
-                                  >
-                                    <Edit2 className="w-3.5 h-3.5" />
-                                  </button>
-                                  <button
-                                    onClick={() =>
-                                      setDeleteConfirm({
-                                        isOpen: true,
-                                        type: 'driver',
-                                        id: driver.id,
-                                        name: driver.name,
-                                      })
-                                    }
-                                    className="p-1.5 rounded-lg border border-rose-500/30 text-rose-400 hover:bg-rose-500/10 transition-colors"
-                                    title="Delete Driver"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                </div>
+                                {canManageDriver ? (
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    <button
+                                      onClick={() => openEditDriverModal(driver)}
+                                      className={`p-1.5 rounded-lg border transition-colors ${
+                                        isDark
+                                          ? 'border-slate-800 text-slate-300 hover:bg-slate-800 hover:text-white'
+                                          : 'border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                                      }`}
+                                      title="Edit Driver"
+                                    >
+                                      <Edit2 className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      onClick={() =>
+                                        setDeleteConfirm({
+                                          isOpen: true,
+                                          type: 'driver',
+                                          id: driver.id,
+                                          name: driver.name,
+                                        })
+                                      }
+                                      className="p-1.5 rounded-lg border border-rose-500/30 text-rose-400 hover:bg-rose-500/10 transition-colors"
+                                      title="Delete Driver"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <span className="text-[11px] font-semibold text-slate-400 italic">View only</span>
+                                )}
                               </td>
                             </tr>
                           );
@@ -1047,12 +1237,15 @@ export default function UsersAndDriversPage() {
                         <th className="py-3.5 px-4 text-right">Actions</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-800/40 text-xs">
+                    <tbody className={`divide-y text-xs ${isDark ? 'divide-slate-800/40 text-slate-400' : 'divide-slate-200 text-slate-600'}`}>
                       {loading ? (
                         <tr>
-                          <td colSpan="8" className="py-12 text-center text-slate-400">
-                            <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-blue-400" />
-                            Loading team members...
+                          <td colSpan="8" className="py-8 text-center">
+                            <LoadingState
+                              title="Loading staff members..."
+                              description="Fetching operational team, branches, designations, and permissions"
+                              minHeight="min-h-[160px]"
+                            />
                           </td>
                         </tr>
                       ) : filteredStaffUsers.length === 0 ? (
@@ -1086,28 +1279,28 @@ export default function UsersAndDriversPage() {
                                   </div>
                                   <div>
                                     <div className="flex items-center gap-2 flex-wrap">
-                                      <span className="font-bold text-sm block">
+                                      <span className={`font-bold text-sm block ${isDark ? 'text-white' : 'text-slate-900'}`}>
                                         {fullName}
                                       </span>
                                       {staff.staff_code && (
-                                        <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                                        <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-500/10 text-blue-500 dark:text-blue-400 border border-blue-500/20">
                                           {staff.staff_code}
                                         </span>
                                       )}
                                       {isSelf && (
-                                        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+                                        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30">
                                           You
                                         </span>
                                       )}
                                     </div>
                                     <div className="flex items-center gap-2 mt-0.5">
                                       {staff.designation && (
-                                        <span className="text-[10px] font-medium text-amber-400 flex items-center gap-1">
+                                        <span className={`text-[10px] font-semibold flex items-center gap-1 ${isDark ? 'text-amber-400' : 'text-amber-700'}`}>
                                           <Briefcase className="w-2.5 h-2.5" />
                                           {staff.designation}
                                         </span>
                                       )}
-                                      <span className="text-[11px] text-slate-400">
+                                      <span className={`text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-600 font-medium'}`}>
                                         {staff.email}
                                       </span>
                                     </div>
@@ -1119,12 +1312,12 @@ export default function UsersAndDriversPage() {
                               <td className="py-3.5 px-4">
                                 <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold ${
                                   roleObj?.name === 'ADMIN' || roleObj?.name === 'SUPER_ADMIN'
-                                    ? 'bg-purple-500/15 text-purple-400 border border-purple-500/30'
+                                    ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30'
                                     : roleObj?.name === 'BRANCH_MANAGER'
-                                    ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30'
+                                    ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30'
                                     : roleObj?.name === 'ACCOUNTANT'
-                                    ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                                    : 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+                                    ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                                    : 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30'
                                 }`}>
                                   <Shield className="w-3 h-3" />
                                   {roleObj?.display_name || roleObj?.name || 'Staff Member'}
@@ -1145,19 +1338,23 @@ export default function UsersAndDriversPage() {
                               <td className="py-3.5 px-4">
                                 <div className="space-y-1">
                                   {staff.joining_date && (
-                                    <div className="flex items-center gap-1 text-[11px] text-slate-300">
-                                      <Calendar className="w-3 h-3 text-cyan-400 shrink-0" />
+                                    <div className={`flex items-center gap-1 text-[11px] ${isDark ? 'text-slate-300' : 'text-slate-700 font-medium'}`}>
+                                      <Calendar className="w-3 h-3 text-cyan-500 shrink-0" />
                                       <span>Joined: {new Date(staff.joining_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
                                     </div>
                                   )}
                                   <div className="flex items-center gap-1.5 flex-wrap">
                                     {staff.aadhaar_number && (
-                                      <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-slate-800/80 text-slate-300 border border-slate-700/60" title="Aadhaar Number">
+                                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono border ${
+                                        isDark ? 'bg-slate-800/80 text-slate-300 border-slate-700/60' : 'bg-slate-100 text-slate-700 border-slate-300 font-semibold'
+                                      }`} title="Aadhaar Number">
                                         UID: {staff.aadhaar_number}
                                       </span>
                                     )}
                                     {staff.pan_number && (
-                                      <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-slate-800/80 text-slate-300 border border-slate-700/60 uppercase" title="PAN Number">
+                                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono border uppercase ${
+                                        isDark ? 'bg-slate-800/80 text-slate-300 border-slate-700/60' : 'bg-slate-100 text-slate-700 border-slate-300 font-semibold'
+                                      }`} title="PAN Number">
                                         PAN: {staff.pan_number}
                                       </span>
                                     )}
@@ -1167,14 +1364,14 @@ export default function UsersAndDriversPage() {
                                       href={staff.document_url}
                                       target="_blank"
                                       rel="noopener noreferrer"
-                                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-cyan-400 hover:text-cyan-300 transition-colors"
+                                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-cyan-500 hover:text-cyan-600 dark:text-cyan-400 dark:hover:text-cyan-300 transition-colors"
                                     >
                                       <Paperclip className="w-3 h-3" />
                                       <span>Joining Doc</span>
                                       <ExternalLink className="w-2.5 h-2.5" />
                                     </a>
                                   ) : (
-                                    <span className="text-[10px] text-slate-500 italic block">No document</span>
+                                    <span className="text-[10px] text-slate-400 italic block">No document</span>
                                   )}
                                 </div>
                               </td>
@@ -1182,10 +1379,10 @@ export default function UsersAndDriversPage() {
                               {/* Remuneration */}
                               <td className="py-3.5 px-4">
                                 <div className="text-xs">
-                                  <span className="font-bold text-emerald-400">
+                                  <span className={`font-bold ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>
                                     ₹{Number(staff.salary_amount || 0).toLocaleString('en-IN')}
                                   </span>
-                                  <span className="text-[10px] text-slate-400 block uppercase">
+                                  <span className={`text-[10px] block uppercase ${isDark ? 'text-slate-400' : 'text-slate-500 font-medium'}`}>
                                     {staff.salary_type || 'MONTHLY'}
                                   </span>
                                 </div>
@@ -1194,11 +1391,11 @@ export default function UsersAndDriversPage() {
                               {/* Phone & Emergency */}
                               <td className="py-3.5 px-4">
                                 <div>
-                                  <span className="font-medium text-slate-300 block">
+                                  <span className={`font-medium block ${isDark ? 'text-slate-300' : 'text-slate-800'}`}>
                                     {staff.phone || '—'}
                                   </span>
                                   {staff.emergency_contact && (
-                                    <span className="text-[10px] text-slate-500 block truncate max-w-[130px]" title={staff.emergency_contact}>
+                                    <span className={`text-[10px] block truncate max-w-[130px] ${isDark ? 'text-slate-500' : 'text-slate-600'}`} title={staff.emergency_contact}>
                                       Emerg: {staff.emergency_contact}
                                     </span>
                                   )}
@@ -1208,13 +1405,15 @@ export default function UsersAndDriversPage() {
                               {/* Status */}
                               <td className="py-3.5 px-4">
                                 <button
-                                  onClick={() => !isSelf && handleToggleUserStatus(staff)}
-                                  disabled={isSelf}
-                                  title={isSelf ? 'Cannot change own status' : 'Click to toggle status'}
+                                  onClick={() => !isSelf && canManageUsers && handleToggleUserStatus(staff)}
+                                  disabled={isSelf || !canManageUsers}
+                                  title={isSelf ? 'Cannot change own status' : !canManageUsers ? 'Staff status' : 'Click to toggle status'}
                                   className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold transition-all ${
+                                    isSelf || !canManageUsers ? 'cursor-default' : ''
+                                  } ${
                                     staff.status === 'ACTIVE'
-                                      ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                                      : 'bg-rose-500/15 text-rose-400 border border-rose-500/30'
+                                      ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                                      : 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30'
                                   }`}
                                 >
                                   <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
@@ -1224,35 +1423,39 @@ export default function UsersAndDriversPage() {
 
                               {/* Actions */}
                               <td className="py-3.5 px-4 text-right">
-                                <div className="flex items-center justify-end gap-1.5">
-                                  <button
-                                    onClick={() => openEditUserModal(staff)}
-                                    className={`p-1.5 rounded-lg border transition-colors ${
-                                      isDark
-                                        ? 'border-slate-800 text-slate-300 hover:bg-slate-800 hover:text-white'
-                                        : 'border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                                    }`}
-                                    title="Edit Staff Member"
-                                  >
-                                    <Edit2 className="w-3.5 h-3.5" />
-                                  </button>
-                                  {!isSelf && (
+                                {canManageUsers ? (
+                                  <div className="flex items-center justify-end gap-1.5">
                                     <button
-                                      onClick={() =>
-                                        setDeleteConfirm({
-                                          isOpen: true,
-                                          type: 'user',
-                                          id: staff.id,
-                                          name: fullName,
-                                        })
-                                      }
-                                      className="p-1.5 rounded-lg border border-rose-500/30 text-rose-400 hover:bg-rose-500/10 transition-colors"
-                                      title="Delete Staff Member"
+                                      onClick={() => openEditUserModal(staff)}
+                                      className={`p-1.5 rounded-lg border transition-colors ${
+                                        isDark
+                                          ? 'border-slate-800 text-slate-300 hover:bg-slate-800 hover:text-white'
+                                          : 'border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                                      }`}
+                                      title="Edit Staff Member"
                                     >
-                                      <Trash2 className="w-3.5 h-3.5" />
+                                      <Edit2 className="w-3.5 h-3.5" />
                                     </button>
-                                  )}
-                                </div>
+                                    {!isSelf && (
+                                      <button
+                                        onClick={() =>
+                                          setDeleteConfirm({
+                                            isOpen: true,
+                                            type: 'user',
+                                            id: staff.id,
+                                            name: fullName,
+                                          })
+                                        }
+                                        className="p-1.5 rounded-lg border border-rose-500/30 text-rose-400 hover:bg-rose-500/10 transition-colors"
+                                        title="Delete Staff Member"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span className="text-[11px] font-semibold text-slate-400 italic">View only</span>
+                                )}
                               </td>
                             </tr>
                           );
@@ -1283,14 +1486,16 @@ export default function UsersAndDriversPage() {
                   <h3 className="text-base font-bold">
                     {editingDriver ? 'Edit Commercial Driver' : 'Register Commercial Driver'}
                   </h3>
-                  <p className="text-xs text-slate-400">
+                  <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-600 font-medium'}`}>
                     Required for trip allocation and fleet vehicle assignment.
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setIsDriverModalOpen(false)}
-                className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800/60"
+                className={`p-2 rounded-xl transition-colors ${
+                  isDark ? 'text-slate-400 hover:text-white hover:bg-slate-800/60' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
+                }`}
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1306,8 +1511,8 @@ export default function UsersAndDriversPage() {
             <form onSubmit={handleSaveDriver} className="mt-4 space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold mb-1">
-                    Driver Full Name <span className="text-rose-400">*</span>
+                  <label className={`block text-xs mb-1 ${isDark ? 'text-slate-300 font-semibold' : 'text-slate-700 font-bold'}`}>
+                    Driver Full Name <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -1315,14 +1520,14 @@ export default function UsersAndDriversPage() {
                     value={driverForm.name}
                     onChange={(e) => setDriverForm({ ...driverForm, name: e.target.value })}
                     placeholder="e.g. Ramesh Singh"
-                    className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none ${
-                      isDark ? 'bg-slate-900 border-slate-800 text-white focus:border-emerald-500' : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-emerald-500'
+                    className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-all ${
+                      isDark ? 'bg-slate-900 border-slate-800 text-white focus:border-emerald-500' : 'bg-white border-slate-300 text-slate-900 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20'
                     }`}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold mb-1">
+                  <label className={`block text-xs mb-1 ${isDark ? 'text-slate-300 font-semibold' : 'text-slate-700 font-bold'}`}>
                     Driver Code / Badge
                   </label>
                   <input
@@ -1330,32 +1535,91 @@ export default function UsersAndDriversPage() {
                     value={driverForm.driver_code}
                     onChange={(e) => setDriverForm({ ...driverForm, driver_code: e.target.value })}
                     placeholder="e.g. DRV-101"
-                    className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono focus:outline-none ${
-                      isDark ? 'bg-slate-900 border-slate-800 text-white focus:border-emerald-500' : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-emerald-500'
+                    className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono focus:outline-none transition-all ${
+                      isDark ? 'bg-slate-900 border-slate-800 text-white focus:border-emerald-500' : 'bg-white border-slate-300 text-slate-900 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20'
                     }`}
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Primary Phone with Country Code */}
                 <div>
-                  <label className="block text-xs font-semibold mb-1">
-                    Primary Phone (WhatsApp) <span className="text-rose-400">*</span>
-                  </label>
-                  <input
-                    type="tel"
-                    required
-                    value={driverForm.phone}
-                    onChange={(e) => setDriverForm({ ...driverForm, phone: e.target.value })}
-                    placeholder="e.g. 9876543210"
-                    className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none ${
-                      isDark ? 'bg-slate-900 border-slate-800 text-white focus:border-emerald-500' : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-emerald-500'
+                  <div className="flex items-center justify-between mb-1">
+                    <label className={`block text-xs ${isDark ? 'text-slate-300 font-semibold' : 'text-slate-700 font-bold'}`}>
+                      Primary Phone (WhatsApp) <span className="text-rose-500">*</span>
+                    </label>
+                    {driverPhoneError ? (
+                      <span className="text-[10px] font-bold text-rose-500">{driverPhoneError}</span>
+                    ) : driverPhone.length === 10 && driverCountryCode === '+91' ? (
+                      <span className="text-[10px] font-bold text-emerald-500 flex items-center gap-0.5">
+                        <CheckCircle2 className="w-3 h-3" /> 10 Digits
+                      </span>
+                    ) : driverPhone.length > 0 && driverCountryCode === '+91' ? (
+                      <span className="text-[10px] font-bold text-amber-500">
+                        {driverPhone.length}/10
+                      </span>
+                    ) : null}
+                  </div>
+                  <div
+                    className={`flex h-10 w-full items-center rounded-xl border transition-all ${
+                      driverPhoneError
+                        ? 'border-rose-500 ring-2 ring-rose-500/20'
+                        : isDark
+                        ? 'bg-slate-900 border-slate-800 focus-within:border-emerald-400'
+                        : 'bg-white border-slate-300 focus-within:border-emerald-600 focus-within:ring-2 focus-within:ring-emerald-500/20'
                     }`}
-                  />
+                  >
+                    <div className={`relative flex h-full shrink-0 items-center border-r px-2.5 rounded-l-xl cursor-pointer transition-colors ${
+                      isDark ? 'border-slate-800 bg-slate-950/60 hover:bg-slate-800/50' : 'border-slate-200 bg-slate-100 hover:bg-slate-200/70'
+                    }`}>
+                      <div className="flex items-center gap-1 pointer-events-none">
+                        <span className={`text-xs font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                          {driverCountryCode}
+                        </span>
+                        <ChevronDown className="h-3 w-3 text-slate-400" />
+                      </div>
+                      <select
+                        value={driverCountryCode}
+                        onChange={(e) => setDriverCountryCode(e.target.value)}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer text-xs"
+                        title="Select Country Code"
+                      >
+                        {COUNTRY_CODES.map((c) => (
+                          <option
+                            key={c.code + c.short}
+                            value={c.code}
+                            className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}
+                          >
+                            {c.flag} {c.code} ({c.country})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="relative flex-1 h-full min-w-0">
+                      <input
+                        type="tel"
+                        required
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        maxLength={driverCountryCode === '+91' ? 10 : 15}
+                        value={driverPhone}
+                        onChange={(e) => handleDriverPhoneChange(e.target.value)}
+                        onBlur={() => {
+                          const err = validatePhoneNumber(driverPhone, driverCountryCode, true);
+                          setDriverPhoneError(err);
+                        }}
+                        placeholder={driverCountryCode === '+91' ? '10-digit mobile number' : 'Mobile number'}
+                        className={`h-full w-full bg-transparent px-3 text-xs outline-none ${
+                          isDark ? 'text-white placeholder:text-slate-500' : 'text-slate-900 placeholder:text-slate-400 font-medium'
+                        }`}
+                      />
+                    </div>
+                  </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold mb-1">
+                  <label className={`block text-xs mb-1 ${isDark ? 'text-slate-300 font-semibold' : 'text-slate-700 font-bold'}`}>
                     Alternate / Emergency Phone
                   </label>
                   <input
@@ -1363,22 +1627,26 @@ export default function UsersAndDriversPage() {
                     value={driverForm.alt_phone}
                     onChange={(e) => setDriverForm({ ...driverForm, alt_phone: e.target.value })}
                     placeholder="e.g. 9123456780"
-                    className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none ${
-                      isDark ? 'bg-slate-900 border-slate-800 text-white focus:border-emerald-500' : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-emerald-500'
+                    className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-all ${
+                      isDark ? 'bg-slate-900 border-slate-800 text-white focus:border-emerald-500' : 'bg-white border-slate-300 text-slate-900 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20'
                     }`}
                   />
                 </div>
               </div>
 
               {/* License Section */}
-              <div className="p-3.5 rounded-2xl border border-slate-800/80 bg-slate-950/40 space-y-3">
-                <div className="text-[11px] font-bold text-cyan-400 uppercase tracking-wider">
+              <div className={`p-3.5 rounded-2xl border space-y-3 ${
+                isDark ? 'border-slate-800/80 bg-slate-950/40' : 'border-slate-200 bg-slate-50'
+              }`}>
+                <div className={`text-[11px] uppercase tracking-wider ${
+                  isDark ? 'text-cyan-400 font-bold' : 'text-cyan-700 font-extrabold'
+                }`}>
                   Commercial Driving License (DL)
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
-                    <label className="block text-[11px] font-semibold mb-1 text-slate-300">
-                      DL Number <span className="text-rose-400">*</span>
+                    <label className={`block text-[11px] mb-1 ${isDark ? 'text-slate-300 font-semibold' : 'text-slate-700 font-bold'}`}>
+                      DL Number <span className="text-rose-500">*</span>
                     </label>
                     <input
                       type="text"
@@ -1386,21 +1654,21 @@ export default function UsersAndDriversPage() {
                       value={driverForm.license_number}
                       onChange={(e) => setDriverForm({ ...driverForm, license_number: e.target.value.toUpperCase() })}
                       placeholder="e.g. MH1220190012345"
-                      className={`w-full px-3 py-2 rounded-xl border text-xs font-mono uppercase focus:outline-none ${
-                        isDark ? 'bg-slate-900 border-slate-800 text-white focus:border-cyan-400' : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-cyan-500'
+                      className={`w-full px-3 py-2 rounded-xl border text-xs font-mono uppercase focus:outline-none transition-all ${
+                        isDark ? 'bg-slate-900 border-slate-800 text-white focus:border-cyan-400' : 'bg-white border-slate-300 text-slate-900 focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20'
                       }`}
                     />
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-semibold mb-1 text-slate-300">
+                    <label className={`block text-[11px] mb-1 ${isDark ? 'text-slate-300 font-semibold' : 'text-slate-700 font-bold'}`}>
                       License Type
                     </label>
                     <select
                       value={driverForm.license_type}
                       onChange={(e) => setDriverForm({ ...driverForm, license_type: e.target.value })}
-                      className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none ${
-                        isDark ? 'bg-slate-900 border-slate-800 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                      className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-all ${
+                        isDark ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-slate-300 text-slate-900 font-medium'
                       }`}
                     >
                       <option value="Heavy Commercial (HMV)">Heavy Commercial (HMV)</option>
@@ -1411,15 +1679,15 @@ export default function UsersAndDriversPage() {
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-semibold mb-1 text-slate-300">
+                    <label className={`block text-[11px] mb-1 ${isDark ? 'text-slate-300 font-semibold' : 'text-slate-700 font-bold'}`}>
                       License Expiry Date
                     </label>
                     <input
                       type="date"
                       value={driverForm.license_expiry}
                       onChange={(e) => setDriverForm({ ...driverForm, license_expiry: e.target.value })}
-                      className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none ${
-                        isDark ? 'bg-slate-900 border-slate-800 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                      className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-all ${
+                        isDark ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-slate-300 text-slate-900'
                       }`}
                     />
                   </div>
@@ -1429,14 +1697,14 @@ export default function UsersAndDriversPage() {
               {/* Station & Remuneration */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold mb-1">
+                  <label className={`block text-xs mb-1 ${isDark ? 'text-slate-300 font-semibold' : 'text-slate-700 font-bold'}`}>
                     Assigned Base Hub
                   </label>
                   <select
                     value={driverForm.branch_id}
                     onChange={(e) => setDriverForm({ ...driverForm, branch_id: e.target.value })}
-                    className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none ${
-                      isDark ? 'bg-slate-900 border-slate-800 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                    className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-all ${
+                      isDark ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-slate-300 text-slate-900 font-medium'
                     }`}
                   >
                     <option value="">{branches.length === 0 ? 'No branches configured yet' : 'Main Yard / Unassigned'}</option>
@@ -1449,14 +1717,14 @@ export default function UsersAndDriversPage() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold mb-1">
+                  <label className={`block text-xs mb-1 ${isDark ? 'text-slate-300 font-semibold' : 'text-slate-700 font-bold'}`}>
                     Salary / Remuneration Model
                   </label>
                   <select
                     value={driverForm.salary_type}
                     onChange={(e) => setDriverForm({ ...driverForm, salary_type: e.target.value })}
-                    className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none ${
-                      isDark ? 'bg-slate-900 border-slate-800 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                    className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-all ${
+                      isDark ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-slate-300 text-slate-900 font-medium'
                     }`}
                   >
                     <option value="MONTHLY">Monthly Fixed Salary</option>
@@ -1466,7 +1734,7 @@ export default function UsersAndDriversPage() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold mb-1">
+                  <label className={`block text-xs mb-1 ${isDark ? 'text-slate-300 font-semibold' : 'text-slate-700 font-bold'}`}>
                     Amount (₹)
                   </label>
                   <input
@@ -1474,15 +1742,15 @@ export default function UsersAndDriversPage() {
                     value={driverForm.salary_amount}
                     onChange={(e) => setDriverForm({ ...driverForm, salary_amount: e.target.value })}
                     placeholder="e.g. 24000"
-                    className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none ${
-                      isDark ? 'bg-slate-900 border-slate-800 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                    className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-all ${
+                      isDark ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-slate-300 text-slate-900'
                     }`}
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold mb-1">
+                <label className={`block text-xs mb-1 ${isDark ? 'text-slate-300 font-semibold' : 'text-slate-700 font-bold'}`}>
                   Residential Address / Emergency Contact
                 </label>
                 <input
@@ -1490,8 +1758,8 @@ export default function UsersAndDriversPage() {
                   value={driverForm.address}
                   onChange={(e) => setDriverForm({ ...driverForm, address: e.target.value })}
                   placeholder="e.g. Village Rampur, Dist. Indore, MP"
-                  className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none ${
-                    isDark ? 'bg-slate-900 border-slate-800 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                  className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-all ${
+                    isDark ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-slate-300 text-slate-900'
                   }`}
                 />
               </div>
@@ -1501,8 +1769,8 @@ export default function UsersAndDriversPage() {
                 <button
                   type="button"
                   onClick={() => setIsDriverModalOpen(false)}
-                  className={`px-4 py-2.5 rounded-xl text-xs font-semibold border ${
-                    isDark ? 'border-slate-800 text-slate-400 hover:bg-slate-800' : 'border-slate-200 text-slate-600 hover:bg-slate-100'
+                  className={`px-4 py-2.5 rounded-xl text-xs font-semibold border transition-colors ${
+                    isDark ? 'border-slate-800 text-slate-400 hover:bg-slate-800' : 'border-slate-300 text-slate-700 hover:bg-slate-100'
                   }`}
                 >
                   Cancel
@@ -1536,14 +1804,16 @@ export default function UsersAndDriversPage() {
                   <h3 className="text-base font-bold">
                     {editingUser ? 'Edit Transporter Staff Profile' : 'Register New Transporter Staff'}
                   </h3>
-                  <p className="text-xs text-slate-400">
+                  <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-600 font-medium'}`}>
                     Staff code, joining date, KYC documents, remuneration, and station access.
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setIsUserModalOpen(false)}
-                className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800/60 transition-colors"
+                className={`p-2 rounded-xl transition-colors ${
+                  isDark ? 'text-slate-400 hover:text-white hover:bg-slate-800/60' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
+                }`}
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1559,16 +1829,18 @@ export default function UsersAndDriversPage() {
             <form onSubmit={handleSaveUser} className="mt-4 space-y-5">
               {/* SECTION 1: IDENTITY & ROLE */}
               <div className={`p-4 rounded-2xl border ${
-                isDark ? 'bg-slate-950/40 border-slate-800/80' : 'bg-slate-50 border-slate-200'
+                isDark ? 'bg-slate-950/40 border-slate-800/80' : 'bg-slate-50 border-slate-200 shadow-xs'
               } space-y-3.5`}>
-                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-cyan-400">
+                <div className={`flex items-center gap-2 text-xs uppercase tracking-wider ${
+                  isDark ? 'text-cyan-400 font-bold' : 'text-cyan-700 font-extrabold'
+                }`}>
                   <Briefcase className="w-3.5 h-3.5" />
                   <span>1. Employee Identity & Operational Role</span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                   <div>
-                    <label className="block text-[11px] font-semibold mb-1 text-slate-300">
+                    <label className={`block text-[11px] mb-1 ${isDark ? 'text-slate-300 font-semibold' : 'text-slate-700 font-bold'}`}>
                       Staff Code / Employee ID
                     </label>
                     <input
@@ -1576,22 +1848,22 @@ export default function UsersAndDriversPage() {
                       value={userForm.staff_code}
                       onChange={(e) => setUserForm({ ...userForm, staff_code: e.target.value.toUpperCase() })}
                       placeholder="e.g. STF-001"
-                      className={`w-full px-3 py-2 rounded-xl border text-xs font-mono font-bold focus:outline-none uppercase ${
-                        isDark ? 'bg-slate-900 border-slate-800 text-cyan-300 focus:border-cyan-400' : 'bg-white border-slate-200 text-slate-900 focus:border-cyan-500'
+                      className={`w-full px-3 py-2 rounded-xl border text-xs font-mono font-bold focus:outline-none uppercase transition-all ${
+                        isDark ? 'bg-slate-900 border-slate-800 text-cyan-300 focus:border-cyan-400' : 'bg-white border-slate-300 text-slate-900 focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20'
                       }`}
                     />
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-semibold mb-1 text-slate-300">
+                    <label className={`block text-[11px] mb-1 ${isDark ? 'text-slate-300 font-semibold' : 'text-slate-700 font-bold'}`}>
                       Joining Date
                     </label>
                     <input
                       type="date"
                       value={userForm.joining_date}
                       onChange={(e) => setUserForm({ ...userForm, joining_date: e.target.value })}
-                      className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none ${
-                        isDark ? 'bg-slate-900 border-slate-800 text-white focus:border-cyan-400' : 'bg-white border-slate-200 text-slate-900 focus:border-cyan-500'
+                      className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-all ${
+                        isDark ? 'bg-slate-900 border-slate-800 text-white focus:border-cyan-400' : 'bg-white border-slate-300 text-slate-900 focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20'
                       }`}
                     />
                   </div>
@@ -1599,8 +1871,8 @@ export default function UsersAndDriversPage() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                   <div>
-                    <label className="block text-[11px] font-semibold mb-1 text-slate-300">
-                      First Name <span className="text-rose-400">*</span>
+                    <label className={`block text-[11px] mb-1 ${isDark ? 'text-slate-300 font-semibold' : 'text-slate-700 font-bold'}`}>
+                      First Name <span className="text-rose-500">*</span>
                     </label>
                     <input
                       type="text"
@@ -1608,14 +1880,14 @@ export default function UsersAndDriversPage() {
                       value={userForm.first_name}
                       onChange={(e) => setUserForm({ ...userForm, first_name: e.target.value })}
                       placeholder="e.g. Amit"
-                      className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none ${
-                        isDark ? 'bg-slate-900 border-slate-800 text-white focus:border-blue-500' : 'bg-white border-slate-200 text-slate-900 focus:border-blue-500'
+                      className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-all ${
+                        isDark ? 'bg-slate-900 border-slate-800 text-white focus:border-blue-500' : 'bg-white border-slate-300 text-slate-900 focus:border-blue-600 focus:ring-2 focus:ring-blue-500/20 font-medium'
                       }`}
                     />
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-semibold mb-1 text-slate-300">
+                    <label className={`block text-[11px] mb-1 ${isDark ? 'text-slate-300 font-semibold' : 'text-slate-700 font-bold'}`}>
                       Last Name
                     </label>
                     <input
@@ -1623,8 +1895,8 @@ export default function UsersAndDriversPage() {
                       value={userForm.last_name}
                       onChange={(e) => setUserForm({ ...userForm, last_name: e.target.value })}
                       placeholder="e.g. Sharma"
-                      className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none ${
-                        isDark ? 'bg-slate-900 border-slate-800 text-white focus:border-blue-500' : 'bg-white border-slate-200 text-slate-900 focus:border-blue-500'
+                      className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-all ${
+                        isDark ? 'bg-slate-900 border-slate-800 text-white focus:border-blue-500' : 'bg-white border-slate-300 text-slate-900 focus:border-blue-600 focus:ring-2 focus:ring-blue-500/20 font-medium'
                       }`}
                     />
                   </div>
@@ -1632,7 +1904,7 @@ export default function UsersAndDriversPage() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
                   <div>
-                    <label className="block text-[11px] font-semibold mb-1 text-slate-300">
+                    <label className={`block text-[11px] mb-1 ${isDark ? 'text-slate-300 font-semibold' : 'text-slate-700 font-bold'}`}>
                       Designation / Job Title
                     </label>
                     <input
@@ -1640,21 +1912,21 @@ export default function UsersAndDriversPage() {
                       value={userForm.designation}
                       onChange={(e) => setUserForm({ ...userForm, designation: e.target.value })}
                       placeholder="e.g. Yard Incharge, Billing Clerk"
-                      className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none ${
-                        isDark ? 'bg-slate-900 border-slate-800 text-white focus:border-blue-500' : 'bg-white border-slate-200 text-slate-900 focus:border-blue-500'
+                      className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-all ${
+                        isDark ? 'bg-slate-900 border-slate-800 text-white focus:border-blue-500' : 'bg-white border-slate-300 text-slate-900 focus:border-blue-600 focus:ring-2 focus:ring-blue-500/20 font-medium'
                       }`}
                     />
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-semibold mb-1 text-slate-300">
-                      Operational Role <span className="text-rose-400">*</span>
+                    <label className={`block text-[11px] mb-1 ${isDark ? 'text-slate-300 font-semibold' : 'text-slate-700 font-bold'}`}>
+                      Operational Role <span className="text-rose-500">*</span>
                     </label>
                     <select
                       value={userForm.role_id}
                       onChange={(e) => setUserForm({ ...userForm, role_id: e.target.value })}
-                      className={`w-full px-3 py-2 rounded-xl border text-xs font-semibold focus:outline-none ${
-                        isDark ? 'bg-slate-900 border-slate-800 text-white focus:border-blue-500' : 'bg-white border-slate-200 text-slate-900 focus:border-blue-500'
+                      className={`w-full px-3 py-2 rounded-xl border text-xs font-semibold focus:outline-none transition-all ${
+                        isDark ? 'bg-slate-900 border-slate-800 text-white focus:border-blue-500' : 'bg-white border-slate-300 text-slate-900 focus:border-blue-600 focus:ring-2 focus:ring-blue-500/20'
                       }`}
                     >
                       {!userForm.role_id && <option value="">-- Select Role --</option>}
@@ -1667,14 +1939,14 @@ export default function UsersAndDriversPage() {
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-semibold mb-1 text-slate-300">
+                    <label className={`block text-[11px] mb-1 ${isDark ? 'text-slate-300 font-semibold' : 'text-slate-700 font-bold'}`}>
                       Station / Branch Hub
                     </label>
                     <select
                       value={userForm.branch_id}
                       onChange={(e) => setUserForm({ ...userForm, branch_id: e.target.value })}
-                      className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none ${
-                        isDark ? 'bg-slate-900 border-slate-800 text-white focus:border-blue-500' : 'bg-white border-slate-200 text-slate-900 focus:border-blue-500'
+                      className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-all ${
+                        isDark ? 'bg-slate-900 border-slate-800 text-white focus:border-blue-500' : 'bg-white border-slate-300 text-slate-900 focus:border-blue-600 focus:ring-2 focus:ring-blue-500/20 font-medium'
                       }`}
                     >
                       <option value="">{branches.length === 0 ? 'No branches configured yet' : 'All Branches (Enterprise)'}</option>
@@ -1690,46 +1962,128 @@ export default function UsersAndDriversPage() {
 
               {/* SECTION 2: ACCESS CREDENTIALS & CONTACT */}
               <div className={`p-4 rounded-2xl border ${
-                isDark ? 'bg-slate-950/40 border-slate-800/80' : 'bg-slate-50 border-slate-200'
+                isDark ? 'bg-slate-950/40 border-slate-800/80' : 'bg-slate-50 border-slate-200 shadow-xs'
               } space-y-3.5`}>
-                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-blue-400">
+                <div className={`flex items-center gap-2 text-xs uppercase tracking-wider ${
+                  isDark ? 'text-blue-400 font-bold' : 'text-blue-700 font-extrabold'
+                }`}>
                   <Lock className="w-3.5 h-3.5" />
                   <span>2. System Login & Contact Details</span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  {/* Email with validation */}
                   <div>
-                    <label className="block text-[11px] font-semibold mb-1 text-slate-300">
-                      Login Email Address <span className="text-rose-400">*</span>
-                    </label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className={`block text-[11px] ${isDark ? 'text-slate-300 font-semibold' : 'text-slate-700 font-bold'}`}>
+                        Login Email Address <span className="text-rose-500">*</span>
+                      </label>
+                      {userEmailError ? (
+                        <span className="text-[10px] font-bold text-rose-500">{userEmailError}</span>
+                      ) : userForm.email && EMAIL_REGEX.test(userForm.email.trim()) ? (
+                        <span className="text-[10px] font-bold text-emerald-500 flex items-center gap-0.5">
+                          <CheckCircle2 className="w-3 h-3" /> Valid
+                        </span>
+                      ) : null}
+                    </div>
                     <input
                       type="email"
                       required
                       value={userForm.email}
-                      onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
+                      onChange={(e) => {
+                        setUserForm({ ...userForm, email: e.target.value });
+                        if (userEmailError) setUserEmailError('');
+                      }}
+                      onBlur={() => {
+                        const err = validateEmailFormat(userForm.email);
+                        setUserEmailError(err);
+                      }}
                       placeholder="staff@transporter.com"
                       disabled={Boolean(editingUser)}
-                      className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none ${
+                      className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-all ${
                         editingUser ? 'opacity-60 cursor-not-allowed' : ''
                       } ${
-                        isDark ? 'bg-slate-900 border-slate-800 text-white focus:border-blue-500' : 'bg-white border-slate-200 text-slate-900 focus:border-blue-500'
+                        userEmailError
+                          ? 'border-rose-500 ring-2 ring-rose-500/20'
+                          : isDark
+                          ? 'bg-slate-900 border-slate-800 text-white focus:border-blue-500'
+                          : 'bg-white border-slate-300 text-slate-900 focus:border-blue-600 focus:ring-2 focus:ring-blue-500/20 font-medium'
                       }`}
                     />
                   </div>
 
+                  {/* Mobile Phone with Country Code */}
                   <div>
-                    <label className="block text-[11px] font-semibold mb-1 text-slate-300">
-                      Mobile Phone
-                    </label>
-                    <input
-                      type="tel"
-                      value={userForm.phone}
-                      onChange={(e) => setUserForm({ ...userForm, phone: e.target.value })}
-                      placeholder="e.g. 9826012345"
-                      className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none ${
-                        isDark ? 'bg-slate-900 border-slate-800 text-white focus:border-blue-500' : 'bg-white border-slate-200 text-slate-900 focus:border-blue-500'
+                    <div className="flex items-center justify-between mb-1">
+                      <label className={`block text-[11px] ${isDark ? 'text-slate-300 font-semibold' : 'text-slate-700 font-bold'}`}>
+                        Mobile Phone
+                      </label>
+                      {userPhoneError ? (
+                        <span className="text-[10px] font-bold text-rose-500">{userPhoneError}</span>
+                      ) : userPhone.length === 10 && userCountryCode === '+91' ? (
+                        <span className="text-[10px] font-bold text-emerald-500 flex items-center gap-0.5">
+                          <CheckCircle2 className="w-3 h-3" /> 10 Digits
+                        </span>
+                      ) : userPhone.length > 0 && userCountryCode === '+91' ? (
+                        <span className="text-[10px] font-bold text-amber-500">
+                          {userPhone.length}/10
+                        </span>
+                      ) : null}
+                    </div>
+                    <div
+                      className={`flex h-9 w-full items-center rounded-xl border transition-all ${
+                        userPhoneError
+                          ? 'border-rose-500 ring-2 ring-rose-500/20'
+                          : isDark
+                          ? 'bg-slate-900 border-slate-800 focus-within:border-blue-400'
+                          : 'bg-white border-slate-300 focus-within:border-blue-600 focus-within:ring-2 focus-within:ring-blue-500/20'
                       }`}
-                    />
+                    >
+                      <div className={`relative flex h-full shrink-0 items-center border-r px-2.5 rounded-l-xl cursor-pointer transition-colors ${
+                        isDark ? 'border-slate-800 bg-slate-950/60 hover:bg-slate-800/50' : 'border-slate-200 bg-slate-100 hover:bg-slate-200/70'
+                      }`}>
+                        <div className="flex items-center gap-1 pointer-events-none">
+                          <span className={`text-xs font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                            {userCountryCode}
+                          </span>
+                          <ChevronDown className="h-3 w-3 text-slate-400" />
+                        </div>
+                        <select
+                          value={userCountryCode}
+                          onChange={(e) => setUserCountryCode(e.target.value)}
+                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer text-xs"
+                          title="Select Country Code"
+                        >
+                          {COUNTRY_CODES.map((c) => (
+                            <option
+                              key={c.code + c.short}
+                              value={c.code}
+                              className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}
+                            >
+                              {c.flag} {c.code} ({c.country})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="relative flex-1 h-full min-w-0">
+                        <input
+                          type="tel"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          maxLength={userCountryCode === '+91' ? 10 : 15}
+                          value={userPhone}
+                          onChange={(e) => handleUserPhoneChange(e.target.value)}
+                          onBlur={() => {
+                            const err = validatePhoneNumber(userPhone, userCountryCode, false);
+                            setUserPhoneError(err);
+                          }}
+                          placeholder={userCountryCode === '+91' ? '10-digit mobile number' : 'Mobile number'}
+                          className={`h-full w-full bg-transparent px-3 text-xs outline-none ${
+                            isDark ? 'text-white placeholder:text-slate-500' : 'text-slate-900 placeholder:text-slate-400 font-medium'
+                          }`}
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -1737,13 +2091,13 @@ export default function UsersAndDriversPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                   <div>
                     <div className="flex items-center justify-between mb-1">
-                      <label className="block text-[11px] font-semibold text-slate-300">
-                        {editingUser ? 'New Password' : 'Login Password'} {!editingUser && <span className="text-rose-400">*</span>}
+                      <label className={`block text-[11px] ${isDark ? 'text-slate-300 font-semibold' : 'text-slate-700 font-bold'}`}>
+                        {editingUser ? 'New Password' : 'Login Password'} {!editingUser && <span className="text-rose-500">*</span>}
                       </label>
                       <button
                         type="button"
                         onClick={generateRandomPassword}
-                        className="text-[10px] text-cyan-400 hover:underline font-semibold flex items-center gap-1"
+                        className="text-[10px] text-cyan-500 hover:underline font-semibold flex items-center gap-1"
                       >
                         <Key className="w-2.5 h-2.5" />
                         Generate Strong
@@ -1756,8 +2110,8 @@ export default function UsersAndDriversPage() {
                         value={userForm.password}
                         onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
                         placeholder={editingUser ? 'Leave blank to keep current' : 'Min 6 characters'}
-                        className={`w-full pl-3 pr-10 py-2 rounded-xl border text-xs focus:outline-none ${
-                          isDark ? 'bg-slate-900 border-slate-800 text-white focus:border-blue-500' : 'bg-white border-slate-200 text-slate-900 focus:border-blue-500'
+                        className={`w-full pl-3 pr-10 py-2 rounded-xl border text-xs focus:outline-none transition-all ${
+                          isDark ? 'bg-slate-900 border-slate-800 text-white focus:border-blue-500' : 'bg-white border-slate-300 text-slate-900 focus:border-blue-600 focus:ring-2 focus:ring-blue-500/20 font-medium'
                         }`}
                       />
                       <button
@@ -1771,7 +2125,7 @@ export default function UsersAndDriversPage() {
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-semibold mb-1 text-slate-300">
+                    <label className={`block text-[11px] mb-1 ${isDark ? 'text-slate-300 font-semibold' : 'text-slate-700 font-bold'}`}>
                       Emergency Contact Person & Phone
                     </label>
                     <input
@@ -1779,15 +2133,15 @@ export default function UsersAndDriversPage() {
                       value={userForm.emergency_contact}
                       onChange={(e) => setUserForm({ ...userForm, emergency_contact: e.target.value })}
                       placeholder="e.g. Ramesh (Brother) - 9876543210"
-                      className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none ${
-                        isDark ? 'bg-slate-900 border-slate-800 text-white focus:border-blue-500' : 'bg-white border-slate-200 text-slate-900 focus:border-blue-500'
+                      className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-all ${
+                        isDark ? 'bg-slate-900 border-slate-800 text-white focus:border-blue-500' : 'bg-white border-slate-300 text-slate-900 focus:border-blue-600 focus:ring-2 focus:ring-blue-500/20 font-medium'
                       }`}
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-semibold mb-1 text-slate-300">
+                  <label className={`block text-[11px] mb-1 ${isDark ? 'text-slate-300 font-semibold' : 'text-slate-700 font-bold'}`}>
                     Residential Address
                   </label>
                   <input
@@ -1795,8 +2149,8 @@ export default function UsersAndDriversPage() {
                     value={userForm.address}
                     onChange={(e) => setUserForm({ ...userForm, address: e.target.value })}
                     placeholder="e.g. House No. 24, Transport Nagar, Indore, MP"
-                    className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none ${
-                      isDark ? 'bg-slate-900 border-slate-800 text-white focus:border-blue-500' : 'bg-white border-slate-200 text-slate-900 focus:border-blue-500'
+                    className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-all ${
+                      isDark ? 'bg-slate-900 border-slate-800 text-white focus:border-blue-500' : 'bg-white border-slate-300 text-slate-900 focus:border-blue-600 focus:ring-2 focus:ring-blue-500/20 font-medium'
                     }`}
                   />
                 </div>
@@ -1804,16 +2158,18 @@ export default function UsersAndDriversPage() {
 
               {/* SECTION 3: KYC DOCUMENTS & REMUNERATION */}
               <div className={`p-4 rounded-2xl border ${
-                isDark ? 'bg-slate-950/40 border-slate-800/80' : 'bg-slate-50 border-slate-200'
+                isDark ? 'bg-slate-950/40 border-slate-800/80' : 'bg-slate-50 border-slate-200 shadow-xs'
               } space-y-3.5`}>
-                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-emerald-400">
+                <div className={`flex items-center gap-2 text-xs uppercase tracking-wider ${
+                  isDark ? 'text-emerald-400 font-bold' : 'text-emerald-700 font-extrabold'
+                }`}>
                   <FileCheck className="w-3.5 h-3.5" />
                   <span>3. KYC Verification, Remuneration & Joining Documents</span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                   <div>
-                    <label className="block text-[11px] font-semibold mb-1 text-slate-300">
+                    <label className={`block text-[11px] mb-1 ${isDark ? 'text-slate-300 font-semibold' : 'text-slate-700 font-bold'}`}>
                       Aadhaar Card Number
                     </label>
                     <input
@@ -1821,14 +2177,14 @@ export default function UsersAndDriversPage() {
                       value={userForm.aadhaar_number}
                       onChange={(e) => setUserForm({ ...userForm, aadhaar_number: e.target.value })}
                       placeholder="e.g. 5432 1098 7654"
-                      className={`w-full px-3 py-2 rounded-xl border text-xs font-mono focus:outline-none ${
-                        isDark ? 'bg-slate-900 border-slate-800 text-white focus:border-emerald-500' : 'bg-white border-slate-200 text-slate-900 focus:border-emerald-500'
+                      className={`w-full px-3 py-2 rounded-xl border text-xs font-mono focus:outline-none transition-all ${
+                        isDark ? 'bg-slate-900 border-slate-800 text-white focus:border-emerald-500' : 'bg-white border-slate-300 text-slate-900 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 font-medium'
                       }`}
                     />
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-semibold mb-1 text-slate-300">
+                    <label className={`block text-[11px] mb-1 ${isDark ? 'text-slate-300 font-semibold' : 'text-slate-700 font-bold'}`}>
                       PAN Card Number
                     </label>
                     <input
@@ -1836,8 +2192,8 @@ export default function UsersAndDriversPage() {
                       value={userForm.pan_number}
                       onChange={(e) => setUserForm({ ...userForm, pan_number: e.target.value.toUpperCase() })}
                       placeholder="e.g. ABCDE1234F"
-                      className={`w-full px-3 py-2 rounded-xl border text-xs font-mono uppercase focus:outline-none ${
-                        isDark ? 'bg-slate-900 border-slate-800 text-white focus:border-emerald-500' : 'bg-white border-slate-200 text-slate-900 focus:border-emerald-500'
+                      className={`w-full px-3 py-2 rounded-xl border text-xs font-mono uppercase focus:outline-none transition-all ${
+                        isDark ? 'bg-slate-900 border-slate-800 text-white focus:border-emerald-500' : 'bg-white border-slate-300 text-slate-900 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 font-medium'
                       }`}
                     />
                   </div>
@@ -1845,14 +2201,14 @@ export default function UsersAndDriversPage() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                   <div>
-                    <label className="block text-[11px] font-semibold mb-1 text-slate-300">
+                    <label className={`block text-[11px] mb-1 ${isDark ? 'text-slate-300 font-semibold' : 'text-slate-700 font-bold'}`}>
                       Salary / Remuneration Model
                     </label>
                     <select
                       value={userForm.salary_type}
                       onChange={(e) => setUserForm({ ...userForm, salary_type: e.target.value })}
-                      className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none ${
-                        isDark ? 'bg-slate-900 border-slate-800 text-white focus:border-emerald-500' : 'bg-white border-slate-200 text-slate-900 focus:border-emerald-500'
+                      className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-all ${
+                        isDark ? 'bg-slate-900 border-slate-800 text-white focus:border-emerald-500' : 'bg-white border-slate-300 text-slate-900 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 font-medium'
                       }`}
                     >
                       <option value="MONTHLY">Monthly Fixed Salary</option>
@@ -1862,7 +2218,7 @@ export default function UsersAndDriversPage() {
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-semibold mb-1 text-slate-300">
+                    <label className={`block text-[11px] mb-1 ${isDark ? 'text-slate-300 font-semibold' : 'text-slate-700 font-bold'}`}>
                       Salary Amount (₹)
                     </label>
                     <input
@@ -1870,8 +2226,8 @@ export default function UsersAndDriversPage() {
                       value={userForm.salary_amount}
                       onChange={(e) => setUserForm({ ...userForm, salary_amount: e.target.value })}
                       placeholder="e.g. 25000"
-                      className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none ${
-                        isDark ? 'bg-slate-900 border-slate-800 text-white focus:border-emerald-500' : 'bg-white border-slate-200 text-slate-900 focus:border-emerald-500'
+                      className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-all ${
+                        isDark ? 'bg-slate-900 border-slate-800 text-white focus:border-emerald-500' : 'bg-white border-slate-300 text-slate-900 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 font-medium'
                       }`}
                     />
                   </div>
@@ -1879,7 +2235,7 @@ export default function UsersAndDriversPage() {
 
                 {/* Joining Document / KYC File Upload */}
                 <div>
-                  <label className="block text-[11px] font-semibold mb-1 text-slate-300">
+                  <label className={`block text-[11px] mb-1 ${isDark ? 'text-slate-300 font-semibold' : 'text-slate-700 font-bold'}`}>
                     Joining Document / KYC File Attachment (Aadhaar, Contract, Resume)
                   </label>
                   
@@ -1914,11 +2270,11 @@ export default function UsersAndDriversPage() {
                         type="file"
                         accept="image/*,.pdf"
                         onChange={handleDocumentChange}
-                        className={`w-full px-3 py-2 rounded-xl border text-xs file:mr-3 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-[11px] file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-500 file:cursor-pointer ${
-                          isDark ? 'bg-slate-900 border-slate-800 text-slate-300' : 'bg-white border-slate-200 text-slate-700'
+                        className={`w-full px-3 py-2 rounded-xl border text-xs file:mr-3 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-[11px] file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-500 file:cursor-pointer transition-all ${
+                          isDark ? 'bg-slate-900 border-slate-800 text-slate-300' : 'bg-white border-slate-300 text-slate-700'
                         }`}
                       />
-                      <p className="text-[10px] text-slate-500 mt-1">
+                      <p className={`text-[10px] mt-1 ${isDark ? 'text-slate-500' : 'text-slate-600'}`}>
                         Accepted formats: PDF or Image (Aadhaar card, signed joining form, ID proof max 5MB).
                       </p>
                     </div>
@@ -1931,8 +2287,8 @@ export default function UsersAndDriversPage() {
                 <button
                   type="button"
                   onClick={() => setIsUserModalOpen(false)}
-                  className={`px-4 py-2.5 rounded-xl text-xs font-semibold border ${
-                    isDark ? 'border-slate-800 text-slate-400 hover:bg-slate-800' : 'border-slate-200 text-slate-600 hover:bg-slate-100'
+                  className={`px-4 py-2.5 rounded-xl text-xs font-semibold border transition-colors ${
+                    isDark ? 'border-slate-800 text-slate-400 hover:bg-slate-800' : 'border-slate-300 text-slate-700 hover:bg-slate-100'
                   }`}
                 >
                   Cancel
@@ -1960,17 +2316,17 @@ export default function UsersAndDriversPage() {
               <Trash2 className="w-6 h-6" />
             </div>
             <div>
-              <h4 className="text-base font-bold">Confirm Deletion</h4>
-              <p className="text-xs text-slate-400 mt-1">
-                Are you sure you want to remove <span className="font-bold text-white">"{deleteConfirm.name}"</span>?
+              <h4 className={`text-base font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>Confirm Deletion</h4>
+              <p className={`text-xs mt-1 ${isDark ? 'text-slate-400' : 'text-slate-600 font-medium'}`}>
+                Are you sure you want to remove <span className={`font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>"{deleteConfirm.name}"</span>?
                 This action cannot be undone.
               </p>
             </div>
             <div className="flex items-center justify-center gap-3 pt-2">
               <button
                 onClick={() => setDeleteConfirm({ isOpen: false, type: '', id: null, name: '' })}
-                className={`px-4 py-2.5 rounded-xl text-xs font-semibold border ${
-                  isDark ? 'border-slate-800 text-slate-400 hover:bg-slate-800' : 'border-slate-200 text-slate-600 hover:bg-slate-100'
+                className={`px-4 py-2.5 rounded-xl text-xs font-semibold border transition-colors ${
+                  isDark ? 'border-slate-800 text-slate-400 hover:bg-slate-800' : 'border-slate-300 text-slate-700 hover:bg-slate-100'
                 }`}
               >
                 Cancel

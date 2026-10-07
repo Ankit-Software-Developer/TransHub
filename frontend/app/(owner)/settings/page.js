@@ -8,6 +8,7 @@ import { useTerminology } from '../../../hooks/useTerminology';
 import { useTheme } from '../../../components/ThemeProvider';
 import Sidebar from '../../../components/layout/Sidebar';
 import Navbar from '../../../components/layout/Navbar';
+import { usePermissions } from '../../../hooks/usePermissions';
 import {
   User,
   Lock,
@@ -73,6 +74,7 @@ export default function SettingsPage() {
   const { term } = useTerminology();
   const { theme, toggleTheme } = useTheme();
   const isDark = theme === 'dark';
+  const { isAdmin, canManageSettings, canManageRoles } = usePermissions();
 
   const [activeTab, setActiveTab] = useState('branding'); // 'branding' | 'theme' | 'terminology' | 'roles' | 'profile' | 'security'
   
@@ -241,7 +243,7 @@ export default function SettingsPage() {
       if (fetchedRoles.length > 0) {
         setSelectedRoleId((prev) => {
           if (prev && fetchedRoles.some((r) => r.id === prev)) return prev;
-          const defRole = fetchedRoles.find((r) => r.name === 'BOOKING_OPERATOR') || fetchedRoles[0];
+          const defRole = fetchedRoles.find((r) => r.name === 'ADMIN') || fetchedRoles[0];
           return defRole.id;
         });
       }
@@ -523,6 +525,37 @@ export default function SettingsPage() {
 
   const terminologyOptions = ['Bilty', 'LR', 'GR', 'Docket', 'Consignment Note'];
 
+  if (!isAdmin) {
+    return (
+      <div className={`flex min-h-screen ${isDark ? 'bg-[#06080F] text-slate-100' : 'bg-[#F4F6FB] text-slate-900'}`}>
+        <Sidebar />
+        <div className="flex-1 flex flex-col min-w-0">
+          <Navbar />
+          <main className="flex-1 flex items-center justify-center p-6">
+            <div className={`max-w-md w-full p-8 rounded-3xl border text-center space-y-4 ${
+              isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200 shadow-xl'
+            }`}>
+              <div className="w-14 h-14 mx-auto rounded-2xl bg-amber-500/10 text-amber-500 flex items-center justify-center">
+                <Shield className="w-7 h-7" />
+              </div>
+              <h2 className="text-lg font-bold">Administrator Access Required</h2>
+              <p className="text-xs text-slate-400">
+                Only transport organization administrators can configure company settings and permissions.
+              </p>
+              <Link
+                href="/dashboard"
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold"
+              >
+                <span>Return to Dashboard</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
+          </main>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={`flex min-h-screen transition-colors duration-300 ${
       isDark ? 'bg-[#06080F] text-slate-100' : 'bg-[#F4F6FB] text-slate-900'
@@ -599,18 +632,20 @@ export default function SettingsPage() {
                   <span>Theme & Brand Colors</span>
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('roles')}
-                  className={`flex items-center space-x-2.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
-                    activeTab === 'roles'
-                      ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
-                      : isDark ? 'text-slate-400 hover:text-white hover:bg-slate-900' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                  }`}
-                >
-                  <ShieldCheck className="w-4 h-4 shrink-0" />
-                  <span>Roles & Permissions</span>
-                </button>
+                {canManageRoles && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('roles')}
+                    className={`flex items-center space-x-2.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                      activeTab === 'roles'
+                        ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
+                        : isDark ? 'text-slate-400 hover:text-white hover:bg-slate-900' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                    }`}
+                  >
+                    <ShieldCheck className="w-4 h-4 shrink-0" />
+                    <span>Roles & Permissions</span>
+                  </button>
+                )}
 
                 <button
                   type="button"
@@ -889,28 +924,32 @@ export default function SettingsPage() {
                           </span>
                         )}
                       </div>
-                      <button
-                        type="submit"
-                        disabled={isSaving}
-                        className={`flex items-center space-x-2 px-6 py-2.5 rounded-xl text-white text-xs font-bold shadow-md transition-all disabled:opacity-50 cursor-pointer ${
-                          pendingLogo
-                            ? 'bg-emerald-600 hover:bg-emerald-500 ring-2 ring-emerald-400 shadow-emerald-600/50'
-                            : isRemovingLogo
-                            ? 'bg-rose-600 hover:bg-rose-500 shadow-rose-600/30'
-                            : 'bg-blue-600 hover:bg-blue-500 shadow-blue-600/30'
-                        }`}
-                      >
-                        <Save className="w-4 h-4" />
-                        <span>
-                          {isSaving
-                            ? 'Saving...'
-                            : pendingLogo
-                            ? 'Save Company Branding & New Logo'
-                            : isRemovingLogo
-                            ? 'Save Company Branding & Remove Logo'
-                            : 'Save Company Branding'}
-                        </span>
-                      </button>
+                      {canManageSettings ? (
+                        <button
+                          type="submit"
+                          disabled={isSaving}
+                          className={`flex items-center space-x-2 px-6 py-2.5 rounded-xl text-white text-xs font-bold shadow-md transition-all disabled:opacity-50 cursor-pointer ${
+                            pendingLogo
+                              ? 'bg-emerald-600 hover:bg-emerald-500 ring-2 ring-emerald-400 shadow-emerald-600/50'
+                              : isRemovingLogo
+                              ? 'bg-rose-600 hover:bg-rose-500 shadow-rose-600/30'
+                              : 'bg-blue-600 hover:bg-blue-500 shadow-blue-600/30'
+                          }`}
+                        >
+                          <Save className="w-4 h-4" />
+                          <span>
+                            {isSaving
+                              ? 'Saving...'
+                              : pendingLogo
+                              ? 'Save Company Branding & New Logo'
+                              : isRemovingLogo
+                              ? 'Save Company Branding & Remove Logo'
+                              : 'Save Company Branding'}
+                          </span>
+                        </button>
+                      ) : (
+                        <span className="text-xs font-semibold text-slate-400 italic">View only mode</span>
+                      )}
                     </div>
                   </form>
                 </div>
@@ -1181,14 +1220,18 @@ export default function SettingsPage() {
                           </span>
                         </div>
 
-                        <button
-                          type="submit"
-                          disabled={isSavingDocketSeries}
-                          className="flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md cursor-pointer transition-all disabled:opacity-50 shrink-0"
-                        >
-                          <Save className="w-4 h-4" />
-                          <span>{isSavingDocketSeries ? 'Saving...' : 'Save Series Format'}</span>
-                        </button>
+                        {canManageSettings ? (
+                          <button
+                            type="submit"
+                            disabled={isSavingDocketSeries}
+                            className="flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md cursor-pointer transition-all disabled:opacity-50 shrink-0"
+                          >
+                            <Save className="w-4 h-4" />
+                            <span>{isSavingDocketSeries ? 'Saving...' : 'Save Series Format'}</span>
+                          </button>
+                        ) : (
+                          <span className="text-xs font-semibold text-slate-400 italic">View only mode</span>
+                        )}
                       </div>
                     </form>
                   </div>

@@ -24,7 +24,7 @@ export default function PodManagementPage() {
   const { term, plural } = useTerminology();
   const { theme } = useTheme();
   const isDark = theme === 'dark';
-  const { canEdit, canExport, isAdmin } = usePermissions();
+  const { canEdit, canExport, isAdmin, canVerifyPod } = usePermissions();
 
   const [pods, setPods] = useState([]);
   const [totalRecords, setTotalRecords] = useState(0);
@@ -166,7 +166,7 @@ export default function PodManagementPage() {
       align: 'center',
       render: (val, row) => (
         <div className="flex items-center justify-center space-x-2">
-          {row.status !== 'POD_VERIFIED' && canEdit && (
+          {row.status !== 'POD_VERIFIED' && (canEdit || canVerifyPod) && (
             <button
               onClick={() => handleVerify(row.id)}
               className="px-2.5 py-1 text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60 rounded-lg transition-colors inline-flex items-center space-x-1"

@@ -5,6 +5,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useStore } from '../../store/useStore';
 import { useTerminology } from '../../hooks/useTerminology';
 import { useAuth } from '../../hooks/useAuth';
+import { usePermissions } from '../../hooks/usePermissions';
 import { useTheme } from '../ThemeProvider';
 import ThemeToggle from '../ThemeToggle';
 import api from '../../services/api';
@@ -69,6 +70,7 @@ const INITIAL_NOTIFICATIONS = [
 export default function Navbar() {
   const router = useRouter();
   const { user, logout } = useAuth();
+  const { isAdmin } = usePermissions();
   const { activeBranch, setActiveBranch, dateFilter, setDateFilter, toggleSearchModal, isFleetCommsOpen, toggleFleetComms } = useStore();
   const { theme } = useTheme();
   const [showProfileMenu, setShowProfileMenu] = useState(false);
@@ -535,16 +537,18 @@ export default function Navbar() {
                   <span>My Profile</span>
                 </Link>
 
-                <Link
-                  href="/settings"
-                  onClick={() => setShowProfileMenu(false)}
-                  className={`flex items-center space-x-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
-                    isDark ? 'hover:bg-slate-800/70 text-slate-200 hover:text-white' : 'hover:bg-slate-100 text-slate-700 hover:text-slate-900'
-                  }`}
-                >
-                  <SettingsIcon className="w-4 h-4 text-slate-400 shrink-0" />
-                  <span>Account Settings</span>
-                </Link>
+                {isAdmin && (
+                  <Link
+                    href="/settings"
+                    onClick={() => setShowProfileMenu(false)}
+                    className={`flex items-center space-x-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
+                      isDark ? 'hover:bg-slate-800/70 text-slate-200 hover:text-white' : 'hover:bg-slate-100 text-slate-700 hover:text-slate-900'
+                    }`}
+                  >
+                    <SettingsIcon className="w-4 h-4 text-slate-400 shrink-0" />
+                    <span>Account Settings</span>
+                  </Link>
+                )}
 
                 <div className={`my-1 border-t ${isDark ? 'border-slate-800' : 'border-slate-100'}`} />
 

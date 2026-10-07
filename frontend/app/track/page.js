@@ -6,6 +6,7 @@ import api from '../../services/api';
 import Badge from '../../components/ui/Badge';
 import ThemeToggle from '../../components/ThemeToggle';
 import { useTheme } from '../../components/ThemeProvider';
+import LoadingState from '../../components/ui/LoadingState';
 import {
   Search,
   Truck,
@@ -177,6 +178,16 @@ export default function PublicTrackingPage() {
             </button>
           </div>
         </form>
+
+        {/* Loading State */}
+        {loading && (
+          <div className="mb-8">
+            <LoadingState
+              title="Locating Consignment & Route History..."
+              description="Connecting to nationwide logistics telemetry cluster to retrieve live GPS milestones"
+            />
+          </div>
+        )}
 
         {/* Error Feedback */}
         {error && (

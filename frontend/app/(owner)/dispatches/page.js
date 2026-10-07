@@ -24,7 +24,7 @@ import Link from 'next/link';
 export default function DispatchesPage() {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
-  const { canExport, isAdmin } = usePermissions();
+  const { canExport, isAdmin, canCreateDispatch } = usePermissions();
 
   const [trips, setTrips] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -223,13 +223,15 @@ export default function DispatchesPage() {
               </p>
             </div>
 
-            <Link
-              href="/load-planning"
-              className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md shadow-blue-600/30 transition-all active:scale-95"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Create New Dispatch</span>
-            </Link>
+            {canCreateDispatch && (
+              <Link
+                href="/load-planning"
+                className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md shadow-blue-600/30 transition-all active:scale-95"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Create New Dispatch</span>
+              </Link>
+            )}
           </div>
 
           {/* Master Dispatch Server-side DataTable */}

@@ -5,6 +5,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useTheme } from '../ThemeProvider';
 import { usePermissions } from '../../hooks/usePermissions';
 import DateRangeFilter from './DateRangeFilter';
+import LoadingState from './LoadingState';
 import {
   Search,
   X,
@@ -676,11 +677,12 @@ export default function DataTable({
           <tbody className={`divide-y ${isDark ? 'divide-slate-800/40' : 'divide-slate-200'}`}>
             {effectiveLoading ? (
               <tr>
-                <td colSpan={columns.length} className="py-24 text-center">
-                  <div className="flex flex-col items-center justify-center space-y-2.5 text-slate-400">
-                    <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
-                    <p className="text-xs font-bold">Fetching records from server...</p>
-                  </div>
+                <td colSpan={columns.length} className="py-12 px-4 text-center">
+                  <LoadingState
+                    title="Fetching records from server..."
+                    description="Syncing real-time operational data across fleet network"
+                    minHeight="min-h-[180px]"
+                  />
                 </td>
               </tr>
             ) : displayData.length === 0 ? (

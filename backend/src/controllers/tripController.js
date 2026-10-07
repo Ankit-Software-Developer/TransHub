@@ -2,6 +2,7 @@ const { Op } = require('sequelize');
 const defaultModels = require('../models');
 const { generateNextNumber } = require('../services/numberSequenceService');
 const { successResponse, paginatedResponse, errorResponse } = require('../utils/apiResponse');
+const { logAudit } = require('../middleware/auditLogger');
 
 const listTrips = async (req, res) => {
   try {
@@ -212,6 +213,25 @@ const createTripAndDispatch = async (req, res) => {
     }, { transaction });
 
     await transaction.commit();
+
+    logAudit({
+      req,
+      action: 'DISPATCH',
+      entityType: 'TRIP',
+      entityId: trip.trip_number,
+      entityName: `Trip ${trip.trip_number}`,
+      summary: `Dispatched Trip #${trip.trip_number} (Manifest: ${dispatch.dispatch_number}, ${totalPkgs} Pkgs, ${totalWeight} KG to ${destBranch?.branch_name || 'Destination'})`,
+      newValues: {
+        trip_number: trip.trip_number,
+        dispatch_number: dispatch.dispatch_number,
+        vehicle_id,
+        driver_id,
+        total_packages: totalPkgs,
+        total_weight: totalWeight,
+        seal_number: seal_number,
+        consignment_ids,
+      },
+    });
 
     return successResponse(res, 'Trip & Dispatch Challan generated successfully', {
       trip,

@@ -102,7 +102,7 @@ const ensurePermissions = async (Permission) => {
 };
 
 // Helper to seed standard roles with sensible defaults
-const ensureStandardRoles = async (Role, Permission, RolePermission, tenantId) => {
+const ensureStandardRoles = async (Role, Permission, RolePermission, tenantId, UserRole) => {
   if (!Role || !Permission) return [];
 
   // 1. Auto-migrate legacy TRANSPORT_OWNER to canonical ADMIN
@@ -139,7 +139,7 @@ const ensureStandardRoles = async (Role, Permission, RolePermission, tenantId) =
     console.warn('Role migration check warning:', mErr.message);
   }
 
-  // 2. Define standard operational roles available for transport staff
+  // 2. Define strictly ADMIN as the only core System Role
   const allPerms = await ensurePermissions(Permission);
   const permMap = {};
   allPerms.forEach((p) => { permMap[p.code] = p; });
@@ -152,87 +152,49 @@ const ensureStandardRoles = async (Role, Permission, RolePermission, tenantId) =
       is_system: true,
       perms: Object.keys(permMap),
     },
-    {
-      name: 'BRANCH_MANAGER',
-      display_name: 'Branch Manager',
-      description: 'Manages godown inventory, bookings, dispatch manifests, local fleet, and station operations.',
-      is_system: true,
-      perms: [
-        'booking.view', 'booking.create', 'booking.update', 'consignment.view', 'consignment.update',
-        'branch.manage', 'customer.view', 'customer.manage',
-        'vehicle.view', 'dispatch.create', 'dispatch.manage', 'trip.create', 'trip.manage',
-        'delivery.manage', 'pod.upload', 'pod.verify',
-        'invoice.view', 'expense.view', 'expense.create', 'reports.view', 'data.export',
-      ],
-    },
-    {
-      name: 'BOOKING_OPERATOR',
-      display_name: 'Booking Operator',
-      description: 'Generates LR / Bilty dockets, records package items, rates, and prints consignment notes.',
-      is_system: true,
-      perms: [
-        'booking.view', 'booking.create', 'booking.update', 'consignment.view', 'consignment.update',
-        'customer.view', 'customer.manage', 'pod.upload',
-      ],
-    },
-    {
-      name: 'DISPATCH_OPERATOR',
-      display_name: 'Dispatch Supervisor',
-      description: 'Creates truck loading manifests, line-haul dispatches, trip sheets, and challans.',
-      is_system: true,
-      perms: [
-        'booking.view', 'consignment.view', 'vehicle.view', 'dispatch.create', 'dispatch.manage',
-        'trip.create', 'trip.manage', 'delivery.manage', 'pod.upload',
-      ],
-    },
-    {
-      name: 'ACCOUNTANT',
-      display_name: 'Accountant / Billing',
-      description: 'Manages freight billing, GST invoices, freight payment collections, and expense vouchers.',
-      is_system: true,
-      perms: [
-        'booking.view', 'consignment.view', 'customer.view',
-        'invoice.view', 'invoice.create', 'invoice.update', 'payment.create', 'invoice.export',
-        'expense.view', 'expense.create', 'expense.update', 'expense.approve', 'expense.export',
-        'reports.view', 'data.export',
-      ],
-    },
-    {
-      name: 'FLEET_MANAGER',
-      display_name: 'Fleet Manager',
-      description: 'Oversees company vehicles, market trucks, driver compliance, diesel and trip settlements.',
-      is_system: true,
-      perms: [
-        'vehicle.view', 'vehicle.manage', 'driver.manage', 'vendor.manage',
-        'trip.create', 'trip.manage', 'trip.settle', 'expense.view', 'expense.create',
-      ],
-    },
-    {
-      name: 'DRIVER',
-      display_name: 'Driver',
-      description: 'Mobile driver app access for route updates and delivery proof capture.',
-      is_system: true,
-      perms: ['trip.manage', 'pod.upload'],
-    },
   ];
 
+  // 3. Demote active roles to Custom and remove unused system roles
   try {
-    const defaultRoleNames = roleDefinitions.map((r) => r.name);
-    const extraSystemRoles = await Role.findAll({
+    const extraRoles = await Role.findAll({
       where: {
-        is_system: true,
-        name: { [Op.notIn]: defaultRoleNames },
+        name: { [Op.ne]: 'ADMIN' },
       },
     });
 
-    for (const extraRole of extraSystemRoles) {
-      if (RolePermission) {
-        await RolePermission.destroy({ where: { role_id: extraRole.id } }).catch(() => {});
+    const legacyPreseededNames = [
+      'BOOKING_OPERATOR',
+      'DISPATCH_OPERATOR',
+      'FLEET_MANAGER',
+      'ACCOUNTANT',
+      'DRIVER',
+      'DELIVERY_OPERATOR',
+    ];
+
+    for (const extraRole of extraRoles) {
+      let assignedCount = 0;
+      if (UserRole) {
+        assignedCount = await UserRole.count({ where: { role_id: extraRole.id } }).catch(() => 0);
       }
-      await extraRole.destroy().catch(() => {});
+
+      const isSys = Boolean(extraRole.is_system);
+      const isLegacyPreseeded = legacyPreseededNames.includes((extraRole.name || '').toUpperCase());
+
+      if (assignedCount > 0) {
+        // In use by staff: convert to Custom role so user account is preserved and can be managed
+        if (isSys) {
+          await extraRole.update({ is_system: false });
+        }
+      } else if (isSys || isLegacyPreseeded) {
+        // Unused pre-seeded system role: remove from tenant DB
+        if (RolePermission) {
+          await RolePermission.destroy({ where: { role_id: extraRole.id } }).catch(() => {});
+        }
+        await extraRole.destroy().catch(() => {});
+      }
     }
   } catch (cleanErr) {
-    console.warn('System role cleanup warning:', cleanErr.message);
+    console.warn('Role cleanup notice:', cleanErr.message);
   }
 
   for (const rDef of roleDefinitions) {
@@ -249,8 +211,8 @@ const ensureStandardRoles = async (Role, Permission, RolePermission, tenantId) =
 
     // If existing ADMIN, ensure display_name is Admin and has all permissions
     if (!created && rDef.name === 'ADMIN') {
-      if (role.display_name !== 'Admin') {
-        await role.update({ display_name: 'Admin' });
+      if (role.display_name !== 'Admin' || !role.is_system) {
+        await role.update({ display_name: 'Admin', is_system: true });
       }
       const existingPerms = await role.getPermissions?.();
       if (!existingPerms || existingPerms.length === 0) {
@@ -278,12 +240,12 @@ const ensureStandardRoles = async (Role, Permission, RolePermission, tenantId) =
 
 const listRoles = async (req, res) => {
   try {
-    const { Role, Permission, RolePermission } = req.tenantDb || defaultModels;
+    const { Role, Permission, RolePermission, UserRole } = req.tenantDb || defaultModels;
     if (!Role) return errorResponse(res, 'Role model unavailable', null, 500);
 
     const tenantId = req.tenant?.tenantId;
     await ensurePermissions(Permission);
-    await ensureStandardRoles(Role, Permission, RolePermission, tenantId);
+    await ensureStandardRoles(Role, Permission, RolePermission, tenantId, UserRole);
 
     const roles = await Role.findAll({
       include: [

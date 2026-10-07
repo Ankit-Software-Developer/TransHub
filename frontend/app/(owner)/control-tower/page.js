@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import dynamic from 'next/dynamic';
+import LoadingState from '../../../components/ui/LoadingState';
 import Sidebar from '../../../components/layout/Sidebar';
 import Navbar from '../../../components/layout/Navbar';
 import DataTable from '../../../components/ui/DataTable';
@@ -48,10 +49,11 @@ const IndiaFleetMap = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="w-full h-[460px] rounded-2xl bg-slate-50 dark:bg-[#070B14] border border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center text-slate-600 dark:text-slate-400">
-        <div className="w-8 h-8 rounded-full border-2 border-blue-600 dark:border-cyan-400 border-t-transparent animate-spin mb-2" />
-        <span className="text-xs font-mono text-blue-600 dark:text-cyan-400">Connecting to India Highway Telemetry...</span>
-      </div>
+      <LoadingState
+        title="Calibrating Fleet Telemetry..."
+        description="Connecting to real-time GPS sensors, active dispatches & highway tracking"
+        minHeight="min-h-[460px]"
+      />
     )
   }
 );
@@ -341,7 +343,7 @@ export default function ControlTowerPage() {
                 }`}
                 title="Refresh Live Fleet Telemetry"
               >
-                <RefreshCw className={`w-4 h-4 text-cyan-400 ${loading ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`w-4 h-4 ${isDark ? 'text-cyan-400' : 'text-blue-600'} ${loading ? 'animate-spin' : ''}`} />
               </button>
 
               <Link

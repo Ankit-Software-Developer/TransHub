@@ -24,7 +24,14 @@ import {
 export default function CustomersPage() {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
-  const { canEdit, canDelete, canExport, isAdmin } = usePermissions();
+  const {
+    canCreateCustomer,
+    canEditCustomer,
+    canDeleteCustomer,
+    canViewCustomer,
+    canExport,
+    isAdmin,
+  } = usePermissions();
 
   const [customers, setCustomers] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -90,6 +97,7 @@ export default function CustomersPage() {
 
   const handleCreateCustomer = async (e) => {
     e.preventDefault();
+    if (!canCreateCustomer) return;
     try {
       const res = await api.post('/customers', formData);
       if (res.data.success) {
@@ -263,13 +271,15 @@ export default function CustomersPage() {
               </p>
             </div>
 
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md shadow-blue-600/30 transition-all active:scale-95"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Add Commercial Client</span>
-            </button>
+            {canCreateCustomer && (
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md shadow-blue-600/30 transition-all active:scale-95 cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Add Commercial Client</span>
+              </button>
+            )}
           </div>
 
           {/* Master Customer Server-side DataTable */}

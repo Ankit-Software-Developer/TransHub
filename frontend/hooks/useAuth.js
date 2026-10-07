@@ -25,6 +25,18 @@ export function useAuth() {
             } catch (e) {}
           }
           setUser(parsed);
+
+          // Background revalidation to keep live permissions synchronized with database
+          api.get('/auth/me').then((res) => {
+            if (res.data?.success && res.data?.data) {
+              const freshUser = res.data.data;
+              setUser(freshUser);
+              localStorage.setItem('transporter_user', JSON.stringify(freshUser));
+              if (freshUser.subscription) {
+                localStorage.setItem('transporter_subscription', JSON.stringify(freshUser.subscription));
+              }
+            }
+          }).catch(() => {});
         } else {
           // Attempt me endpoint with cookie
           const res = await api.get('/auth/me');

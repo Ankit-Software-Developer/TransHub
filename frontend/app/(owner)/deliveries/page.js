@@ -25,7 +25,7 @@ export default function DeliveriesPage() {
   const { term, plural } = useTerminology();
   const { theme } = useTheme();
   const isDark = theme === 'dark';
-  const { canEdit, canExport } = usePermissions();
+  const { canEdit, canExport, canEditDelivery } = usePermissions();
 
   const [consignments, setConsignments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -232,28 +232,34 @@ export default function DeliveriesPage() {
         resizable: false,
         render: (val, row) => (
           <div className="flex items-center justify-center space-x-1.5" onClick={(e) => e.stopPropagation()}>
-            {row.status !== 'OUT_FOR_DELIVERY' && (
-              <button
-                onClick={() => handleOutForDelivery(row.id)}
-                className="px-2.5 py-1 text-[11px] font-bold bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 rounded-lg transition-colors whitespace-nowrap"
-              >
-                Out for Delivery
-              </button>
+            {(canEdit || canEditDelivery) ? (
+              <>
+                {row.status !== 'OUT_FOR_DELIVERY' && (
+                  <button
+                    onClick={() => handleOutForDelivery(row.id)}
+                    className="px-2.5 py-1 text-[11px] font-bold bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 rounded-lg transition-colors whitespace-nowrap"
+                  >
+                    Out for Delivery
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    setSelectedConsignment(row);
+                    setReceiverName(row.consignee?.name || '');
+                  }}
+                  className="px-2.5 py-1 text-[11px] font-bold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg shadow-xs transition-colors whitespace-nowrap"
+                >
+                  Mark Delivered
+                </button>
+              </>
+            ) : (
+              <span className="text-[11px] font-semibold text-slate-400 italic">View only</span>
             )}
-            <button
-              onClick={() => {
-                setSelectedConsignment(row);
-                setReceiverName(row.consignee?.name || '');
-              }}
-              className="px-2.5 py-1 text-[11px] font-bold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg shadow-xs transition-colors whitespace-nowrap"
-            >
-              Mark Delivered
-            </button>
           </div>
         ),
       },
     ],
-    [term, isDark]
+    [term, isDark, canEdit, canEditDelivery]
   );
 
   return (

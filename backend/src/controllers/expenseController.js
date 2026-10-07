@@ -2,6 +2,7 @@
 const defaultModels = require('../models');
 const { successResponse, errorResponse } = require('../utils/apiResponse');
 const { roundToTwo } = require('../utils/decimalUtils');
+const { logAudit } = require('../middleware/auditLogger');
 
 const listExpenses = async (req, res) => {
   try {
@@ -61,6 +62,16 @@ const createExpense = async (req, res) => {
       remarks: remarks || '',
       receipt_url: receipt_url || '',
       created_by: req.user.id,
+    });
+
+    logAudit({
+      req,
+      action: 'CREATE',
+      entityType: 'EXPENSE',
+      entityId: expense.id,
+      entityName: `Expense ₹${expense.amount}`,
+      summary: `Logged expense of ₹${expense.amount} (${expense.payment_method}) - ${expense.remarks || 'General expense'}`,
+      newValues: expense.toJSON ? expense.toJSON() : expense,
     });
 
     return successResponse(res, 'Expense recorded successfully', expense, 201);
@@ -132,6 +143,23 @@ const settleTrip = async (req, res) => {
     }, { transaction });
 
     await transaction.commit();
+
+    logAudit({
+      req,
+      action: 'SETTLE',
+      entityType: 'TRIP',
+      entityId: trip.trip_number,
+      entityName: `Trip ${trip.trip_number}`,
+      summary: `Settled Trip #${trip.trip_number} (${settlementNumber}: Advances ₹${totalAdvance}, Expenses ₹${totalExpenses}, Balance ₹${Math.abs(balance)})`,
+      newValues: {
+        trip_number: trip.trip_number,
+        settlement_number: settlementNumber,
+        settlement_type: settlementType,
+        total_advance: totalAdvance,
+        total_expenses: totalExpenses,
+        driver_allowance: allowance,
+      },
+    });
 
     return successResponse(res, 'Trip successfully settled and reconciled', settlement, 201);
   } catch (error) {

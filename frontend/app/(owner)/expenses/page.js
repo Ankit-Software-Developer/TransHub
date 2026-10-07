@@ -22,7 +22,7 @@ import {
 export default function ExpensesPage() {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
-  const { canExport } = usePermissions();
+  const { canExport, isAdmin, canCreateExpense } = usePermissions();
 
   const [expenses, setExpenses] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -82,6 +82,7 @@ export default function ExpensesPage() {
 
   const handleAddExpense = async (e) => {
     e.preventDefault();
+    if (!canCreateExpense) return;
     try {
       const res = await api.post('/expenses', formData);
       if (res.data?.success) {
@@ -260,13 +261,15 @@ export default function ExpensesPage() {
               </p>
             </div>
 
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md shadow-blue-600/30 transition-all active:scale-95"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Record Expense</span>
-            </button>
+            {canCreateExpense && (
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md shadow-blue-600/30 transition-all active:scale-95 cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Record Expense</span>
+              </button>
+            )}
           </div>
 
           {/* Master Expenses Server-side DataTable */}

@@ -5,6 +5,7 @@ import React, { useState } from 'react';
 import Sidebar from '../../../components/layout/Sidebar';
 import Navbar from '../../../components/layout/Navbar';
 import { useTerminology } from '../../../hooks/useTerminology';
+import { usePermissions } from '../../../hooks/usePermissions';
 import {
   BarChart3,
   FileSpreadsheet,
@@ -19,6 +20,7 @@ import {
 
 export default function ReportsPage() {
   const { term, plural } = useTerminology();
+  const { canExport } = usePermissions();
 
   const reportCards = [
     {
@@ -95,13 +97,17 @@ export default function ReportsPage() {
 
                   <div className="flex items-center justify-between pt-4 border-t border-slate-100">
                     <span className="text-xs text-slate-400 font-medium">Export Formats: CSV / Excel / PDF</span>
-                    <button
-                      onClick={() => handleDownloadCsv(r.title)}
-                      className="flex items-center space-x-1.5 bg-slate-900 hover:bg-slate-800 text-white px-3.5 py-1.5 rounded-lg text-xs font-semibold shadow-xs transition-colors"
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                      <span>Download CSV</span>
-                    </button>
+                    {canExport ? (
+                      <button
+                        onClick={() => handleDownloadCsv(r.title)}
+                        className="flex items-center space-x-1.5 bg-slate-900 hover:bg-slate-800 text-white px-3.5 py-1.5 rounded-lg text-xs font-semibold shadow-xs transition-colors"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        <span>Download CSV</span>
+                      </button>
+                    ) : (
+                      <span className="text-xs font-semibold text-slate-400 italic">View only</span>
+                    )}
                   </div>
                 </div>
               );

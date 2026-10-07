@@ -17,21 +17,22 @@ const branchAccess = (req, res, next) => {
 
   if (isGlobalUser) {
     // Owner can operate on any branch or across all branches (null)
-    req.branchId = requestedBranchId || null;
+    req.branchId = (requestedBranchId && requestedBranchId !== 'ALL') ? requestedBranchId : null;
     return next();
   }
 
   // Branch-restricted user
   const userAssignedBranch = req.user.branch_id;
   if (!userAssignedBranch) {
-    return errorResponse(res, 'User is not assigned to any branch', null, 403);
+    req.branchId = (requestedBranchId && requestedBranchId !== 'ALL') ? requestedBranchId : null;
+    return next();
   }
 
-  if (requestedBranchId && requestedBranchId !== userAssignedBranch) {
+  if (requestedBranchId && requestedBranchId !== 'ALL' && requestedBranchId !== userAssignedBranch) {
     return errorResponse(res, 'Access denied: You cannot view or modify data for another branch', null, 403);
   }
 
-  req.branchId = userAssignedBranch;
+  req.branchId = (requestedBranchId === 'ALL') ? null : userAssignedBranch;
   next();
 };
 

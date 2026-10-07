@@ -27,6 +27,7 @@ transport-saas/
 │   │   │   └── plans/page.js
 │   │   ├── (owner)/
 │   │   │   ├── dashboard/page.js
+│   │   │   ├── approvals/page.js
 │   │   │   ├── action-center/page.js
 │   │   │   ├── bookings/
 │   │   │   │   ├── page.js

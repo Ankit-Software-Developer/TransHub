@@ -121,7 +121,7 @@ const INVOICES_DATA = [
 export default function InvoicesMasterPage() {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
-  const { canEdit, canExport } = usePermissions();
+  const { canEdit, canExport, isAdmin, canCreateInvoice, canCreatePayment } = usePermissions();
 
   const [invoices, setInvoices] = useState(INVOICES_DATA);
   const [search, setSearch] = useState('');
@@ -285,7 +285,7 @@ export default function InvoicesMasterPage() {
           >
             <Printer className="w-3.5 h-3.5" />
           </button>
-          {row.balance_amount > 0 && canEdit && (
+          {row.balance_amount > 0 && canCreatePayment && (
             <button
               onClick={() => setPaymentModalInvoice(row)}
               className="px-2 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-bold shadow-xs"
@@ -296,7 +296,7 @@ export default function InvoicesMasterPage() {
         </div>
       )
     }
-  ], [canEdit]);
+  ], [canCreatePayment]);
 
   return (
     <div className={`flex min-h-screen transition-colors duration-300 ${
@@ -325,25 +325,29 @@ export default function InvoicesMasterPage() {
             </div>
 
             <div className="flex items-center space-x-3">
-              <button
-                onClick={() => alert('Exporting GSTR-1 Sales Report (.json / .xlsx)...')}
-                className={`flex items-center space-x-2 px-3.5 py-2 rounded-xl border text-xs font-bold transition-all ${
-                  isDark
-                    ? 'bg-slate-900/80 border-slate-800 text-slate-300 hover:text-white'
-                    : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-xs'
-                }`}
-              >
-                <Download className="w-4 h-4 text-cyan-400" />
-                <span className="hidden sm:inline">Export GSTR-1</span>
-              </button>
+              {canExport && (
+                <button
+                  onClick={() => alert('Exporting GSTR-1 Sales Report (.json / .xlsx)...')}
+                  className={`flex items-center space-x-2 px-3.5 py-2 rounded-xl border text-xs font-bold transition-all ${
+                    isDark
+                      ? 'bg-slate-900/80 border-slate-800 text-slate-300 hover:text-white'
+                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-xs'
+                  }`}
+                >
+                  <Download className="w-4 h-4 text-cyan-400" />
+                  <span className="hidden sm:inline">Export GSTR-1</span>
+                </button>
+              )}
 
-              <button
-                onClick={() => alert('Opening Create Freight Invoice Wizard...')}
-                className="flex items-center space-x-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 transition-all active:scale-95"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Generate Invoice</span>
-              </button>
+              {canCreateInvoice && (
+                <button
+                  onClick={() => alert('Opening Create Freight Invoice Wizard...')}
+                  className="flex items-center space-x-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 transition-all active:scale-95"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Generate Invoice</span>
+                </button>
+              )}
             </div>
           </div>
 

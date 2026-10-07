@@ -45,38 +45,6 @@ module.exports = (sequelize) => {
     last_login_at: {
       type: DataTypes.DATE,
     },
-    staff_code: {
-      type: DataTypes.STRING(50),
-    },
-    designation: {
-      type: DataTypes.STRING(100),
-    },
-    joining_date: {
-      type: DataTypes.DATEONLY,
-    },
-    aadhaar_number: {
-      type: DataTypes.STRING(30),
-    },
-    pan_number: {
-      type: DataTypes.STRING(30),
-    },
-    address: {
-      type: DataTypes.TEXT,
-    },
-    emergency_contact: {
-      type: DataTypes.STRING(100),
-    },
-    salary_amount: {
-      type: DataTypes.DECIMAL(12, 2),
-      defaultValue: 0,
-    },
-    salary_type: {
-      type: DataTypes.STRING(30),
-      defaultValue: 'MONTHLY',
-    },
-    document_url: {
-      type: DataTypes.TEXT('long'),
-    },
   }, {
     tableName: 'users',
     indexes: [

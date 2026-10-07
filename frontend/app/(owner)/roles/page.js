@@ -13,9 +13,9 @@ import Link from 'next/link';
 export default function RolesAndPermissionsPage() {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
-  const { isAdmin } = usePermissions();
+  const { isAdmin, canManageRoles } = usePermissions();
 
-  if (!isAdmin) {
+  if (!canManageRoles) {
     return (
       <div className={`flex min-h-screen ${isDark ? 'bg-[#06080F] text-slate-100' : 'bg-[#F4F6FB] text-slate-900'}`}>
         <Sidebar />

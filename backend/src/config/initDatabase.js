@@ -42,6 +42,23 @@ const initMasterDatabase = async () => {
       // Ignored if column already exists
     }
 
+    // Ensure extra staff/KYC columns are dropped from master users table
+    const extraStaffColumns = [
+      'staff_code',
+      'designation',
+      'joining_date',
+      'aadhaar_number',
+      'pan_number',
+      'address',
+      'emergency_contact',
+      'salary_amount',
+      'salary_type',
+      'document_url',
+    ];
+    for (const col of extraStaffColumns) {
+      await sequelize.query(`ALTER TABLE \`users\` DROP COLUMN \`${col}\`;`).catch(() => {});
+    }
+
     // 3. Ensure standard SaaS plans exist in database
     if (typeof ensureDefaultPlans === 'function') {
       try {

@@ -2,6 +2,7 @@
 const { Op } = require('sequelize');
 const defaultModels = require('../models');
 const { successResponse, errorResponse } = require('../utils/apiResponse');
+const { logAudit } = require('../middleware/auditLogger');
 
 const listVehicles = async (req, res) => {
   try {
@@ -147,6 +148,16 @@ const createVehicle = async (req, res) => {
       status: status || 'AVAILABLE',
     });
 
+    logAudit({
+      req,
+      action: 'CREATE',
+      entityType: 'VEHICLE',
+      entityId: newVehicle.vehicle_number,
+      entityName: `Vehicle ${newVehicle.vehicle_number}`,
+      summary: `Registered new vehicle ${newVehicle.vehicle_number} (${newVehicle.vehicle_type}, ${newVehicle.capacity_ton}T)`,
+      newValues: newVehicle.toJSON ? newVehicle.toJSON() : newVehicle,
+    });
+
     return successResponse(res, 'Vehicle registered successfully in fleet', newVehicle, 201);
   } catch (error) {
     return errorResponse(res, error.message, null, 500);
@@ -167,6 +178,8 @@ const updateVehicle = async (req, res) => {
     if (!vehicle) {
       return errorResponse(res, 'Vehicle asset not found', null, 404);
     }
+
+    const oldSnapshot = vehicle.toJSON ? vehicle.toJSON() : { ...vehicle.dataValues };
 
     const {
       vehicle_number,
@@ -235,6 +248,18 @@ const updateVehicle = async (req, res) => {
     if (status !== undefined) vehicle.status = status;
 
     await vehicle.save();
+
+    logAudit({
+      req,
+      action: 'UPDATE',
+      entityType: 'VEHICLE',
+      entityId: vehicle.vehicle_number,
+      entityName: `Vehicle ${vehicle.vehicle_number}`,
+      summary: `Updated vehicle ${vehicle.vehicle_number} specifications`,
+      oldValues: oldSnapshot,
+      newValues: vehicle.toJSON ? vehicle.toJSON() : { ...vehicle.dataValues },
+    });
+
     return successResponse(res, 'Vehicle updated successfully', vehicle);
   } catch (error) {
     return errorResponse(res, error.message, null, 500);
@@ -310,6 +335,17 @@ const deleteVehicle = async (req, res) => {
     }
 
     await vehicle.destroy();
+
+    logAudit({
+      req,
+      action: 'DELETE',
+      entityType: 'VEHICLE',
+      entityId: vehicle.vehicle_number,
+      entityName: `Vehicle ${vehicle.vehicle_number}`,
+      summary: `Permanently removed vehicle ${vehicle.vehicle_number} from fleet`,
+      oldValues: vehicle.toJSON ? vehicle.toJSON() : { ...vehicle.dataValues },
+    });
+
     return successResponse(res, `Vehicle ${vehicle.vehicle_number} removed successfully`);
   } catch (error) {
     return errorResponse(res, error.message, null, 500);
@@ -393,6 +429,16 @@ const createDriver = async (req, res) => {
       status: status || 'ACTIVE',
     });
 
+    logAudit({
+      req,
+      action: 'CREATE',
+      entityType: 'DRIVER',
+      entityId: driver.id,
+      entityName: `Driver ${driver.name}`,
+      summary: `Registered certified driver ${driver.name} (Phone: ${driver.phone})`,
+      newValues: driver.toJSON ? driver.toJSON() : { ...driver.dataValues },
+    });
+
     return successResponse(res, 'Driver registered successfully', driver, 201);
   } catch (error) {
     return errorResponse(res, error.message, null, 500);
@@ -415,6 +461,8 @@ const updateDriver = async (req, res) => {
     if (!driver) {
       return errorResponse(res, 'Driver not found', null, 404);
     }
+
+    const oldSnapshot = driver.toJSON ? driver.toJSON() : { ...driver.dataValues };
 
     const {
       name,
@@ -446,6 +494,17 @@ const updateDriver = async (req, res) => {
       salary_type: salary_type !== undefined ? salary_type : driver.salary_type,
       salary_amount: salary_amount !== undefined ? salary_amount : driver.salary_amount,
       status: status !== undefined ? status : driver.status,
+    });
+
+    logAudit({
+      req,
+      action: 'UPDATE',
+      entityType: 'DRIVER',
+      entityId: driver.name,
+      entityName: `Driver ${driver.name}`,
+      summary: `Updated driver ${driver.name} (Phone: ${driver.phone}) profile`,
+      oldValues: oldSnapshot,
+      newValues: driver.toJSON ? driver.toJSON() : { ...driver.dataValues },
     });
 
     return successResponse(res, 'Driver profile updated', driver);
@@ -505,7 +564,19 @@ const deleteDriver = async (req, res) => {
       }
     }
 
+    const oldSnapshot = driver.toJSON ? driver.toJSON() : { ...driver.dataValues };
     await driver.destroy();
+
+    logAudit({
+      req,
+      action: 'DELETE',
+      entityType: 'DRIVER',
+      entityId: driver.name,
+      entityName: `Driver ${driver.name}`,
+      summary: `Permanently removed driver ${driver.name} (Phone: ${driver.phone}) from fleet`,
+      oldValues: oldSnapshot,
+    });
+
     return successResponse(res, 'Driver record removed successfully');
   } catch (error) {
     return errorResponse(res, error.message, null, 500);
