@@ -9,6 +9,8 @@ import Navbar from '../../../components/layout/Navbar';
 import DataTable from '../../../components/ui/DataTable';
 import Badge from '../../../components/ui/Badge';
 import { useTheme } from '../../../components/ThemeProvider';
+import { useStore } from '../../../store/useStore';
+import { usePermissions } from '../../../hooks/usePermissions';
 import api from '../../../services/api';
 import {
   Compass,
@@ -39,7 +41,8 @@ import {
   X,
   Package,
   Boxes,
-  Plus
+  Plus,
+  Building2
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -61,6 +64,38 @@ const IndiaFleetMap = dynamic(
 export default function ControlTowerPage() {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
+
+  const user = useStore((state) => state.user);
+  const activeBranch = useStore((state) => state.activeBranch);
+  const { isAdmin, isBranchManager } = usePermissions();
+
+  const userBranchId = user?.branchId || user?.branch_id || user?.branch?.id || user?.assigned_branch_id || null;
+  const isRestrictedBranchUser = useMemo(() => {
+    if (!user) return false;
+    if (isBranchManager) return true;
+    const r = (user.role || '').toUpperCase();
+    if (r === 'BRANCH_MANAGER' || r === 'HUB_MANAGER') return true;
+    if (Array.isArray(user.roles) && user.roles.some((role) => {
+      const name = typeof role === 'string' ? role : role?.name || '';
+      return name.toUpperCase() === 'BRANCH_MANAGER' || name.toUpperCase() === 'HUB_MANAGER';
+    })) return true;
+    if (user?.designation?.toLowerCase().includes('branch')) return true;
+    if (!isAdmin && userBranchId) return true;
+    return false;
+  }, [user, isBranchManager, isAdmin, userBranchId]);
+
+  const [branches, setBranches] = useState([]);
+  const [selectedBranchId, setSelectedBranchId] = useState(() => {
+    if (isRestrictedBranchUser && userBranchId) return userBranchId;
+    if (activeBranch?.id && activeBranch.id !== 'ALL') return activeBranch.id;
+    return 'ALL';
+  });
+
+  useEffect(() => {
+    if (isRestrictedBranchUser && userBranchId && selectedBranchId !== userBranchId) {
+      setSelectedBranchId(userBranchId);
+    }
+  }, [isRestrictedBranchUser, userBranchId]);
 
   const [loading, setLoading] = useState(true);
   const [tripsData, setTripsData] = useState([]);
@@ -96,9 +131,15 @@ export default function ControlTowerPage() {
   const fetchControlTowerData = useCallback(async () => {
     try {
       setLoading(true);
-      const [tripsRes, dashRes] = await Promise.allSettled([
-        api.get('/trips?limit=100'),
-        api.get('/dashboard/owner')
+      let tripsUrl = '/trips?limit=100';
+      if (selectedBranchId && selectedBranchId !== 'ALL') {
+        tripsUrl += `&branch_id=${selectedBranchId}`;
+      }
+
+      const [tripsRes, dashRes, branchRes] = await Promise.allSettled([
+        api.get(tripsUrl),
+        api.get('/dashboard/owner'),
+        api.get('/branches').catch(() => ({ data: { data: [] } })),
       ]);
 
       let loadedTrips = [];
@@ -110,53 +151,82 @@ export default function ControlTowerPage() {
       if (dashRes.status === 'fulfilled' && dashRes.value?.data?.success) {
         setDashboardMetrics(dashRes.value.data.data);
       }
+
+      if (branchRes.status === 'fulfilled') {
+        const bList = branchRes.value.data?.data?.branches || branchRes.value.data?.data || [];
+        setBranches(Array.isArray(bList) ? bList : []);
+      }
     } catch (err) {
       console.error('Failed to load live control tower data', err);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [selectedBranchId]);
 
   useEffect(() => {
     fetchControlTowerData();
   }, [fetchControlTowerData]);
 
-  // Transform trips from DB to only include RUNNING trips with an active trip sheet
+  // Transform trips from DB to include all ACTIVE/RUNNING trips
   // (Stopped / idle vehicles without a trip sheet are strictly excluded)
   const runningTrips = useMemo(() => {
     return tripsData
       .filter((t) => {
-        // Must be in active movement / transit / dispatch
+        // Must be in active movement / transit / dispatch / running status
         const status = (t.status || '').toUpperCase();
-        return ['IN_TRANSIT', 'DISPATCHED', 'LOADING', 'CREATED'].includes(status) && Boolean(t.vehicle);
+        const isRunning = ['RUNNING', 'IN_TRANSIT', 'DISPATCHED', 'LOADING', 'CREATED', 'PLANNED', 'READY'].includes(status)
+          || (!['COMPLETED', 'CANCELLED', 'SETTLED'].includes(status) && Boolean(status));
+
+        if (!isRunning) return false;
+
+        // If specific branch is selected, ensure trip originates or terminates at this branch
+        if (selectedBranchId && selectedBranchId !== 'ALL') {
+          const matchOrigin = t.origin_branch_id === selectedBranchId;
+          const matchDest = t.dest_branch_id === selectedBranchId;
+          if (!matchOrigin && !matchDest) return false;
+        }
+
+        return true;
       })
       .map((t, idx) => {
-        const oCity = t.origin_city || t.originBranch?.city || 'Delhi';
-        const dCity = t.destination_city || t.destBranch?.city || 'Mumbai';
-        const speedVal = t.status === 'IN_TRANSIT' ? 62 + (idx * 9) % 22 : t.status === 'DISPATCHED' ? 45 : 10;
+        const oCity = t.origin_city || t.originBranch?.city || t.originBranch?.branch_name || 'Origin Hub';
+        const dCity = t.destination_city || t.destBranch?.city || t.destBranch?.branch_name || 'Destination Hub';
+        const speedVal = t.status === 'IN_TRANSIT' ? 62 + (idx * 9) % 22 : (t.status === 'RUNNING' || t.status === 'DISPATCHED') ? 48 : 10;
+        const vNum = t.vehicle?.vehicle_number || t.vehicle_number || (t.vehicle_id ? `Truck (${t.vehicle_id.slice(0, 6)})` : `TRUCK-${1000 + idx}`);
+        const vModel = t.vehicle?.vehicle_type || 'Commercial Truck (16T)';
+        const dName = t.driver?.name || t.driver_name || 'Driver In-charge';
+        const dPhone = t.driver?.phone || t.driver_phone || '+91 98000 00000';
 
         return {
           id: t.id || t.trip_number,
           rawId: t.id,
           trip_number: t.trip_number,
-          vehicleNumber: t.vehicle?.vehicle_number || `HR 55 AB ${1000 + idx}`,
-          vehicle_model: t.vehicle?.vehicle_type || 'Commercial Truck (16T)',
-          driver: t.driver?.name || 'Driver In-charge',
-          driver_phone: t.driver?.phone || '+91 98000 00000',
+          vehicleNumber: vNum,
+          vehicle_model: vModel,
+          driver: dName,
+          driver_phone: dPhone,
           rating: '4.8 ★',
           origin: oCity,
           destination: dCity,
           originCity: oCity,
           destCity: dCity,
+          origin_branch_id: t.origin_branch_id,
+          dest_branch_id: t.dest_branch_id,
+          origin_branch_name: t.originBranch?.branch_name,
+          dest_branch_name: t.destBranch?.branch_name,
           route: `${oCity} ➔ ${dCity}`,
           status: t.status,
           status_label:
             t.status === 'IN_TRANSIT'
               ? 'On Schedule'
+              : t.status === 'RUNNING'
+              ? 'In Transit'
               : t.status === 'DISPATCHED'
               ? 'Dispatched'
               : t.status === 'LOADING'
               ? 'Dock Loading'
+              : t.status === 'READY'
+              ? 'Ready for Transit'
               : 'Trip Created',
           isTransit: true, // Marker for Leaflet IndiaFleetMap
           speed: `${speedVal} km/h`,
@@ -164,7 +234,7 @@ export default function ControlTowerPage() {
           remaining_km: `${450 + (idx * 120) % 800} km`,
           eta: t.trip_date ? `${new Date(t.trip_date).toLocaleDateString()} Arrival` : 'Tomorrow',
           on_time_buffer: '+1h 45m',
-          progress: t.status === 'IN_TRANSIT' ? 55 + (idx * 12) % 35 : 15,
+          progress: t.status === 'IN_TRANSIT' ? 55 + (idx * 12) % 35 : t.status === 'RUNNING' ? 45 : 15,
           cargo: `${Number(t.total_weight || 0).toLocaleString()} KG • ${t.total_packages || 0} Pkgs`,
           location: `${oCity} Highway Corridor`,
           total_weight: t.total_weight || 0,
@@ -174,7 +244,7 @@ export default function ControlTowerPage() {
           raw: t
         };
       });
-  }, [tripsData]);
+  }, [tripsData, selectedBranchId]);
 
   // Set default selected trip once loaded
   useEffect(() => {
@@ -186,7 +256,7 @@ export default function ControlTowerPage() {
   // Filtered trips based on active layer
   const displayedTrips = useMemo(() => {
     if (activeLayer === 'CORRIDORS') {
-      return runningTrips.filter((t) => t.status === 'IN_TRANSIT');
+      return runningTrips.filter((t) => t.status === 'IN_TRANSIT' || t.status === 'RUNNING' || t.status === 'DISPATCHED');
     }
     if (activeLayer === 'GEOFENCE') {
       return runningTrips.filter((t) => t.speed !== '0 km/h');
@@ -309,8 +379,8 @@ export default function ControlTowerPage() {
         <main className="flex-1 p-5 sm:p-6 lg:p-8 space-y-6 max-w-[1720px] mx-auto w-full">
           
           {/* 24x7 Operations Command Strip Header */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div className="min-w-0">
               <div className="flex items-center space-x-2.5">
                 <div className="w-3 h-3 rounded-full bg-cyan-400 animate-ping" />
                 <h1 className={`text-2xl sm:text-3xl font-black tracking-tight ${
@@ -324,19 +394,56 @@ export default function ControlTowerPage() {
               </p>
             </div>
 
-            <div className="flex items-center space-x-3">
-              <div className={`flex items-center space-x-2 px-3 py-1.5 rounded-xl border text-xs font-mono font-bold ${
-                isDark ? 'bg-slate-900/90 border-slate-800 text-cyan-300' : 'bg-white border-slate-200 text-blue-700 shadow-xs'
+            {/* Action Toolbar: Single-Row Layout when space is present, smoothly responsive */}
+            <div className="flex items-center gap-2 overflow-x-auto sm:overflow-visible pb-1 sm:pb-0 shrink-0">
+              {/* Branch / Transporter Scope Selector */}
+              <div className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-bold shrink-0 ${
+                isDark ? 'bg-slate-900/90 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-800 shadow-xs'
               }`}>
-                <Radio className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
-                <span>IST: {currentTime || '07:24:32 PM'}</span>
-                <span className="text-[10px] text-emerald-400 font-sans">• LIVE RADAR</span>
+                <Building2 className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] text-slate-400 shrink-0">Branch:</span>
+                  {isRestrictedBranchUser ? (
+                    <span className={`font-bold text-xs max-w-[150px] truncate ${
+                      isDark ? 'text-cyan-300' : 'text-blue-700'
+                    }`}>
+                      {branches.find((b) => b.id === selectedBranchId)?.branch_name || user?.branchName || 'Assigned Branch'}
+                    </span>
+                  ) : (
+                    <select
+                      value={selectedBranchId}
+                      onChange={(e) => setSelectedBranchId(e.target.value)}
+                      className={`bg-transparent font-bold focus:outline-none cursor-pointer text-xs max-w-[150px] sm:max-w-[190px] truncate ${
+                        isDark ? 'text-white' : 'text-slate-900'
+                      }`}
+                    >
+                      <option value="ALL" className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>
+                        🌐 All Branches
+                      </option>
+                      {branches.map((b) => (
+                        <option key={b.id} value={b.id} className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>
+                          {b.branch_name} {b.city ? `• ${b.city}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
               </div>
 
+              {/* Live IST Radar Time */}
+              <div className={`flex items-center space-x-1.5 px-3 py-2 rounded-xl border text-xs font-mono font-bold shrink-0 whitespace-nowrap ${
+                isDark ? 'bg-slate-900/90 border-slate-800 text-cyan-300' : 'bg-white border-slate-200 text-blue-700 shadow-xs'
+              }`}>
+                <Radio className="w-3.5 h-3.5 text-cyan-400 animate-pulse shrink-0" />
+                <span>IST: {currentTime || '07:24:32 PM'}</span>
+                <span className="hidden sm:inline text-[10px] text-emerald-400 font-sans">• LIVE RADAR</span>
+              </div>
+
+              {/* Refresh Button */}
               <button
                 onClick={fetchControlTowerData}
                 disabled={loading}
-                className={`p-2 rounded-xl border transition-all ${
+                className={`p-2 rounded-xl border transition-all shrink-0 ${
                   isDark
                     ? 'bg-slate-900/80 border-slate-800 text-slate-300 hover:text-white'
                     : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-xs'
@@ -346,9 +453,10 @@ export default function ControlTowerPage() {
                 <RefreshCw className={`w-4 h-4 ${isDark ? 'text-cyan-400' : 'text-blue-600'} ${loading ? 'animate-spin' : ''}`} />
               </button>
 
+              {/* New Trip Button */}
               <Link
                 href="/load-planning"
-                className="flex items-center space-x-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 transition-all active:scale-95"
+                className="flex items-center space-x-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 transition-all active:scale-95 shrink-0 whitespace-nowrap"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>New Trip</span>
@@ -495,18 +603,35 @@ export default function ControlTowerPage() {
                         <Truck className="w-7 h-7" />
                       </div>
                       <h4 className={`text-base font-bold mb-1 ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                        No Active Running Trips
+                        {selectedBranchId && selectedBranchId !== 'ALL'
+                          ? `No Active Running Trips for ${branches.find((b) => b.id === selectedBranchId)?.branch_name || 'Selected Branch'}`
+                          : 'No Active Running Trips'}
                       </h4>
                       <p className={`text-xs max-w-sm mb-4 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                        All commercial vehicles are currently halted or at yard. Vehicles without an active trip sheet are hidden from the live highway radar.
+                        {selectedBranchId && selectedBranchId !== 'ALL'
+                          ? 'No active dispatches originating or terminating at this branch. Switch to All Branches or create a new dispatch.'
+                          : 'All commercial vehicles are currently halted or at yard. Vehicles without an active trip sheet are hidden from the live highway radar.'}
                       </p>
-                      <Link
-                        href="/load-planning"
-                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-md shadow-blue-600/30 transition-all active:scale-95"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>Create Trip & Dispatch</span>
-                      </Link>
+                      <div className="flex items-center gap-2 flex-wrap justify-center">
+                        {selectedBranchId && selectedBranchId !== 'ALL' && !isRestrictedBranchUser && (
+                          <button
+                            type="button"
+                            onClick={() => setSelectedBranchId('ALL')}
+                            className={`px-3 py-2 rounded-xl border text-xs font-bold transition-all ${
+                              isDark ? 'border-slate-700 bg-slate-800 text-cyan-300 hover:bg-slate-700' : 'border-slate-300 bg-white text-blue-700 hover:bg-slate-100 shadow-sm'
+                            }`}
+                          >
+                            🌐 View All Branches
+                          </button>
+                        )}
+                        <Link
+                          href="/load-planning"
+                          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-md shadow-blue-600/30 transition-all active:scale-95"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Create Trip & Dispatch</span>
+                        </Link>
+                      </div>
                     </div>
                   ) : (
                     <IndiaFleetMap

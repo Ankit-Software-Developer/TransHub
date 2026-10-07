@@ -42,10 +42,38 @@ const listExpenses = async (req, res) => {
 
 const createExpense = async (req, res) => {
   try {
-    const { Expense } = req.tenantDb || defaultModels;
-    const { category_id, amount, expense_date, trip_id, vehicle_id, driver_id, payment_method, remarks, receipt_url } = req.body;
-    if (!category_id || !amount) {
-      return errorResponse(res, 'Expense category and amount are required', null, 400);
+    const { Expense, ExpenseCategory, Trip } = req.tenantDb || defaultModels;
+    let { category_id, amount, expense_date, trip_id, vehicle_id, driver_id, payment_method, remarks, receipt_url } = req.body;
+    if (!amount || isNaN(parseFloat(amount))) {
+      return errorResponse(res, 'Valid expense amount is required', null, 400);
+    }
+
+    // Resolve category if needed
+    if (!category_id && ExpenseCategory) {
+      const defaultCat = await ExpenseCategory.findOne({ where: { name: 'Miscellaneous' } }) || await ExpenseCategory.findOne();
+      if (defaultCat) category_id = defaultCat.id;
+    } else if (category_id && ExpenseCategory) {
+      // Check if category_id was passed as a name string instead of UUID
+      const catByName = await ExpenseCategory.findOne({ where: { name: category_id } });
+      if (catByName) category_id = catByName.id;
+    }
+
+    if (!category_id && ExpenseCategory) {
+      // Create a default category if table was empty
+      const [newCat] = await ExpenseCategory.findOrCreate({
+        where: { name: 'Trip Expense' },
+        defaults: { name: 'Trip Expense', description: 'General operational trip expense' }
+      });
+      category_id = newCat.id;
+    }
+
+    // Auto-fill vehicle and driver from trip if linked
+    if (trip_id && (!vehicle_id || !driver_id) && Trip) {
+      const tripRecord = await Trip.findByPk(trip_id);
+      if (tripRecord) {
+        if (!vehicle_id) vehicle_id = tripRecord.vehicle_id;
+        if (!driver_id) driver_id = tripRecord.driver_id;
+      }
     }
 
     const expense = await Expense.create({
@@ -64,6 +92,14 @@ const createExpense = async (req, res) => {
       created_by: req.user.id,
     });
 
+    // Update trip total_expenses if linked to a trip
+    if (trip_id) {
+      const { Trip } = req.tenantDb || defaultModels;
+      if (Trip) {
+        await Trip.increment({ total_expenses: parseFloat(amount) }, { where: { id: trip_id } });
+      }
+    }
+
     logAudit({
       req,
       action: 'CREATE',
@@ -75,6 +111,51 @@ const createExpense = async (req, res) => {
     });
 
     return successResponse(res, 'Expense recorded successfully', expense, 201);
+  } catch (error) {
+    return errorResponse(res, error.message, null, 500);
+  }
+};
+
+const createDriverAdvance = async (req, res) => {
+  try {
+    const { DriverAdvance, Trip } = req.tenantDb || defaultModels;
+    const { trip_id, driver_id, amount, disbursed_mode = 'CASH', remarks } = req.body;
+    if (!trip_id || !amount) {
+      return errorResponse(res, 'Trip ID and advance amount are required', null, 400);
+    }
+
+    const trip = await Trip.findOne({
+      where: { id: trip_id, tenant_id: req.tenant.tenantId },
+    });
+    if (!trip) {
+      return errorResponse(res, 'Trip not found', null, 404);
+    }
+
+    const advance = await DriverAdvance.create({
+      tenant_id: req.tenant.tenantId,
+      organization_id: req.tenant.organizationId,
+      trip_id,
+      driver_id: driver_id || trip.driver_id,
+      amount: parseFloat(amount),
+      disbursed_date: new Date().toISOString().slice(0, 10),
+      disbursed_mode,
+      remarks: remarks || 'Additional driver cash advance',
+      disbursed_by: req.user.id,
+    });
+
+    await trip.increment({ driver_advance: parseFloat(amount) });
+
+    logAudit({
+      req,
+      action: 'CREATE',
+      entityType: 'DRIVER_ADVANCE',
+      entityId: advance.id,
+      entityName: `Driver Advance ₹${advance.amount}`,
+      summary: `Disbursed driver advance of ₹${advance.amount} (${advance.disbursed_mode}) for Trip #${trip.trip_number}`,
+      newValues: advance.toJSON ? advance.toJSON() : advance,
+    });
+
+    return successResponse(res, 'Driver advance recorded successfully', advance, 201);
   } catch (error) {
     return errorResponse(res, error.message, null, 500);
   }
@@ -181,6 +262,8 @@ const listCategories = async (req, res) => {
 module.exports = {
   listExpenses,
   createExpense,
+  createDriverAdvance,
   settleTrip,
   listCategories,
 };
+

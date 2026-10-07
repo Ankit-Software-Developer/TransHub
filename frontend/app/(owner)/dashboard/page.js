@@ -765,7 +765,7 @@ export default function OwnerDashboard() {
                   </Link>
 
                   <Link
-                    href="/dispatches"
+                    href="/trips"
                     className={`p-3 rounded-2xl border transition-all text-left group ${
                       isDark
                         ? 'bg-purple-950/30 border-purple-500/20 hover:bg-purple-900/40 hover:border-purple-400'
@@ -775,8 +775,8 @@ export default function OwnerDashboard() {
                     <div className="w-8 h-8 rounded-xl bg-purple-600 text-white flex items-center justify-center mb-2 shadow-md shadow-purple-600/30 group-hover:scale-105 transition-transform">
                       <Send className="w-4 h-4" />
                     </div>
-                    <div className={`text-xs font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>Assign Vehicle</div>
-                    <div className={`text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Dispatch & trip sheet</div>
+                    <div className={`text-xs font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>Trips & Movement</div>
+                    <div className={`text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Fleet trips & settlements</div>
                   </Link>
 
                   <Link

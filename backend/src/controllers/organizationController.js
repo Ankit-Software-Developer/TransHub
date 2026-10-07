@@ -141,10 +141,101 @@ const updateDocketSeries = async (req, res) => {
   }
 };
 
+const getTripSeries = async (req, res) => {
+  try {
+    const preview = await getNextNumberPreview({
+      tenantId: req.tenant.tenantId,
+      organizationId: req.tenant.organizationId,
+      documentType: 'TRIP',
+      models: req.tenantDb,
+    });
+    return successResponse(res, 'Trip series preview retrieved', preview);
+  } catch (error) {
+    return errorResponse(res, error.message, null, 500);
+  }
+};
+
+const updateTripSeries = async (req, res) => {
+  try {
+    const { prefix, startingNumber, sequenceLength } = req.body;
+    const OrganizationModel = req.tenantDb?.Organization || Organization;
+    const NumberSequenceModel = req.tenantDb?.NumberSequence;
+    const currentYear = String(new Date().getFullYear());
+
+    const org = await OrganizationModel.findByPk(req.tenant.organizationId);
+    if (!org) return errorResponse(res, 'Organization not found', null, 404);
+
+    const cleanPrefix = (prefix || '').trim().replace(/[^a-zA-Z0-9]/g, '').toUpperCase() || 'TRP';
+    if (cleanPrefix.length < 2 || cleanPrefix.length > 8) {
+      return errorResponse(res, 'Prefix must be between 2 and 8 alphanumeric characters (e.g. TRP)', null, 400);
+    }
+
+    const seqLen = Math.max(3, parseInt(sequenceLength, 10) || 3);
+    const startNum = parseInt(startingNumber, 10);
+
+    const updatedSettings = {
+      ...(org.settings || {}),
+      tripSeries: {
+        prefix: cleanPrefix,
+        sequenceLength: seqLen,
+        template: '{PREFIX}-{YEAR}-{SEQ}',
+      },
+    };
+
+    await org.update({ settings: updatedSettings });
+
+    // Update existing NumberSequence records for TRIP
+    if (NumberSequenceModel) {
+      const updateData = {
+        prefix: cleanPrefix,
+        sequence_length: seqLen,
+        template: '{PREFIX}-{YEAR}-{SEQ}',
+        financial_year: currentYear,
+      };
+      if (!isNaN(startNum) && startNum >= 0) {
+        updateData.current_number = Math.max(0, startNum - 1);
+      }
+
+      const seq = await NumberSequenceModel.findOne({
+        where: {
+          organization_id: req.tenant.organizationId,
+          document_type: 'TRIP',
+        },
+      });
+
+      if (seq) {
+        await seq.update(updateData);
+      } else {
+        await NumberSequenceModel.create({
+          tenant_id: req.tenant.tenantId,
+          organization_id: req.tenant.organizationId,
+          branch_id: null,
+          document_type: 'TRIP',
+          ...updateData,
+          current_number: !isNaN(startNum) && startNum >= 0 ? Math.max(0, startNum - 1) : 0,
+        });
+      }
+    }
+
+    const preview = await getNextNumberPreview({
+      tenantId: req.tenant.tenantId,
+      organizationId: req.tenant.organizationId,
+      documentType: 'TRIP',
+      models: req.tenantDb,
+    });
+
+    return successResponse(res, 'Trip series format updated successfully', preview);
+  } catch (error) {
+    return errorResponse(res, error.message, null, 500);
+  }
+};
+
 module.exports = {
   getOrganizationProfile,
   updateTerminology,
   listBranches,
   getDocketSeries,
   updateDocketSeries,
+  getTripSeries,
+  updateTripSeries,
 };

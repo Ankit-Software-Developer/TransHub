@@ -426,7 +426,7 @@ const createDriver = async (req, res) => {
       emergency_contact: emergency_contact?.trim() || null,
       salary_type: salary_type || 'MONTHLY',
       salary_amount: salary_amount || 0.00,
-      status: status || 'ACTIVE',
+      status: (status === 'AVAILABLE' ? 'ACTIVE' : (status || 'ACTIVE')),
     });
 
     logAudit({
@@ -634,9 +634,153 @@ const getMaintenanceAlerts = async (req, res) => {
   }
 };
 
+const createMarketVehicle = async (req, res) => {
+  try {
+    const { Vehicle, Driver } = req.tenantDb || defaultModels;
+    const {
+      vehicle_number,
+      truck_size_feet,
+      capacity_ton,
+      ownership = 'MARKET',
+      driver_name,
+      driver_phone,
+      driver_license,
+      owner_name,
+      owner_phone,
+      current_odometer,
+    } = req.body;
+
+    if (!vehicle_number || !vehicle_number.trim()) {
+      return errorResponse(res, 'Vehicle registration number is required', null, 400);
+    }
+
+    const normalizedPlate = vehicle_number.toUpperCase().replace(/\s+/g, ' ').trim();
+    if (normalizedPlate.length < 5 || normalizedPlate.length > 20) {
+      return errorResponse(res, 'Please provide a valid vehicle registration number (e.g. HR-55-AB-9876)', null, 400);
+    }
+
+    const tenantId = req.tenant.tenantId;
+    const organizationId = req.tenant.organizationId;
+
+    // 1. Create or Find Driver if name & phone provided
+    let driver = null;
+    if (driver_name && driver_name.trim()) {
+      if (!driver_phone || !driver_phone.trim()) {
+        return errorResponse(res, 'Driver mobile number is required when assigning a driver', null, 400);
+      }
+      const rawPhone = driver_phone.replace(/\D/g, '');
+      const cleanPhone = (rawPhone.length === 12 && rawPhone.startsWith('91')) ? rawPhone.slice(2) : rawPhone;
+      if (!/^[6-9]\d{9}$/.test(cleanPhone)) {
+        return errorResponse(res, 'Driver phone must be a valid 10-digit Indian mobile number (e.g. 9876543210)', null, 400);
+      }
+
+      driver = await Driver.findOne({
+        where: {
+          organization_id: organizationId,
+          phone: cleanPhone,
+        },
+      });
+
+      if (!driver) {
+        const cleanLic = driver_license && driver_license.trim()
+          ? driver_license.trim().toUpperCase()
+          : `DL-${cleanPhone.slice(-6)}`;
+        const driverCount = await Driver.count({ where: { organization_id: organizationId } });
+        const driverCode = `DRV-${String(driverCount + 1).padStart(4, '0')}`;
+
+        driver = await Driver.create({
+          tenant_id: tenantId,
+          organization_id: organizationId,
+          driver_code: driverCode,
+          name: driver_name.trim(),
+          phone: cleanPhone,
+          license_number: cleanLic,
+          license_type: 'Heavy Commercial (HMV)',
+          status: 'ACTIVE',
+        });
+      }
+    } else if (driver_phone && driver_phone.trim()) {
+      return errorResponse(res, 'Driver full name is required when providing a mobile number', null, 400);
+    }
+
+    // Owner / Transporter phone validation if provided
+    let cleanOwnerPhone = null;
+    if (owner_phone && owner_phone.trim()) {
+      const rawOwnerPhone = owner_phone.replace(/\D/g, '');
+      cleanOwnerPhone = (rawOwnerPhone.length === 12 && rawOwnerPhone.startsWith('91')) ? rawOwnerPhone.slice(2) : rawOwnerPhone;
+      if (!/^[6-9]\d{9}$/.test(cleanOwnerPhone)) {
+        return errorResponse(res, 'Broker/Owner phone must be a valid 10-digit mobile number', null, 400);
+      }
+    }
+
+    // 2. Check if Vehicle already exists
+    let vehicle = await Vehicle.findOne({
+      where: {
+        organization_id: organizationId,
+        vehicle_number: normalizedPlate,
+      },
+    });
+
+    const feetNum = parseFloat(truck_size_feet) || 19;
+    const defaultCapacity = feetNum >= 32 ? 16 : feetNum >= 24 ? 12 : feetNum >= 19 ? 9.5 : feetNum >= 14 ? 5.5 : 3.5;
+    const finalCapacity = parseFloat(capacity_ton) || defaultCapacity;
+
+    if (vehicle) {
+      // Update with market details and assign driver
+      vehicle.ownership = ownership;
+      vehicle.length_ft = feetNum;
+      vehicle.capacity_ton = finalCapacity;
+      if (driver) vehicle.assigned_driver_id = driver.id;
+      if (owner_name) vehicle.owner_name = owner_name;
+      if (cleanOwnerPhone) vehicle.owner_phone = cleanOwnerPhone;
+      if (current_odometer) vehicle.current_odometer = parseInt(current_odometer, 10) || 0;
+      vehicle.status = 'AVAILABLE';
+      await vehicle.save();
+    } else {
+      vehicle = await Vehicle.create({
+        tenant_id: tenantId,
+        organization_id: organizationId,
+        vehicle_number: normalizedPlate,
+        vehicle_code: `MKT-${normalizedPlate.replace(/[^A-Za-z0-9]/g, '').slice(-4)}`,
+        vehicle_type: 'TRUCK',
+        ownership: ownership,
+        capacity_ton: finalCapacity,
+        length_ft: feetNum,
+        assigned_driver_id: driver ? driver.id : null,
+        owner_name: owner_name || null,
+        owner_phone: cleanOwnerPhone || null,
+        rc_number: `RC-${normalizedPlate}`,
+        current_odometer: parseInt(current_odometer, 10) || 0,
+        status: 'AVAILABLE',
+      });
+    }
+
+    // Reload with associations
+    const reloaded = await Vehicle.findOne({
+      where: { id: vehicle.id },
+      include: Driver ? [{ model: Driver, as: 'assignedDriver', attributes: ['id', 'name', 'phone'] }] : [],
+    });
+
+    logAudit({
+      req,
+      action: 'CREATE',
+      entityType: 'VEHICLE',
+      entityId: vehicle.vehicle_number,
+      entityName: `Vehicle ${vehicle.vehicle_number}`,
+      summary: `Onboarded ${ownership} vehicle ${vehicle.vehicle_number} for trip planning`,
+      newValues: vehicle.toJSON ? vehicle.toJSON() : vehicle,
+    });
+
+    return successResponse(res, `Vehicle ${normalizedPlate} ready for trip`, reloaded || vehicle, 201);
+  } catch (error) {
+    return errorResponse(res, error.message, null, 500);
+  }
+};
+
 module.exports = {
   listVehicles,
   createVehicle,
+  createMarketVehicle,
   updateVehicle,
   toggleVehicleStatus,
   deleteVehicle,

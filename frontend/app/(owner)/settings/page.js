@@ -128,6 +128,15 @@ export default function SettingsPage() {
   });
   const [isSavingDocketSeries, setIsSavingDocketSeries] = useState(false);
 
+  // Trip Number Series State
+  const [tripSeries, setTripSeries] = useState({
+    prefix: 'TRP',
+    startingNumber: 1,
+    sequenceLength: 3,
+    nextNumber: `TRP-${new Date().getFullYear()}-001`,
+  });
+  const [isSavingTripSeries, setIsSavingTripSeries] = useState(false);
+
   // Theme & Appearance State
   const [selectedAccent, setSelectedAccent] = useState('#00F0FF');
   const [selectedTerm, setSelectedTerm] = useState(terminology || 'Bilty');
@@ -214,8 +223,26 @@ export default function SettingsPage() {
       }
     };
 
+    const fetchTripSeries = async () => {
+      try {
+        const res = await api.get('/organizations/trip-series');
+        if (res.data?.success && res.data.data) {
+          const d = res.data.data;
+          setTripSeries({
+            prefix: d.prefix || 'TRP',
+            startingNumber: (d.currentNumber ?? 0) + 1,
+            sequenceLength: d.sequenceLength || 3,
+            nextNumber: d.nextNumber || `TRP-${new Date().getFullYear()}-001`,
+          });
+        }
+      } catch (e) {
+        console.warn('Could not load trip series', e);
+      }
+    };
+
     fetchOrg();
     fetchDocketSeries();
+    fetchTripSeries();
   }, [user]);
 
   // Load Roles & Permissions when roles tab is active
@@ -520,6 +547,32 @@ export default function SettingsPage() {
       triggerError(err.response?.data?.message || 'Failed to update docket series');
     } finally {
       setIsSavingDocketSeries(false);
+    }
+  };
+
+  // 8. Handle Trip Series Save
+  const handleSaveTripSeries = async (e) => {
+    e.preventDefault();
+    setIsSavingTripSeries(true);
+    try {
+      const res = await api.patch('/organizations/trip-series', {
+        prefix: tripSeries.prefix,
+        startingNumber: tripSeries.startingNumber,
+        sequenceLength: tripSeries.sequenceLength,
+      });
+      if (res.data?.success) {
+        triggerSuccess(`Trip series saved! Next trip number: ${res.data.data?.nextNumber}`);
+        if (res.data.data?.nextNumber) {
+          setTripSeries((prev) => ({
+            ...prev,
+            nextNumber: res.data.data.nextNumber,
+          }));
+        }
+      }
+    } catch (err) {
+      triggerError(err.response?.data?.message || 'Failed to update trip series');
+    } finally {
+      setIsSavingTripSeries(false);
     }
   };
 
@@ -1228,6 +1281,117 @@ export default function SettingsPage() {
                           >
                             <Save className="w-4 h-4" />
                             <span>{isSavingDocketSeries ? 'Saving...' : 'Save Series Format'}</span>
+                          </button>
+                        ) : (
+                          <span className="text-xs font-semibold text-slate-400 italic">View only mode</span>
+                        )}
+                      </div>
+                    </form>
+                  </div>
+
+                  {/* Trip Number Series Section */}
+                  <div className={`mt-8 pt-6 border-t ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
+                    <div className="pb-3 mb-4">
+                      <h3 className="text-sm font-bold flex items-center gap-2">
+                        <Truck className="w-4 h-4 text-emerald-400" />
+                        <span>Auto-Generated Trip & Dispatch Number Series</span>
+                      </h3>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                        Configure how trip and dispatch numbers are generated upon load completion. Format follows TRP-YYYY-001 (transporter specific).
+                      </p>
+                    </div>
+
+                    <form onSubmit={handleSaveTripSeries} className="space-y-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        {/* Prefix */}
+                        <div className="space-y-1.5">
+                          <label className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                            Series Prefix (e.g. TRP) *
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            maxLength={8}
+                            value={tripSeries.prefix}
+                            onChange={(e) => setTripSeries({ ...tripSeries, prefix: e.target.value.toUpperCase() })}
+                            placeholder="e.g. TRP"
+                            className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono font-bold uppercase focus:outline-none transition-colors ${
+                              isDark
+                                ? 'border-slate-800 bg-slate-900/80 text-white focus:border-emerald-400'
+                                : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-emerald-500 focus:bg-white'
+                            }`}
+                          />
+                          <span className="text-[10px] text-slate-400">Prefix code for trips (default is TRP)</span>
+                        </div>
+
+                        {/* Starting / Next Number */}
+                        <div className="space-y-1.5">
+                          <label className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                            Starting / Next Number *
+                          </label>
+                          <input
+                            type="number"
+                            required
+                            min={1}
+                            value={tripSeries.startingNumber}
+                            onChange={(e) => setTripSeries({ ...tripSeries, startingNumber: parseInt(e.target.value, 10) || 1 })}
+                            placeholder="1"
+                            className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono font-bold focus:outline-none transition-colors ${
+                              isDark
+                                ? 'border-slate-800 bg-slate-900/80 text-white focus:border-emerald-400'
+                                : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-emerald-500 focus:bg-white'
+                            }`}
+                          />
+                          <span className="text-[10px] text-slate-400">Next trip counter (e.g. 1 for 001)</span>
+                        </div>
+
+                        {/* Sequence Length / Digits */}
+                        <div className="space-y-1.5">
+                          <label className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                            Minimum Digits Padding *
+                          </label>
+                          <input
+                            type="number"
+                            required
+                            min={3}
+                            max={8}
+                            value={tripSeries.sequenceLength}
+                            onChange={(e) => setTripSeries({ ...tripSeries, sequenceLength: parseInt(e.target.value, 10) || 3 })}
+                            placeholder="3"
+                            className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono font-bold focus:outline-none transition-colors ${
+                              isDark
+                                ? 'border-slate-800 bg-slate-900/80 text-white focus:border-emerald-400'
+                                : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-emerald-500 focus:bg-white'
+                            }`}
+                          />
+                          <span className="text-[10px] text-slate-400">3 digits produces 001, 002...</span>
+                        </div>
+                      </div>
+
+                      {/* Live Output Preview Card */}
+                      <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                        isDark ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-emerald-50 border-emerald-200'
+                      }`}>
+                        <div>
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                            LIVE NEXT TRIP NUMBER PREVIEW
+                          </span>
+                          <div className="font-mono text-xl font-black text-emerald-600 dark:text-emerald-400 mt-0.5">
+                            {(tripSeries.prefix || 'TRP').replace(/[^a-zA-Z0-9]/g, '')}-{new Date().getFullYear()}-{String(tripSeries.startingNumber || 1).padStart(tripSeries.sequenceLength || 3, '0')}
+                          </div>
+                          <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                            Trips generated via Load Planning dispatch or Direct Trips will use this transporter-specific format.
+                          </span>
+                        </div>
+
+                        {canManageSettings ? (
+                          <button
+                            type="submit"
+                            disabled={isSavingTripSeries}
+                            className="flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md cursor-pointer transition-all disabled:opacity-50 shrink-0"
+                          >
+                            <Save className="w-4 h-4" />
+                            <span>{isSavingTripSeries ? 'Saving...' : 'Save Series Format'}</span>
                           </button>
                         ) : (
                           <span className="text-xs font-semibold text-slate-400 italic">View only mode</span>

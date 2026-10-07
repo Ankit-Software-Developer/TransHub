@@ -6,13 +6,28 @@ const { logAudit } = require('../middleware/auditLogger');
 
 const listTrips = async (req, res) => {
   try {
-    const { status, page = 1, limit = 20, search, sort_by, sort_order, from_date, to_date } = req.query;
+    const { status, page = 1, limit = 20, search, sort_by, sort_order, from_date, to_date, branch_id, origin_branch_id, dest_branch_id } = req.query;
     const { Trip, Vehicle, Driver, Branch } = req.tenantDb || defaultModels;
     const where = {
       tenant_id: req.tenant.tenantId,
       organization_id: req.tenant.organizationId,
     };
-    if (status) where.status = status;
+    if (status) {
+      if (status.includes(',')) {
+        where.status = { [Op.in]: status.split(',').map((s) => s.trim().toUpperCase()) };
+      } else {
+        where.status = status;
+      }
+    }
+    if (branch_id && branch_id !== 'ALL') {
+      where[Op.or] = [
+        { origin_branch_id: branch_id },
+        { dest_branch_id: branch_id },
+      ];
+    }
+    if (origin_branch_id && origin_branch_id !== 'ALL') where.origin_branch_id = origin_branch_id;
+    if (dest_branch_id && dest_branch_id !== 'ALL') where.dest_branch_id = dest_branch_id;
+
     if (search) {
       where.trip_number = { [Op.like]: `%${search}%` };
     }
@@ -42,10 +57,10 @@ const listTrips = async (req, res) => {
       offset: parseInt(offset, 10),
       order: [[orderCol, orderDir]],
       include: [
-        { model: Vehicle, as: 'vehicle', attributes: ['vehicle_number', 'capacity_ton', 'vehicle_type'] },
-        { model: Driver, as: 'driver', attributes: ['name', 'phone'] },
-        { model: Branch, as: 'originBranch', attributes: ['branch_code', 'city'] },
-        { model: Branch, as: 'destBranch', attributes: ['branch_code', 'city'] },
+        { model: Vehicle, as: 'vehicle', attributes: ['id', 'vehicle_number', 'capacity_ton', 'vehicle_type', 'ownership'] },
+        { model: Driver, as: 'driver', attributes: ['id', 'name', 'phone'] },
+        { model: Branch, as: 'originBranch', attributes: ['id', 'branch_code', 'branch_name', 'city', 'is_hub'] },
+        { model: Branch, as: 'destBranch', attributes: ['id', 'branch_code', 'branch_name', 'city', 'is_hub'] },
       ],
     });
 
@@ -104,6 +119,8 @@ const createTripAndDispatch = async (req, res) => {
       start_odometer,
       seal_number,
       remarks,
+      driver_advance = 0,
+      advance_mode = 'CASH',
     } = req.body;
 
     if (!origin_branch_id || !dest_branch_id || !vehicle_id || !driver_id) {
@@ -165,12 +182,31 @@ const createTripAndDispatch = async (req, res) => {
       driver_id,
       trip_type: 'DIRECT',
       start_odometer: parseInt(start_odometer || 0, 10),
+      driver_advance: parseFloat(driver_advance) || 0,
       total_packages: totalPkgs,
       total_weight: totalWeight,
       expected_revenue: totalFreight,
       status: 'RUNNING',
       created_by: req.user.id,
     }, { transaction });
+
+    // Create Driver Advance record if specified
+    if (parseFloat(driver_advance) > 0) {
+      const DriverAdvanceModel = req.tenantDb?.DriverAdvance || defaultModels.DriverAdvance;
+      if (DriverAdvanceModel) {
+        await DriverAdvanceModel.create({
+          tenant_id: req.tenant.tenantId,
+          organization_id: req.tenant.organizationId,
+          trip_id: trip.id,
+          driver_id,
+          amount: parseFloat(driver_advance),
+          disbursed_date: new Date().toISOString().slice(0, 10),
+          disbursed_mode: advance_mode || 'CASH',
+          remarks: `Dispatched Trip #${tripNumber} driver cash advance`,
+          disbursed_by: req.user.id,
+        }, { transaction });
+      }
+    }
 
     // Associate Consignments
     for (const c of consignments) {
@@ -253,6 +289,7 @@ const createTrip = async (req, res) => {
       driver_id,
       trip_date,
       driver_advance = 0,
+      advance_mode = 'CASH',
       start_odometer = 0,
       remarks = '',
       status = 'PLANNED',
@@ -289,6 +326,24 @@ const createTrip = async (req, res) => {
       remarks: remarks || '',
       created_by: req.user.id,
     });
+
+    // Record DriverAdvance if provided
+    if (parseFloat(driver_advance) > 0) {
+      const DriverAdvanceModel = req.tenantDb?.DriverAdvance || defaultModels.DriverAdvance;
+      if (DriverAdvanceModel) {
+        await DriverAdvanceModel.create({
+          tenant_id: req.tenant.tenantId,
+          organization_id: req.tenant.organizationId,
+          trip_id: newTrip.id,
+          driver_id: driver_id || null,
+          amount: parseFloat(driver_advance),
+          disbursed_date: trip_date || new Date().toISOString().slice(0, 10),
+          disbursed_mode: advance_mode || 'CASH',
+          remarks: `Trip #${tripNumber} initial driver advance`,
+          disbursed_by: req.user.id,
+        });
+      }
+    }
 
     // Mark vehicle as ON_TRIP if status is RUNNING
     if (status === 'RUNNING' && vehicle_id) {

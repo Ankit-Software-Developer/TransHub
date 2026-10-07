@@ -8,6 +8,7 @@ const tenantResolver = require('../../middleware/tenantResolver');
 router.use(authenticate, tenantResolver);
 
 router.get('/vehicles', fleetController.listVehicles);
+router.post('/vehicles/market-hire', fleetController.createMarketVehicle);
 router.post('/vehicles', fleetController.createVehicle);
 router.put('/vehicles/:id', fleetController.updateVehicle);
 router.patch('/vehicles/:id/status', fleetController.toggleVehicleStatus);

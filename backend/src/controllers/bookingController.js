@@ -5,7 +5,21 @@ const { logAudit } = require('../middleware/auditLogger');
 
 const createBooking = async (req, res) => {
   try {
-    let branchId = req.body.origin_branch_id || req.body.branch_id || req.branchId;
+    const isGlobalUser = req.userRoles && (
+      req.userRoles.includes('SUPER_ADMIN') ||
+      req.userRoles.includes('TRANSPORT_OWNER') ||
+      req.userRoles.includes('ADMIN')
+    );
+
+    let branchId;
+    if (!isGlobalUser && req.user?.branch_id) {
+      // Branch staff & branch managers are locked to their own assigned branch
+      branchId = req.user.branch_id;
+      req.body.origin_branch_id = req.user.branch_id;
+    } else {
+      branchId = req.body.origin_branch_id || req.body.branch_id || req.branchId;
+    }
+
     if (!branchId && req.tenantDb?.Branch) {
       const defaultBranch = await req.tenantDb.Branch.findOne({
         where: { organization_id: req.tenant.organizationId, is_active: true },

@@ -12,5 +12,7 @@ router.patch('/terminology', organizationController.updateTerminology);
 router.get('/branches', organizationController.listBranches);
 router.get('/docket-series', organizationController.getDocketSeries);
 router.patch('/docket-series', organizationController.updateDocketSeries);
+router.get('/trip-series', organizationController.getTripSeries);
+router.patch('/trip-series', organizationController.updateTripSeries);
 
 module.exports = router;

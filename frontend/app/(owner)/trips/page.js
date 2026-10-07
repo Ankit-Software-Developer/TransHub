@@ -22,7 +22,12 @@ import {
   ArrowRight,
   Plus,
   X,
-  AlertTriangle
+  AlertTriangle,
+  Wallet,
+  Receipt,
+  Fuel,
+  CreditCard,
+  Banknote
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -42,24 +47,25 @@ export default function TripsPage() {
   const [vehiclesList, setVehiclesList] = useState([]);
   const [branchesList, setBranchesList] = useState([]);
   const [driversList, setDriversList] = useState([]);
-  const [isCreateTripOpen, setIsCreateTripOpen] = useState(false);
   const [isAssignVehicleOpen, setIsAssignVehicleOpen] = useState(false);
   const [tripToAssign, setTripToAssign] = useState(null);
   const [assignVehicleId, setAssignVehicleId] = useState('');
   const [assignDriverId, setAssignDriverId] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [formError, setFormError] = useState('');
-  const [tripForm, setTripForm] = useState({
-    origin_branch_id: '',
-    dest_branch_id: '',
-    vehicle_id: '',
-    driver_id: '',
-    trip_date: new Date().toISOString().slice(0, 10),
-    driver_advance: 1500,
-    start_odometer: 0,
-    status: 'RUNNING',
-    remarks: ''
-  });
+
+  // Quick Advance & Expense Disbursal Modal State
+  const [advExpModalOpen, setAdvExpModalOpen] = useState(false);
+  const [advExpTrip, setAdvExpTrip] = useState(null);
+  const [advExpType, setAdvExpType] = useState('ADVANCE'); // 'ADVANCE' | 'EXPENSE'
+  const [advAmount, setAdvAmount] = useState('');
+  const [advMode, setAdvMode] = useState('CASH');
+  const [advRemarks, setAdvRemarks] = useState('');
+  const [expCategory, setExpCategory] = useState('Fuel & Diesel');
+  const [expAmount, setExpAmount] = useState('');
+  const [expPaymentMethod, setExpPaymentMethod] = useState('CASH');
+  const [expRemarks, setExpRemarks] = useState('');
+  const [submittingAdvExp, setSubmittingAdvExp] = useState(false);
+  const [advExpError, setAdvExpError] = useState('');
 
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -126,30 +132,6 @@ export default function TripsPage() {
     fetchMasterData();
   }, []);
 
-  const handleCreateTrip = async (e) => {
-    e.preventDefault();
-    if (!canCreateTrip) return;
-    setFormError('');
-    if (!tripForm.vehicle_id) {
-      setFormError('Please select a vehicle from the fleet register');
-      return;
-    }
-
-    try {
-      setIsSubmitting(true);
-      const res = await api.post('/trips', tripForm);
-      if (res.data?.success) {
-        setIsCreateTripOpen(false);
-        fetchTrips();
-        fetchMasterData();
-      }
-    } catch (err) {
-      setFormError(err.response?.data?.message || 'Failed to create trip');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
   const handleOpenAssignVehicle = (trip) => {
     setTripToAssign(trip);
     setAssignVehicleId(trip.vehicle?.id || trip.vehicle_id || '');
@@ -204,6 +186,66 @@ export default function TripsPage() {
     }
   };
 
+  const handleOpenAddAdvanceOrExp = (trip, defaultType = 'ADVANCE') => {
+    setAdvExpTrip(trip);
+    setAdvExpType(defaultType);
+    setAdvAmount('');
+    setAdvMode('CASH');
+    setAdvRemarks('');
+    setExpCategory('Fuel & Diesel');
+    setExpAmount('');
+    setExpPaymentMethod('CASH');
+    setExpRemarks('');
+    setAdvExpError('');
+    setAdvExpModalOpen(true);
+  };
+
+  const handleSubmitAdvExp = async (e) => {
+    e.preventDefault();
+    if (!advExpTrip) return;
+    setAdvExpError('');
+    setSubmittingAdvExp(true);
+    try {
+      if (advExpType === 'ADVANCE') {
+        const val = parseFloat(advAmount);
+        if (!val || val <= 0) {
+          setAdvExpError('Please enter a valid advance amount');
+          setSubmittingAdvExp(false);
+          return;
+        }
+        await api.post('/expenses/advance', {
+          trip_id: advExpTrip.id,
+          driver_id: advExpTrip.driver?.id || advExpTrip.driver_id,
+          amount: val,
+          disbursed_mode: advMode,
+          remarks: advRemarks || `Driver advance for Trip #${advExpTrip.trip_number}`,
+        });
+      } else {
+        const val = parseFloat(expAmount);
+        if (!val || val <= 0) {
+          setAdvExpError('Please enter a valid expense amount');
+          setSubmittingAdvExp(false);
+          return;
+        }
+        await api.post('/expenses', {
+          trip_id: advExpTrip.id,
+          category_id: expCategory,
+          amount: val,
+          payment_method: expPaymentMethod,
+          expense_date: new Date().toISOString().slice(0, 10),
+          remarks: expRemarks || `Trip #${advExpTrip.trip_number} expense (${expCategory})`,
+        });
+      }
+      setAdvExpModalOpen(false);
+      setAdvExpTrip(null);
+      await fetchTrips();
+    } catch (err) {
+      setAdvExpError(err.response?.data?.message || 'Failed to record transaction');
+    } finally {
+      setSubmittingAdvExp(false);
+    }
+  };
+
   const columns = useMemo(() => [
     {
       key: 'trip_number',
@@ -248,25 +290,14 @@ export default function TripsPage() {
       minWidth: 160,
       sortable: false,
       render: (val, row) => (
-        <div className="flex items-center justify-between gap-1.5">
-          <div className="min-w-0">
-            <span className={`font-mono font-bold text-xs truncate block ${row.vehicle ? 'text-blue-600 dark:text-cyan-400' : 'text-slate-400'}`}>
-              {row.vehicle?.vehicle_number || 'Unassigned'}
-            </span>
-            {row.vehicle?.vehicle_type && (
-              <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
-                {row.vehicle.vehicle_type} ({row.vehicle.capacity_ton || '10'}T)
-              </p>
-            )}
-          </div>
-          {canEdit && (
-            <button
-              onClick={() => handleOpenAssignVehicle(row)}
-              className="text-[10px] font-bold text-blue-600 dark:text-blue-400 hover:underline px-2 py-1 rounded bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 shrink-0"
-              title="Assign or Change Vehicle"
-            >
-              Assign
-            </button>
+        <div className="min-w-0">
+          <span className={`font-mono font-bold text-xs truncate block ${row.vehicle ? 'text-blue-600 dark:text-cyan-400' : 'text-slate-400'}`}>
+            {row.vehicle?.vehicle_number || 'Unassigned'}
+          </span>
+          {row.vehicle?.vehicle_type && (
+            <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
+              {row.vehicle.vehicle_type} ({row.vehicle.capacity_ton || '10'}T)
+            </p>
           )}
         </div>
       )
@@ -304,15 +335,15 @@ export default function TripsPage() {
     {
       key: 'financials',
       label: 'Advance / Exp',
-      width: 160,
-      minWidth: 130,
+      width: 140,
+      minWidth: 120,
       sortable: false,
       align: 'right',
       render: (val, row) => (
-        <div className="text-xs text-right">
-          <p className="font-bold text-slate-900 dark:text-slate-100">
+        <div className="text-xs text-right space-y-0.5">
+          <span className="font-bold text-slate-900 dark:text-slate-100">
             ₹{parseFloat(row.driver_advance || 0).toLocaleString('en-IN')}
-          </p>
+          </span>
           <p className="text-[10px] text-slate-400">
             Exp: ₹{parseFloat(row.total_expenses || 0).toLocaleString('en-IN')}
           </p>
@@ -322,8 +353,8 @@ export default function TripsPage() {
     {
       key: 'status',
       label: 'Trip Status',
-      width: 140,
-      minWidth: 120,
+      width: 130,
+      minWidth: 110,
       sortable: true,
       align: 'center',
       render: (val) => <Badge status={val} size="xs" />
@@ -331,25 +362,51 @@ export default function TripsPage() {
     {
       key: 'settlement',
       label: 'Settlement',
-      width: 140,
-      minWidth: 120,
+      width: 110,
+      minWidth: 90,
       sortable: false,
       align: 'center',
       render: (val, row) => (
-        <div>
-          {row.settlement_status === 'SETTLED' ? (
-            <span className="text-xs font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 dark:text-emerald-400 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800">
-              SETTLED
-            </span>
-          ) : canEdit ? (
+        row.settlement_status === 'SETTLED' ? (
+          <span className="text-xs font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 dark:text-emerald-400 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800">
+            SETTLED
+          </span>
+        ) : (
+          <span className="text-xs text-slate-400 font-medium">Pending</span>
+        )
+      )
+    },
+    {
+      key: 'actions',
+      label: 'Actions',
+      width: 210,
+      minWidth: 180,
+      sortable: false,
+      align: 'center',
+      render: (val, row) => (
+        <div className="flex items-center justify-center gap-1.5 flex-wrap">
+          {row.settlement_status !== 'SETTLED' && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleOpenAddAdvanceOrExp(row);
+              }}
+              className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 dark:text-cyan-400 hover:text-blue-700 dark:hover:text-cyan-300 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/50 px-2.5 py-1 rounded-md border border-blue-200 dark:border-blue-800 transition-all cursor-pointer shadow-2xs whitespace-nowrap"
+              title="Disburse Driver Advance or Log Trip Expense"
+            >
+              <Plus className="w-3 h-3" />
+              Add Adv / Exp
+            </button>
+          )}
+
+          {row.settlement_status !== 'SETTLED' && canEdit && (
             <button
               onClick={() => setSelectedTrip(row)}
-              className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline bg-blue-50 dark:bg-blue-950/40 px-2.5 py-1 rounded border border-blue-200 dark:border-blue-800"
+              className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline bg-blue-50 dark:bg-blue-950/40 px-2.5 py-1 rounded-md border border-blue-200 dark:border-blue-800 whitespace-nowrap"
             >
               Settle Trip
             </button>
-          ) : (
-            <span className="text-xs text-slate-400">Pending</span>
           )}
         </div>
       )
@@ -385,36 +442,12 @@ export default function TripsPage() {
             </div>
 
             <div className="flex items-center space-x-2.5">
-              {canCreateTrip && (
-                <button
-                  onClick={() => {
-                    setTripForm({
-                      origin_branch_id: branchesList[0]?.id || '',
-                      dest_branch_id: branchesList[1]?.id || branchesList[0]?.id || '',
-                      vehicle_id: vehiclesList.find(v => v.status === 'AVAILABLE')?.id || vehiclesList[0]?.id || '',
-                      driver_id: driversList[0]?.id || '',
-                      trip_date: new Date().toISOString().slice(0, 10),
-                      driver_advance: 1500,
-                      start_odometer: 0,
-                      status: 'RUNNING',
-                      remarks: ''
-                    });
-                    setFormError('');
-                    setIsCreateTripOpen(true);
-                  }}
-                  className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md shadow-blue-600/30 transition-all cursor-pointer"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Create Line-Haul Trip</span>
-                </button>
-              )}
-
               <Link
                 href="/load-planning"
-                className="flex items-center space-x-2 border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-300 transition-all"
+                className="flex items-center space-x-2 bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md shadow-cyan-500/20 transition-all active:scale-95 cursor-pointer"
               >
                 <Layers className="w-4 h-4" />
-                <span>Load Planning</span>
+                <span>Load Planning Dock</span>
               </Link>
             </div>
           </div>
@@ -533,243 +566,6 @@ export default function TripsPage() {
             </div>
           )}
 
-          {/* Create Line-Haul Trip & Assign Vehicle Modal */}
-          {isCreateTripOpen && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-200">
-              <div
-                className={`w-full max-w-lg rounded-2xl border shadow-2xl overflow-hidden transition-all ${
-                  isDark ? 'bg-[#0B1020] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
-                }`}
-              >
-                <div className={`px-6 py-4 border-b flex items-center justify-between ${
-                  isDark ? 'border-slate-800 bg-[#0E1528]' : 'border-slate-100 bg-slate-50'
-                }`}>
-                  <div className="flex items-center space-x-3">
-                    <div className="w-9 h-9 rounded-xl bg-blue-500/20 text-blue-500 flex items-center justify-center">
-                      <Truck className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h2 className="text-base font-black tracking-tight">Create Line-Haul Trip</h2>
-                      <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                        Assign registered fleet vehicle and driver to a movement route
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => setIsCreateTripOpen(false)}
-                    className={`p-1.5 rounded-lg border transition-colors ${
-                      isDark ? 'border-slate-800 hover:bg-slate-800 text-slate-400' : 'border-slate-200 hover:bg-slate-100 text-slate-600'
-                    }`}
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-
-                <form onSubmit={handleCreateTrip} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
-                  {formError && (
-                    <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-500 text-xs font-semibold flex items-center gap-2">
-                      <AlertTriangle className="w-4 h-4 shrink-0" />
-                      <span>{formError}</span>
-                    </div>
-                  )}
-
-                  {/* Vehicle Dropdown */}
-                  <div>
-                    <label className={`block text-xs font-semibold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                      Assigned Vehicle (from Fleet) *
-                    </label>
-                    <select
-                      required
-                      value={tripForm.vehicle_id}
-                      onChange={(e) => setTripForm({ ...tripForm, vehicle_id: e.target.value })}
-                      className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono font-bold focus:outline-none transition-colors ${
-                        isDark
-                          ? 'bg-slate-900 border-slate-700 text-white focus:border-blue-400'
-                          : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
-                      }`}
-                    >
-                      <option value="">-- Select Registered Vehicle --</option>
-                      {vehiclesList.map((v) => {
-                        const isAvail = v.status === 'AVAILABLE';
-                        const isInactive = v.status === 'INACTIVE';
-                        const specInfo = [
-                          v.make_model || v.vehicle_type,
-                          `${v.capacity_ton}T`,
-                          v.length_ft ? `${v.length_ft}ft` : null,
-                          v.ownership === 'ATTACHED' ? 'Attached' : v.ownership === 'MARKET' ? 'Market' : 'Own Fleet'
-                        ].filter(Boolean).join(' • ');
-                        return (
-                          <option key={v.id} value={v.id} disabled={isInactive}>
-                            {v.vehicle_number} — {specInfo} {isInactive ? '❌ [INACTIVE]' : isAvail ? '✅ [In Yard]' : `[${v.status}]`}
-                          </option>
-                        );
-                      })}
-                    </select>
-                    <p className={`text-[10px] mt-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                      Select an active vehicle registered in the Fleet Management register.
-                    </p>
-                  </div>
-
-                  {/* Route Branches */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className={`block text-xs font-semibold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                        Origin Branch Hub
-                      </label>
-                      <select
-                        value={tripForm.origin_branch_id}
-                        onChange={(e) => setTripForm({ ...tripForm, origin_branch_id: e.target.value })}
-                        className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                          isDark
-                            ? 'bg-slate-900 border-slate-700 text-white focus:border-blue-400'
-                            : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
-                        }`}
-                      >
-                        <option value="">{branchesList.length === 0 ? 'No hubs added yet (Add Branch first)' : 'Select Origin Hub'}</option>
-                        {branchesList.map((b) => (
-                          <option key={b.id} value={b.id}>
-                            {b.branch_name || b.city} ({b.city})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className={`block text-xs font-semibold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                        Destination Branch Hub
-                      </label>
-                      <select
-                        value={tripForm.dest_branch_id}
-                        onChange={(e) => setTripForm({ ...tripForm, dest_branch_id: e.target.value })}
-                        className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                          isDark
-                            ? 'bg-slate-900 border-slate-700 text-white focus:border-blue-400'
-                            : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
-                        }`}
-                      >
-                        <option value="">{branchesList.length === 0 ? 'No hubs added yet (Add Branch first)' : 'Select Destination Hub'}</option>
-                        {branchesList.map((b) => (
-                          <option key={b.id} value={b.id}>
-                            {b.branch_name || b.city} ({b.city})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* Driver & Trip Date */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className={`block text-xs font-semibold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                        Assigned Driver
-                      </label>
-                      <select
-                        value={tripForm.driver_id}
-                        onChange={(e) => setTripForm({ ...tripForm, driver_id: e.target.value })}
-                        className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                          isDark
-                            ? 'bg-slate-900 border-slate-700 text-white focus:border-blue-400'
-                            : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
-                        }`}
-                      >
-                        <option value="">Select Driver</option>
-                        {driversList.map((d) => (
-                          <option key={d.id} value={d.id}>
-                            {d.name} {d.phone ? `(${d.phone})` : ''}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className={`block text-xs font-semibold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                        Trip Date
-                      </label>
-                      <input
-                        type="date"
-                        value={tripForm.trip_date}
-                        onChange={(e) => setTripForm({ ...tripForm, trip_date: e.target.value })}
-                        className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                          isDark
-                            ? 'bg-slate-900 border-slate-700 text-white focus:border-blue-400'
-                            : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
-                        }`}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Driver Advance & Start Odometer */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className={`block text-xs font-semibold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                        Driver Cash Advance (₹)
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={tripForm.driver_advance}
-                        onChange={(e) => setTripForm({ ...tripForm, driver_advance: e.target.value })}
-                        className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                          isDark
-                            ? 'bg-slate-900 border-slate-700 text-white focus:border-blue-400'
-                            : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
-                        }`}
-                      />
-                    </div>
-
-                    <div>
-                      <label className={`block text-xs font-semibold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                        Initial Status
-                      </label>
-                      <select
-                        value={tripForm.status}
-                        onChange={(e) => setTripForm({ ...tripForm, status: e.target.value })}
-                        className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                          isDark
-                            ? 'bg-slate-900 border-slate-700 text-white focus:border-blue-400'
-                            : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
-                        }`}
-                      >
-                        <option value="RUNNING">RUNNING (Dispatched on Road)</option>
-                        <option value="PLANNED">PLANNED (Staged at Dock)</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className={`flex items-center justify-end gap-2.5 pt-4 border-t ${
-                    isDark ? 'border-slate-800' : 'border-slate-200'
-                  }`}>
-                    <button
-                      type="button"
-                      onClick={() => setIsCreateTripOpen(false)}
-                      className={`px-4 py-2 rounded-xl text-xs font-semibold ${
-                        isDark ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                      }`}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={isSubmitting}
-                      className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 transition-all flex items-center gap-2"
-                    >
-                      {isSubmitting ? (
-                        <>
-                          <div className="w-3.5 h-3.5 rounded-full border-2 border-white border-t-transparent animate-spin" />
-                          <span>Creating Trip...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Truck className="w-3.5 h-3.5" />
-                          <span>Create & Assign Vehicle</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          )}
 
           {/* Quick Assign Vehicle Modal */}
           {isAssignVehicleOpen && tripToAssign && (
@@ -869,6 +665,300 @@ export default function TripsPage() {
                       className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 transition-all"
                     >
                       {isSubmitting ? 'Assigning...' : 'Assign Vehicle'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* Quick Disburse Driver Advance & Log Trip Expense Modal */}
+          {advExpModalOpen && advExpTrip && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-200">
+              <div
+                className={`w-full max-w-lg rounded-2xl border shadow-2xl overflow-hidden transition-all ${
+                  isDark ? 'bg-[#0B1020] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
+                }`}
+              >
+                {/* Modal Header */}
+                <div className={`px-6 py-4 border-b flex items-center justify-between ${
+                  isDark ? 'border-slate-800 bg-[#0E1528]' : 'border-slate-100 bg-slate-50'
+                }`}>
+                  <div className="flex items-center space-x-3">
+                    <div className="w-9 h-9 rounded-xl bg-blue-500/20 text-blue-500 flex items-center justify-center">
+                      <Wallet className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-black tracking-tight">Driver Advance & Trip Expenses</h2>
+                      <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                        Trip #{advExpTrip.trip_number} • {advExpTrip.origin_city || advExpTrip.originBranch?.city || 'Origin'} → {advExpTrip.destination_city || advExpTrip.destBranch?.city || 'Dest'}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setAdvExpModalOpen(false)}
+                    className={`p-1.5 rounded-lg border transition-colors ${
+                      isDark ? 'border-slate-800 hover:bg-slate-800 text-slate-400' : 'border-slate-200 hover:bg-slate-100 text-slate-600'
+                    }`}
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Trip Financial Snapshot Banner */}
+                <div className={`px-6 py-3 border-b grid grid-cols-2 gap-3 text-xs ${
+                  isDark ? 'border-slate-800/80 bg-slate-900/60' : 'border-slate-100 bg-slate-50/70'
+                }`}>
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-400">Driver:</span>
+                    <span className="font-semibold text-slate-800 dark:text-slate-200 truncate">
+                      {advExpTrip.driver?.name || 'Unassigned'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-400">Vehicle:</span>
+                    <span className="font-mono font-bold text-blue-600 dark:text-cyan-400 truncate">
+                      {advExpTrip.vehicle?.vehicle_number || 'Unassigned'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-400">Current Advance:</span>
+                    <span className="font-bold text-emerald-600 dark:text-emerald-400 font-mono">
+                      ₹{parseFloat(advExpTrip.driver_advance || 0).toLocaleString('en-IN')}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-400">Total Expenses:</span>
+                    <span className="font-bold text-amber-600 dark:text-amber-400 font-mono">
+                      ₹{parseFloat(advExpTrip.total_expenses || 0).toLocaleString('en-IN')}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Action Mode Toggle Pills */}
+                <div className="px-6 pt-4">
+                  <div className={`flex rounded-xl p-1 border ${
+                    isDark ? 'bg-slate-900 border-slate-800' : 'bg-slate-100 border-slate-200'
+                  }`}>
+                    <button
+                      type="button"
+                      onClick={() => setAdvExpType('ADVANCE')}
+                      className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                        advExpType === 'ADVANCE'
+                          ? (isDark ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-blue-600 shadow-sm')
+                          : (isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900')
+                      }`}
+                    >
+                      <Banknote className="w-3.5 h-3.5" />
+                      Disburse Driver Advance
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAdvExpType('EXPENSE')}
+                      className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                        advExpType === 'EXPENSE'
+                          ? (isDark ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-blue-600 shadow-sm')
+                          : (isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900')
+                      }`}
+                    >
+                      <Receipt className="w-3.5 h-3.5" />
+                      Log Trip Expense (Fuel/Toll)
+                    </button>
+                  </div>
+                </div>
+
+                <form onSubmit={handleSubmitAdvExp} className="p-6 space-y-4">
+                  {advExpError && (
+                    <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-500 text-xs font-semibold flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 shrink-0" />
+                      <span>{advExpError}</span>
+                    </div>
+                  )}
+
+                  {advExpType === 'ADVANCE' ? (
+                    <>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className={`block text-xs font-semibold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                            Disbursed Amount (₹) *
+                          </label>
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">₹</span>
+                            <input
+                              type="number"
+                              required
+                              min="1"
+                              value={advAmount}
+                              onChange={(e) => setAdvAmount(e.target.value)}
+                              placeholder="e.g. 2000"
+                              className={`w-full pl-7 pr-3 py-2 rounded-xl text-xs font-mono font-bold border focus:outline-none transition-colors ${
+                                isDark
+                                  ? 'bg-slate-900 border-slate-700 text-white focus:border-blue-400'
+                                  : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
+                              }`}
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className={`block text-xs font-semibold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                            Disbursal Mode
+                          </label>
+                          <select
+                            value={advMode}
+                            onChange={(e) => setAdvMode(e.target.value)}
+                            className={`w-full px-3 py-2 rounded-xl text-xs border focus:outline-none transition-colors ${
+                              isDark
+                                ? 'bg-slate-900 border-slate-700 text-white focus:border-blue-400'
+                                : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
+                            }`}
+                          >
+                            <option value="CASH">Cash in Hand</option>
+                            <option value="UPI">UPI / Digital (GPay/PhonePe)</option>
+                            <option value="FUEL_CARD">Fuel Card (Diesel)</option>
+                            <option value="BANK_TRANSFER">Bank Transfer (IMPS/NEFT)</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className={`block text-xs font-semibold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                          Advance Remarks / Voucher Note
+                        </label>
+                        <input
+                          type="text"
+                          value={advRemarks}
+                          onChange={(e) => setAdvRemarks(e.target.value)}
+                          placeholder="e.g. Handed over cash advance at hub before departure"
+                          className={`w-full px-3 py-2 rounded-xl text-xs border focus:outline-none transition-colors ${
+                            isDark
+                              ? 'bg-slate-900 border-slate-700 text-white focus:border-blue-400'
+                              : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
+                          }`}
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className={`block text-xs font-semibold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                            Expense Category *
+                          </label>
+                          <select
+                            value={expCategory}
+                            onChange={(e) => setExpCategory(e.target.value)}
+                            className={`w-full px-3 py-2 rounded-xl text-xs border focus:outline-none transition-colors ${
+                              isDark
+                                ? 'bg-slate-900 border-slate-700 text-white focus:border-blue-400'
+                                : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
+                            }`}
+                          >
+                            <option value="Fuel & Diesel">Fuel & Diesel</option>
+                            <option value="Toll & Fastag">Toll & FASTag</option>
+                            <option value="Driver Daily Allowance">Driver Daily Allowance / Bhatta</option>
+                            <option value="Loading & Hamali">Loading & Hamali</option>
+                            <option value="Unloading Charges">Unloading Charges</option>
+                            <option value="Vehicle Maintenance & Spares">Vehicle Maintenance & Spares</option>
+                            <option value="Police / RTO / Challan">Police / RTO / Challan</option>
+                            <option value="Tyre & Punctures">Tyre & Punctures</option>
+                            <option value="Miscellaneous">Miscellaneous</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className={`block text-xs font-semibold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                            Expense Amount (₹) *
+                          </label>
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">₹</span>
+                            <input
+                              type="number"
+                              required
+                              min="1"
+                              value={expAmount}
+                              onChange={(e) => setExpAmount(e.target.value)}
+                              placeholder="e.g. 1500"
+                              className={`w-full pl-7 pr-3 py-2 rounded-xl text-xs font-mono font-bold border focus:outline-none transition-colors ${
+                                isDark
+                                  ? 'bg-slate-900 border-slate-700 text-white focus:border-blue-400'
+                                  : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
+                              }`}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className={`block text-xs font-semibold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                            Payment Method
+                          </label>
+                          <select
+                            value={expPaymentMethod}
+                            onChange={(e) => setExpPaymentMethod(e.target.value)}
+                            className={`w-full px-3 py-2 rounded-xl text-xs border focus:outline-none transition-colors ${
+                              isDark
+                                ? 'bg-slate-900 border-slate-700 text-white focus:border-blue-400'
+                                : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
+                            }`}
+                          >
+                            <option value="CASH">Cash</option>
+                            <option value="FUEL_CARD">Fuel Card</option>
+                            <option value="FASTAG">FASTag / RFID</option>
+                            <option value="UPI">UPI / Digital</option>
+                            <option value="COMPANY_CARD">Company Card</option>
+                            <option value="BANK_TRANSFER">Bank Transfer</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className={`block text-xs font-semibold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                            Expense Description
+                          </label>
+                          <input
+                            type="text"
+                            value={expRemarks}
+                            onChange={(e) => setExpRemarks(e.target.value)}
+                            placeholder="e.g. Toll plaza receipt #8291"
+                            className={`w-full px-3 py-2 rounded-xl text-xs border focus:outline-none transition-colors ${
+                              isDark
+                                ? 'bg-slate-900 border-slate-700 text-white focus:border-blue-400'
+                                : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
+                            }`}
+                          />
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  <div className={`flex items-center justify-end space-x-2.5 pt-3 border-t ${
+                    isDark ? 'border-slate-800' : 'border-slate-200'
+                  }`}>
+                    <button
+                      type="button"
+                      onClick={() => setAdvExpModalOpen(false)}
+                      className={`px-4 py-2 rounded-xl text-xs font-semibold ${
+                        isDark ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                      }`}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={submittingAdvExp}
+                      className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 transition-all flex items-center gap-2"
+                    >
+                      {submittingAdvExp ? (
+                        <>
+                          <div className="w-3.5 h-3.5 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                          <span>Saving...</span>
+                        </>
+                      ) : advExpType === 'ADVANCE' ? (
+                        <span>Disburse Advance</span>
+                      ) : (
+                        <span>Save Expense</span>
+                      )}
                     </button>
                   </div>
                 </form>

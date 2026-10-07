@@ -9,6 +9,7 @@ router.use(authenticate, tenantResolver);
 
 router.get('/', expenseController.listExpenses);
 router.post('/', expenseController.createExpense);
+router.post('/advance', expenseController.createDriverAdvance);
 router.get('/categories', expenseController.listCategories);
 router.post('/settle', expenseController.settleTrip);
 

@@ -49,6 +49,7 @@ const seed = async () => {
   console.log('🌱 Starting comprehensive Transport SaaS database seeding...');
   const hashedPassword = await bcrypt.hash('Password@123', 10);
   const fy = getFinancialYear();
+  const currentYear = String(new Date().getFullYear());
 
   // 1. SaaS Plans
   console.log('📦 Seeding SaaS Plans...');
@@ -277,11 +278,11 @@ const seed = async () => {
     organization_id: organization.id,
     branch_id: null,
     document_type: 'TRIP',
-    financial_year: fy,
-    prefix: 'TRP-',
+    financial_year: currentYear,
+    prefix: 'TRP',
     current_number: 30,
-    sequence_length: 5,
-    template: '{PREFIX}{FY}/{SEQ}',
+    sequence_length: 3,
+    template: '{PREFIX}-{YEAR}-{SEQ}',
   });
 
   await NumberSequence.create({
@@ -684,7 +685,7 @@ const seed = async () => {
     const trip = await Trip.create({
       tenant_id: tenant.id,
       organization_id: organization.id,
-      trip_number: `TRP-${fy}/${String(t).padStart(5, '0')}`,
+      trip_number: `TRP-${currentYear}-${String(t).padStart(3, '0')}`,
       trip_date: '2026-10-02',
       origin_branch_id: originBranch.id,
       dest_branch_id: destBranch.id,

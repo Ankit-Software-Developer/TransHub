@@ -20,8 +20,15 @@ import {
   Plus
 } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 export default function DispatchesPage() {
+  const router = useRouter();
+
+  useEffect(() => {
+    router.replace('/trips');
+  }, [router]);
+
   const { theme } = useTheme();
   const isDark = theme === 'dark';
   const { canExport, isAdmin, canCreateDispatch } = usePermissions();

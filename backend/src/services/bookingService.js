@@ -1,5 +1,5 @@
 // src/services/bookingService.js
-const { Op } = require('sequelize');
+const { Op, Sequelize } = require('sequelize');
 const defaultModels = require('../models');
 const defaultSequelize = defaultModels.sequelize;
 const { generateNextNumber } = require('./numberSequenceService');
@@ -256,6 +256,9 @@ const listConsignments = async ({
   const Branch = models?.Branch || defaultModels.Branch;
   const Customer = models?.Customer || defaultModels.Customer;
   const Pod = models?.Pod || defaultModels.Pod;
+  const Trip = models?.Trip || defaultModels.Trip;
+  const Vehicle = models?.Vehicle || defaultModels.Vehicle;
+  const Driver = models?.Driver || defaultModels.Driver;
 
   const where = {
     tenant_id: tenantId,
@@ -334,6 +337,19 @@ const listConsignments = async ({
   if (Pod) {
     includeList.push({ model: Pod, as: 'pod' });
   }
+  if (Trip) {
+    const tripInclude = [];
+    if (Vehicle) tripInclude.push({ model: Vehicle, as: 'vehicle', attributes: ['id', 'vehicle_number', 'vehicle_type', 'capacity_ton'] });
+    if (Driver) tripInclude.push({ model: Driver, as: 'driver', attributes: ['id', 'name', 'phone'] });
+    includeList.push({
+      model: Trip,
+      as: 'trips',
+      attributes: ['id', 'trip_number', 'status', 'created_at'],
+      through: { attributes: [] },
+      include: tripInclude,
+      required: false,
+    });
+  }
 
   const allowedSortCols = {
     docket_number: 'docket_number',
@@ -361,13 +377,79 @@ const listConsignments = async ({
     include: includeList,
   });
 
+  const formattedRows = rows.map((r) => {
+    const json = r.toJSON ? r.toJSON() : r;
+    const activeTrip = (json.trips && json.trips.length > 0)
+      ? (json.trips.find((t) => t.status === 'RUNNING' || t.status === 'IN_TRANSIT' || t.status === 'DISPATCHED') || json.trips[json.trips.length - 1])
+      : null;
+    if (activeTrip) {
+      json.trip_number = activeTrip.trip_number;
+      if (activeTrip.vehicle?.vehicle_number) {
+        json.vehicle_number = activeTrip.vehicle.vehicle_number;
+        json.vehicle_type = activeTrip.vehicle.vehicle_type || 'Commercial Fleet';
+      }
+      if (activeTrip.driver?.name) {
+        json.driver_name = activeTrip.driver.name;
+        json.driver_phone = activeTrip.driver.phone || '';
+      }
+      json.active_trip = activeTrip;
+    }
+    return json;
+  });
+
+  let summary = {
+    total: count,
+    pending: 0,
+    inTransit: 0,
+    delivered: 0,
+    delayed: 0,
+  };
+
+  try {
+    const statsWhere = { tenant_id: tenantId, organization_id: organizationId };
+    if (originBranchId && originBranchId !== 'ALL') {
+      statsWhere.origin_branch_id = originBranchId;
+    } else if (branchId && branchId !== 'ALL') {
+      statsWhere[Op.or] = [
+        { origin_branch_id: branchId },
+        { dest_branch_id: branchId },
+        { current_branch_id: branchId },
+      ];
+    }
+    const statusStats = await Consignment.findAll({
+      where: statsWhere,
+      attributes: ['status', [Sequelize.fn('COUNT', Sequelize.col('id')), 'count']],
+      group: ['status'],
+      raw: true,
+    });
+
+    summary.total = 0;
+    statusStats.forEach((s) => {
+      const c = parseInt(s.count, 10) || 0;
+      summary.total += c;
+      if (['BOOKED', 'MATERIAL_RECEIVED', 'READY_FOR_DISPATCH', 'LOADED'].includes(s.status)) {
+        summary.pending += c;
+      } else if (['IN_TRANSIT', 'DISPATCHED', 'ON_TRIP'].includes(s.status)) {
+        summary.inTransit += c;
+      } else if (['DELIVERED', 'COMPLETED', 'POD_UPLOADED'].includes(s.status)) {
+        summary.delivered += c;
+      } else if (['DELAYED', 'DAMAGED', 'SHORT_MATERIAL', 'HOLD'].includes(s.status)) {
+        summary.delayed += c;
+      }
+    });
+  } catch (err) {
+    // Graceful fallback to formattedRows
+    summary.total = count;
+  }
+
   return {
-    consignments: rows,
+    consignments: formattedRows,
     pagination: {
       total: count,
       page: parsedPage,
       limit: parsedLimit,
       pages: Math.ceil(count / parsedLimit),
+      summary,
     },
   };
 };

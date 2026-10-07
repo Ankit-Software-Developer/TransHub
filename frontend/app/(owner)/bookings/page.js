@@ -161,9 +161,11 @@ const mapConsignmentFromApi = (c) => {
     tax_percent: parseFloat(c.tax_percent || 0),
     tax_amount: parseFloat(c.tax_amount || 0),
     discount_amount: parseFloat(c.discount_amount || 0),
-    vehicle_number: c.vehicle_number || 'Unassigned',
-    vehicle_type: 'Scheduled Line-haul',
-    driver_name: c.driver_name || 'Pending Allocation',
+    vehicle_number: c.vehicle_number || (c.active_trip?.vehicle?.vehicle_number) || (c.trips?.[0]?.vehicle?.vehicle_number) || 'Unassigned',
+    vehicle_type: c.vehicle_type || (c.active_trip?.vehicle?.vehicle_type) || (c.trips?.[0]?.vehicle?.vehicle_type) || 'Scheduled Line-haul',
+    driver_name: c.driver_name || (c.active_trip?.driver?.name) || (c.trips?.[0]?.driver?.name) || 'Pending Allocation',
+    driver_phone: c.driver_phone || (c.active_trip?.driver?.phone) || (c.trips?.[0]?.driver?.phone) || '',
+    trip_number: c.trip_number || (c.active_trip?.trip_number) || (c.trips?.[0]?.trip_number) || null,
     transport_mode: c.transport_mode || 'ROAD',
     total_amount: parseFloat(c.total_amount || c.freight_amount || 0),
     payment_mode: c.payment_type || 'TO_PAY',
@@ -198,7 +200,14 @@ export default function BookingsMasterPage() {
   const [sortBy, setSortBy] = useState('booking_date');
   const [sortOrder, setSortOrder] = useState('DESC');
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [statusFilter, setStatusFilter] = useState('PENDING');
+  const [statusSummary, setStatusSummary] = useState({
+    total: 0,
+    pending: 0,
+    inTransit: 0,
+    delivered: 0,
+    delayed: 0,
+  });
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
@@ -243,6 +252,9 @@ export default function BookingsMasterPage() {
 
   // Bilty Print Preview Modal State
   const user = useStore((state) => state.user);
+  const userBranchId = user?.branch_id || user?.branchId || null;
+  const isGlobalUser = user?.role === 'SUPER_ADMIN' || user?.role === 'TRANSPORT_OWNER' || user?.role === 'ADMIN';
+  const isRestrictedBranchUser = !isGlobalUser && !!userBranchId;
   const [printConsignment, setPrintConsignment] = useState(null);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [activePrintCopy, setActivePrintCopy] = useState('ALL'); // 'ALL' | 'CONSIGNOR' | 'CONSIGNEE' | 'DRIVER'
@@ -686,22 +698,30 @@ export default function BookingsMasterPage() {
       setBranchesList(list);
       if (list.length > 0) {
         setFormData((prev) => {
-          const validOrigin = list.find((b) => b.id === prev.originBranchId);
-          const validDest = list.find((b) => b.id === prev.destBranchId);
-          const originB = validOrigin || list[0];
-          const destB = validDest || (list.length > 1 ? list[1] : list[0]);
+          let originB;
+          if (isRestrictedBranchUser && userBranchId) {
+            originB = list.find((b) => b.id === userBranchId) || { id: userBranchId, city: user?.city || 'South Delhi' };
+          } else {
+            const validOrigin = list.find((b) => b.id === prev.originBranchId);
+            originB = validOrigin || list[0];
+          }
+
+          const otherBranches = list.filter((b) => b.id !== originB.id);
+          const validDest = list.find((b) => b.id === prev.destBranchId && b.id !== originB.id);
+          const destB = validDest || (otherBranches.length > 0 ? otherBranches[0] : list[0]);
+
           return {
             ...prev,
             originBranchId: originB.id,
-            originCity: originB.city,
+            originCity: originB.city || prev.originCity,
             destBranchId: destB.id,
-            destinationCity: destB.city,
+            destinationCity: destB.city || prev.destinationCity,
           };
         });
       } else {
         setFormData((prev) => ({
           ...prev,
-          originBranchId: '',
+          originBranchId: isRestrictedBranchUser && userBranchId ? userBranchId : '',
           originCity: '',
           destBranchId: '',
           destinationCity: '',
@@ -898,7 +918,9 @@ export default function BookingsMasterPage() {
       if (sq) url += `&search=${encodeURIComponent(sq)}`;
       if (sf && sf !== 'ALL') {
         if (sf === 'PENDING') {
-          url += `&status=BOOKED`;
+          url += `&status=BOOKED,MATERIAL_RECEIVED,READY_FOR_DISPATCH,LOADED`;
+        } else if (sf === 'IN_TRANSIT') {
+          url += `&status=IN_TRANSIT,DISPATCHED,ON_TRIP`;
         } else {
           url += `&status=${sf}`;
         }
@@ -911,6 +933,9 @@ export default function BookingsMasterPage() {
       const mapped = rawList.map(mapConsignmentFromApi);
       setConsignments(mapped);
       setTotalCount(res.data?.pagination?.total ?? mapped.length);
+      if (res.data?.pagination?.summary) {
+        setStatusSummary(res.data.pagination.summary);
+      }
       return mapped;
     } catch (err) {
       console.error('Error fetching bookings from DB:', err);
@@ -928,7 +953,13 @@ export default function BookingsMasterPage() {
       let url = `/bookings?limit=all&page=1&sort_by=${sortBy}&sort_order=${sortOrder}`;
       if (searchQuery) url += `&search=${encodeURIComponent(searchQuery)}`;
       if (statusFilter && statusFilter !== 'ALL') {
-        url += `&status=${statusFilter === 'PENDING' ? 'BOOKED' : statusFilter}`;
+        if (statusFilter === 'PENDING') {
+          url += `&status=BOOKED,MATERIAL_RECEIVED,READY_FOR_DISPATCH,LOADED`;
+        } else if (statusFilter === 'IN_TRANSIT') {
+          url += `&status=IN_TRANSIT,DISPATCHED,ON_TRIP`;
+        } else {
+          url += `&status=${statusFilter}`;
+        }
       }
       if (fromDate) url += `&from_date=${fromDate}`;
       if (toDate) url += `&to_date=${toDate}`;
@@ -1117,11 +1148,11 @@ export default function BookingsMasterPage() {
   };
 
   // KPI Calculations
-  const totalBookingsCount = consignments.length;
-  const inTransitCount = consignments.filter((c) => c.status === 'IN_TRANSIT').length;
-  const deliveredCount = consignments.filter((c) => c.status === 'DELIVERED').length;
-  const pendingOrGodownCount = consignments.filter((c) => c.status === 'BOOKED' || c.status === 'OUT_FOR_DELIVERY').length;
-  const delayedCount = consignments.filter((c) => c.status === 'DELAYED').length;
+  const totalBookingsCount = statusSummary.total || consignments.length;
+  const inTransitCount = statusSummary.inTransit || consignments.filter((c) => c.status === 'IN_TRANSIT' || c.status === 'DISPATCHED' || c.status === 'ON_TRIP').length;
+  const deliveredCount = statusSummary.delivered || consignments.filter((c) => c.status === 'DELIVERED').length;
+  const pendingOrGodownCount = statusSummary.pending || consignments.filter((c) => c.status === 'BOOKED' || c.status === 'MATERIAL_RECEIVED' || c.status === 'READY_FOR_DISPATCH' || c.status === 'LOADED' || c.status === 'OUT_FOR_DELIVERY').length;
+  const delayedCount = statusSummary.delayed || consignments.filter((c) => c.status === 'DELAYED').length;
 
   const kpis = [
     {
@@ -1171,10 +1202,10 @@ export default function BookingsMasterPage() {
         (c.vehicle_number || '').toLowerCase().includes(searchQuery.toLowerCase());
 
       if (statusFilter === 'ALL') return matchesSearch;
-      if (statusFilter === 'IN_TRANSIT') return matchesSearch && c.status === 'IN_TRANSIT';
+      if (statusFilter === 'IN_TRANSIT') return matchesSearch && (c.status === 'IN_TRANSIT' || c.status === 'DISPATCHED' || c.status === 'ON_TRIP');
       if (statusFilter === 'DELIVERED') return matchesSearch && c.status === 'DELIVERED';
       if (statusFilter === 'DELAYED') return matchesSearch && c.status === 'DELAYED';
-      if (statusFilter === 'PENDING') return matchesSearch && (c.status === 'BOOKED' || c.status === 'OUT_FOR_DELIVERY');
+      if (statusFilter === 'PENDING') return matchesSearch && (c.status === 'BOOKED' || c.status === 'MATERIAL_RECEIVED' || c.status === 'READY_FOR_DISPATCH' || c.status === 'LOADED' || c.status === 'OUT_FOR_DELIVERY');
 
       return matchesSearch;
     });
@@ -1427,19 +1458,40 @@ export default function BookingsMasterPage() {
         key: 'vehicle_number',
         header: 'Vehicle & Driver',
         sortable: false,
-        width: 150,
-        minWidth: 120,
+        width: 160,
+        minWidth: 130,
         exportValue: (row) => `${row.vehicle_number} (${row.driver_name})`,
-        render: (val, row) => (
-          <div className="whitespace-nowrap">
-            <div className={`font-mono font-bold text-xs ${isDark ? 'text-cyan-300' : 'text-blue-600'}`}>
-              {row.vehicle_number}
+        render: (val, row) => {
+          const isAssigned = row.vehicle_number && row.vehicle_number !== 'Unassigned';
+          return (
+            <div className="whitespace-nowrap">
+              {isAssigned ? (
+                <>
+                  <div className={`font-mono font-bold text-xs ${isDark ? 'text-cyan-300' : 'text-blue-700'}`}>
+                    {row.vehicle_number}
+                  </div>
+                  <div className={`text-[10.5px] font-medium truncate ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                    {row.driver_name}{row.driver_phone ? ` • ${row.driver_phone}` : ''}
+                  </div>
+                  {row.trip_number && (
+                    <div className={`text-[9px] font-mono font-semibold ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>
+                      Trip: {row.trip_number}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div className={`text-xs font-semibold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                    Unassigned
+                  </div>
+                  <div className={`text-[10px] truncate ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                    Pending Allocation
+                  </div>
+                </>
+              )}
             </div>
-            <div className={`text-[10px] truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-              {row.driver_name}
-            </div>
-          </div>
-        ),
+          );
+        },
       },
       {
         key: 'total_amount',
@@ -1701,16 +1753,16 @@ export default function BookingsMasterPage() {
               <div className="flex flex-wrap items-center gap-1.5 text-xs font-bold">
                 <button
                   type="button"
-                  onClick={() => { setStatusFilter('ALL'); setPage(1); }}
+                  onClick={() => { setStatusFilter('PENDING'); setPage(1); }}
                   className={`px-3 py-1.5 rounded-xl transition-all ${
-                    statusFilter === 'ALL'
-                      ? 'bg-blue-600 text-white shadow-sm'
+                    statusFilter === 'PENDING'
+                      ? 'bg-purple-600 text-white shadow-sm'
                       : isDark
                       ? 'bg-slate-900 text-slate-400 hover:text-white'
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
-                  All ({totalBookingsCount})
+                  Pending / Dock{statusFilter === 'PENDING' ? ` (${pendingOrGodownCount})` : ''}
                 </button>
                 <button
                   type="button"
@@ -1723,7 +1775,7 @@ export default function BookingsMasterPage() {
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
-                  In Transit ({inTransitCount})
+                  In Transit{statusFilter === 'IN_TRANSIT' ? ` (${inTransitCount})` : ''}
                 </button>
                 <button
                   type="button"
@@ -1736,7 +1788,7 @@ export default function BookingsMasterPage() {
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
-                  Delivered ({deliveredCount})
+                  Delivered{statusFilter === 'DELIVERED' ? ` (${deliveredCount})` : ''}
                 </button>
                 <button
                   type="button"
@@ -1749,20 +1801,20 @@ export default function BookingsMasterPage() {
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
-                  Delayed ({delayedCount})
+                  Delayed{statusFilter === 'DELAYED' ? ` (${delayedCount})` : ''}
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setStatusFilter('PENDING'); setPage(1); }}
+                  onClick={() => { setStatusFilter('ALL'); setPage(1); }}
                   className={`px-3 py-1.5 rounded-xl transition-all ${
-                    statusFilter === 'PENDING'
-                      ? 'bg-purple-600 text-white shadow-sm'
+                    statusFilter === 'ALL'
+                      ? 'bg-blue-600 text-white shadow-sm'
                       : isDark
                       ? 'bg-slate-900 text-slate-400 hover:text-white'
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
-                  Pending / Dock ({pendingOrGodownCount})
+                  All{statusFilter === 'ALL' ? ` (${totalBookingsCount})` : ''}
                 </button>
               </div>
             }
@@ -2487,49 +2539,69 @@ export default function BookingsMasterPage() {
                         <label className={`text-xs font-bold flex items-center ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
                           <span>Origin Hub / Branch</span>
                           <span className="text-rose-500 font-bold ml-0.5">*</span>
+                          {isRestrictedBranchUser && (
+                            <span className="ml-1.5 text-[9px] font-bold text-cyan-500 bg-cyan-500/10 px-1.5 py-0.2 rounded border border-cyan-500/20">
+                              Assigned
+                            </span>
+                          )}
                         </label>
-                        <Link
-                          href="/branches"
-                          target="_blank"
-                          className={`text-[10px] font-semibold flex items-center gap-0.5 ${
-                            isDark ? 'text-cyan-400 hover:text-cyan-300' : 'text-blue-600 hover:text-blue-700'
+                        {!isRestrictedBranchUser && (
+                          <Link
+                            href="/branches"
+                            target="_blank"
+                            className={`text-[10px] font-semibold flex items-center gap-0.5 ${
+                              isDark ? 'text-cyan-400 hover:text-cyan-300' : 'text-blue-600 hover:text-blue-700'
+                            }`}
+                          >
+                            <span>+ Add Hub</span>
+                          </Link>
+                        )}
+                      </div>
+                      {isRestrictedBranchUser ? (
+                        <div className={`w-full px-3 py-2.5 rounded-xl border text-xs font-bold flex items-center justify-between shadow-xs ${
+                          isDark 
+                            ? 'border-slate-800 bg-slate-900/90 text-cyan-300' 
+                            : 'border-slate-200 bg-slate-100 text-blue-900'
+                        }`}>
+                          <span className="truncate">
+                            {branchesList.find((b) => b.id === userBranchId)?.branch_name || user?.branchName || 'Your Branch'} ({branchesList.find((b) => b.id === userBranchId)?.branch_code || 'HUB'}) - {branchesList.find((b) => b.id === userBranchId)?.city || user?.city || 'South Delhi'}
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-normal shrink-0 ml-1">🔒 Locked</span>
+                        </div>
+                      ) : (
+                        <select
+                          value={formData.originBranchId}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            const found = branchesList.find((b) => b.id === val);
+                            setFormData({
+                              ...formData,
+                              originBranchId: val,
+                              originCity: found ? found.city : '',
+                            });
+                          }}
+                          required
+                          className={`w-full px-3 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
+                            isDark 
+                              ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400' 
+                              : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
                           }`}
                         >
-                          <span>+ Add Hub</span>
-                        </Link>
-                      </div>
-                      <select
-                        value={formData.originBranchId}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          const found = branchesList.find((b) => b.id === val);
-                          setFormData({
-                            ...formData,
-                            originBranchId: val,
-                            originCity: found ? found.city : '',
-                          });
-                        }}
-                        required
-                        className={`w-full px-3 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                          isDark 
-                            ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400' 
-                            : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
-                        }`}
-                      >
-                        {branchesList.length > 0 ? (
-                          <>
-                            <option value="">-- Select Origin Hub / Branch --</option>
-                            {branchesList.map((b) => (
-                              <option key={b.id} value={b.id}>
-                                {b.branch_name} ({b.branch_code}) - {b.city} {b.pincode ? `[PIN: ${b.pincode}]` : ''}
-                              </option>
-                            ))}
-                          </>
-                        ) : (
-                          <option value="">-- No Branch or Hub Present (Click "+ Add Hub") --</option>
-                        )}
-                      </select>
-                      {branchesList.length === 0 && (
+                          {branchesList.length > 0 ? (
+                            <>
+                              <option value="">-- Select Origin Hub / Branch --</option>
+                              {branchesList.map((b) => (
+                                <option key={b.id} value={b.id}>
+                                  {b.branch_name} ({b.branch_code}) - {b.city} {b.pincode ? `[PIN: ${b.pincode}]` : ''}
+                                </option>
+                              ))}
+                            </>
+                          ) : (
+                            <option value="">-- No Branch or Hub Present (Click "+ Add Hub") --</option>
+                          )}
+                        </select>
+                      )}
+                      {branchesList.length === 0 && !isRestrictedBranchUser && (
                         <p className="text-[11px] text-amber-500 font-semibold mt-1">
                           ⚠️ No branch or hub added yet. Click <Link href="/branches" target="_blank" className="underline font-bold">+ Add Hub</Link> to create one.
                         </p>
@@ -2542,15 +2614,17 @@ export default function BookingsMasterPage() {
                           <span>Destination Hub / Branch</span>
                           <span className="text-rose-500 font-bold ml-0.5">*</span>
                         </label>
-                        <Link
-                          href="/branches"
-                          target="_blank"
-                          className={`text-[10px] font-semibold flex items-center gap-0.5 ${
-                            isDark ? 'text-cyan-400 hover:text-cyan-300' : 'text-blue-600 hover:text-blue-700'
-                          }`}
-                        >
-                          <span>+ Add Hub</span>
-                        </Link>
+                        {!isRestrictedBranchUser && (
+                          <Link
+                            href="/branches"
+                            target="_blank"
+                            className={`text-[10px] font-semibold flex items-center gap-0.5 ${
+                              isDark ? 'text-cyan-400 hover:text-cyan-300' : 'text-blue-600 hover:text-blue-700'
+                            }`}
+                          >
+                            <span>+ Add Hub</span>
+                          </Link>
+                        )}
                       </div>
                       <select
                         value={formData.destBranchId}
@@ -2573,7 +2647,9 @@ export default function BookingsMasterPage() {
                         {branchesList.length > 0 ? (
                           <>
                             <option value="">-- Select Destination Hub / Branch --</option>
-                            {branchesList.map((b) => (
+                            {branchesList
+                              .filter((b) => b.id !== formData.originBranchId)
+                              .map((b) => (
                               <option key={b.id} value={b.id}>
                                 {b.branch_name} ({b.branch_code}) - {b.city} {b.pincode ? `[PIN: ${b.pincode}]` : ''}
                               </option>
@@ -3484,8 +3560,17 @@ export default function BookingsMasterPage() {
                   </div>
                   <div>
                     <span className={`text-[10px] block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Assigned Driver:</span>
-                    <span className={`font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{selectedConsignment.driver_name}</span>
+                    <span className={`font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                      {selectedConsignment.driver_name}
+                      {selectedConsignment.driver_phone && <span className="text-[11px] font-normal font-mono opacity-80 ml-1">({selectedConsignment.driver_phone})</span>}
+                    </span>
                   </div>
+                  {selectedConsignment.trip_number && (
+                    <div>
+                      <span className={`text-[10px] block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Active Trip ID:</span>
+                      <span className={`font-mono font-bold ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>{selectedConsignment.trip_number}</span>
+                    </div>
+                  )}
                   <div>
                     <span className={`text-[10px] block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Cargo Description:</span>
                     <span className={`font-medium ${isDark ? 'text-white' : 'text-slate-800'}`}>{selectedConsignment.cargo_type}</span>
