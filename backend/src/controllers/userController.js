@@ -48,6 +48,9 @@ const listUsers = async (req, res) => {
         if (staffList && staffList.length > 0) {
           const formatted = staffList.map((s) => {
             const json = s.toJSON();
+            if (json.designation === 'Owner / Administrator' || json.designation === 'Fleet Owner & Admin') {
+              json.designation = 'Administrator';
+            }
             // Default role if not assigned
             if (!json.roles || json.roles.length === 0) {
               json.roles = [{ id: 'admin', name: 'ADMIN', display_name: 'Admin' }];

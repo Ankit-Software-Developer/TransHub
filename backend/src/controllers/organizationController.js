@@ -230,6 +230,47 @@ const updateTripSeries = async (req, res) => {
   }
 };
 
+const getBranchSeries = async (req, res) => {
+  try {
+    const OrganizationModel = req.tenantDb?.Organization || Organization;
+    const org = await OrganizationModel.findByPk(req.tenant.organizationId);
+    const branchPrefix = org?.settings?.branchPrefix || (org?.business_name ? org.business_name.trim().charAt(0).toUpperCase() : 'B');
+    return successResponse(res, 'Branch series retrieved', {
+      prefix: branchPrefix,
+      organizationName: org?.business_name || '',
+    });
+  } catch (error) {
+    return errorResponse(res, error.message, null, 500);
+  }
+};
+
+const updateBranchSeries = async (req, res) => {
+  try {
+    const { prefix } = req.body;
+    const OrganizationModel = req.tenantDb?.Organization || Organization;
+    const org = await OrganizationModel.findByPk(req.tenant.organizationId);
+    if (!org) return errorResponse(res, 'Organization not found', null, 404);
+
+    const cleanPrefix = (prefix || '').trim().replace(/[^a-zA-Z0-9]/g, '').toUpperCase() || 'B';
+    if (cleanPrefix.length < 1 || cleanPrefix.length > 5) {
+      return errorResponse(res, 'Branch Prefix must be between 1 and 5 alphanumeric characters (e.g. B or BAL)', null, 400);
+    }
+
+    const updatedSettings = {
+      ...(org.settings || {}),
+      branchPrefix: cleanPrefix,
+    };
+
+    await org.update({ settings: updatedSettings });
+
+    return successResponse(res, 'Company Branch Code Prefix updated successfully', {
+      prefix: cleanPrefix,
+    });
+  } catch (error) {
+    return errorResponse(res, error.message, null, 500);
+  }
+};
+
 module.exports = {
   getOrganizationProfile,
   updateTerminology,
@@ -238,4 +279,7 @@ module.exports = {
   updateDocketSeries,
   getTripSeries,
   updateTripSeries,
+  getBranchSeries,
+  updateBranchSeries,
 };
+

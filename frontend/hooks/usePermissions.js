@@ -12,6 +12,7 @@ export const ROUTE_PERMISSIONS = {
   '/users': ['role.manage', 'settings.manage', 'driver.manage', 'vehicle.manage', 'ADMIN'],
   '/control-tower': ['trip.view', 'booking.view', 'dispatch.view', 'vehicle.view'],
   '/load-planning': ['dispatch.view', 'dispatch.create', 'dispatch.manage', 'booking.view'],
+  '/unload-planning': ['dispatch.view', 'dispatch.manage', 'trip.view', 'trip.manage', 'booking.view'],
   '/dispatches': ['dispatch.view', 'dispatch.create', 'dispatch.manage', 'dispatch.delete', 'dispatch.approve', 'dispatch.export'],
   '/trips': ['trip.view', 'trip.create', 'trip.manage', 'trip.delete', 'trip.settle'],
   '/customers': ['customer.view', 'customer.create', 'customer.manage', 'customer.delete', 'customer.export'],
@@ -211,7 +212,7 @@ export function usePermissions() {
     canCreateTrip: isAdmin || hasPermission('trip.create'),
     canEditTrip: isAdmin || hasPermission('trip.manage'),
     canDeleteTrip: isAdmin || hasPermission('trip.delete'),
-    canSettleTrip: isAdmin || hasPermission('trip.settle'),
+    canSettleTrip: isAdmin || hasPermission('trip.settle') || hasPermission('trip.manage') || isBranchManager,
     // Invoice permissions
     canViewInvoice: isAdmin || hasPermission('invoice.view'),
     canCreateInvoice: isAdmin || hasPermission('invoice.create'),

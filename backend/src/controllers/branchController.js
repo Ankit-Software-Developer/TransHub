@@ -105,11 +105,17 @@ const createBranch = async (req, res) => {
       return errorResponse(res, 'Branch Name, City, and State are required', null, 400);
     }
 
-    let finalCode = (branch_code || '').trim().toUpperCase();
-    if (!finalCode) {
-      const cityPrefix = city.slice(0, 3).toUpperCase();
-      const count = await Branch.count({ where: { organization_id: req.tenant.organizationId } });
-      finalCode = `${is_hub ? 'HUB' : 'BR'}-${cityPrefix}-${String(count + 1).padStart(2, '0')}`;
+    if (!pincode || !pincode.trim()) {
+      return errorResponse(res, 'Pincode is mandatory for branch and delivery routing', null, 400);
+    }
+
+    if (!branch_code || !branch_code.trim()) {
+      return errorResponse(res, 'Branch Code is mandatory (e.g. BOKH for Balaji Logistic - Okhla)', null, 400);
+    }
+
+    const finalCode = branch_code.trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '');
+    if (finalCode.length < 2) {
+      return errorResponse(res, 'Branch Code must be at least 2 characters (e.g. BOKH)', null, 400);
     }
 
     // Check code duplication in the organization
@@ -120,7 +126,7 @@ const createBranch = async (req, res) => {
       },
     });
     if (existing) {
-      return errorResponse(res, `Branch Code "${finalCode}" is already in use`, null, 400);
+      return errorResponse(res, `Branch Code "${finalCode}" is already in use by "${existing.branch_name}". Please choose a unique code.`, null, 400);
     }
 
     const branch = await Branch.create({

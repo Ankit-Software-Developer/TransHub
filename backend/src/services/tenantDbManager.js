@@ -140,6 +140,7 @@ const applyEssentialPatches = async (sequelize) => {
     'ALTER TABLE vehicles ADD COLUMN engine_number VARCHAR(50);',
     'ALTER TABLE vehicles ADD COLUMN assigned_driver_id CHAR(36);',
     'ALTER TABLE drivers ADD COLUMN branch_id CHAR(36);',
+    'ALTER TABLE customers ADD COLUMN branch_id VARCHAR(36);',
     `CREATE TABLE IF NOT EXISTS approval_requests (
       id VARCHAR(36) NOT NULL PRIMARY KEY,
       tenant_id VARCHAR(36) NOT NULL,
@@ -163,6 +164,27 @@ const applyEssentialPatches = async (sequelize) => {
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       deleted_at DATETIME NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`,
+    `CREATE TABLE IF NOT EXISTS audit_logs (
+      id VARCHAR(36) NOT NULL PRIMARY KEY,
+      tenant_id VARCHAR(36) NULL,
+      organization_id VARCHAR(36) NULL,
+      branch_id VARCHAR(36) NULL,
+      user_id VARCHAR(36) NULL,
+      action VARCHAR(100) NOT NULL,
+      entity_type VARCHAR(50) NOT NULL,
+      entity_id VARCHAR(100) NOT NULL,
+      old_values JSON NULL,
+      new_values JSON NULL,
+      ip_address VARCHAR(45) NULL,
+      user_agent VARCHAR(255) NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      deleted_at DATETIME NULL,
+      INDEX idx_audit_tenant_org (tenant_id, organization_id),
+      INDEX idx_audit_entity (entity_type, entity_id),
+      INDEX idx_audit_user (user_id),
+      INDEX idx_audit_action (action)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`,
   ];
 

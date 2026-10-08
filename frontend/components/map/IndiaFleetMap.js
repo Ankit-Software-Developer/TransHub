@@ -508,52 +508,48 @@ export default function IndiaFleetMap({
             opacity: 0.95,
           }).addTo(routeLayer);
 
-          // Point A: START PIN (Where to start)
+          // Point A: START PIN (Clean compact beacon)
           const startHtml = `
-            <div class="flex items-center gap-1.5 -translate-x-1/2 -translate-y-full cursor-pointer pointer-events-auto">
-              <div class="px-2.5 py-1 rounded-xl ${isDark ? 'bg-slate-950/95 border-2 border-emerald-400 text-white shadow-emerald-950/50' : 'bg-white border-2 border-emerald-500 text-slate-900 shadow-xl'} text-[11px] font-bold shadow-2xl flex items-center gap-1.5 backdrop-blur-md">
-                <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shadow-md"></span>
-                <div class="flex flex-col text-left leading-tight">
-                  <span class="text-emerald-500 uppercase text-[9px] font-black tracking-wider">START (ORIGIN)</span>
-                  <span class="text-xs font-bold">${routeData.originCity} Hub</span>
+            <div class="flex items-center gap-1.5 -translate-x-1/2 -translate-y-1/2 cursor-pointer group pointer-events-auto">
+              <div class="relative flex items-center justify-center">
+                <span class="absolute w-5 h-5 rounded-full bg-emerald-500/30 animate-ping"></span>
+                <div class="w-6 h-6 rounded-full ${isDark ? 'bg-slate-950 border-2 border-emerald-400 text-emerald-400' : 'bg-white border-2 border-emerald-500 text-emerald-600'} flex items-center justify-center shadow-lg font-black text-[10px]">
+                  A
                 </div>
               </div>
+              <span class="px-2 py-0.5 rounded-lg ${isDark ? 'bg-slate-950/90 border border-emerald-500/40 text-emerald-300' : 'bg-white/95 border border-emerald-300 text-emerald-800 shadow-sm'} text-[10px] font-bold shadow-md whitespace-nowrap">
+                ${routeData.originCity} Hub
+              </span>
             </div>
           `;
-          const startIcon = L.divIcon({ html: startHtml, className: 'custom-start-pin', iconSize: [140, 42], iconAnchor: [70, 42] });
+          const startIcon = L.divIcon({ html: startHtml, className: 'custom-start-pin', iconSize: [110, 26], iconAnchor: [12, 13] });
           L.marker(routeData.originCoords, { icon: startIcon, zIndexOffset: 850 }).addTo(routeLayer);
 
-          // Point B: CURRENT PIN (Where is it right now with radar pulse)
+          // Point B: CURRENT PIN (Clean Animated Truck Icon + Small Plate Chip)
           const currentHtml = `
             <div class="relative flex flex-col items-center justify-center -translate-x-1/2 -translate-y-1/2 cursor-pointer group">
               <!-- Animated dual radar wave rings -->
-              <span class="absolute w-14 h-14 rounded-full ${isDark ? 'bg-cyan-400/40' : 'bg-blue-400/40'} animate-ping pointer-events-none"></span>
-              <span class="absolute w-20 h-20 rounded-full ${isDark ? 'bg-cyan-400/20' : 'bg-blue-400/20'} animate-pulse pointer-events-none"></span>
-              
-              <!-- Floating CURRENT live location badge -->
-              <div class="mb-1.5 px-2.5 py-1 rounded-xl ${isDark ? 'bg-slate-950/95 border border-cyan-400 text-white shadow-cyan-950/60' : 'bg-white border-2 border-blue-600 text-slate-900 shadow-xl'} text-[10px] font-bold shadow-2xl whitespace-nowrap flex flex-col items-center">
-                <div class="flex items-center gap-1.5 ${isDark ? 'text-cyan-400' : 'text-blue-600'} font-black text-[9px] uppercase tracking-wider">
-                  <span class="w-2 h-2 rounded-full ${isDark ? 'bg-cyan-400' : 'bg-blue-600'} animate-ping"></span>
-                  <span>CURRENT: ${selVehicleId}</span>
-                </div>
-                <div class="text-[11px] font-bold ${isDark ? 'text-white' : 'text-slate-900'} mt-0.5">
-                  ${routeData.currentLocation} • <span class="font-mono text-cyan-400 font-bold">${selectedTrip.speed || '68 km/h'}</span>
-                </div>
-              </div>
+              <span class="absolute w-12 h-12 rounded-full ${isDark ? 'bg-cyan-400/30' : 'bg-blue-400/30'} animate-ping pointer-events-none"></span>
+              <span class="absolute w-16 h-16 rounded-full ${isDark ? 'bg-cyan-400/15' : 'bg-blue-400/15'} animate-pulse pointer-events-none"></span>
 
               <!-- Truck Icon Pin -->
-              <div class="relative w-10 h-10 rounded-full ${isDark ? 'bg-[#060D1E] border-2 border-cyan-400 text-cyan-300 shadow-cyan-400/80' : 'bg-white border-2 border-blue-600 text-blue-600 shadow-blue-500/40'} flex items-center justify-center shadow-2xl transition-transform group-hover:scale-110">
-                <svg class="w-5 h-5 ${isDark ? 'text-cyan-300' : 'text-blue-600'}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+              <div class="relative w-9 h-9 rounded-full ${isDark ? 'bg-[#060D1E] border-2 border-cyan-400 text-cyan-300 shadow-cyan-400/80' : 'bg-white border-2 border-blue-600 text-blue-600 shadow-blue-500/40'} flex items-center justify-center shadow-2xl transition-transform group-hover:scale-110">
+                <svg class="w-4.5 h-4.5 ${isDark ? 'text-cyan-300' : 'text-blue-600'}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
                   <rect x="1" y="3" width="15" height="13"></rect>
                   <polygon points="16 8 20 8 23 11 23 16 16 8"></polygon>
                   <circle cx="5.5" cy="18.5" r="2.5"></circle>
                   <circle cx="18.5" cy="18.5" r="2.5"></circle>
                 </svg>
-                <span class="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-emerald-500 border ${isDark ? 'border-slate-900' : 'border-white'} animate-pulse"></span>
+                <span class="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-emerald-500 border ${isDark ? 'border-slate-900' : 'border-white'} animate-pulse"></span>
+              </div>
+
+              <!-- Compact vehicle plate chip -->
+              <div class="mt-1 px-2 py-0.5 rounded-md ${isDark ? 'bg-slate-950/90 border border-cyan-400/50 text-cyan-300' : 'bg-white/95 border border-blue-400 text-blue-700 shadow-sm'} text-[10px] font-mono font-bold shadow-md whitespace-nowrap">
+                ${selVehicleId}
               </div>
             </div>
           `;
-          const currentIcon = L.divIcon({ html: currentHtml, className: 'custom-truck-current', iconSize: [160, 80], iconAnchor: [80, 52] });
+          const currentIcon = L.divIcon({ html: currentHtml, className: 'custom-truck-current', iconSize: [90, 48], iconAnchor: [45, 18] });
           const currentMarker = L.marker(routeData.truckCoords, { icon: currentIcon, zIndexOffset: 1200 }).addTo(routeLayer);
 
           currentMarker.on('mouseover', () => {
@@ -564,19 +560,21 @@ export default function IndiaFleetMap({
             setIsVehicleHovered(false);
           });
 
-          // Point C: NEXT PIN (Where it is going)
+          // Point C: NEXT PIN (Clean compact beacon)
           const nextHtml = `
-            <div class="flex items-center gap-1.5 -translate-x-1/2 -translate-y-full cursor-pointer pointer-events-auto">
-              <div class="px-2.5 py-1 rounded-xl ${isDark ? 'bg-slate-950/95 border-2 border-rose-500 text-white shadow-rose-950/50' : 'bg-white border-2 border-rose-500 text-slate-900 shadow-xl'} text-[11px] font-bold shadow-2xl flex items-center gap-1.5 backdrop-blur-md">
-                <span class="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse shadow-md"></span>
-                <div class="flex flex-col text-left leading-tight">
-                  <span class="text-rose-500 uppercase text-[9px] font-black tracking-wider">GOING TO (DESTINATION)</span>
-                  <span class="text-xs font-bold">${routeData.destCity} Hub</span>
+            <div class="flex items-center gap-1.5 -translate-x-1/2 -translate-y-1/2 cursor-pointer group pointer-events-auto">
+              <div class="relative flex items-center justify-center">
+                <span class="absolute w-5 h-5 rounded-full bg-rose-500/30 animate-ping"></span>
+                <div class="w-6 h-6 rounded-full ${isDark ? 'bg-slate-950 border-2 border-rose-500 text-rose-400' : 'bg-white border-2 border-rose-500 text-rose-600'} flex items-center justify-center shadow-lg font-black text-[10px]">
+                  B
                 </div>
               </div>
+              <span class="px-2 py-0.5 rounded-lg ${isDark ? 'bg-slate-950/90 border border-rose-500/40 text-rose-300' : 'bg-white/95 border border-rose-300 text-rose-800 shadow-sm'} text-[10px] font-bold shadow-md whitespace-nowrap">
+                ${routeData.destCity} Hub
+              </span>
             </div>
           `;
-          const nextIcon = L.divIcon({ html: nextHtml, className: 'custom-next-pin', iconSize: [150, 42], iconAnchor: [75, 42] });
+          const nextIcon = L.divIcon({ html: nextHtml, className: 'custom-next-pin', iconSize: [110, 26], iconAnchor: [12, 13] });
           L.marker(routeData.destCoords, { icon: nextIcon, zIndexOffset: 850 }).addTo(routeLayer);
 
           // Smoothly fit map to the 3 points (Start, Current, Next)
@@ -757,6 +755,54 @@ export default function IndiaFleetMap({
             </button>
           )}
         </div>
+
+        {/* Right Side: Small Live Corridor Summary Box (Start, Current, Going To) */}
+        {selectedTrip && (
+          <div
+            className={`pointer-events-auto p-2.5 px-3 rounded-2xl border text-xs shadow-xl backdrop-blur-md max-w-[260px] w-full transition-all animate-in fade-in slide-in-from-top-1 duration-200 ${
+              isDark ? 'bg-slate-950/90 border-slate-800 text-white' : 'bg-white/95 border-slate-200 text-slate-900 shadow-md'
+            }`}
+          >
+            <div className="flex items-center justify-between gap-1 pb-1.5 mb-1.5 border-b border-slate-200 dark:border-slate-800/80">
+              <div className="flex items-center gap-1.5 font-bold truncate">
+                <Truck className={`w-3.5 h-3.5 shrink-0 ${isDark ? 'text-cyan-400' : 'text-blue-600'}`} />
+                <span className="font-mono text-[11px] font-bold tracking-tight truncate">{hudVehicleId}</span>
+              </div>
+              <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded font-bold shrink-0 ${
+                isDark ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30' : 'bg-blue-50 text-blue-600 border border-blue-200'
+              }`}>
+                {selectedTrip.speed || 'Moving'}
+              </span>
+            </div>
+
+            {/* Compact 3-Row Route Steps */}
+            <div className="space-y-1 text-[11px]">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                  <span className="text-[10px] text-slate-400">Start:</span>
+                </div>
+                <span className="font-bold truncate text-right text-[11px]">{selectedTrip.originCity || selectedTrip.branchCity || 'Origin'} Hub</span>
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse shrink-0" />
+                  <span className="text-[10px] text-slate-400">Current:</span>
+                </div>
+                <span className="font-bold truncate text-right text-[11px] text-cyan-600 dark:text-cyan-400">{selectedTrip.currentLocation || selectedTrip.route || 'Expressway'}</span>
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0" />
+                  <span className="text-[10px] text-slate-400">Going To:</span>
+                </div>
+                <span className="font-bold truncate text-right text-[11px] text-rose-600 dark:text-rose-400">{selectedTrip.destCity || selectedTrip.originCity || 'Destination'} Hub</span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Floating Target Vehicle Telemetry Alert Box: ONLY SHOWS ON HOVER OF VEHICLE */}

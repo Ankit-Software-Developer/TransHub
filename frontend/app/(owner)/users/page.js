@@ -468,7 +468,9 @@ export default function UsersAndDriversPage() {
       first_name: staff.first_name || '',
       last_name: staff.last_name || '',
       staff_code: staff.staff_code || '',
-      designation: staff.designation || '',
+      designation: (staff.designation === 'Owner / Administrator' || staff.designation === 'Fleet Owner & Admin')
+        ? 'Administrator'
+        : (staff.designation || ''),
       joining_date: staff.joining_date ? String(staff.joining_date).split('T')[0] : '',
       email: staff.email || '',
       phone: staff.phone || '',
@@ -944,7 +946,7 @@ export default function UsersAndDriversPage() {
                     <option value="ALL">All Stations / Hubs</option>
                     {branches.map((b) => (
                       <option key={b.id} value={b.id}>
-                        {b.branch_name || b.branch_code} ({b.city})
+                        [{b.branch_code || 'CODE'}] {b.branch_name} • {b.city}{b.pincode ? ` (${b.pincode})` : ''}
                       </option>
                     ))}
                   </select>
@@ -956,18 +958,18 @@ export default function UsersAndDriversPage() {
                 isDark ? 'bg-[#0B1020] border-slate-800/80' : 'bg-white border-slate-200'
               }`}>
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
+                  <table className="w-full text-left border-collapse min-w-[1100px]">
                     <thead>
                       <tr className={`border-b text-[11px] font-bold uppercase tracking-wider ${
                         isDark ? 'border-slate-800/90 bg-slate-950/60 text-slate-400' : 'border-slate-200 bg-slate-50 text-slate-600'
                       }`}>
-                        <th className="py-3.5 px-4">Driver Profile</th>
-                        <th className="py-3.5 px-4">Contact</th>
-                        <th className="py-3.5 px-4">Commercial License (DL)</th>
-                        <th className="py-3.5 px-4">Assigned Hub</th>
-                        <th className="py-3.5 px-4">Remuneration</th>
-                        <th className="py-3.5 px-4">Status</th>
-                        <th className="py-3.5 px-4 text-right">Actions</th>
+                        <th className="py-3.5 px-4 whitespace-nowrap min-w-[180px]">Driver Profile</th>
+                        <th className="py-3.5 px-4 whitespace-nowrap min-w-[140px]">Contact</th>
+                        <th className="py-3.5 px-4 whitespace-nowrap min-w-[180px]">Commercial License (DL)</th>
+                        <th className="py-3.5 px-4 whitespace-nowrap min-w-[140px]">Assigned Hub</th>
+                        <th className="py-3.5 px-4 whitespace-nowrap min-w-[120px]">Remuneration</th>
+                        <th className="py-3.5 px-4 whitespace-nowrap min-w-[100px] text-center">Status</th>
+                        <th className="py-3.5 px-4 whitespace-nowrap min-w-[80px] text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody className={`divide-y text-xs ${isDark ? 'divide-slate-800/40 text-slate-400' : 'divide-slate-200 text-slate-600'}`}>
@@ -1222,25 +1224,29 @@ export default function UsersAndDriversPage() {
                 isDark ? 'bg-[#0B1020] border-slate-800/80' : 'bg-white border-slate-200'
               }`}>
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
+                  <table className="w-full text-left border-collapse min-w-[1600px]">
                     <thead>
                       <tr className={`border-b text-[11px] font-bold uppercase tracking-wider ${
                         isDark ? 'border-slate-800/90 bg-slate-950/60 text-slate-400' : 'border-slate-200 bg-slate-50 text-slate-600'
                       }`}>
-                        <th className="py-3.5 px-4">Staff Member</th>
-                        <th className="py-3.5 px-4">Assigned Role</th>
-                        <th className="py-3.5 px-4">Branch Hub</th>
-                        <th className="py-3.5 px-4">Joining & KYC</th>
-                        <th className="py-3.5 px-4">Remuneration</th>
-                        <th className="py-3.5 px-4">Contact</th>
-                        <th className="py-3.5 px-4">Status</th>
-                        <th className="py-3.5 px-4 text-right">Actions</th>
+                        <th className="py-3.5 px-4 whitespace-nowrap min-w-[190px]">Staff Member</th>
+                        <th className="py-3.5 px-4 whitespace-nowrap min-w-[150px]">Designation</th>
+                        <th className="py-3.5 px-4 whitespace-nowrap min-w-[140px]">Assigned Role</th>
+                        <th className="py-3.5 px-4 whitespace-nowrap min-w-[150px]">Branch Hub</th>
+                        <th className="py-3.5 px-4 whitespace-nowrap min-w-[140px]">Contact Phone</th>
+                        <th className="py-3.5 px-4 whitespace-nowrap min-w-[190px]">Email Address</th>
+                        <th className="py-3.5 px-4 whitespace-nowrap min-w-[130px]">Joining Date</th>
+                        <th className="py-3.5 px-4 whitespace-nowrap min-w-[190px]">KYC (UID & PAN)</th>
+                        <th className="py-3.5 px-4 whitespace-nowrap min-w-[130px]">KYC Document</th>
+                        <th className="py-3.5 px-4 whitespace-nowrap min-w-[130px]">Remuneration</th>
+                        <th className="py-3.5 px-4 whitespace-nowrap min-w-[110px] text-center">Status</th>
+                        <th className="py-3.5 px-4 whitespace-nowrap min-w-[90px] text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody className={`divide-y text-xs ${isDark ? 'divide-slate-800/40 text-slate-400' : 'divide-slate-200 text-slate-600'}`}>
                       {loading ? (
                         <tr>
-                          <td colSpan="8" className="py-8 text-center">
+                          <td colSpan="12" className="py-8 text-center">
                             <LoadingState
                               title="Loading staff members..."
                               description="Fetching operational team, branches, designations, and permissions"
@@ -1250,7 +1256,7 @@ export default function UsersAndDriversPage() {
                         </tr>
                       ) : filteredStaffUsers.length === 0 ? (
                         <tr>
-                          <td colSpan="8" className="py-12 text-center text-slate-400">
+                          <td colSpan="12" className="py-12 text-center text-slate-400">
                             <Users className="w-8 h-8 mx-auto mb-2 text-slate-600 opacity-60" />
                             <p className="font-semibold text-sm">No staff users registered</p>
                             <p className="text-[11px] mt-1">
@@ -1271,163 +1277,213 @@ export default function UsersAndDriversPage() {
                                 isDark ? 'hover:bg-slate-900/50' : 'hover:bg-slate-50/80'
                               }`}
                             >
-                              {/* Member info */}
+                              {/* 1. Staff Member (Avatar, Name & Code) */}
                               <td className="py-3.5 px-4">
                                 <div className="flex items-center gap-3">
-                                  <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 text-white font-bold flex items-center justify-center text-xs shrink-0 shadow-sm">
+                                  <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white font-bold flex items-center justify-center text-xs shrink-0 shadow-sm border border-white/20">
                                     {staff.first_name ? staff.first_name.charAt(0).toUpperCase() : 'U'}
                                   </div>
-                                  <div>
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                      <span className={`font-bold text-sm block ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <span className={`font-bold text-sm block truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
                                         {fullName}
                                       </span>
-                                      {staff.staff_code && (
-                                        <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-500/10 text-blue-500 dark:text-blue-400 border border-blue-500/20">
-                                          {staff.staff_code}
-                                        </span>
-                                      )}
                                       {isSelf && (
                                         <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30">
                                           You
                                         </span>
                                       )}
                                     </div>
-                                    <div className="flex items-center gap-2 mt-0.5">
-                                      {staff.designation && (
-                                        <span className={`text-[10px] font-semibold flex items-center gap-1 ${isDark ? 'text-amber-400' : 'text-amber-700'}`}>
-                                          <Briefcase className="w-2.5 h-2.5" />
-                                          {staff.designation}
+                                    <div className="mt-0.5">
+                                      {staff.staff_code ? (
+                                        <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                                          {staff.staff_code}
                                         </span>
+                                      ) : (
+                                        <span className="text-[10px] text-slate-400 font-mono">ID: #{staff.id?.slice(0, 6)}</span>
                                       )}
-                                      <span className={`text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-600 font-medium'}`}>
-                                        {staff.email}
-                                      </span>
                                     </div>
                                   </div>
                                 </div>
                               </td>
 
-                              {/* Role */}
+                              {/* 2. Designation */}
                               <td className="py-3.5 px-4">
-                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold ${
+                                {(() => {
+                                  const rawDesig = staff.designation || '';
+                                  const cleanDesig = (rawDesig === 'Owner / Administrator' || rawDesig === 'Fleet Owner & Admin')
+                                    ? 'Administrator'
+                                    : (rawDesig.replace(/\b(Fleet\s+)?Owner\s*(\/|&)?\s*/gi, '').trim() || rawDesig);
+
+                                  return cleanDesig ? (
+                                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold ${
+                                      isDark ? 'bg-amber-500/10 text-amber-300 border border-amber-500/20' : 'bg-amber-50 text-amber-800 border border-amber-200'
+                                    }`}>
+                                      <Briefcase className="w-3 h-3 text-amber-500 shrink-0" />
+                                      <span>{cleanDesig}</span>
+                                    </span>
+                                  ) : (
+                                    <span className="text-xs text-slate-400 italic">—</span>
+                                  );
+                                })()}
+                              </td>
+
+                              {/* 3. Assigned Role */}
+                              <td className="py-3.5 px-4">
+                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap ${
                                   roleObj?.name === 'ADMIN' || roleObj?.name === 'SUPER_ADMIN'
                                     ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30'
                                     : roleObj?.name === 'BRANCH_MANAGER'
                                     ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30'
                                     : roleObj?.name === 'ACCOUNTANT'
                                     ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
-                                    : 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30'
+                                    : 'bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30'
                                 }`}>
-                                  <Shield className="w-3 h-3" />
-                                  {roleObj?.display_name || roleObj?.name || 'Staff Member'}
+                                  <Shield className="w-3.5 h-3.5 shrink-0" />
+                                  <span>{roleObj?.display_name || roleObj?.name || 'Staff Member'}</span>
                                 </span>
                               </td>
 
-                              {/* Branch */}
+                              {/* 4. Branch Hub */}
                               <td className="py-3.5 px-4">
-                                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold ${
-                                  isDark ? 'bg-slate-800 text-slate-300' : 'bg-slate-100 text-slate-700'
+                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold ${
+                                  isDark ? 'bg-slate-800/80 text-slate-300 border border-slate-700/60' : 'bg-slate-100 text-slate-700 border border-slate-200'
                                 }`}>
-                                  <Building className="w-3 h-3 text-cyan-400" />
-                                  {staff.branch?.branch_name || staff.branch?.city || 'All Branches (Enterprise)'}
+                                  <Building className="w-3.5 h-3.5 text-cyan-500 shrink-0" />
+                                  <span className="truncate max-w-[160px]">{staff.branch?.branch_name || staff.branch?.city || 'Head Office (Enterprise)'}</span>
                                 </span>
                               </td>
 
-                              {/* Joining & KYC */}
+                              {/* 5. Contact Phone */}
                               <td className="py-3.5 px-4">
-                                <div className="space-y-1">
-                                  {staff.joining_date && (
-                                    <div className={`flex items-center gap-1 text-[11px] ${isDark ? 'text-slate-300' : 'text-slate-700 font-medium'}`}>
-                                      <Calendar className="w-3 h-3 text-cyan-500 shrink-0" />
-                                      <span>Joined: {new Date(staff.joining_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
-                                    </div>
-                                  )}
-                                  <div className="flex items-center gap-1.5 flex-wrap">
-                                    {staff.aadhaar_number && (
-                                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono border ${
-                                        isDark ? 'bg-slate-800/80 text-slate-300 border-slate-700/60' : 'bg-slate-100 text-slate-700 border-slate-300 font-semibold'
-                                      }`} title="Aadhaar Number">
-                                        UID: {staff.aadhaar_number}
-                                      </span>
-                                    )}
-                                    {staff.pan_number && (
-                                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono border uppercase ${
-                                        isDark ? 'bg-slate-800/80 text-slate-300 border-slate-700/60' : 'bg-slate-100 text-slate-700 border-slate-300 font-semibold'
-                                      }`} title="PAN Number">
-                                        PAN: {staff.pan_number}
-                                      </span>
-                                    )}
+                                <div>
+                                  <div className={`flex items-center gap-1.5 text-xs font-semibold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
+                                    <Phone className="w-3 h-3 text-slate-400 shrink-0" />
+                                    <span className="whitespace-nowrap">{staff.phone || '—'}</span>
                                   </div>
-                                  {staff.document_url ? (
-                                    <a
-                                      href={staff.document_url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-cyan-500 hover:text-cyan-600 dark:text-cyan-400 dark:hover:text-cyan-300 transition-colors"
-                                    >
-                                      <Paperclip className="w-3 h-3" />
-                                      <span>Joining Doc</span>
-                                      <ExternalLink className="w-2.5 h-2.5" />
-                                    </a>
-                                  ) : (
-                                    <span className="text-[10px] text-slate-400 italic block">No document</span>
+                                  {staff.emergency_contact && (
+                                    <div className={`text-[10px] mt-0.5 flex items-center gap-1 truncate max-w-[160px] ${isDark ? 'text-slate-400' : 'text-slate-600'}`} title={staff.emergency_contact}>
+                                      <span className="px-1 py-0.2 rounded text-[9px] font-bold bg-rose-500/10 text-rose-500 shrink-0">SOS</span>
+                                      <span className="truncate">{staff.emergency_contact}</span>
+                                    </div>
                                   )}
                                 </div>
                               </td>
 
-                              {/* Remuneration */}
+                              {/* 6. Email Address */}
                               <td className="py-3.5 px-4">
-                                <div className="text-xs">
-                                  <span className={`font-bold ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>
+                                {staff.email ? (
+                                  <div className={`flex items-center gap-1.5 text-xs font-medium ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                                    <Mail className="w-3 h-3 text-slate-400 shrink-0" />
+                                    <span className="truncate max-w-[180px]">{staff.email}</span>
+                                  </div>
+                                ) : (
+                                  <span className="text-xs text-slate-400 italic">—</span>
+                                )}
+                              </td>
+
+                              {/* 7. Joining Date */}
+                              <td className="py-3.5 px-4">
+                                {staff.joining_date ? (
+                                  <div className={`inline-flex items-center gap-1.5 text-xs font-medium ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                                    <Calendar className="w-3.5 h-3.5 text-cyan-500 shrink-0" />
+                                    <span className="whitespace-nowrap">
+                                      {new Date(staff.joining_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <span className="text-xs text-slate-400 italic">—</span>
+                                )}
+                              </td>
+
+                              {/* 8. KYC (UID & PAN) */}
+                              <td className="py-3.5 px-4">
+                                <div className="space-y-1">
+                                  {staff.aadhaar_number ? (
+                                    <div>
+                                      <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-mono font-bold tracking-wider border whitespace-nowrap ${
+                                        isDark ? 'bg-slate-900 border-slate-700/80 text-slate-300' : 'bg-slate-100 border-slate-200 text-slate-800'
+                                      }`}>
+                                        UID: {staff.aadhaar_number}
+                                      </span>
+                                    </div>
+                                  ) : null}
+                                  {staff.pan_number ? (
+                                    <div>
+                                      <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-mono font-bold tracking-wider uppercase border whitespace-nowrap ${
+                                        isDark ? 'bg-slate-900 border-slate-700/80 text-cyan-400' : 'bg-cyan-50 border-cyan-200 text-cyan-800'
+                                      }`}>
+                                        PAN: {staff.pan_number}
+                                      </span>
+                                    </div>
+                                  ) : null}
+                                  {!staff.aadhaar_number && !staff.pan_number && (
+                                    <span className="text-xs text-slate-400 italic">No KYC details</span>
+                                  )}
+                                </div>
+                              </td>
+
+                              {/* 9. KYC Document */}
+                              <td className="py-3.5 px-4">
+                                {staff.document_url ? (
+                                  <a
+                                    href={staff.document_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/25 hover:bg-cyan-500/20 transition-all whitespace-nowrap"
+                                  >
+                                    <Paperclip className="w-3 h-3 shrink-0" />
+                                    <span>Joining Doc</span>
+                                    <ExternalLink className="w-2.5 h-2.5 opacity-70" />
+                                  </a>
+                                ) : (
+                                  <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded whitespace-nowrap ${
+                                    isDark ? 'text-slate-500 bg-slate-900/40' : 'text-slate-400 bg-slate-100/60'
+                                  }`}>
+                                    <FileText className="w-3 h-3 text-slate-400" />
+                                    <span>No Document</span>
+                                  </span>
+                                )}
+                              </td>
+
+                              {/* 10. Remuneration */}
+                              <td className="py-3.5 px-4">
+                                <div>
+                                  <span className={`text-sm font-bold block ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>
                                     ₹{Number(staff.salary_amount || 0).toLocaleString('en-IN')}
                                   </span>
-                                  <span className={`text-[10px] block uppercase ${isDark ? 'text-slate-400' : 'text-slate-500 font-medium'}`}>
+                                  <span className={`text-[10px] font-bold block uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                                     {staff.salary_type || 'MONTHLY'}
                                   </span>
                                 </div>
                               </td>
 
-                              {/* Phone & Emergency */}
-                              <td className="py-3.5 px-4">
-                                <div>
-                                  <span className={`font-medium block ${isDark ? 'text-slate-300' : 'text-slate-800'}`}>
-                                    {staff.phone || '—'}
-                                  </span>
-                                  {staff.emergency_contact && (
-                                    <span className={`text-[10px] block truncate max-w-[130px] ${isDark ? 'text-slate-500' : 'text-slate-600'}`} title={staff.emergency_contact}>
-                                      Emerg: {staff.emergency_contact}
-                                    </span>
-                                  )}
-                                </div>
-                              </td>
-
-                              {/* Status */}
-                              <td className="py-3.5 px-4">
+                              {/* 11. Status */}
+                              <td className="py-3.5 px-4 text-center">
                                 <button
                                   onClick={() => !isSelf && canManageUsers && handleToggleUserStatus(staff)}
                                   disabled={isSelf || !canManageUsers}
                                   title={isSelf ? 'Cannot change own status' : !canManageUsers ? 'Staff status' : 'Click to toggle status'}
-                                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold transition-all ${
-                                    isSelf || !canManageUsers ? 'cursor-default' : ''
+                                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold transition-all shadow-sm ${
+                                    isSelf || !canManageUsers ? 'cursor-default' : 'hover:scale-105 cursor-pointer'
                                   } ${
                                     staff.status === 'ACTIVE'
                                       ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
                                       : 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30'
                                   }`}
                                 >
-                                  <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
-                                  {staff.status === 'ACTIVE' ? 'Active' : 'Suspended'}
+                                  <span className={`w-1.5 h-1.5 rounded-full ${staff.status === 'ACTIVE' ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
+                                  <span>{staff.status === 'ACTIVE' ? 'Active' : 'Suspended'}</span>
                                 </button>
                               </td>
 
-                              {/* Actions */}
+                              {/* 12. Actions */}
                               <td className="py-3.5 px-4 text-right">
                                 {canManageUsers ? (
                                   <div className="flex items-center justify-end gap-1.5">
                                     <button
                                       onClick={() => openEditUserModal(staff)}
-                                      className={`p-1.5 rounded-lg border transition-colors ${
+                                      className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${
                                         isDark
                                           ? 'border-slate-800 text-slate-300 hover:bg-slate-800 hover:text-white'
                                           : 'border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900'
@@ -1446,7 +1502,7 @@ export default function UsersAndDriversPage() {
                                             name: fullName,
                                           })
                                         }
-                                        className="p-1.5 rounded-lg border border-rose-500/30 text-rose-400 hover:bg-rose-500/10 transition-colors"
+                                        className="p-1.5 rounded-lg border border-rose-500/30 text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
                                         title="Delete Staff Member"
                                       >
                                         <Trash2 className="w-3.5 h-3.5" />
@@ -1710,7 +1766,7 @@ export default function UsersAndDriversPage() {
                     <option value="">{branches.length === 0 ? 'No branches configured yet' : 'Main Yard / Unassigned'}</option>
                     {branches.map((b) => (
                       <option key={b.id} value={b.id}>
-                        {b.branch_name || b.branch_code} ({b.city})
+                        [{b.branch_code || 'CODE'}] {b.branch_name} • {b.city}{b.pincode ? ` (${b.pincode})` : ''}
                       </option>
                     ))}
                   </select>
@@ -1952,7 +2008,7 @@ export default function UsersAndDriversPage() {
                       <option value="">{branches.length === 0 ? 'No branches configured yet' : 'All Branches (Enterprise)'}</option>
                       {branches.map((b) => (
                         <option key={b.id} value={b.id}>
-                          {b.branch_name || b.branch_code} ({b.city})
+                          [{b.branch_code || 'CODE'}] {b.branch_name} • {b.city}{b.pincode ? ` (${b.pincode})` : ''}
                         </option>
                       ))}
                     </select>

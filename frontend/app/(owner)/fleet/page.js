@@ -986,7 +986,6 @@ export default function FleetManagementPage() {
                         >
                           <option value="OWN">Own Fleet (Company Owned)</option>
                           <option value="ATTACHED">Attached Truck (Partner Transporter)</option>
-                          <option value="MARKET">Market Hired (Trip-based / Broker)</option>
                         </select>
                         <p className="text-[10px] text-slate-400 mt-1">
                           {vehicleForm.ownership === 'OWN' ? 'Requires full compliance & specs' : 'Only asks essential operational fields'}
@@ -994,13 +993,13 @@ export default function FleetManagementPage() {
                       </div>
                     </div>
 
-                    {/* Conditional: If Market or Attached, show Name, Phone, Body Type & Capacity directly */}
-                    {(vehicleForm.ownership === 'ATTACHED' || vehicleForm.ownership === 'MARKET') ? (
+                    {/* Conditional: If Attached, show Name, Phone, Body Type & Capacity directly */}
+                    {(vehicleForm.ownership === 'ATTACHED') ? (
                       <>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                           <div>
                             <label className={`block text-xs font-bold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                              {vehicleForm.ownership === 'MARKET' ? 'Owner / Broker / Transporter Name' : 'Attached Partner / Owner Name'} <span className="text-rose-500">*</span>
+                              Attached Partner / Owner Name <span className="text-rose-500">*</span>
                             </label>
                             <input
                               type="text"
@@ -1114,7 +1113,7 @@ export default function FleetManagementPage() {
                               <option value="">{branches.length === 0 ? 'No branches configured yet (Main Yard)' : 'Main Yard / Unassigned'}</option>
                               {branches.map((b) => (
                                 <option key={b.id} value={b.id}>
-                                  {b.branch_name || b.city || b.branch_code} ({b.city})
+                                  [{b.branch_code || 'CODE'}] {b.branch_name} • {b.city}{b.pincode ? ` (${b.pincode})` : ''}
                                 </option>
                               ))}
                             </select>
@@ -1500,7 +1499,7 @@ export default function FleetManagementPage() {
                           ) : (
                             branches.map((b) => (
                               <option key={b.id} value={b.id}>
-                                {b.branch_name || b.city || b.branch_code} ({b.city})
+                                [{b.branch_code || 'CODE'}] {b.branch_name} • {b.city}{b.pincode ? ` (${b.pincode})` : ''}
                               </option>
                             ))
                           )}
@@ -1566,7 +1565,7 @@ export default function FleetManagementPage() {
                         addModalTab === 'compliance' ? 'Step 3 of 4: Legal & RTO Expiries' :
                           'Step 4 of 4: FASTag & Operational Hub'
                   ) : (
-                    'Market / Attached Truck: Ready for dispatch'
+                    'Attached Truck: Ready for dispatch'
                   )}
                 </div>
 
@@ -1778,7 +1777,9 @@ export default function FleetManagementPage() {
                         >
                           <option value="OWN">Own Fleet (Company Owned)</option>
                           <option value="ATTACHED">Attached Truck (Partner Transporter)</option>
-                          <option value="MARKET">Market Hired (Trip-based / Broker)</option>
+                          {editingVehicle.ownership === 'MARKET' && (
+                            <option value="MARKET">Market Hired (Trip-based / Broker)</option>
+                          )}
                         </select>
                       </div>
                     </div>
@@ -1897,7 +1898,7 @@ export default function FleetManagementPage() {
                               <option value="">{branches.length === 0 ? 'No branches configured yet (Main Yard)' : 'Main Yard / Unassigned'}</option>
                               {branches.map((b) => (
                                 <option key={b.id} value={b.id}>
-                                  {b.branch_name || b.city || b.branch_code} ({b.city})
+                                  [{b.branch_code || 'CODE'}] {b.branch_name} • {b.city}{b.pincode ? ` (${b.pincode})` : ''}
                                 </option>
                               ))}
                             </select>
@@ -2253,7 +2254,7 @@ export default function FleetManagementPage() {
                           <option value="">{branches.length === 0 ? 'No branches configured yet (Main Yard)' : 'Main Yard / Unassigned'}</option>
                           {branches.map((b) => (
                             <option key={b.id} value={b.id}>
-                              {b.branch_name || b.city || b.branch_code} ({b.city})
+                              [{b.branch_code || 'CODE'}] {b.branch_name} • {b.city}{b.pincode ? ` (${b.pincode})` : ''}
                             </option>
                           ))}
                         </select>

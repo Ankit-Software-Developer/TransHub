@@ -8,10 +8,12 @@ import { usePermissions } from '../../hooks/usePermissions';
 import { ShieldAlert, ArrowLeft } from 'lucide-react';
 import LoadingScreen from '../../components/ui/LoadingScreen';
 
+import api from '../../services/api';
+
 export default function OwnerRouteGuardLayout({ children }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { user, setUser } = useStore();
+  const { user, setUser, setTerminology } = useStore();
   const { canAccessRoute } = usePermissions();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isChecking, setIsChecking] = useState(true);
@@ -35,6 +37,14 @@ export default function OwnerRouteGuardLayout({ children }) {
         }
 
         setIsAuthenticated(true);
+
+        // Fetch fresh organization profile to sync active document terminology
+        api.get('/organizations/profile').then((res) => {
+          if (res.data?.success && res.data.data?.document_terminology) {
+            const term = res.data.data.document_terminology;
+            setTerminology(term);
+          }
+        }).catch(() => {});
       } catch (err) {
         localStorage.removeItem('transporter_access_token');
         localStorage.removeItem('transporter_refresh_token');

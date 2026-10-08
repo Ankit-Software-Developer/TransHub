@@ -322,21 +322,21 @@ function ShipmentWidget({ t }) {
   };
 
   return (
-    <div className="w-full max-w-[640px]">
+    <div className="w-full max-w-[520px]">
       <form onSubmit={onTrack}>
-        <div className="relative flex items-center rounded-2xl overflow-hidden border p-1.5 sm:p-2 transition-all bg-[#0B1120]/95 border-cyan-500/50 neon-border-cyan shadow-2xl">
-          <Search className="w-5 h-5 ml-3 sm:ml-4 text-cyan-400 shrink-0" />
+        <div className="group relative flex items-center rounded-2xl overflow-hidden border p-1.5 sm:p-2 transition-all bg-white/95 border-slate-200/90 shadow-[0_12px_36px_rgba(15,23,42,0.08)] hover:border-blue-400/60 focus-within:border-blue-600 focus-within:ring-4 focus-within:ring-blue-500/10 dark:bg-[#0B1120]/95 dark:border-cyan-500/50 dark:neon-border-cyan dark:shadow-2xl dark:focus-within:border-cyan-400 dark:focus-within:ring-cyan-500/20">
+          <Search className="w-5 h-5 ml-3 sm:ml-4 text-slate-400 group-focus-within:text-blue-600 dark:text-cyan-400 dark:group-focus-within:text-cyan-300 shrink-0 transition-colors" />
           <input
             type="text"
             value={trackingNo}
             onChange={(e) => setTrackingNo(e.target.value)}
             placeholder={t.trackPlaceholder || 'e.g. DEL/26-27/000001 or LR-7642'}
             aria-label={t.trackLabel || 'Track Shipment'}
-            className="w-full px-3.5 py-2.5 sm:py-3 text-sm sm:text-base font-medium outline-none bg-transparent text-white placeholder-slate-400"
+            className="w-full px-3.5 py-2.5 sm:py-3 text-sm sm:text-base font-medium outline-none bg-transparent text-[#14203A] placeholder-slate-400 dark:text-white dark:placeholder-slate-400"
           />
           <button
             type="submit"
-            className="px-6 sm:px-8 py-2.5 sm:py-3 rounded-xl font-bold text-xs sm:text-sm text-white bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 shadow-md shadow-cyan-500/30 transition-all shrink-0 hover:scale-[1.02] active:scale-[0.98]"
+            className="px-5 sm:px-7 py-2.5 sm:py-3 rounded-xl font-bold text-xs sm:text-sm text-white bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-500 shadow-md shadow-blue-500/25 dark:from-blue-600 dark:to-cyan-500 dark:hover:from-blue-500 dark:hover:to-cyan-400 dark:shadow-cyan-500/30 transition-all shrink-0 hover:scale-[1.02] active:scale-[0.98]"
           >
             {t.trackBtn || 'Track Shipment'}
           </button>

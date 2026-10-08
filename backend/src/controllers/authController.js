@@ -14,6 +14,35 @@ const login = async (req, res, next) => {
 
     const result = await authService.login({ email, password, ipAddress, userAgent });
 
+    // Record login in audit trail
+    try {
+      const { logAudit } = require('../middleware/auditLogger');
+      const roleName = (result.user?.roles && result.user.roles[0]?.name) || (result.user?.roles && result.user.roles[0]) || 'Staff';
+      logAudit({
+        req: {
+          ...req,
+          tenant: {
+            tenantId: result.user?.tenant_id,
+            organizationId: result.user?.organization_id,
+          },
+          user: result.user,
+        },
+        action: 'LOGIN',
+        entityType: 'SESSION',
+        entityId: result.user?.id || 'AUTH',
+        entityName: `${result.user?.name || 'User'} (${roleName})`,
+        summary: `User ${result.user?.name || email} (${roleName}) signed in successfully`,
+        newValues: {
+          user_id: result.user?.id,
+          email: result.user?.email,
+          role: roleName,
+          ip_address: ipAddress,
+        },
+      });
+    } catch (auditErr) {
+      // Continue without breaking login
+    }
+
     // Set secure HTTP-only cookies
     res.cookie('accessToken', result.accessToken, {
       httpOnly: true,

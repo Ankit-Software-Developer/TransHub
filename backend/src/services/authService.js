@@ -454,7 +454,7 @@ const register = async ({
           password_hash: hashedPassword,
           status: 'ACTIVE',
           staff_code: 'ADM-001',
-          designation: 'Owner / Administrator',
+          designation: 'Administrator',
           joining_date: now.toISOString().split('T')[0],
           salary_amount: 0.00,
           salary_type: 'MONTHLY',
@@ -607,7 +607,7 @@ const login = async ({ email, password, ipAddress, userAgent }) => {
                 email: user.email,
                 phone: user.phone,
                 staff_code: 'OWNER-001',
-                designation: 'Fleet Owner & Admin',
+                designation: 'Administrator',
                 status: 'ACTIVE',
               });
 

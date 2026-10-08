@@ -33,7 +33,8 @@ import {
   Crown,
   Shield,
   Palette,
-  FileText
+  FileText,
+  Layers
 } from 'lucide-react';
 
 export default function ProfilePage() {
@@ -698,8 +699,8 @@ export default function ProfilePage() {
                       }`}
                     >
                       <div className="flex items-center gap-2.5">
-                        <FileText className="w-4 h-4 text-amber-400" />
-                        <span>Docket Settings (Bilty / LR / Series)</span>
+                        <Layers className="w-4 h-4 text-amber-400" />
+                        <span>Series & Prefixes (Bilty / Trip / Branch)</span>
                       </div>
                       <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
                     </Link>

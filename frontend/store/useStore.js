@@ -5,19 +5,26 @@ export const useStore = create((set) => ({
   user: null,
   activeBranch: { id: null, code: 'ALL', name: 'All Branches' },
   dateFilter: '30d',
-  terminology: 'Docket (LR / Bilty)',
+  terminology: typeof window !== 'undefined' && localStorage.getItem('transporter_terminology') ? localStorage.getItem('transporter_terminology') : 'Docket',
   isSearchModalOpen: false,
   isFleetCommsOpen: false,
   theme: typeof window !== 'undefined' && localStorage.getItem('transporter_theme') === 'dark' ? 'dark' : 'light', // 'dark' or 'light'
 
   setUser: (user) => set({
     user,
-    terminology: user?.documentTerminology || 'Docket (LR / Bilty)',
+    terminology: (typeof window !== 'undefined' && localStorage.getItem('transporter_terminology')) || user?.documentTerminology || user?.document_terminology || 'Docket',
   }),
 
   setActiveBranch: (branch) => set({ activeBranch: branch }),
   setDateFilter: (filter) => set({ dateFilter: filter }),
-  setTerminology: (term) => set({ terminology: term }),
+  setTerminology: (term) => {
+    if (typeof window !== 'undefined' && term) {
+      try {
+        localStorage.setItem('transporter_terminology', term);
+      } catch (e) {}
+    }
+    set({ terminology: term });
+  },
   toggleSearchModal: () => set((state) => ({ isSearchModalOpen: !state.isSearchModalOpen })),
   setSearchModalOpen: (open) => set({ isSearchModalOpen: open }),
   toggleFleetComms: () => set((state) => ({ isFleetCommsOpen: !state.isFleetCommsOpen })),

@@ -85,7 +85,7 @@ export default function DataTable({
   const effectiveLoading = isLoading || loading;
   const effectiveExportFilename = exportFilename || exportFileName || 'Report_Export';
   const effectiveEmptyTitle = emptyTitle || emptyMessage || 'No Records Found';
-  const effectiveSearch = searchQuery || search;
+  const effectiveSearch = searchQuery || search || '';
 
   // Internal pagination fallback if client-side
   const [internalPage, setInternalPage] = useState(1);

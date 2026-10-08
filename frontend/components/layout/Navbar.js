@@ -181,28 +181,31 @@ export default function Navbar() {
 
   return (
     <>
-      <header className={`h-16 px-6 flex items-center justify-between sticky top-0 z-20 border-b backdrop-blur-xl transition-colors ${
-      isDark
-        ? 'bg-[#090D18]/90 border-slate-800/80 text-white'
-        : 'bg-white/90 border-slate-200 text-slate-800 shadow-xs'
-    }`}>
-      {/* Left: Organization / Operational Context */}
-      <div className="flex items-center space-x-3">
-        <div className="text-xs font-semibold text-slate-400">
-          Fleet Workspace:{' '}
-          <span className="font-bold text-cyan-500 dark:text-cyan-400">
-            {user?.organizationName || 'TransHub Fleet Management'}
+      <header className={`h-16 px-4 sm:px-6 flex items-center justify-between gap-4 sticky top-0 z-20 border-b backdrop-blur-xl transition-colors ${
+        isDark
+          ? 'bg-[#090D18]/95 border-slate-800 text-white shadow-xs'
+          : 'bg-white/95 border-slate-200/90 text-slate-800 shadow-[0_1px_3px_rgba(0,0,0,0.03)]'
+      }`}>
+        {/* Left: Organization / Operational Context */}
+        <div className="flex items-center space-x-3 shrink-0">
+          <div className="flex items-center gap-2 px-3 py-1 rounded-xl bg-slate-100/80 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800 text-xs">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+            <span className="text-slate-500 dark:text-slate-400 font-medium">Workspace:</span>
+            <span className="font-bold text-slate-800 dark:text-slate-200 truncate max-w-[150px] sm:max-w-[200px]">
+              {user?.businessName || user?.organizationName || 'balajilogistic'}
+            </span>
+          </div>
+        </div>
+
+        {/* Center Slogan - Naturally Centered in Open Middle Space without Overlapping */}
+        <div className="hidden xl:flex flex-1 items-center justify-center min-w-0 px-2 select-none">
+          <span className="text-xs text-slate-400 dark:text-slate-400 font-serif italic whitespace-nowrap truncate tracking-wide">
+            "Moving Businesses Across Bharat"
           </span>
         </div>
-      </div>
 
-      {/* Center Subtle Slogan */}
-      <div className="hidden xl:flex items-center space-x-2 text-xs text-slate-400 font-serif italic">
-        <span>"Moving Businesses Across Bharat"</span>
-      </div>
-
-      {/* Right: Controls, Live Clock, Notifications & User Profile */}
-      <div className="flex items-center space-x-3 sm:space-x-4">
+        {/* Right: Controls, Live Clock, Notifications & User Profile */}
+        <div className="flex items-center gap-2.5 sm:gap-3.5 shrink-0">
         {/* Live IST Clock Widget */}
         <div className={`hidden sm:flex items-center space-x-2 px-3 py-1.5 rounded-xl border text-xs ${
           isDark ? 'bg-slate-900/60 border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'

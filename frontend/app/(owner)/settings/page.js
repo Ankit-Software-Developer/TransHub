@@ -137,6 +137,10 @@ export default function SettingsPage() {
   });
   const [isSavingTripSeries, setIsSavingTripSeries] = useState(false);
 
+  // Company Branch Code Prefix State
+  const [branchPrefix, setBranchPrefix] = useState('B');
+  const [isSavingBranchPrefix, setIsSavingBranchPrefix] = useState(false);
+
   // Theme & Appearance State
   const [selectedAccent, setSelectedAccent] = useState('#00F0FF');
   const [selectedTerm, setSelectedTerm] = useState(terminology || 'Bilty');
@@ -240,9 +244,21 @@ export default function SettingsPage() {
       }
     };
 
+    const fetchBranchSeries = async () => {
+      try {
+        const res = await api.get('/organizations/branch-series');
+        if (res.data?.success && res.data.data?.prefix) {
+          setBranchPrefix(res.data.data.prefix);
+        }
+      } catch (e) {
+        console.warn('Could not load branch series', e);
+      }
+    };
+
     fetchOrg();
     fetchDocketSeries();
     fetchTripSeries();
+    fetchBranchSeries();
   }, [user]);
 
   // Load Roles & Permissions when roles tab is active
@@ -576,6 +592,24 @@ export default function SettingsPage() {
     }
   };
 
+  // 9. Handle Company Branch Code Prefix Save
+  const handleSaveBranchPrefix = async (e) => {
+    e.preventDefault();
+    setIsSavingBranchPrefix(true);
+    try {
+      const res = await api.patch('/organizations/branch-series', {
+        prefix: branchPrefix,
+      });
+      if (res.data?.success) {
+        triggerSuccess(`Company branch code prefix saved! Prefix: ${res.data.data?.prefix}`);
+      }
+    } catch (err) {
+      triggerError(err.response?.data?.message || 'Failed to update branch prefix');
+    } finally {
+      setIsSavingBranchPrefix(false);
+    }
+  };
+
   const terminologyOptions = ['Bilty', 'LR', 'GR', 'Docket', 'Consignment Note'];
 
   if (!isAdmin) {
@@ -709,8 +743,8 @@ export default function SettingsPage() {
                       : isDark ? 'text-slate-400 hover:text-white hover:bg-slate-900' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                   }`}
                 >
-                  <FileText className="w-4 h-4 shrink-0" />
-                  <span>Docket Settings</span>
+                  <Layers className="w-4 h-4 shrink-0" />
+                  <span>Series & Prefixes</span>
                 </button>
 
               </div>
@@ -1125,15 +1159,15 @@ export default function SettingsPage() {
                 </div>
               )}
 
-              {/* TAB 5: DOCKET SETTINGS */}
+              {/* TAB 5: NUMBER SERIES & PREFIXES */}
               {activeTab === 'terminology' && (
                 <div className={`p-6 sm:p-7 rounded-3xl border shadow-xl ${
                   isDark ? 'bg-[#0B1020]/90 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
                 }`}>
                   <div className="pb-4 border-b border-slate-200 dark:border-slate-800 mb-6">
-                    <h2 className="text-base font-bold">Docket Settings & Document Terminology</h2>
+                    <h2 className="text-base font-bold">Number Series, Prefixes & Document Terminology</h2>
                     <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                      Configure document naming (Bilty, LR, GR, Consignment Note) and customize your auto-generated docket number series.
+                      Configure document terminology (Bilty, LR, GR), auto-generated Bilty / Docket number series, Trip & Dispatch prefixes, and Company Branch Code prefixes.
                     </p>
                   </div>
 
@@ -1392,6 +1426,107 @@ export default function SettingsPage() {
                           >
                             <Save className="w-4 h-4" />
                             <span>{isSavingTripSeries ? 'Saving...' : 'Save Series Format'}</span>
+                          </button>
+                        ) : (
+                          <span className="text-xs font-semibold text-slate-400 italic">View only mode</span>
+                        )}
+                      </div>
+                    </form>
+                  </div>
+
+                  {/* COMPANY BRANCH CODE PREFIX CONFIGURATION */}
+                  <div className={`mt-8 pt-6 border-t ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
+                    <div className="pb-3 mb-4">
+                      <h3 className="text-sm font-bold flex items-center gap-2">
+                        <Warehouse className="w-4 h-4 text-cyan-400" />
+                        <span>Company Brand Prefix & Branch Code Generator Settings</span>
+                      </h3>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                        Configure your company brand initial or prefix for all physical branch offices and hubs. When registering branches, codes are automatically generated using this prefix (e.g. <strong>{branchPrefix}</strong> + Area = <strong>{branchPrefix}OKH</strong> for Okhla, <strong>{branchPrefix}DEL</strong> for Delhi).
+                      </p>
+                    </div>
+
+                    <form onSubmit={handleSaveBranchPrefix} className="space-y-4">
+                      <div className="space-y-2">
+                        <label className={`text-xs font-bold block ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                          Select Company Brand Initial / Prefix (e.g. <strong>B</strong> for Balaji Logistic) *
+                        </label>
+
+                        {/* Quick Alphabet Buttons */}
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {['B', 'A', 'C', 'D', 'M', 'S', 'T', 'V', 'K', 'P', 'R', 'N', 'L'].map((char) => (
+                            <button
+                              key={char}
+                              type="button"
+                              onClick={() => setBranchPrefix(char)}
+                              className={`w-8 h-8 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                                branchPrefix === char
+                                  ? 'bg-blue-600 text-white border-blue-600 shadow-sm scale-105'
+                                  : isDark
+                                  ? 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800'
+                                  : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                              }`}
+                            >
+                              {char}
+                            </button>
+                          ))}
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                          <div className="space-y-1">
+                            <label className={`text-xs font-medium ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                              Brand Prefix Code (1–4 characters)
+                            </label>
+                            <input
+                              type="text"
+                              required
+                              maxLength={4}
+                              value={branchPrefix}
+                              onChange={(e) => setBranchPrefix(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
+                              placeholder="e.g. B, BAL"
+                              className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono font-black uppercase focus:outline-none transition-colors ${
+                                isDark
+                                  ? 'border-slate-800 bg-slate-900/80 text-cyan-300 focus:border-cyan-400'
+                                  : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                              }`}
+                            />
+                            <span className="text-[10px] text-slate-400">Company brand identifier for branch codes</span>
+                          </div>
+
+                          {/* Live Output Preview Card */}
+                          <div className={`p-3.5 rounded-2xl border flex flex-col justify-center gap-1.5 ${
+                            isDark ? 'bg-cyan-950/20 border-cyan-800/40' : 'bg-cyan-50/70 border-cyan-200'
+                          }`}>
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                              LIVE AUTO-GENERATION PREVIEW
+                            </span>
+                            <div className="font-mono text-xs font-bold text-blue-600 dark:text-cyan-400 flex flex-wrap gap-2">
+                              <span className="bg-white dark:bg-slate-900 px-2 py-0.5 rounded border border-cyan-200 dark:border-cyan-800/60 shadow-2xs">
+                                Okhla: <strong>{branchPrefix || 'B'}OKH</strong>
+                              </span>
+                              <span className="bg-white dark:bg-slate-900 px-2 py-0.5 rounded border border-cyan-200 dark:border-cyan-800/60 shadow-2xs">
+                                Bengaluru: <strong>{branchPrefix || 'B'}BLR</strong>
+                              </span>
+                              <span className="bg-white dark:bg-slate-900 px-2 py-0.5 rounded border border-cyan-200 dark:border-cyan-800/60 shadow-2xs">
+                                Mumbai: <strong>{branchPrefix || 'B'}MUM</strong>
+                              </span>
+                            </div>
+                            <span className="text-[10px] text-slate-400">
+                              New branches created under Branches & Hubs will inherit this prefix by default.
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end pt-2">
+                        {canManageSettings ? (
+                          <button
+                            type="submit"
+                            disabled={isSavingBranchPrefix}
+                            className="flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md cursor-pointer transition-all disabled:opacity-50 shrink-0"
+                          >
+                            <Save className="w-4 h-4" />
+                            <span>{isSavingBranchPrefix ? 'Saving...' : 'Save Branch Prefix Setting'}</span>
                           </button>
                         ) : (
                           <span className="text-xs font-semibold text-slate-400 italic">View only mode</span>

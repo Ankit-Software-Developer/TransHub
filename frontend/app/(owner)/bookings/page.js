@@ -47,7 +47,8 @@ import {
   Users,
   UserCheck,
   Phone,
-  QrCode
+  QrCode,
+  Info
 } from 'lucide-react';
 import DataTable from '../../../components/ui/DataTable';
 import Barcode from '../../../components/ui/Barcode';
@@ -122,8 +123,13 @@ const mapConsignmentFromApi = (c) => {
   };
 
   const status = c.status || 'BOOKED';
+  const originBranchCode = c.originBranch?.branch_code || c.fromBranch?.branch_code;
+  const destBranchCode = c.destBranch?.branch_code || c.toBranch?.branch_code;
   const originCity = c.origin_city || (c.originBranch?.city) || 'Delhi';
   const destCity = c.destination_city || (c.destBranch?.city) || 'Mumbai';
+
+  const originCode = originBranchCode || originCity.slice(0, 3).toUpperCase();
+  const destCode = destBranchCode || destCity.slice(0, 3).toUpperCase();
 
   return {
     id: c.id,
@@ -133,7 +139,11 @@ const mapConsignmentFromApi = (c) => {
     raw_booking_date: c.booking_date || new Date().toISOString().slice(0, 10),
     origin_city: originCity,
     destination_city: destCity,
-    route_code: `${originCity.slice(0, 3).toUpperCase()} ➔ ${destCity.slice(0, 3).toUpperCase()}`,
+    origin_branch: c.originBranch,
+    dest_branch: c.destBranch,
+    origin_branch_code: originCode,
+    dest_branch_code: destCode,
+    route_code: `${originCode} ➔ ${destCode}`,
     consignor: {
       name: c.consignor?.name || 'Consignor Shipper',
       segment: 'Commercial Freight',
@@ -214,6 +224,10 @@ export default function BookingsMasterPage() {
   const [selectedConsignment, setSelectedConsignment] = useState(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  const [autoCloseCountdown, setAutoCloseCountdown] = useState(30);
+  const [isAutoClosePaused, setIsAutoClosePaused] = useState(false);
+
+
   const [isLoading, setIsLoading] = useState(true);
 
   // Edit Docket State
@@ -258,6 +272,32 @@ export default function BookingsMasterPage() {
   const [printConsignment, setPrintConsignment] = useState(null);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [activePrintCopy, setActivePrintCopy] = useState('ALL'); // 'ALL' | 'CONSIGNOR' | 'CONSIGNEE' | 'DRIVER'
+
+  // Auto-close details modal after 30 seconds if user does not close it
+  useEffect(() => {
+    if (!isDetailsOpen) {
+      setAutoCloseCountdown(30);
+      setIsAutoClosePaused(false);
+      return;
+    }
+
+    if (isAutoClosePaused || isEditModalOpen || isDeleteModalOpen || isPrintModalOpen) {
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setAutoCloseCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          setIsDetailsOpen(false);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [isDetailsOpen, isAutoClosePaused, isEditModalOpen, isDeleteModalOpen, isPrintModalOpen]);
 
   const handleOpenPrintPreview = (consignment) => {
     if (!consignment) return;
@@ -1872,7 +1912,7 @@ export default function BookingsMasterPage() {
               </button>
             </div>
 
-            {/* TOP BAR: DOCKET NUMBER DISPLAY ONLY */}
+            {/* TOP BAR: DOCKET NUMBER DISPLAY + INFO TOOLTIP ON RIGHT */}
             <div className={`px-6 py-2.5 border-b flex items-center justify-between shrink-0 ${
               isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-blue-50/70 border-blue-100'
             }`}>
@@ -1895,6 +1935,28 @@ export default function BookingsMasterPage() {
                     Auto-Generated
                   </span>
                 )}
+              </div>
+
+              {/* Info (i) icon with verification hover tooltip on right end */}
+              <div className="relative group flex items-center">
+                <div
+                  role="tooltip"
+                  tabIndex={0}
+                  className={`w-6 h-6 rounded-full flex items-center justify-center border cursor-help transition-all ${
+                    isDark
+                      ? 'bg-slate-800/80 border-slate-700 text-cyan-400 hover:border-cyan-400 hover:bg-slate-800'
+                      : 'bg-white border-blue-200 text-blue-600 hover:border-blue-400 shadow-xs hover:bg-blue-50'
+                  }`}
+                >
+                  <Info className="w-3.5 h-3.5" />
+                </div>
+                
+                {/* Tooltip on hover */}
+                <div className="absolute right-0 top-full mt-2 hidden group-hover:flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium shadow-2xl border z-50 whitespace-nowrap transition-all duration-150 pointer-events-none bg-slate-900 border-slate-700 text-slate-100 dark:bg-slate-800 dark:border-slate-700">
+                  <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>Selected addresses are verified against GSTIN and e-Way Bill masters.</span>
+                  <div className="absolute -top-1.5 right-2 w-3 h-3 rotate-45 bg-slate-900 border-t border-l border-slate-700 dark:bg-slate-800" />
+                </div>
               </div>
             </div>
 
@@ -1989,22 +2051,18 @@ export default function BookingsMasterPage() {
               {/* STEP 1: Parties & Route Hubs */}
               {bookingStep === 1 && (
                 <div className="space-y-4">
-                  <div className={`p-3.5 rounded-xl border text-xs flex items-start gap-2 ${
-                    isDark 
-                      ? 'bg-blue-950/20 border-blue-500/20 text-cyan-300' 
-                      : 'bg-blue-50 border-blue-200 text-blue-800'
+                  {/* DOCKET / BILTY NUMBER ASSIGNMENT CARD (Moved Up) */}
+                  <div className={`p-3 rounded-2xl border transition-all ${
+                    isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200 shadow-xs'
                   }`}>
-                    <ShieldCheck className={`w-4 h-4 shrink-0 mt-0.5 ${isDark ? 'text-cyan-400' : 'text-blue-600'}`} />
-                    <span>Selected addresses are verified against GSTIN and e-Way Bill masters.</span>
-                  </div>
-
-                  {/* DOCKET / BILTY NUMBER ASSIGNMENT CARD */}
-                  <div className={`p-3.5 rounded-2xl border transition-all ${
-                    isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200'
-                  }`}>
-                    {/* Row: 2 Buttons + Configure Series Link */}
+                    {/* Row: Mode Buttons on Left, Series info & link on Right */}
                     <div className="flex items-center justify-between gap-3 flex-wrap">
                       <div className="flex items-center gap-2">
+                        <span className={`text-[11px] font-bold uppercase tracking-wider mr-1 ${
+                          isDark ? 'text-slate-400' : 'text-slate-500'
+                        }`}>
+                          Docket Mode:
+                        </span>
                         <button
                           type="button"
                           onClick={() => setFormData(prev => ({ ...prev, docketNumberMode: 'auto', customDocketNumber: '' }))}
@@ -2036,16 +2094,26 @@ export default function BookingsMasterPage() {
                         </button>
                       </div>
 
-                      {isAdmin && (
-                        <Link
-                          href="/settings?tab=terminology"
-                          target="_blank"
-                          className="text-[11px] font-semibold text-blue-600 dark:text-cyan-400 hover:underline flex items-center gap-1"
-                        >
-                          <span>Configure Series</span>
-                          <span>↗</span>
-                        </Link>
-                      )}
+                      {/* Right side: Series Preview & Configure Link (keeps right side clean, non-empty) */}
+                      <div className="flex items-center gap-2.5">
+                        {formData.docketNumberMode === 'auto' && (
+                          <span className={`text-[11px] font-mono font-bold px-2 py-0.5 rounded-lg border ${
+                            isDark ? 'bg-slate-800/80 border-slate-700 text-cyan-300' : 'bg-white border-slate-200 text-slate-700'
+                          }`}>
+                            Series: {docketSeriesPreview?.prefix || 'BAL'} ({docketSeriesPreview?.nextNumber || 'Auto'})
+                          </span>
+                        )}
+                        {isAdmin && (
+                          <Link
+                            href="/settings?tab=terminology"
+                            target="_blank"
+                            className="text-[11px] font-semibold text-blue-600 dark:text-cyan-400 hover:underline flex items-center gap-1"
+                          >
+                            <span>Configure Series</span>
+                            <ExternalLink className="w-3 h-3" />
+                          </Link>
+                        )}
+                      </div>
                     </div>
 
                     {/* Input box shown when Enter Manually is active */}
@@ -3403,6 +3471,20 @@ export default function BookingsMasterPage() {
             isDark ? 'bg-[#0A0E1A] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
           }`}>
             
+            {/* 30s Countdown Progress Indicator Bar */}
+            <div className="w-full h-1 bg-slate-100 dark:bg-slate-800/80 overflow-hidden shrink-0">
+              <div
+                className={`h-full transition-all duration-1000 ease-linear ${
+                  isAutoClosePaused 
+                    ? 'bg-amber-500/50' 
+                    : autoCloseCountdown <= 5 
+                    ? 'bg-rose-500' 
+                    : 'bg-gradient-to-r from-blue-500 to-cyan-400'
+                }`}
+                style={{ width: `${(autoCloseCountdown / 30) * 100}%` }}
+              />
+            </div>
+
             {/* Header */}
             <div className={`p-5 border-b flex items-center justify-between shrink-0 ${
               isDark ? 'border-slate-800' : 'border-slate-200'
@@ -3430,6 +3512,28 @@ export default function BookingsMasterPage() {
               </div>
 
               <div className="flex items-center space-x-2">
+                {/* 30s Auto-Close Indicator / Pause Button */}
+                <button
+                  type="button"
+                  onClick={() => setIsAutoClosePaused((p) => !p)}
+                  className={`text-[10px] font-mono px-2 py-1.5 rounded-xl border flex items-center gap-1 transition-all ${
+                    isAutoClosePaused
+                      ? 'border-amber-500/40 bg-amber-500/10 text-amber-500 font-bold'
+                      : isDark
+                      ? 'border-slate-800 bg-slate-900/60 text-slate-400 hover:text-slate-200'
+                      : 'border-slate-200 bg-slate-100 text-slate-600 hover:text-slate-900'
+                  }`}
+                  title={isAutoClosePaused ? "Auto-close is paused. Click to resume 30s timer" : "Auto-closes after 30 seconds. Click to pause"}
+                >
+                  <Clock className={`w-3 h-3 ${isAutoClosePaused ? 'text-amber-500' : 'text-cyan-500'}`} />
+                  <span className="hidden sm:inline">
+                    {isAutoClosePaused ? 'Paused' : `Closing in ${autoCloseCountdown}s`}
+                  </span>
+                  <span className="sm:hidden font-bold">
+                    {isAutoClosePaused ? '||' : `${autoCloseCountdown}s`}
+                  </span>
+                </button>
+
                 <button
                   onClick={() => handleOpenEdit(selectedConsignment)}
                   className={`p-2 rounded-xl border transition-colors ${

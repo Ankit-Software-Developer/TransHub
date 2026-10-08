@@ -30,8 +30,10 @@ import {
   RefreshCw,
   Share2,
   Loader2,
-  Check
+  Check,
+  Settings
 } from 'lucide-react';
+import Link from 'next/link';
 
 export default function BranchesPage() {
   const { theme } = useTheme();
@@ -84,9 +86,67 @@ export default function BranchesPage() {
     }
   };
 
+  const [companyPrefix, setCompanyPrefix] = useState('B');
+  const [customPrefix, setCustomPrefix] = useState('');
+  const [userEditedCode, setUserEditedCode] = useState(false);
+
+  const fetchConfiguredPrefix = async () => {
+    try {
+      const res = await api.get('/organizations/branch-series');
+      if (res.data?.success && res.data.data?.prefix) {
+        setCompanyPrefix(res.data.data.prefix);
+      }
+    } catch (err) {
+      console.warn('Could not load company branch prefix', err);
+    }
+  };
+
   useEffect(() => {
     fetchBranches();
+    fetchConfiguredPrefix();
   }, []);
+
+  // Helper to extract a 3-letter area code from branch name or city
+  const extractAreaSnippet = (name, city) => {
+    const raw = (name || city || '').trim().replace(/[^a-zA-Z\s]/g, '');
+    const words = raw.split(/\s+/).filter(Boolean);
+    if (!words.length) return '';
+    const ignore = ['BRANCH', 'HUB', 'DEPOT', 'TERMINAL', 'GODOWN', 'OFFICE', 'STATION', 'CARGO', 'HEAD'];
+    const meaningful = words.filter((w) => !ignore.includes(w.toUpperCase()));
+    const targetWord = meaningful.length > 0 ? meaningful[0] : words[0];
+    return targetWord.slice(0, 3).toUpperCase();
+  };
+
+  // Helper to compute standard branch code: [CompanyPrefix] + [AreaSnippet] + [B/H Suffix]
+  const computeBranchCode = (name, city, isHub, prefix = companyPrefix) => {
+    const snippet = extractAreaSnippet(name, city);
+    if (!snippet) return '';
+    const activePrefix = (prefix || 'B').trim().toUpperCase();
+    const suffix = isHub ? 'H' : 'B';
+    return `${activePrefix}${snippet}${suffix}`;
+  };
+
+  const isCodeDuplicate = useMemo(() => {
+    if (!formData.branch_code || !formData.branch_code.trim()) return false;
+    const clean = formData.branch_code.trim().toUpperCase();
+    return branches.some(
+      (b) => b.branch_code?.toUpperCase() === clean && b.id !== editingBranch?.id
+    );
+  }, [formData.branch_code, branches, editingBranch]);
+
+  const suggestedSnippets = useMemo(() => {
+    const activePrefix = (companyPrefix || 'B').trim().toUpperCase();
+    const area = extractAreaSnippet(formData.branch_name, formData.city);
+    if (!area) return [];
+    const suffix = formData.is_hub ? 'H' : 'B';
+    const base = `${activePrefix}${area}${suffix}`;
+    const pin = (formData.pincode || '').slice(0, 6);
+    const list = [base, `${base}-01`];
+    if (pin && pin.length >= 4) {
+      list.push(`${base}-${pin}`);
+    }
+    return list;
+  }, [companyPrefix, formData.branch_name, formData.city, formData.pincode, formData.is_hub]);
 
   const [pincodeLoading, setPincodeLoading] = useState(false);
   const [pincodeStatus, setPincodeStatus] = useState(''); // 'success' | 'not_found' | 'error' | ''
@@ -106,11 +166,19 @@ export default function BranchesPage() {
         const fetchedCity = po.District || po.Division || po.Name || '';
         const fetchedState = po.State || '';
 
-        setFormData(prev => ({
-          ...prev,
-          city: fetchedCity || prev.city,
-          state: fetchedState || prev.state,
-        }));
+        setFormData(prev => {
+          const nextCity = fetchedCity || prev.city;
+          let nextCode = prev.branch_code;
+          if (!editingBranch && !userEditedCode && !prev.branch_name && nextCity) {
+            nextCode = computeBranchCode('', nextCity, prev.is_hub);
+          }
+          return {
+            ...prev,
+            city: nextCity,
+            state: fetchedState || prev.state,
+            branch_code: nextCode,
+          };
+        });
         setPincodeStatus('success');
       } else {
         setPincodeStatus('not_found');
@@ -124,9 +192,15 @@ export default function BranchesPage() {
   };
 
   const openCreateModal = () => {
-    if (!canCreateBranch) return;
+    if (!canCreateBranch && !isAdmin) {
+      alert('Only administrators have permission to register new branches.');
+      return;
+    }
     setEditingBranch(null);
     setFormData(initialForm);
+    fetchConfiguredPrefix();
+    setUserEditedCode(false);
+    setCustomPrefix('');
     setModalError('');
     setPincodeStatus('');
     setIsModalOpen(true);
@@ -135,6 +209,7 @@ export default function BranchesPage() {
   const openEditModal = (branch) => {
     if (!canEditBranch) return;
     setEditingBranch(branch);
+    setUserEditedCode(true);
     setFormData({
       branch_name: branch.branch_name || '',
       branch_code: branch.branch_code || '',
@@ -676,7 +751,19 @@ export default function BranchesPage() {
                     <div className="grid grid-cols-2 gap-3">
                       {/* 1. Branch Godown First */}
                       <div
-                        onClick={() => setFormData({ ...formData, is_hub: false })}
+                        onClick={() => {
+                          setFormData((prev) => {
+                            let newCode = prev.branch_code || '';
+                            if (!editingBranch) {
+                              if (!userEditedCode) {
+                                newCode = computeBranchCode(prev.branch_name, prev.city, false);
+                              } else if (newCode.endsWith('H')) {
+                                newCode = newCode.slice(0, -1) + 'B';
+                              }
+                            }
+                            return { ...prev, is_hub: false, branch_code: newCode };
+                          });
+                        }}
                         className={`p-3 rounded-2xl border cursor-pointer transition-all flex items-center space-x-3 ${
                           !formData.is_hub
                             ? isDark 
@@ -698,7 +785,19 @@ export default function BranchesPage() {
 
                       {/* 2. Transshipment Hub Next */}
                       <div
-                        onClick={() => setFormData({ ...formData, is_hub: true })}
+                        onClick={() => {
+                          setFormData((prev) => {
+                            let newCode = prev.branch_code || '';
+                            if (!editingBranch) {
+                              if (!userEditedCode) {
+                                newCode = computeBranchCode(prev.branch_name, prev.city, true);
+                              } else if (newCode.endsWith('B')) {
+                                newCode = newCode.slice(0, -1) + 'H';
+                              }
+                            }
+                            return { ...prev, is_hub: true, branch_code: newCode };
+                          });
+                        }}
                         className={`p-3 rounded-2xl border cursor-pointer transition-all flex items-center space-x-3 ${
                           formData.is_hub
                             ? isDark 
@@ -720,20 +819,36 @@ export default function BranchesPage() {
                     </div>
                   </div>
 
-                  {/* Branch Name & Code */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* Row: Branch Name & Branch Code Side-by-Side */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Branch / Hub Name */}
                     <div className="space-y-1.5">
-                      <label className={`text-xs font-bold flex items-center ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                        <span>Branch / Hub Name</span>
-                        <span className="text-rose-500 font-bold ml-0.5">*</span>
+                      <label className={`text-xs font-bold flex items-center justify-between ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                        <span className="flex items-center">
+                          <span>Branch / Hub Name</span>
+                          <span className="text-rose-500 font-bold ml-0.5">*</span>
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-normal">
+                          e.g. Okhla Godown
+                        </span>
                       </label>
                       <input
                         type="text"
                         required
-                        placeholder="e.g. Delhi Central Hub"
+                        placeholder="e.g. Okhla Godown"
                         value={formData.branch_name}
-                        onChange={(e) => setFormData({ ...formData, branch_name: e.target.value })}
-                        className={`w-full px-3 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
+                        onChange={(e) => {
+                          const newName = e.target.value;
+                          setFormData((prev) => {
+                            const updated = { ...prev, branch_name: newName };
+                            // If code not manually overridden, auto-compute with suffix B or H
+                            if (!editingBranch && !userEditedCode) {
+                              updated.branch_code = computeBranchCode(newName, prev.city, prev.is_hub);
+                            }
+                            return updated;
+                          });
+                        }}
+                        className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-hidden transition-colors ${
                           isDark
                             ? 'border-slate-800 bg-slate-900/80 text-white placeholder-slate-500 focus:border-cyan-400'
                             : 'border-slate-200 bg-slate-50 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:bg-white'
@@ -741,23 +856,56 @@ export default function BranchesPage() {
                       />
                     </div>
 
+                    {/* Branch Code (Mandatory & Unique) */}
                     <div className="space-y-1.5">
-                      <label className={`text-xs font-bold flex items-center ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                        <span>Branch Code (Short identifier)</span>
-                        <span className="text-rose-500 font-bold ml-0.5">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="e.g. DEL-01 or BLR-HUB"
-                        value={formData.branch_code}
-                        onChange={(e) => setFormData({ ...formData, branch_code: e.target.value.toUpperCase() })}
-                        className={`w-full px-3 py-2.5 rounded-xl border text-xs font-mono uppercase focus:outline-none transition-colors ${
-                          isDark
-                            ? 'border-slate-800 bg-slate-900/80 text-white placeholder-slate-500 focus:border-cyan-400'
-                            : 'border-slate-200 bg-slate-50 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:bg-white'
-                        }`}
-                      />
+                      <div className="flex items-center justify-between">
+                        <label className={`text-xs font-bold flex items-center ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                          <span>Branch Code</span>
+                          <span className="text-rose-500 font-bold ml-0.5">*</span>
+                        </label>
+
+                        {/* Uniqueness status */}
+                        {isCodeDuplicate ? (
+                          <span className="text-[10px] font-bold text-rose-500 flex items-center gap-1">
+                            <AlertTriangle className="w-3 h-3 shrink-0" />
+                            <span>Code taken</span>
+                          </span>
+                        ) : formData.branch_code && formData.branch_code.trim().length >= 2 ? (
+                          <span className="text-[10px] font-bold text-emerald-500 flex items-center gap-1">
+                            <Check className="w-3 h-3 shrink-0" />
+                            <span>Unique & Valid</span>
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-slate-400">
+                            {formData.is_hub ? 'e.g. BOKHH, BMUMH' : 'e.g. BOKHB, BMUMB'}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="relative">
+                        <input
+                          type="text"
+                          required
+                          placeholder={formData.is_hub ? "e.g. BOKHH, BMUMH" : "e.g. BOKHB, BMUMB"}
+                          value={formData.branch_code}
+                          onChange={(e) => {
+                            const val = e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, '');
+                            if (!val) {
+                              setUserEditedCode(false);
+                            } else {
+                              setUserEditedCode(true);
+                            }
+                            setFormData({ ...formData, branch_code: val });
+                          }}
+                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono font-bold uppercase tracking-wider focus:outline-hidden transition-colors ${
+                            isCodeDuplicate
+                              ? 'border-rose-500 bg-rose-50/20 text-rose-700 dark:text-rose-400'
+                              : isDark
+                              ? 'border-slate-800 bg-slate-900/80 text-cyan-300 focus:border-cyan-400'
+                              : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                          }`}
+                        />
+                      </div>
                     </div>
                   </div>
 
@@ -827,7 +975,16 @@ export default function BranchesPage() {
                         required
                         placeholder="e.g. New Delhi"
                         value={formData.city}
-                        onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                        onChange={(e) => {
+                          const newCity = e.target.value;
+                          setFormData((prev) => {
+                            let nextCode = prev.branch_code;
+                            if (!editingBranch && !userEditedCode && !prev.branch_name) {
+                              nextCode = computeBranchCode('', newCity, prev.is_hub);
+                            }
+                            return { ...prev, city: newCity, branch_code: nextCode };
+                          });
+                        }}
                         className={`w-full px-3 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
                           isDark
                             ? 'border-slate-800 bg-slate-900/80 text-white placeholder-slate-500 focus:border-cyan-400'

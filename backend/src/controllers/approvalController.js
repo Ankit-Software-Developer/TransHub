@@ -352,6 +352,19 @@ exports.createApproval = async (req, res) => {
       meta_data: meta_data || {},
     });
 
+    try {
+      const { logAudit } = require('../middleware/auditLogger');
+      logAudit({
+        req,
+        action: 'CREATE',
+        entityType: 'APPROVAL_REQUEST',
+        entityId: newRequest.id,
+        entityName: `${request_type} Request`,
+        summary: `Submitted ${request_type} approval request (${priority} priority, ₹${parseFloat(amount) || 0})`,
+        newValues: newRequest.toJSON ? newRequest.toJSON() : newRequest,
+      });
+    } catch (e) {}
+
     return successResponse(res, 'Approval request submitted successfully', newRequest, 201);
   } catch (error) {
     console.error('createApproval error:', error);
@@ -421,6 +434,19 @@ exports.handleAction = async (req, res) => {
         console.warn('Approval side-effect notice:', sideEffectErr.message);
       }
 
+      try {
+        const { logAudit } = require('../middleware/auditLogger');
+        logAudit({
+          req,
+          action: 'APPROVE',
+          entityType: 'APPROVAL_REQUEST',
+          entityId: request.id,
+          entityName: `${request.request_type} (${request.reference_code || request.id})`,
+          summary: `Approved ${request.request_type} request for ₹${request.amount || 0}`,
+          newValues: { status: 'APPROVED', reviewer_comments: reviewer_comments || 'Approved' },
+        });
+      } catch (e) {}
+
       return successResponse(res, 'Request approved successfully', request);
     }
 
@@ -431,6 +457,19 @@ exports.handleAction = async (req, res) => {
         reviewed_at: new Date(),
         reviewer_comments,
       });
+
+      try {
+        const { logAudit } = require('../middleware/auditLogger');
+        logAudit({
+          req,
+          action: 'REJECT',
+          entityType: 'APPROVAL_REQUEST',
+          entityId: request.id,
+          entityName: `${request.request_type} (${request.reference_code || request.id})`,
+          summary: `Rejected ${request.request_type} request: ${reviewer_comments}`,
+          newValues: { status: 'REJECTED', reviewer_comments },
+        });
+      } catch (e) {}
 
       return successResponse(res, 'Request rejected', request);
     }

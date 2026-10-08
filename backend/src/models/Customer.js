@@ -56,6 +56,10 @@ module.exports = (sequelize) => {
     pincode: {
       type: DataTypes.STRING(10),
     },
+    branch_id: {
+      type: DataTypes.UUID,
+      allowNull: true,
+    },
     credit_limit: {
       type: DataTypes.DECIMAL(12, 2),
       defaultValue: 0.00,

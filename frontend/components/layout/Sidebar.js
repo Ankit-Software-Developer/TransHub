@@ -28,7 +28,8 @@ import {
   ShieldCheck,
   Route,
   UserCheck,
-  History
+  History,
+  PackageCheck
 } from 'lucide-react';
 import { usePermissions } from '../../hooks/usePermissions';
 
@@ -67,14 +68,15 @@ export default function Sidebar() {
   const navItems = [
     { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     { label: 'Control Tower', href: '/control-tower', icon: Compass },
-    { label: 'Approvals', href: '/approvals', icon: ShieldCheck, badge: pendingApprovals },
     { label: plural || 'Bookings', href: '/bookings', icon: FileText },
     { label: 'Branches & Hubs', href: '/branches', icon: Warehouse },
     { label: 'Fleet Management', href: '/fleet', icon: Truck },
-    { label: 'Users & Drivers', href: '/users', icon: UserCheck },
-    { label: 'Load Planning', href: '/load-planning', icon: Boxes },
-    { label: 'Trips', href: '/trips', icon: Route },
     { label: 'Customers', href: '/customers', icon: Users },
+    { label: 'Users & Drivers', href: '/users', icon: UserCheck },
+    { label: 'Trips', href: '/trips', icon: Route },
+    { label: 'Load Planning', href: '/load-planning', icon: Boxes },
+    { label: 'Unload Planning', href: '/unload-planning', icon: PackageCheck },
+    { label: 'Approvals', href: '/approvals', icon: ShieldCheck, badge: pendingApprovals },
     { label: 'Invoices', href: '/billing/invoices', icon: Receipt },
     { label: 'Expenses', href: '/expenses', icon: Wallet },
     { label: 'Reports', href: '/reports', icon: BarChart3 },

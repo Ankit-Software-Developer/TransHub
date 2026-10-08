@@ -198,6 +198,9 @@ const initTenantModels = (targetSequelize) => {
   Customer.hasMany(RateContract, { foreignKey: 'customer_id', as: 'rateContracts' });
   RateContract.belongsTo(Customer, { foreignKey: 'customer_id', as: 'customer' });
 
+  Customer.belongsTo(Branch, { foreignKey: 'branch_id', as: 'branch' });
+  Branch.hasMany(Customer, { foreignKey: 'branch_id', as: 'customers' });
+
   // Bookings & Consignments
   Organization.hasMany(Booking, { foreignKey: 'organization_id', as: 'bookings' });
   Booking.belongsTo(Organization, { foreignKey: 'organization_id', as: 'organization' });
