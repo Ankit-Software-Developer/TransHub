@@ -261,6 +261,7 @@ function getTripRouteData(trip) {
     waypoints,
     originCoords,
     destCoords,
+    progress,
     truckCoords: [truckLat, truckLng],
     traveledPoints,
     remainingPoints
@@ -456,22 +457,24 @@ export default function IndiaFleetMap({
           const stateName = feature.properties?.ST_NM || 'State of India';
           
           layer.bindTooltip(`
-            <div style="font-family: inherit; font-size: 11px; font-weight: 700; color: ${isDark ? '#fff' : '#0f172a'};">
-              <span style="color: #0284C7;">●</span> ${stateName}
+            <div style="font-family: inherit; font-size: 11px; font-weight: 800; color: ${isDark ? '#FFFFFF' : '#0F172A'}; display: flex; align-items: center; gap: 6px; white-space: nowrap;">
+              <span style="display: inline-block; width: 7px; height: 7px; border-radius: 9999px; background: ${isDark ? '#00F0FF' : '#2563EB'}; box-shadow: 0 0 6px ${isDark ? 'rgba(0, 240, 255, 0.8)' : 'rgba(37, 99, 235, 0.45)'};"></span>
+              <span style="letter-spacing: 0.01em;">${stateName}</span>
             </div>
           `, {
             sticky: true,
             className: 'custom-state-tooltip',
-            direction: 'auto'
+            direction: 'auto',
+            offset: [10, -10]
           });
 
           layer.on({
             mouseover: (e) => {
               const l = e.target;
               l.setStyle({
-                fillColor: '#00F0FF',
-                fillOpacity: 0.8,
-                color: '#FFFFFF',
+                fillColor: isDark ? '#00F0FF' : '#38BDF8',
+                fillOpacity: isDark ? 0.75 : 0.6,
+                color: isDark ? '#FFFFFF' : '#0284C7',
                 weight: 2
               });
             },
@@ -508,49 +511,124 @@ export default function IndiaFleetMap({
             opacity: 0.95,
           }).addTo(routeLayer);
 
-          // Point A: START PIN (Clean compact beacon)
+          // Point A: START PIN & FADED DEPARTURE TRUCK (Pure Truck without card wrapper)
           const startHtml = `
             <div class="flex items-center gap-1.5 -translate-x-1/2 -translate-y-1/2 cursor-pointer group pointer-events-auto">
-              <div class="relative flex items-center justify-center">
-                <span class="absolute w-5 h-5 rounded-full bg-emerald-500/30 animate-ping"></span>
-                <div class="w-6 h-6 rounded-full ${isDark ? 'bg-slate-950 border-2 border-emerald-400 text-emerald-400' : 'bg-white border-2 border-emerald-500 text-emerald-600'} flex items-center justify-center shadow-lg font-black text-[10px]">
-                  A
+              <!-- Faded Departure Truck (Pure truck silhouette without card box) -->
+              <div class="relative transition-all duration-200 group-hover:scale-115 group-hover:opacity-90 opacity-45" style="filter: grayscale(35%) drop-shadow(0 2px 4px rgba(0,0,0,0.35));">
+                <img src="/images/real-truck-marker.png?v=pure_v1" alt="Start Truck" class="w-9 h-auto object-contain pointer-events-none select-none" style="display:block; width:36px; height:auto; object-fit:contain;" />
+                <span class="absolute -top-1 -left-1 px-1 rounded-full text-[8px] font-black leading-none ${isDark ? 'bg-emerald-950 text-emerald-400 border border-emerald-500/50' : 'bg-emerald-100 text-emerald-800 border border-emerald-300'}">A</span>
+              </div>
+              <!-- Hub Name Badge -->
+              <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-xl ${isDark ? 'bg-slate-950/90 border border-emerald-500/40 text-emerald-300' : 'bg-white/95 border border-emerald-300 text-emerald-800 shadow-sm'} text-[11px] font-bold shadow-md whitespace-nowrap">
+                <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                <span>${routeData.originCity} Hub</span>
+              </div>
+            </div>
+          `;
+          const startIcon = L.divIcon({ html: startHtml, className: 'custom-start-pin bg-transparent border-0', iconSize: [140, 32], iconAnchor: [18, 16] });
+          const startMarker = L.marker(routeData.originCoords, { icon: startIcon, zIndexOffset: 850 }).addTo(routeLayer);
+
+          startMarker.bindTooltip(`
+            <div class="p-2.5 rounded-xl ${isDark ? 'bg-[#0B1020]/95 border border-emerald-500/50 text-white' : 'bg-white/98 border border-emerald-400 text-slate-900'} shadow-2xl backdrop-blur-md min-w-[170px] pointer-events-none">
+              <div class="flex items-center gap-1.5 text-emerald-400 font-bold text-[10px] uppercase tracking-wider">
+                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Trip Origin (Departed)</span>
+              </div>
+              <div class="text-xs font-black mt-1 ${isDark ? 'text-white' : 'text-slate-900'}">${routeData.originCity} Hub</div>
+              <div class="text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-500'} mt-0.5 flex items-center gap-1">
+                <span>📍 Departure Point</span>
+                <span>•</span>
+                <span class="text-emerald-400 font-medium">Outward Bound</span>
+              </div>
+            </div>
+          `, {
+            direction: 'top',
+            offset: [0, -18],
+            className: 'custom-truck-tooltip',
+            opacity: 1
+          });
+
+          // Point B: CURRENT PIN (Active Vibrant Live Real Truck - ONLY Truck shown directly on map, NO card, NO white padding)
+          const currentHtml = `
+            <div class="relative flex flex-col items-center justify-center -translate-x-1/2 -translate-y-1/2 cursor-pointer group pointer-events-auto">
+              <!-- Dual soft radar ground aura directly underneath truck tires -->
+              <span class="absolute -bottom-1 w-16 h-7 rounded-[100%] ${isDark ? 'bg-cyan-400/25' : 'bg-blue-500/20'} animate-ping pointer-events-none" style="transform: scaleY(0.45);"></span>
+              <span class="absolute -bottom-1 w-12 h-5 rounded-[100%] ${isDark ? 'bg-cyan-400/40' : 'bg-blue-600/30'} pointer-events-none" style="transform: scaleY(0.45); filter: blur(4px);"></span>
+
+              <!-- PURE REALISTIC TRUCK ONLY - NO CARD, NO BORDERS, NO WHITE BACKGROUND -->
+              <div class="relative transition-all duration-300 group-hover:scale-125" style="filter: drop-shadow(0 6px 12px rgba(0,0,0,0.6));">
+                <img
+                  src="/images/real-truck-marker.png?v=pure_v1"
+                  alt="Current Live Truck"
+                  class="w-14 h-auto object-contain pointer-events-none select-none"
+                  style="display: block; width: 56px; height: auto; object-fit: contain;"
+                />
+                <!-- Subtle live GPS status beacon on cab roof -->
+                <span class="absolute top-0 right-0 flex h-2.5 w-2.5">
+                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500 border border-white dark:border-slate-900 shadow-sm"></span>
+                </span>
+              </div>
+            </div>
+          `;
+          const currentIcon = L.divIcon({ html: currentHtml, className: 'custom-truck-current bg-transparent border-0', iconSize: [56, 42], iconAnchor: [28, 21] });
+          const currentMarker = L.marker(routeData.truckCoords, { icon: currentIcon, zIndexOffset: 1200 }).addTo(routeLayer);
+
+          const tripProgressPercent = Math.round((routeData.progress || 0.54) * 100);
+
+          // Rich Tooltip on Hover for Current Live Truck
+          currentMarker.bindTooltip(`
+            <div class="p-3 rounded-2xl ${isDark ? 'bg-[#0B1020]/95 border-2 border-cyan-400 text-white' : 'bg-white/98 border-2 border-blue-500 text-slate-900'} shadow-2xl backdrop-blur-md min-w-[220px] pointer-events-none">
+              <!-- Header with Vehicle Plate & Live Dot -->
+              <div class="flex items-center justify-between gap-2 pb-2 border-b ${isDark ? 'border-slate-800' : 'border-slate-100'}">
+                <div class="flex items-center gap-1.5 font-mono font-black text-xs ${isDark ? 'text-cyan-300' : 'text-blue-600'} tracking-wider">
+                  <span class="text-sm">🚛</span>
+                  <span>${selVehicleId}</span>
+                </div>
+                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black ${isDark ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'bg-blue-50 text-blue-700 border border-blue-200'}">
+                  <span class="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"></span>
+                  LIVE ON ROAD
+                </span>
+              </div>
+
+              <!-- Key Telemetry Details -->
+              <div class="mt-2 space-y-1.5 text-[11px]">
+                <div class="flex items-center justify-between">
+                  <span class="${isDark ? 'text-slate-400' : 'text-slate-500'}">Status:</span>
+                  <span class="font-bold ${isDark ? 'text-emerald-400' : 'text-emerald-600'}">${selectedTrip?.statusLabel || 'In Transit (Moving)'}</span>
+                </div>
+                <div class="flex items-center justify-between">
+                  <span class="${isDark ? 'text-slate-400' : 'text-slate-500'}">Current Speed:</span>
+                  <span class="font-mono font-bold ${isDark ? 'text-cyan-300' : 'text-blue-600'}">${selectedTrip?.speed || '68 km/h'}</span>
+                </div>
+                <div class="flex items-center justify-between">
+                  <span class="${isDark ? 'text-slate-400' : 'text-slate-500'}">Location:</span>
+                  <span class="font-semibold ${isDark ? 'text-slate-200' : 'text-slate-800'} truncate max-w-[130px]">${routeData.currentLocation}</span>
+                </div>
+                <div class="flex items-center justify-between">
+                  <span class="${isDark ? 'text-slate-400' : 'text-slate-500'}">Corridor Route:</span>
+                  <span class="font-semibold ${isDark ? 'text-slate-200' : 'text-slate-800'}">${routeData.originCity} ➔ ${routeData.destCity}</span>
+                </div>
+
+                <!-- Progress Bar -->
+                <div class="pt-1.5">
+                  <div class="flex items-center justify-between text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-500'} mb-1">
+                    <span>Route Completed</span>
+                    <span class="font-mono font-bold ${isDark ? 'text-cyan-300' : 'text-blue-600'}">${tripProgressPercent}%</span>
+                  </div>
+                  <div class="w-full h-1.5 ${isDark ? 'bg-slate-800' : 'bg-slate-200'} rounded-full overflow-hidden">
+                    <div class="h-full bg-gradient-to-r from-emerald-500 via-cyan-400 to-blue-500 rounded-full" style="width: ${tripProgressPercent}%"></div>
+                  </div>
                 </div>
               </div>
-              <span class="px-2 py-0.5 rounded-lg ${isDark ? 'bg-slate-950/90 border border-emerald-500/40 text-emerald-300' : 'bg-white/95 border border-emerald-300 text-emerald-800 shadow-sm'} text-[10px] font-bold shadow-md whitespace-nowrap">
-                ${routeData.originCity} Hub
-              </span>
             </div>
-          `;
-          const startIcon = L.divIcon({ html: startHtml, className: 'custom-start-pin', iconSize: [110, 26], iconAnchor: [12, 13] });
-          L.marker(routeData.originCoords, { icon: startIcon, zIndexOffset: 850 }).addTo(routeLayer);
-
-          // Point B: CURRENT PIN (Clean Animated Truck Icon + Small Plate Chip)
-          const currentHtml = `
-            <div class="relative flex flex-col items-center justify-center -translate-x-1/2 -translate-y-1/2 cursor-pointer group">
-              <!-- Animated dual radar wave rings -->
-              <span class="absolute w-12 h-12 rounded-full ${isDark ? 'bg-cyan-400/30' : 'bg-blue-400/30'} animate-ping pointer-events-none"></span>
-              <span class="absolute w-16 h-16 rounded-full ${isDark ? 'bg-cyan-400/15' : 'bg-blue-400/15'} animate-pulse pointer-events-none"></span>
-
-              <!-- Truck Icon Pin -->
-              <div class="relative w-9 h-9 rounded-full ${isDark ? 'bg-[#060D1E] border-2 border-cyan-400 text-cyan-300 shadow-cyan-400/80' : 'bg-white border-2 border-blue-600 text-blue-600 shadow-blue-500/40'} flex items-center justify-center shadow-2xl transition-transform group-hover:scale-110">
-                <svg class="w-4.5 h-4.5 ${isDark ? 'text-cyan-300' : 'text-blue-600'}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-                  <rect x="1" y="3" width="15" height="13"></rect>
-                  <polygon points="16 8 20 8 23 11 23 16 16 8"></polygon>
-                  <circle cx="5.5" cy="18.5" r="2.5"></circle>
-                  <circle cx="18.5" cy="18.5" r="2.5"></circle>
-                </svg>
-                <span class="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-emerald-500 border ${isDark ? 'border-slate-900' : 'border-white'} animate-pulse"></span>
-              </div>
-
-              <!-- Compact vehicle plate chip -->
-              <div class="mt-1 px-2 py-0.5 rounded-md ${isDark ? 'bg-slate-950/90 border border-cyan-400/50 text-cyan-300' : 'bg-white/95 border border-blue-400 text-blue-700 shadow-sm'} text-[10px] font-mono font-bold shadow-md whitespace-nowrap">
-                ${selVehicleId}
-              </div>
-            </div>
-          `;
-          const currentIcon = L.divIcon({ html: currentHtml, className: 'custom-truck-current', iconSize: [90, 48], iconAnchor: [45, 18] });
-          const currentMarker = L.marker(routeData.truckCoords, { icon: currentIcon, zIndexOffset: 1200 }).addTo(routeLayer);
+          `, {
+            direction: 'top',
+            offset: [0, -24],
+            className: 'custom-truck-tooltip',
+            opacity: 1
+          });
 
           currentMarker.on('mouseover', () => {
             setHoveredTrip(selectedTrip);
@@ -560,22 +638,43 @@ export default function IndiaFleetMap({
             setIsVehicleHovered(false);
           });
 
-          // Point C: NEXT PIN (Clean compact beacon)
+          // Point C: NEXT PIN & FADED DESTINATION TRUCK (Pure Truck without card wrapper)
           const nextHtml = `
             <div class="flex items-center gap-1.5 -translate-x-1/2 -translate-y-1/2 cursor-pointer group pointer-events-auto">
-              <div class="relative flex items-center justify-center">
-                <span class="absolute w-5 h-5 rounded-full bg-rose-500/30 animate-ping"></span>
-                <div class="w-6 h-6 rounded-full ${isDark ? 'bg-slate-950 border-2 border-rose-500 text-rose-400' : 'bg-white border-2 border-rose-500 text-rose-600'} flex items-center justify-center shadow-lg font-black text-[10px]">
-                  B
-                </div>
+              <!-- Hub Name Badge -->
+              <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-xl ${isDark ? 'bg-slate-950/90 border border-rose-500/40 text-rose-300' : 'bg-white/95 border border-rose-300 text-rose-800 shadow-sm'} text-[11px] font-bold shadow-md whitespace-nowrap">
+                <span class="w-2 h-2 rounded-full bg-rose-500"></span>
+                <span>${routeData.destCity} Hub</span>
               </div>
-              <span class="px-2 py-0.5 rounded-lg ${isDark ? 'bg-slate-950/90 border border-rose-500/40 text-rose-300' : 'bg-white/95 border border-rose-300 text-rose-800 shadow-sm'} text-[10px] font-bold shadow-md whitespace-nowrap">
-                ${routeData.destCity} Hub
-              </span>
+              <!-- Faded Target Truck (Pure truck silhouette without card box) -->
+              <div class="relative transition-all duration-200 group-hover:scale-115 group-hover:opacity-90 opacity-45" style="filter: grayscale(35%) drop-shadow(0 2px 4px rgba(0,0,0,0.35));">
+                <img src="/images/real-truck-marker.png?v=pure_v1" alt="Destination Truck" class="w-9 h-auto object-contain pointer-events-none select-none" style="display:block; width:36px; height:auto; object-fit:contain;" />
+                <span class="absolute -top-1 -right-1 px-1 rounded-full text-[8px] font-black leading-none ${isDark ? 'bg-rose-950 text-rose-400 border border-rose-500/50' : 'bg-rose-100 text-rose-800 border border-rose-300'}">B</span>
+              </div>
             </div>
           `;
-          const nextIcon = L.divIcon({ html: nextHtml, className: 'custom-next-pin', iconSize: [110, 26], iconAnchor: [12, 13] });
-          L.marker(routeData.destCoords, { icon: nextIcon, zIndexOffset: 850 }).addTo(routeLayer);
+          const nextIcon = L.divIcon({ html: nextHtml, className: 'custom-next-pin bg-transparent border-0', iconSize: [140, 32], iconAnchor: [122, 16] });
+          const nextMarker = L.marker(routeData.destCoords, { icon: nextIcon, zIndexOffset: 850 }).addTo(routeLayer);
+
+          nextMarker.bindTooltip(`
+            <div class="p-2.5 rounded-xl ${isDark ? 'bg-[#0B1020]/95 border border-rose-500/50 text-white' : 'bg-white/98 border border-rose-400 text-slate-900'} shadow-2xl backdrop-blur-md min-w-[170px] pointer-events-none">
+              <div class="flex items-center gap-1.5 text-rose-400 font-bold text-[10px] uppercase tracking-wider">
+                <span class="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>
+                <span>Trip Destination (Target)</span>
+              </div>
+              <div class="text-xs font-black mt-1 ${isDark ? 'text-white' : 'text-slate-900'}">${routeData.destCity} Hub</div>
+              <div class="text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-500'} mt-0.5 flex items-center gap-1">
+                <span>🏁 Arrival Endpoint</span>
+                <span>•</span>
+                <span class="text-rose-400 font-medium">ETA: ${selectedTrip?.eta || 'Today 08:30 PM'}</span>
+              </div>
+            </div>
+          `, {
+            direction: 'top',
+            offset: [0, -18],
+            className: 'custom-truck-tooltip',
+            opacity: 1
+          });
 
           // Smoothly fit map to the 3 points (Start, Current, Next)
           map.fitBounds([routeData.originCoords, routeData.truckCoords, routeData.destCoords], {
@@ -585,24 +684,40 @@ export default function IndiaFleetMap({
           });
 
         } else {
-          // Stationary at Yard (Available)
+          // Stationary at Yard (Available) - Pure Truck directly on map, NO card
           const yardHtml = `
-            <div class="relative flex flex-col items-center justify-center -translate-x-1/2 -translate-y-1/2 cursor-pointer group">
-              <span class="absolute w-12 h-12 rounded-full ${isDark ? 'bg-blue-400/30' : 'bg-blue-500/20'} animate-pulse"></span>
-              <div class="mb-1 px-2.5 py-1 rounded-xl ${isDark ? 'bg-slate-950/95 border-2 border-blue-400 text-white' : 'bg-white border-2 border-blue-500 text-slate-900 shadow-xl'} text-[11px] font-bold shadow-2xl flex items-center gap-1.5 backdrop-blur-md">
-                <span class="w-2 h-2 rounded-full bg-blue-500"></span>
-                <span>${selVehicleId} • Stationed at ${routeData.originCity} Hub</span>
-              </div>
-              <div class="w-10 h-10 rounded-full ${isDark ? 'bg-[#060D1E] border-2 border-blue-400 text-blue-300' : 'bg-white border-2 border-blue-500 text-blue-600 shadow-md'} flex items-center justify-center shadow-lg">
-                <svg class="w-5 h-5 ${isDark ? 'text-blue-300' : 'text-blue-600'}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-                  <polyline points="9 22 9 12 15 12 15 22"></polyline>
-                </svg>
+            <div class="relative flex flex-col items-center justify-center -translate-x-1/2 -translate-y-1/2 cursor-pointer group pointer-events-auto">
+              <span class="absolute -bottom-1 w-12 h-5 rounded-[100%] ${isDark ? 'bg-blue-400/25' : 'bg-blue-500/20'} animate-pulse pointer-events-none" style="transform: scaleY(0.45); filter: blur(3px);"></span>
+              <div class="relative transition-all duration-300 group-hover:scale-120" style="filter: drop-shadow(0 5px 8px rgba(0,0,0,0.5));">
+                <img
+                  src="/images/real-truck-marker.png?v=pure_v1"
+                  alt="Parked Truck"
+                  class="w-12 h-auto object-contain pointer-events-none select-none"
+                  style="display: block; width: 48px; height: auto; object-fit: contain;"
+                />
+                <span class="absolute top-0 right-0 w-2.5 h-2.5 rounded-full bg-blue-500 border border-white dark:border-slate-900 shadow-sm"></span>
               </div>
             </div>
           `;
-          const yardIcon = L.divIcon({ html: yardHtml, className: 'custom-yard-pin', iconSize: [160, 60], iconAnchor: [80, 40] });
+          const yardIcon = L.divIcon({ html: yardHtml, className: 'custom-yard-pin bg-transparent border-0', iconSize: [48, 36], iconAnchor: [24, 18] });
           const yardMarker = L.marker(routeData.originCoords, { icon: yardIcon, zIndexOffset: 1200 }).addTo(routeLayer);
+
+          yardMarker.bindTooltip(`
+            <div class="p-2.5 rounded-xl ${isDark ? 'bg-[#0B1020]/95 border border-blue-400/50 text-white' : 'bg-white/98 border border-blue-400 text-slate-900'} shadow-2xl backdrop-blur-md min-w-[180px] pointer-events-none">
+              <div class="flex items-center justify-between gap-2 pb-1.5 border-b ${isDark ? 'border-slate-800' : 'border-slate-100'}">
+                <span class="font-mono font-black text-xs ${isDark ? 'text-blue-300' : 'text-blue-600'}">🚛 ${selVehicleId}</span>
+                <span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-500/20 text-blue-400 border border-blue-500/30">PARKED</span>
+              </div>
+              <div class="text-[11px] mt-1.5 ${isDark ? 'text-slate-300' : 'text-slate-600'}">
+                <span>Stationed at <b>${routeData.originCity} Hub</b> yard (Ready for dispatch)</span>
+              </div>
+            </div>
+          `, {
+            direction: 'top',
+            offset: [0, -22],
+            className: 'custom-truck-tooltip',
+            opacity: 1
+          });
 
           yardMarker.on('mouseover', () => {
             setHoveredTrip(selectedTrip);
@@ -616,7 +731,7 @@ export default function IndiaFleetMap({
         }
       }
 
-      // 2. PLOT OTHER FLEET VEHICLES AS CLEAN BADGES ACROSS INDIA
+      // 2. PLOT OTHER FLEET VEHICLES AS SUBTLE STANDALONE TRUCKS (No card box, details on hover)
       const fleetToRender = (allTrips || []).filter(t => {
         const vId = t.vehicleNumber || t.vehicle?.vehicle_number || t.id;
         const selId = selectedTrip?.vehicleNumber || selectedTrip?.vehicle?.vehicle_number || selectedTrip?.id;
@@ -627,40 +742,48 @@ export default function IndiaFleetMap({
         const vData = getTripRouteData(veh);
         const vId = veh.vehicleNumber || veh.vehicle?.vehicle_number || veh.id || 'FLEET';
         const isTransit = !vData.isStationary;
-        const statusColor = isTransit ? (isDark ? 'bg-cyan-400' : 'bg-blue-500') : 'bg-emerald-500';
 
+        // Subtle standalone fleet vehicle - pure truck graphic, no card box
         const markerHtml = `
-          <div class="relative flex items-center justify-center -translate-x-1/2 -translate-y-1/2 cursor-pointer group">
-            <span class="absolute w-7 h-7 rounded-full ${isTransit ? (isDark ? 'bg-cyan-400/20' : 'bg-blue-400/20') : 'bg-emerald-400/20'} animate-ping"></span>
-            <div class="relative px-2 py-1 rounded-xl ${isDark ? 'bg-[#060D1E]/95 text-white' : 'bg-white text-slate-800 shadow-md border-slate-300'} border ${isTransit ? (isDark ? 'border-cyan-500/60' : 'border-blue-400') : (isDark ? 'border-slate-700' : 'border-slate-300')} text-[10px] font-bold flex items-center gap-1.5 shadow-xl transition-all group-hover:scale-110">
-              <svg class="w-3 h-3 ${isTransit ? (isDark ? 'text-cyan-300' : 'text-blue-600') : (isDark ? 'text-emerald-400' : 'text-emerald-600')}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="1" y="3" width="15" height="13"></rect>
-                <polygon points="16 8 20 8 23 11 23 16 16 8"></polygon>
-                <circle cx="5.5" cy="18.5" r="2.5"></circle>
-                <circle cx="18.5" cy="18.5" r="2.5"></circle>
-              </svg>
-              <span class="tracking-tight">${vId}</span>
-              <span class="w-1.5 h-1.5 rounded-full ${statusColor}"></span>
+          <div class="relative flex items-center justify-center -translate-x-1/2 -translate-y-1/2 cursor-pointer group pointer-events-auto">
+            <div class="transition-all duration-200 group-hover:scale-130 group-hover:opacity-100 opacity-70" style="filter: drop-shadow(0 3px 6px rgba(0,0,0,0.45));">
+              <img
+                src="/images/real-truck-marker.png?v=pure_v1"
+                alt="Other Fleet Truck"
+                class="w-9 h-auto object-contain pointer-events-none select-none"
+                style="display: block; width: 36px; height: auto; object-fit: contain;"
+              />
             </div>
           </div>
         `;
 
         const vehicleIcon = L.divIcon({
           html: markerHtml,
-          className: 'custom-vehicle-icon-fleet',
-          iconSize: [28, 28],
-          iconAnchor: [14, 14]
+          className: 'custom-vehicle-beacon bg-transparent border-0',
+          iconSize: [36, 28],
+          iconAnchor: [18, 14]
         });
 
         const marker = L.marker(vData.truckCoords, { icon: vehicleIcon, zIndexOffset: 400 }).addTo(routeLayer);
 
-        marker.on('mouseover', () => {
-          setHoveredTrip(veh);
-          setIsVehicleHovered(true);
-        });
-        marker.on('mouseout', () => {
-          setIsVehicleHovered(false);
-        });
+        marker.bindTooltip(
+          `<div class="p-2 rounded-xl ${isDark ? 'bg-[#0B1020]/95 border border-slate-700 text-white' : 'bg-white/98 border border-slate-200 text-slate-900'} shadow-xl backdrop-blur-md min-w-[150px] font-sans pointer-events-none">
+             <div class="font-mono font-bold text-xs ${isDark ? 'text-cyan-300' : 'text-blue-600'} flex items-center gap-1">
+               <span>🚛</span> ${vId}
+             </div>
+             <div class="text-[10px] ${isDark ? 'text-slate-300' : 'text-slate-600'} font-medium mt-1">
+               ${isTransit ? '● In Transit • ' + (veh.speed || '60 km/h') : '● Stationed at ' + (vData.originCity || 'Yard') + ' Hub'}
+             </div>
+             <div class="text-[9px] text-cyan-400 mt-1 font-semibold">Click to track this vehicle</div>
+           </div>`,
+          {
+            direction: 'top',
+            offset: [0, -14],
+            className: 'custom-truck-tooltip',
+            opacity: 1
+          }
+        );
+
         marker.on('click', () => {
           if (onSelectTrip) onSelectTrip(veh);
         });
@@ -679,7 +802,7 @@ export default function IndiaFleetMap({
       }
 
     });
-  }, [mapReady, geoJsonData, selectedTrip, allTrips, onSelectTrip, isModal]);
+  }, [mapReady, geoJsonData, selectedTrip, allTrips, onSelectTrip, isModal, isDark]);
 
   const handleZoomIn = () => {
     if (mapInstanceRef.current) mapInstanceRef.current.zoomIn();
@@ -725,7 +848,7 @@ export default function IndiaFleetMap({
       {/* Top Header Status Badges & Action Buttons */}
       <div className="absolute top-3.5 left-3.5 right-3.5 flex items-center justify-between gap-2 z-[400] pointer-events-none">
         
-        {/* Left Side: Status Counter + Expand Radar at Same Height */}
+        {/* Left Side: Status Counter */}
         <div className="flex items-center gap-2 pointer-events-auto">
           <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-[11px] font-semibold shadow-xl backdrop-blur-md ${
             isDark ? 'bg-slate-950/90 border-slate-800 text-white' : 'bg-white/95 border-slate-200 text-slate-800'
@@ -737,111 +860,25 @@ export default function IndiaFleetMap({
             <span className={isDark ? 'text-slate-500' : 'text-slate-300'}>•</span>
             <span className="text-rose-500 dark:text-rose-400 font-bold">{delayedCount} Delayed</span>
           </div>
-
-          {/* Modal / Fullscreen Expand Button: Same Height on Left Side */}
-          {onOpenModal && (
-            <button
-              type="button"
-              onClick={onOpenModal}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border shadow-xl backdrop-blur-md text-[11px] font-bold transition-all hover:scale-105 active:scale-95 cursor-pointer ${
-                isDark
-                  ? 'bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 hover:text-white border-cyan-400/40'
-                  : 'bg-white hover:bg-blue-50 text-blue-600 border-blue-200'
-              }`}
-              title="Open Large Fleet Telemetry Modal"
-            >
-              <Maximize2 className={`w-3.5 h-3.5 ${isDark ? 'text-cyan-400' : 'text-blue-600'}`} />
-              <span>Expand Radar</span>
-            </button>
-          )}
         </div>
 
-        {/* Right Side: Small Live Corridor Summary Box (Start, Current, Going To) */}
-        {selectedTrip && (
-          <div
-            className={`pointer-events-auto p-2.5 px-3 rounded-2xl border text-xs shadow-xl backdrop-blur-md max-w-[260px] w-full transition-all animate-in fade-in slide-in-from-top-1 duration-200 ${
-              isDark ? 'bg-slate-950/90 border-slate-800 text-white' : 'bg-white/95 border-slate-200 text-slate-900 shadow-md'
+        {/* Right Side: Modal / Fullscreen Expand Button */}
+        {onOpenModal && (
+          <button
+            type="button"
+            onClick={onOpenModal}
+            className={`pointer-events-auto flex items-center gap-1.5 px-3 py-1.5 rounded-xl border shadow-xl backdrop-blur-md text-[11px] font-bold transition-all hover:scale-105 active:scale-95 cursor-pointer ${
+              isDark
+                ? 'bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 hover:text-white border-cyan-400/40'
+                : 'bg-white hover:bg-blue-50 text-blue-600 border-blue-200'
             }`}
+            title="Open Large Fleet Telemetry Modal"
           >
-            <div className="flex items-center justify-between gap-1 pb-1.5 mb-1.5 border-b border-slate-200 dark:border-slate-800/80">
-              <div className="flex items-center gap-1.5 font-bold truncate">
-                <Truck className={`w-3.5 h-3.5 shrink-0 ${isDark ? 'text-cyan-400' : 'text-blue-600'}`} />
-                <span className="font-mono text-[11px] font-bold tracking-tight truncate">{hudVehicleId}</span>
-              </div>
-              <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded font-bold shrink-0 ${
-                isDark ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30' : 'bg-blue-50 text-blue-600 border border-blue-200'
-              }`}>
-                {selectedTrip.speed || 'Moving'}
-              </span>
-            </div>
-
-            {/* Compact 3-Row Route Steps */}
-            <div className="space-y-1 text-[11px]">
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
-                  <span className="text-[10px] text-slate-400">Start:</span>
-                </div>
-                <span className="font-bold truncate text-right text-[11px]">{selectedTrip.originCity || selectedTrip.branchCity || 'Origin'} Hub</span>
-              </div>
-
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse shrink-0" />
-                  <span className="text-[10px] text-slate-400">Current:</span>
-                </div>
-                <span className="font-bold truncate text-right text-[11px] text-cyan-600 dark:text-cyan-400">{selectedTrip.currentLocation || selectedTrip.route || 'Expressway'}</span>
-              </div>
-
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0" />
-                  <span className="text-[10px] text-slate-400">Going To:</span>
-                </div>
-                <span className="font-bold truncate text-right text-[11px] text-rose-600 dark:text-rose-400">{selectedTrip.destCity || selectedTrip.originCity || 'Destination'} Hub</span>
-              </div>
-            </div>
-          </div>
+            <Maximize2 className={`w-3.5 h-3.5 ${isDark ? 'text-cyan-400' : 'text-blue-600'}`} />
+            <span>Expand Radar</span>
+          </button>
         )}
       </div>
-
-      {/* Floating Target Vehicle Telemetry Alert Box: ONLY SHOWS ON HOVER OF VEHICLE */}
-      {isVehicleHovered && activeHudTrip && (
-        <div
-          onMouseEnter={() => setIsVehicleHovered(true)}
-          onMouseLeave={() => setIsVehicleHovered(false)}
-          className={`absolute top-16 left-3.5 z-[400] p-3.5 rounded-2xl border text-xs shadow-2xl backdrop-blur-md min-w-[270px] max-w-[320px] pointer-events-auto transition-all animate-in fade-in zoom-in-95 duration-150 ${
-            isDark ? 'bg-slate-950/95 border-cyan-400 text-white' : 'bg-white/95 border-blue-400 text-slate-900'
-          }`}
-        >
-          <div className={`flex items-center justify-between gap-3 font-bold ${isDark ? 'text-cyan-300' : 'text-blue-600'}`}>
-            <div className="flex items-center gap-1.5 truncate">
-              <Truck className={`w-4 h-4 shrink-0 ${isDark ? 'text-cyan-400' : 'text-blue-600'}`} />
-              <span className={`truncate text-sm tracking-wide font-mono ${isDark ? 'text-white' : 'text-slate-900'}`}>{hudVehicleId}</span>
-            </div>
-            <span className={`text-[9px] px-2 py-0.5 rounded font-bold uppercase tracking-wider shrink-0 ${
-              activeHudTrip.status === 'DELAYED'
-                ? 'bg-rose-500/20 text-rose-500 dark:text-rose-400 border border-rose-500/40'
-                : 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/40'
-            }`}>
-              ● {activeHudTrip.status === 'DELAYED' ? 'Delayed' : 'Live'}
-            </span>
-          </div>
-
-          <div className={`text-[11px] mt-1.5 font-medium truncate ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
-            {hudRouteText}
-          </div>
-
-          <div className={`flex items-center justify-between gap-3 text-[10px] font-mono font-semibold mt-2 pt-2 border-t ${
-            isDark ? 'border-slate-800/80 text-emerald-400' : 'border-slate-200 text-emerald-600'
-          }`}>
-            <span className={`truncate ${isDark ? 'text-cyan-300' : 'text-blue-600'}`}>{hudRemainingText}</span>
-            <span className={`shrink-0 font-normal ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-              ETA: <span className="font-bold text-emerald-600 dark:text-emerald-400">{hudEtaText}</span>
-            </span>
-          </div>
-        </div>
-      )}
 
       {/* Center Empty State Banner: Shown when NO vehicles are present/registered */}
       {(!allTrips || allTrips.length === 0) && (
@@ -878,30 +915,30 @@ export default function IndiaFleetMap({
             <div className={`flex flex-wrap items-center gap-2 px-3 py-1.5 rounded-xl border text-[11px] font-bold shadow-lg backdrop-blur-md ${
               isDark ? 'bg-slate-950/95 border-cyan-400/40 text-white' : 'bg-white/95 border-blue-400 text-slate-900 shadow-md'
             }`}>
-              <div className="flex items-center gap-1.5 text-emerald-500">
+              <div className="flex items-center gap-1.5 text-emerald-500 shrink-0">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                <span className="text-[10px] text-slate-400 font-normal">Start:</span>
-                <span>{selectedTrip.originCity || selectedTrip.branchCity || 'Origin'}</span>
+                <span>{selectedTrip.originCity || selectedTrip.branchCity || 'Origin'} Hub</span>
               </div>
 
               <span className={isDark ? 'text-slate-600' : 'text-slate-300'}>➔</span>
 
-              <div className={`flex items-center gap-1.5 ${isDark ? 'text-cyan-400' : 'text-blue-600'}`}>
+              <div className={`flex items-center gap-1.5 shrink-0 ${isDark ? 'text-cyan-400' : 'text-blue-600'}`}>
                 <Truck className="w-3.5 h-3.5" />
-                <span className="text-[10px] text-slate-400 font-normal">Current:</span>
-                <span className="font-mono">{selectedTrip.currentLocation || selectedTrip.route || selectedTrip.speed}</span>
+                <span className="font-mono">{selectedTrip.vehicleNumber || selectedTrip.id}</span>
+                <span className={`text-[10px] font-normal truncate hidden md:inline ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                  • {selectedTrip.currentLocation || selectedTrip.route || 'Expressway'}
+                </span>
               </div>
 
               <span className={isDark ? 'text-slate-600' : 'text-slate-300'}>➔</span>
 
-              <div className="flex items-center gap-1.5 text-rose-500">
+              <div className="flex items-center gap-1.5 text-rose-500 shrink-0">
                 <span className="w-2 h-2 rounded-full bg-rose-500"></span>
-                <span className="text-[10px] text-slate-400 font-normal">Going To:</span>
-                <span>{selectedTrip.destCity || selectedTrip.originCity || 'Destination'}</span>
+                <span>{selectedTrip.destCity || selectedTrip.originCity || 'Destination'} Hub</span>
               </div>
 
               {selectedTrip.speed && (
-                <span className={`ml-1 text-[10px] font-mono px-2 py-0.5 rounded-md ${
+                <span className={`ml-1 text-[10px] font-mono px-2 py-0.5 rounded-md shrink-0 ${
                   isDark ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30' : 'bg-blue-50 text-blue-600 border border-blue-200'
                 }`}>
                   {selectedTrip.speed}
@@ -909,22 +946,22 @@ export default function IndiaFleetMap({
               )}
             </div>
           ) : (
-            <div className={`px-2.5 py-1 rounded-lg border font-mono shadow-md backdrop-blur-sm ${
+            <div className={`px-3 py-1.5 rounded-xl border text-[11px] font-medium shadow-md backdrop-blur-sm ${
               isDark ? 'bg-slate-950/90 border-slate-800 text-slate-400' : 'bg-white/95 border-slate-200 text-slate-700'
             }`}>
-              Radar Status: <span className={`font-bold ${isDark ? 'text-slate-300' : 'text-slate-800'}`}>Standby (No Vehicle Selected)</span>
+              <span>📡 Click any vehicle from the list to track corridor route</span>
             </div>
           )}
           {selectedTrip && (
             <button
               onClick={handleFocusVehicle}
-              className={`hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-lg border text-[11px] font-semibold transition-all shadow-md cursor-pointer ${
+              className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl border text-[11px] font-semibold transition-all shadow-md cursor-pointer shrink-0 ${
                 isDark ? 'bg-cyan-950/80 hover:bg-cyan-900 border-cyan-500/40 text-cyan-300' : 'bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-600'
               }`}
-              title="Zoom to Selected Vehicle"
+              title="Focus Vehicle on Map"
             >
               <Navigation className="w-3 h-3" />
-              <span>Center Truck</span>
+              <span>Center</span>
             </button>
           )}
         </div>
@@ -968,32 +1005,66 @@ export default function IndiaFleetMap({
           font-family: inherit !important;
         }
         .custom-fleet-popup .leaflet-popup-content-wrapper {
-          background: rgba(7, 11, 20, 0.95) !important;
-          border: 1px solid #00F0FF !important;
+          background: ${isDark ? 'rgba(7, 11, 20, 0.95)' : 'rgba(255, 255, 255, 0.98)'} !important;
+          border: 1px solid ${isDark ? '#00F0FF' : '#3B82F6'} !important;
           border-radius: 14px !important;
           padding: 8px 12px !important;
-          box-shadow: 0 10px 25px -5px rgba(0, 240, 255, 0.25) !important;
+          color: ${isDark ? '#FFFFFF' : '#0F172A'} !important;
+          box-shadow: ${isDark
+            ? '0 10px 25px -5px rgba(0, 240, 255, 0.25)'
+            : '0 10px 25px -5px rgba(37, 99, 235, 0.18)'} !important;
           backdrop-filter: blur(12px) !important;
         }
         .custom-fleet-popup .leaflet-popup-tip {
-          background: rgba(7, 11, 20, 0.95) !important;
-          border: 1px solid #00F0FF !important;
+          background: ${isDark ? 'rgba(7, 11, 20, 0.95)' : 'rgba(255, 255, 255, 0.98)'} !important;
+          border: 1px solid ${isDark ? '#00F0FF' : '#3B82F6'} !important;
         }
         .custom-fleet-popup .leaflet-popup-content {
           margin: 0 !important;
           line-height: 1.4 !important;
         }
         .custom-state-tooltip {
-          background: rgba(7, 11, 20, 0.92) !important;
-          border: 1px solid rgba(0, 240, 255, 0.4) !important;
-          border-radius: 8px !important;
-          color: #fff !important;
-          padding: 4px 8px !important;
+          background: ${isDark ? 'rgba(7, 11, 20, 0.95)' : 'rgba(255, 255, 255, 0.98)'} !important;
+          border: 1px solid ${isDark ? 'rgba(0, 240, 255, 0.45)' : 'rgba(203, 213, 225, 0.95)'} !important;
+          border-radius: 10px !important;
+          color: ${isDark ? '#FFFFFF' : '#0F172A'} !important;
+          padding: 5px 11px !important;
           font-size: 11px !important;
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5) !important;
+          font-weight: 800 !important;
+          letter-spacing: 0.01em !important;
+          box-shadow: ${isDark
+            ? '0 10px 25px -4px rgba(0, 0, 0, 0.75), 0 0 12px rgba(0, 240, 255, 0.2)'
+            : '0 10px 25px -4px rgba(15, 23, 42, 0.16), 0 2px 6px rgba(15, 23, 42, 0.08)'} !important;
+          backdrop-filter: blur(10px) !important;
+          pointer-events: none !important;
+        }
+        .custom-state-tooltip.leaflet-tooltip-top:before {
+          border-top-color: ${isDark ? 'rgba(7, 11, 20, 0.95)' : 'rgba(255, 255, 255, 0.98)'} !important;
+        }
+        .custom-state-tooltip.leaflet-tooltip-bottom:before {
+          border-bottom-color: ${isDark ? 'rgba(7, 11, 20, 0.95)' : 'rgba(255, 255, 255, 0.98)'} !important;
+        }
+        .custom-state-tooltip.leaflet-tooltip-left:before {
+          border-left-color: ${isDark ? 'rgba(7, 11, 20, 0.95)' : 'rgba(255, 255, 255, 0.98)'} !important;
+        }
+        .custom-state-tooltip.leaflet-tooltip-right:before {
+          border-right-color: ${isDark ? 'rgba(7, 11, 20, 0.95)' : 'rgba(255, 255, 255, 0.98)'} !important;
         }
         .custom-state-tooltip:before {
-          border-top-color: rgba(7, 11, 20, 0.92) !important;
+          border-top-color: ${isDark ? 'rgba(7, 11, 20, 0.95)' : 'rgba(255, 255, 255, 0.98)'} !important;
+        }
+        .leaflet-div-icon {
+          background: transparent !important;
+          border: none !important;
+        }
+        .custom-truck-tooltip {
+          background: transparent !important;
+          border: none !important;
+          box-shadow: none !important;
+          padding: 0 !important;
+        }
+        .custom-truck-tooltip:before {
+          display: none !important;
         }
       `}</style>
     </div>

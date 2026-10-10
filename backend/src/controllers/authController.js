@@ -166,6 +166,51 @@ const me = async (req, res) => {
     } catch (oErr) {}
   }
 
+  let branchCode = user.branch?.branch_code || null;
+  let branchName = user.branch?.branch_name || null;
+  let resolvedBranchId = user.branch_id || null;
+
+  try {
+    if (req.tenantDb?.User && user.email) {
+      const tUser = await req.tenantDb.User.findOne({
+        where: { email: user.email },
+        include: req.tenantDb.Branch ? [{ model: req.tenantDb.Branch, as: 'branch' }] : [],
+      });
+      if (tUser) {
+        if (tUser.branch) {
+          branchCode = tUser.branch.branch_code;
+          branchName = tUser.branch.branch_name;
+          resolvedBranchId = tUser.branch.id;
+        } else if (tUser.branch_id && req.tenantDb.Branch) {
+          resolvedBranchId = tUser.branch_id;
+          const b = await req.tenantDb.Branch.findByPk(tUser.branch_id);
+          if (b) {
+            branchCode = b.branch_code;
+            branchName = b.branch_name;
+          }
+        }
+      }
+    }
+
+    if (!branchCode && resolvedBranchId && req.tenantDb?.Branch) {
+      const b = await req.tenantDb.Branch.findByPk(resolvedBranchId);
+      if (b) {
+        branchCode = b.branch_code;
+        branchName = b.branch_name;
+      }
+    }
+
+    if (!branchCode) {
+      branchCode = 'HQ';
+      branchName = 'Head Office';
+    }
+  } catch (bErr) {
+    if (!branchCode) {
+      branchCode = 'HQ';
+      branchName = 'Head Office';
+    }
+  }
+
   return successResponse(res, 'User session active', {
     id: user.id,
     email: user.email,
@@ -179,9 +224,9 @@ const me = async (req, res) => {
     logoUrl: orgData?.logo_url || null,
     tagline: orgData?.settings?.tagline || null,
     themeColor: orgData?.settings?.themeColor || null,
-    branchId: user.branch_id,
-    branchCode: user.branch?.branch_code,
-    branchName: user.branch?.branch_name,
+    branchId: resolvedBranchId,
+    branchCode: branchCode,
+    branchName: branchName,
     roles: req.userRoles,
     permissions: req.userPermissions,
     documentTerminology: orgData?.document_terminology || req.tenant?.documentTerminology || 'Bilty',

@@ -270,11 +270,11 @@ export default function LoadPlanningPage() {
         : selectedBranchId;
 
       const params = {
-        limit: 100,
+        limit: 150,
+        load_planning: true,
       };
       if (effectiveBranchId && effectiveBranchId !== 'ALL') {
         params.branch_id = effectiveBranchId;
-        params.origin_branch_id = effectiveBranchId;
       }
 
       // Query bookings ready for load planning
@@ -301,9 +301,14 @@ export default function LoadPlanningPage() {
           ].includes(s);
           if (isExcluded || dispatchedIds.has(c.id)) return false;
 
-          // For branch manager, strictly ensure origin branch matches
+          // For branch / hub manager, allow local origin bookings OR cargo received at this hub for transshipment
           if (isRestrictedBranchUser && userBranchId) {
-            if (c.origin_branch_id && c.origin_branch_id !== userBranchId) return false;
+            const isLocalOrigin = String(c.origin_branch_id) === String(userBranchId);
+            const isLocalHubHolding = String(c.current_branch_id) === String(userBranchId) && s === 'RECEIVED_AT_HUB';
+            if (!isLocalOrigin && !isLocalHubHolding) return false;
+
+            // Never re-plan cargo if this branch is its final destination
+            if (c.dest_branch_id && String(c.dest_branch_id) === String(userBranchId)) return false;
           }
           return true;
         })
@@ -312,6 +317,8 @@ export default function LoadPlanningPage() {
           const weightTons = weightKg > 0 ? parseFloat((weightKg / 1000).toFixed(2)) : 0.5;
           // Estimate volume from packages or weight: approx 1 Ton ~= 2.5 m3
           const volumeM3 = parseFloat((weightTons * 2.5).toFixed(1)) || 1.2;
+          const s = (c.status || 'BOOKED').toUpperCase();
+          const isTransshipment = s === 'RECEIVED_AT_HUB' || (c.origin_branch_id && userBranchId && String(c.origin_branch_id) !== String(userBranchId));
 
           return {
             id: c.id,
@@ -332,6 +339,8 @@ export default function LoadPlanningPage() {
             amount: parseFloat(c.total_amount || 0),
             priority: c.delivery_type === 'DOOR_DELIVERY' ? 'EXPRESS' : (index % 3 === 0 ? 'PRIORITY' : 'STANDARD'),
             color: PALETTE[index % PALETTE.length],
+            status: s,
+            is_transshipment: isTransshipment,
           };
         });
 
@@ -603,7 +612,7 @@ export default function LoadPlanningPage() {
         setSelectedDriverId(newDriver.id);
 
         if (currentVehicle) {
-          api.put(`/fleet/vehicles/${currentVehicle.id}`, { assigned_driver_id: newDriver.id }).catch(() => {});
+          api.put(`/fleet/vehicles/${currentVehicle.id}`, { assigned_driver_id: newDriver.id }).catch(() => { });
           currentVehicle.assignedDriver = newDriver;
         }
 
@@ -819,15 +828,14 @@ export default function LoadPlanningPage() {
   };
 
   return (
-    <div className={`flex min-h-screen transition-colors duration-300 ${
-      isDark ? 'bg-[#06080F] text-slate-100' : 'bg-[#F4F6FB] text-slate-900'
-    } font-sans`}>
+    <div className={`flex min-h-screen transition-colors duration-300 ${isDark ? 'bg-[#06080F] text-slate-100' : 'bg-[#F4F6FB] text-slate-900'
+      } font-sans`}>
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0">
         <Navbar />
 
         <main className="flex-1 p-4 sm:p-6 lg:p-8 space-y-6 max-w-[1720px] mx-auto w-full">
-          
+
           {/* Header Action Bar */}
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div>
@@ -837,9 +845,8 @@ export default function LoadPlanningPage() {
                 </div>
                 <div>
                   <div className="flex items-center gap-2.5 flex-wrap">
-                    <h1 className={`text-xl sm:text-2xl font-black tracking-tight ${
-                      isDark ? 'text-white' : 'text-slate-900'
-                    }`}>
+                    <h1 className={`text-xl sm:text-2xl font-black tracking-tight ${isDark ? 'text-white' : 'text-slate-900'
+                      }`}>
                       Load Planning & Dispatch Operations
                     </h1>
                     <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-500 dark:text-cyan-400 border border-cyan-500/20 whitespace-nowrap shrink-0">
@@ -857,25 +864,22 @@ export default function LoadPlanningPage() {
             {/* Branch Context & Operational Actions */}
             <div className="flex flex-wrap items-center gap-2 shrink-0">
               {/* Branch Selector */}
-              <div className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-bold ${
-                isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'
-              }`}>
+              <div className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-bold ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'
+                }`}>
                 <Building2 className="w-4 h-4 text-cyan-400 shrink-0" />
                 <div className="flex items-center gap-1.5">
                   <span className="text-[11px] text-slate-400 shrink-0">Origin Dock:</span>
                   {isRestrictedBranchUser ? (
-                    <span className={`font-bold text-xs max-w-[240px] truncate ${
-                      isDark ? 'text-cyan-300' : 'text-blue-700'
-                    }`}>
+                    <span className={`font-bold text-xs max-w-[240px] truncate ${isDark ? 'text-cyan-300' : 'text-blue-700'
+                      }`}>
                       {userAssignedBranch?.branch_code ? `[${userAssignedBranch.branch_code}] ` : ''}{userAssignedBranch?.branch_name || user?.branchName || 'Assigned Branch'} {userAssignedBranch?.city ? `• ${userAssignedBranch.city}` : ''}
                     </span>
                   ) : (
                     <select
                       value={selectedBranchId}
                       onChange={(e) => setSelectedBranchId(e.target.value)}
-                      className={`bg-transparent font-bold focus:outline-none cursor-pointer text-xs max-w-[260px] truncate ${
-                        isDark ? 'text-white' : 'text-slate-900'
-                      }`}
+                      className={`bg-transparent font-bold focus:outline-none cursor-pointer text-xs max-w-[260px] truncate ${isDark ? 'text-white' : 'text-slate-900'
+                        }`}
                     >
                       <option value="ALL" className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>
                         🌐 All Docks & Branches (Company-Wide)
@@ -926,9 +930,8 @@ export default function LoadPlanningPage() {
 
             <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
               <div className="text-[11px] font-semibold text-slate-400 mb-1">Weight Utilization</div>
-              <div className={`text-2xl font-black font-mono ${
-                isOverweight ? 'text-rose-500' : 'text-emerald-500 dark:text-emerald-400'
-              }`}>
+              <div className={`text-2xl font-black font-mono ${isOverweight ? 'text-rose-500' : 'text-emerald-500 dark:text-emerald-400'
+                }`}>
                 {weightUtilizationPct}%
               </div>
               <div className="text-[10px] text-slate-400 mt-1 font-medium">
@@ -938,9 +941,8 @@ export default function LoadPlanningPage() {
 
             <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
               <div className="text-[11px] font-semibold text-slate-400 mb-1">Volume Capacity</div>
-              <div className={`text-2xl font-black font-mono ${
-                isOvervolume ? 'text-rose-500' : 'text-amber-500 dark:text-amber-400'
-              }`}>
+              <div className={`text-2xl font-black font-mono ${isOvervolume ? 'text-rose-500' : 'text-amber-500 dark:text-amber-400'
+                }`}>
                 {volumeUtilizationPct}%
               </div>
               <div className={`text-[10px] mt-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
@@ -960,12 +962,10 @@ export default function LoadPlanningPage() {
           </div>
 
           {/* STEP 1: VEHICLE & DRIVER DISPATCH ALLOCATION (Transporter Pre-Loading Unit) */}
-          <div className={`p-4 sm:p-5 rounded-3xl border shadow-xl relative transition-all ${
-            isDark ? 'bg-[#0B1020]/95 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
-          }`}>
-            <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b ${
-              isDark ? 'border-slate-800/80' : 'border-slate-200'
+          <div className={`p-4 sm:p-5 rounded-3xl border shadow-xl relative transition-all ${isDark ? 'bg-[#0B1020]/95 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
             }`}>
+            <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b ${isDark ? 'border-slate-800/80' : 'border-slate-200'
+              }`}>
               <div className="flex items-center gap-3">
                 <div className="flex items-center justify-center w-8 h-8 rounded-xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 font-black text-xs shrink-0">
                   01
@@ -1000,18 +1000,16 @@ export default function LoadPlanningPage() {
 
             {/* Selection Grid: Search Combobox & Quick Selector */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 pt-3 items-start">
-              
+
               {/* Searchable Truck Dropdown (5 Cols) */}
               <div className="lg:col-span-5 relative">
-                <label className={`text-[11px] font-bold uppercase tracking-wider block mb-1.5 ${
-                  isDark ? 'text-slate-400' : 'text-slate-700'
-                }`}>
+                <label className={`text-[11px] font-bold uppercase tracking-wider block mb-1.5 ${isDark ? 'text-slate-400' : 'text-slate-700'
+                  }`}>
                   Search Vehicle (Plate #, Size, Driver)
                 </label>
                 <div className="relative">
-                  <div className={`absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none ${
-                    isDark ? 'text-slate-400' : 'text-slate-500'
-                  }`}>
+                  <div className={`absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none ${isDark ? 'text-slate-400' : 'text-slate-500'
+                    }`}>
                     <Search className="w-4 h-4" />
                   </div>
                   <input
@@ -1023,19 +1021,17 @@ export default function LoadPlanningPage() {
                     }}
                     onFocus={() => setTruckDropdownOpen(true)}
                     placeholder="Search truck number (e.g. DL-01, 5510, RJ-14)..."
-                    className={`w-full h-[60px] pl-9 pr-8 rounded-2xl text-xs font-mono font-medium border focus:outline-none transition-all ${
-                      isDark
+                    className={`w-full h-[60px] pl-9 pr-8 rounded-2xl text-xs font-mono font-medium border focus:outline-none transition-all ${isDark
                         ? 'bg-slate-900/90 border-slate-700 text-white placeholder:text-slate-500 focus:border-cyan-400'
                         : 'bg-white border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-blue-600 focus:ring-1 focus:ring-blue-500/20 shadow-sm'
-                    }`}
+                      }`}
                   />
                   {truckSearchQuery && (
                     <button
                       type="button"
                       onClick={() => setTruckSearchQuery('')}
-                      className={`absolute inset-y-0 right-0 pr-3 flex items-center ${
-                        isDark ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-800'
-                      }`}
+                      className={`absolute inset-y-0 right-0 pr-3 flex items-center ${isDark ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-800'
+                        }`}
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
@@ -1044,12 +1040,10 @@ export default function LoadPlanningPage() {
 
                 {/* Combobox Dropdown Results */}
                 {truckDropdownOpen && (
-                  <div className={`absolute z-30 mt-1 w-full rounded-2xl border shadow-2xl overflow-hidden max-h-72 overflow-y-auto ${
-                    isDark ? 'bg-[#0E1526] border-slate-700 text-white' : 'bg-white border-slate-200 text-slate-900'
-                  }`}>
-                    <div className={`p-2 border-b text-[10px] font-bold uppercase tracking-wider flex items-center justify-between ${
-                      isDark ? 'border-slate-800 text-slate-400 bg-slate-900/50' : 'border-slate-200 text-slate-600 bg-slate-50'
+                  <div className={`absolute z-30 mt-1 w-full rounded-2xl border shadow-2xl overflow-hidden max-h-72 overflow-y-auto ${isDark ? 'bg-[#0E1526] border-slate-700 text-white' : 'bg-white border-slate-200 text-slate-900'
                     }`}>
+                    <div className={`p-2 border-b text-[10px] font-bold uppercase tracking-wider flex items-center justify-between ${isDark ? 'border-slate-800 text-slate-400 bg-slate-900/50' : 'border-slate-200 text-slate-600 bg-slate-50'
+                      }`}>
                       <span>Available Fleet Vehicles ({filteredVehicles.length})</span>
                       <button
                         type="button"
@@ -1069,11 +1063,10 @@ export default function LoadPlanningPage() {
                             <div
                               key={v.id}
                               onClick={() => handleSelectVehicle(v)}
-                              className={`p-2.5 rounded-xl cursor-pointer transition-all flex items-center justify-between ${
-                                isSelected
+                              className={`p-2.5 rounded-xl cursor-pointer transition-all flex items-center justify-between ${isSelected
                                   ? isDark ? 'bg-cyan-500/20 border border-cyan-500/40 text-cyan-300' : 'bg-blue-50 border border-blue-200 text-blue-900'
                                   : isDark ? 'hover:bg-slate-800/80 text-slate-200' : 'hover:bg-slate-100 text-slate-800'
-                              }`}
+                                }`}
                             >
                               <div className="flex items-center gap-2.5">
                                 <Truck className={`w-4 h-4 shrink-0 ${isDark ? 'text-cyan-400' : 'text-blue-600'}`} />
@@ -1133,11 +1126,10 @@ export default function LoadPlanningPage() {
                           setMarketModalOpen(true);
                           setTruckDropdownOpen(false);
                         }}
-                        className={`w-full py-1.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border transition-all ${
-                          isDark
+                        className={`w-full py-1.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border transition-all ${isDark
                             ? 'bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border-purple-500/20'
                             : 'bg-purple-50 hover:bg-purple-100 text-purple-700 border-purple-200'
-                        }`}
+                          }`}
                       >
                         <Plus className="w-3.5 h-3.5" />
                         <span>+ Hire / Add New Market Truck</span>
@@ -1149,36 +1141,31 @@ export default function LoadPlanningPage() {
 
               {/* Verified Active Vehicle & Driver Badge (7 Cols) */}
               <div className="lg:col-span-7">
-                <label className={`text-[11px] font-bold uppercase tracking-wider block mb-1.5 ${
-                  isDark ? 'text-slate-400' : 'text-slate-700'
-                }`}>
+                <label className={`text-[11px] font-bold uppercase tracking-wider block mb-1.5 ${isDark ? 'text-slate-400' : 'text-slate-700'
+                  }`}>
                   Selected Vehicle & Driver Allocation
                 </label>
                 {currentVehicle ? (
-                  <div className={`min-h-[60px] px-3.5 py-2 rounded-2xl border flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 shadow-sm ${
-                    isDark ? 'bg-slate-900/70 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
-                  }`}>
+                  <div className={`min-h-[60px] px-3.5 py-2 rounded-2xl border flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 shadow-sm ${isDark ? 'bg-slate-900/70 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
+                    }`}>
                     {/* Vehicle Identity */}
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className={`font-mono font-black text-sm tracking-wide shrink-0 ${
-                          isDark ? 'text-cyan-400' : 'text-slate-900'
-                        }`}>
+                        <span className={`font-mono font-black text-sm tracking-wide shrink-0 ${isDark ? 'text-cyan-400' : 'text-slate-900'
+                          }`}>
                           {currentVehicle.vehicle_number}
                         </span>
                         <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border flex items-center gap-1 shrink-0 ${getOwnershipBadge(currentVehicle.ownership).tagBg}`}>
                           <span>{getOwnershipBadge(currentVehicle.ownership).icon}</span>
                           <span>{getOwnershipBadge(currentVehicle.ownership).label}</span>
                         </span>
-                        <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded font-extrabold border shrink-0 ${
-                          isDark ? 'bg-blue-500/20 text-cyan-300 border-blue-500/30' : 'bg-blue-50 text-blue-800 border-blue-200'
-                        }`}>
+                        <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded font-extrabold border shrink-0 ${isDark ? 'bg-blue-500/20 text-cyan-300 border-blue-500/30' : 'bg-blue-50 text-blue-800 border-blue-200'
+                          }`}>
                           {activeTruckConfig.feet}FT • {maxVehicleWeightTons}T RATED
                         </span>
                       </div>
-                      <div className={`text-[10px] leading-tight flex items-center gap-1.5 mt-1 truncate ${
-                        isDark ? 'text-slate-400' : 'text-slate-600'
-                      }`}>
+                      <div className={`text-[10px] leading-tight flex items-center gap-1.5 mt-1 truncate ${isDark ? 'text-slate-400' : 'text-slate-600'
+                        }`}>
                         <span>Body: <strong className={`font-bold ${isDark ? 'text-slate-200' : 'text-slate-900'}`}>{activeTruckConfig.name}</strong></span>
                         <span className={isDark ? 'text-slate-600' : 'text-slate-300'}>•</span>
                         <span>Max Vol: <strong className={`font-bold ${isDark ? 'text-slate-200' : 'text-slate-900'}`}>{maxVehicleVolumeM3.toFixed(1)} m³</strong></span>
@@ -1187,24 +1174,21 @@ export default function LoadPlanningPage() {
 
                     {/* Driver Status & Selector + Clear Control */}
                     <div className="flex items-center gap-2 shrink-0">
-                      <div className={`px-2.5 py-1.5 rounded-xl border text-xs shrink-0 transition-all flex flex-col justify-center ${
-                        activeDriver
+                      <div className={`px-2.5 py-1.5 rounded-xl border text-xs shrink-0 transition-all flex flex-col justify-center ${activeDriver
                           ? isDark ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' : 'bg-emerald-50/90 border-emerald-200 text-emerald-950 shadow-xs'
                           : isDark ? 'bg-amber-500/10 border-amber-500/30 text-amber-300' : 'bg-amber-50/90 border-amber-200 text-amber-950 shadow-xs'
-                      }`}>
+                        }`}>
                         <div className="flex items-center justify-between gap-1.5 leading-none">
-                          <div className={`flex items-center gap-1 font-bold text-[10px] ${
-                            activeDriver
+                          <div className={`flex items-center gap-1 font-bold text-[10px] ${activeDriver
                               ? isDark ? 'text-emerald-400' : 'text-emerald-800'
                               : isDark ? 'text-amber-400' : 'text-amber-800'
-                          }`}>
+                            }`}>
                             <User className="w-3 h-3" />
                             <span>{activeDriver ? 'Driver:' : 'Driver Needed:'}</span>
                           </div>
                           {isDriverPreAssigned && !overrideDriverSelection && (
-                            <span className={`text-[8px] font-bold px-1 py-0.2 rounded border flex items-center gap-0.5 ${
-                              isDark ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' : 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                            }`}>
+                            <span className={`text-[8px] font-bold px-1 py-0.2 rounded border flex items-center gap-0.5 ${isDark ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' : 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                              }`}>
                               <span>🔒 Pre-Assigned</span>
                             </span>
                           )}
@@ -1225,9 +1209,8 @@ export default function LoadPlanningPage() {
                             <button
                               type="button"
                               onClick={() => setOverrideDriverSelection(true)}
-                              className={`text-[10px] underline font-semibold transition-colors shrink-0 ${
-                                isDark ? 'text-slate-400 hover:text-white' : 'text-emerald-700 hover:text-emerald-950'
-                              }`}
+                              className={`text-[10px] underline font-semibold transition-colors shrink-0 ${isDark ? 'text-slate-400 hover:text-white' : 'text-emerald-700 hover:text-emerald-950'
+                                }`}
                             >
                               Switch
                             </button>
@@ -1241,9 +1224,8 @@ export default function LoadPlanningPage() {
                                   setSelectedDriverId(e.target.value);
                                   setOverrideDriverSelection(false);
                                 }}
-                                className={`h-6 px-2 rounded-lg text-xs border font-medium focus:outline-none max-w-[130px] sm:max-w-[150px] truncate ${
-                                  isDark ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900 shadow-xs'
-                                }`}
+                                className={`h-6 px-2 rounded-lg text-xs border font-medium focus:outline-none max-w-[130px] sm:max-w-[150px] truncate ${isDark ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900 shadow-xs'
+                                  }`}
                               >
                                 <option value="">-- Choose Driver --</option>
                                 {drivers.map((d) => (
@@ -1265,9 +1247,8 @@ export default function LoadPlanningPage() {
                               <button
                                 type="button"
                                 onClick={() => setOverrideDriverSelection(false)}
-                                className={`text-[9px] hover:underline block mt-0.5 leading-none ${
-                                  isDark ? 'text-cyan-400' : 'text-blue-600 font-semibold'
-                                }`}
+                                className={`text-[9px] hover:underline block mt-0.5 leading-none ${isDark ? 'text-cyan-400' : 'text-blue-600 font-semibold'
+                                  }`}
                               >
                                 ↩ Revert to Pre-Assigned Driver
                               </button>
@@ -1288,18 +1269,16 @@ export default function LoadPlanningPage() {
                           setLoadedIds(new Set());
                         }}
                         title="Clear truck selection & start fresh"
-                        className={`w-8 h-8 rounded-xl border flex items-center justify-center transition-all shrink-0 ${
-                          isDark ? 'border-slate-800 bg-slate-800/60 hover:bg-slate-800 text-slate-400 hover:text-rose-400' : 'border-slate-200 bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-rose-600'
-                        }`}
+                        className={`w-8 h-8 rounded-xl border flex items-center justify-center transition-all shrink-0 ${isDark ? 'border-slate-800 bg-slate-800/60 hover:bg-slate-800 text-slate-400 hover:text-rose-400' : 'border-slate-200 bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-rose-600'
+                          }`}
                       >
                         <X className="w-4 h-4" />
                       </button>
                     </div>
                   </div>
                 ) : (
-                  <div className={`h-[60px] px-4 rounded-2xl border flex items-center justify-center text-xs font-medium transition-all ${
-                    isDark ? 'bg-slate-900/40 border-slate-800 text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-500'
-                  }`}>
+                  <div className={`h-[60px] px-4 rounded-2xl border flex items-center justify-center text-xs font-medium transition-all ${isDark ? 'bg-slate-900/40 border-slate-800 text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-500'
+                    }`}>
                     <span className="flex items-center gap-1.5">
                       <span className="text-amber-500">⚠️</span>
                       <span>Please search or select a vehicle to begin planning cargo.</span>
@@ -1313,17 +1292,15 @@ export default function LoadPlanningPage() {
 
           {/* Main Visualizer & Dock Layout: Left 5 Cols (Staged Consignments List) + Right 7 Cols (3D Live Truck) */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
-            
+
             {/* Left 5 Cols: Staged Consignments Queue (Dense Table / List View) */}
             <div className="lg:col-span-5 order-2 lg:order-1 flex flex-col h-full">
-              
-              <div className={`p-4 sm:p-5 rounded-3xl border shadow-xl flex-1 flex flex-col h-full ${
-                isDark ? 'bg-[#0B1020]/90 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
-              }`}>
-                {/* List Header with Select All */}
-                <div className={`pb-3 border-b flex items-center justify-between gap-2 ${
-                  isDark ? 'border-slate-800/80' : 'border-slate-200'
+
+              <div className={`p-4 sm:p-5 rounded-3xl border shadow-xl flex-1 flex flex-col h-full ${isDark ? 'bg-[#0B1020]/90 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
                 }`}>
+                {/* List Header with Select All */}
+                <div className={`pb-3 border-b flex items-center justify-between gap-2 ${isDark ? 'border-slate-800/80' : 'border-slate-200'
+                  }`}>
                   <div className="flex items-center space-x-2">
                     <div className="flex items-center justify-center w-6 h-6 rounded-lg bg-blue-600/20 text-blue-400 border border-blue-500/30 font-black text-[10px] shrink-0">
                       02
@@ -1338,9 +1315,8 @@ export default function LoadPlanningPage() {
                         </h3>
                       </div>
                     </div>
-                    <span className={`text-[11px] px-2 py-0.5 rounded-full font-bold font-mono ${
-                      isDark ? 'bg-cyan-500/20 text-cyan-300' : 'bg-blue-100 text-blue-700'
-                    }`}>
+                    <span className={`text-[11px] px-2 py-0.5 rounded-full font-bold font-mono ${isDark ? 'bg-cyan-500/20 text-cyan-300' : 'bg-blue-100 text-blue-700'
+                      }`}>
                       {loadedIds.size} / {stagedConsignments.length}
                     </span>
                   </div>
@@ -1351,13 +1327,12 @@ export default function LoadPlanningPage() {
                       onClick={toggleSelectAll}
                       disabled={!selectedVehicleId}
                       title={!selectedVehicleId ? 'Please select a vehicle in Step 1 first' : ''}
-                      className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border transition-all ${
-                        !selectedVehicleId
+                      className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border transition-all ${!selectedVehicleId
                           ? 'opacity-40 cursor-not-allowed border-slate-300 dark:border-slate-700 text-slate-400'
                           : loadedIds.size > 0 && loadedIds.size === filteredConsignments.length
-                          ? isDark ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-slate-100 border-slate-300 text-slate-700'
-                          : isDark ? 'bg-cyan-500/20 border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/30' : 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100'
-                      }`}
+                            ? isDark ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-slate-100 border-slate-300 text-slate-700'
+                            : isDark ? 'bg-cyan-500/20 border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/30' : 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100'
+                        }`}
                     >
                       {loadedIds.size > 0 && loadedIds.size === filteredConsignments.length ? 'Deselect All' : 'Select All'}
                     </button>
@@ -1366,9 +1341,8 @@ export default function LoadPlanningPage() {
 
                 {/* Truck Selection Required Warning Banner */}
                 {!selectedVehicleId && (
-                  <div className={`p-2.5 rounded-2xl border flex items-center gap-2 text-xs my-2.5 transition-all ${
-                    isDark ? 'bg-amber-500/10 border-amber-500/30 text-amber-300' : 'bg-amber-50 border-amber-300 text-amber-900 shadow-sm'
-                  }`}>
+                  <div className={`p-2.5 rounded-2xl border flex items-center gap-2 text-xs my-2.5 transition-all ${isDark ? 'bg-amber-500/10 border-amber-500/30 text-amber-300' : 'bg-amber-50 border-amber-300 text-amber-900 shadow-sm'
+                    }`}>
                     <span className="text-sm shrink-0">⚠️</span>
                     <span className="text-[11px] font-semibold">
                       Please select a vehicle in Step 1 above before stowing consignments.
@@ -1378,17 +1352,15 @@ export default function LoadPlanningPage() {
 
                 {/* Instant Search Bar */}
                 <div className="relative my-3">
-                  <Search className={`w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 ${
-                    isDark ? 'text-slate-500' : 'text-slate-400'
-                  }`} />
+                  <Search className={`w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 ${isDark ? 'text-slate-500' : 'text-slate-400'
+                    }`} />
                   <input
                     type="text"
                     placeholder="Search by LR#, Shipper, City..."
                     value={searchFilter}
                     onChange={(e) => setSearchFilter(e.target.value)}
-                    className={`w-full pl-8 pr-3 py-1.5 text-xs rounded-xl border focus:outline-none focus:ring-1 focus:ring-cyan-500 transition-colors ${
-                      isDark ? 'bg-slate-900/80 border-slate-700 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400'
-                    }`}
+                    className={`w-full pl-8 pr-3 py-1.5 text-xs rounded-xl border focus:outline-none focus:ring-1 focus:ring-cyan-500 transition-colors ${isDark ? 'bg-slate-900/80 border-slate-700 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400'
+                      }`}
                   />
                   {searchFilter && (
                     <button
@@ -1430,9 +1402,8 @@ export default function LoadPlanningPage() {
                   /* Dense Professional Table / List View */
                   <div className="overflow-x-auto flex-1 min-h-[280px] overflow-y-auto rounded-2xl border border-slate-200 dark:border-slate-800">
                     <table className="w-full text-left text-xs">
-                      <thead className={`sticky top-0 z-10 text-[10px] uppercase font-bold tracking-wider ${
-                        isDark ? 'bg-slate-900 text-slate-400 border-b border-slate-800' : 'bg-slate-100 text-slate-600 border-b border-slate-200'
-                      }`}>
+                      <thead className={`sticky top-0 z-10 text-[10px] uppercase font-bold tracking-wider ${isDark ? 'bg-slate-900 text-slate-400 border-b border-slate-800' : 'bg-slate-100 text-slate-600 border-b border-slate-200'
+                        }`}>
                         <tr>
                           <th className="py-2.5 px-3 w-8 text-center">
                             <input
@@ -1465,13 +1436,12 @@ export default function LoadPlanningPage() {
                               }}
                               onMouseEnter={() => setHoveredConsignmentId(item.id)}
                               onMouseLeave={() => setHoveredConsignmentId(null)}
-                              className={`transition-colors ${
-                                !selectedVehicleId
+                              className={`transition-colors ${!selectedVehicleId
                                   ? 'opacity-60 cursor-not-allowed'
                                   : isLoaded
-                                  ? isDark ? 'cursor-pointer bg-cyan-950/30 text-white hover:bg-cyan-950/40' : 'cursor-pointer bg-blue-50/80 text-blue-900 hover:bg-blue-100/60'
-                                  : isDark ? 'cursor-pointer hover:bg-slate-900/60 text-slate-300 opacity-70 hover:opacity-100' : 'cursor-pointer hover:bg-slate-50 text-slate-700 opacity-70 hover:opacity-100'
-                              }`}
+                                    ? isDark ? 'cursor-pointer bg-cyan-950/30 text-white hover:bg-cyan-950/40' : 'cursor-pointer bg-blue-50/80 text-blue-900 hover:bg-blue-100/60'
+                                    : isDark ? 'cursor-pointer hover:bg-slate-900/60 text-slate-300 opacity-70 hover:opacity-100' : 'cursor-pointer hover:bg-slate-50 text-slate-700 opacity-70 hover:opacity-100'
+                                }`}
                             >
                               <td className="py-2.5 px-3 text-center" onClick={(e) => e.stopPropagation()}>
                                 <input
@@ -1487,15 +1457,21 @@ export default function LoadPlanningPage() {
                                 <div className="font-mono font-bold text-xs text-cyan-600 dark:text-cyan-400">
                                   {item.docket_number}
                                 </div>
-                                <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${
-                                  item.priority === 'EXPRESS'
-                                    ? 'bg-rose-500/20 text-rose-400'
-                                    : item.priority === 'PRIORITY'
-                                    ? 'bg-amber-500/20 text-amber-400'
-                                    : 'bg-slate-500/20 text-slate-400'
-                                }`}>
-                                  {item.priority}
-                                </span>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${item.priority === 'EXPRESS'
+                                      ? 'bg-rose-500/20 text-rose-400'
+                                      : item.priority === 'PRIORITY'
+                                        ? 'bg-amber-500/20 text-amber-400'
+                                        : 'bg-slate-500/20 text-slate-400'
+                                    }`}>
+                                    {item.priority}
+                                  </span>
+                                  {item.is_transshipment && (
+                                    <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+                                      Transshipment
+                                    </span>
+                                  )}
+                                </div>
                               </td>
                               <td className="py-2.5 px-2 max-w-[160px]">
                                 <div className="font-semibold truncate text-[11px]">
@@ -1527,9 +1503,8 @@ export default function LoadPlanningPage() {
                 )}
 
                 {/* Bottom Action Footer */}
-                <div className={`mt-auto pt-3 border-t flex items-center justify-between gap-3 ${
-                  isDark ? 'border-slate-800' : 'border-slate-200'
-                }`}>
+                <div className={`mt-auto pt-3 border-t flex items-center justify-between gap-3 ${isDark ? 'border-slate-800' : 'border-slate-200'
+                  }`}>
                   <div className="text-xs">
                     <span className="text-slate-400">Selected: </span>
                     <strong className="text-cyan-500 font-mono">{loadedIds.size} LRs</strong>
@@ -1550,19 +1525,16 @@ export default function LoadPlanningPage() {
 
             {/* Right 7 Cols: 3D Live Vehicle Loading Visualizer */}
             <div className="lg:col-span-7 order-1 lg:order-2 flex flex-col h-full">
-              
+
               {/* 3D Cutaway Box Truck Container Visualizer */}
-              <div className={`p-4 sm:p-5 rounded-3xl border shadow-xl flex-1 flex flex-col h-full ${
-                isDark ? 'bg-[#0B1020]/90 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
-              }`}>
-                {/* Truck Header Bar with Active Vehicle & Route Badge */}
-                <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b mb-3 ${
-                  isDark ? 'border-slate-800/80' : 'border-slate-200'
+              <div className={`p-4 sm:p-5 rounded-3xl border shadow-xl flex-1 flex flex-col h-full ${isDark ? 'bg-[#0B1020]/90 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
                 }`}>
+                {/* Truck Header Bar with Active Vehicle & Route Badge */}
+                <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b mb-3 ${isDark ? 'border-slate-800/80' : 'border-slate-200'
+                  }`}>
                   <div className="flex items-center space-x-3">
-                    <div className={`p-2 rounded-xl ${
-                      isDark ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20' : 'bg-blue-50 text-blue-600 border border-blue-200'
-                    }`}>
+                    <div className={`p-2 rounded-xl ${isDark ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20' : 'bg-blue-50 text-blue-600 border border-blue-200'
+                      }`}>
                       <Truck className="w-5 h-5" />
                     </div>
                     <div>
@@ -1576,16 +1548,15 @@ export default function LoadPlanningPage() {
                             <span>{getOwnershipBadge(currentVehicle.ownership).label}</span>
                           </span>
                         )}
-                        <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold border ${
-                          isDark 
-                            ? 'bg-blue-500/20 text-cyan-300 border-blue-500/30' 
+                        <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold border ${isDark
+                            ? 'bg-blue-500/20 text-cyan-300 border-blue-500/30'
                             : 'bg-blue-50 text-blue-700 border-blue-200'
-                        }`}>
+                          }`}>
                           {maxVehicleWeightTons}T RATED • {activeTruckConfig.feet}FT
                         </span>
                       </div>
                       <p className={`text-xs mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                        Origin: <span className="font-semibold text-cyan-400">{currentBranch?.branch_name || branches.find((b) => b.id === modalOriginBranchId)?.branch_name || 'Origin Hub'}</span> ➔ 
+                        Origin: <span className="font-semibold text-cyan-400">{currentBranch?.branch_name || branches.find((b) => b.id === modalOriginBranchId)?.branch_name || 'Origin Hub'}</span> ➔
                         Destination: {destBranchId ? (
                           <span className="font-semibold text-emerald-400">
                             {branches.find((b) => b.id === destBranchId)?.branch_name || 'Delivery Hub'}
@@ -1606,34 +1577,30 @@ export default function LoadPlanningPage() {
 
                   {/* Compact Column-way Capacity Strips */}
                   <div className="flex flex-col sm:items-end gap-1 shrink-0 font-mono text-[10px] font-bold">
-                    <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg border whitespace-nowrap ${
-                      isOvervolume
+                    <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg border whitespace-nowrap ${isOvervolume
                         ? 'bg-rose-500/20 text-rose-400 border-rose-500/40'
-                        : isDark 
-                        ? 'bg-slate-900/90 border-slate-800 text-cyan-400' 
-                        : 'bg-blue-50 border-blue-200 text-blue-700'
-                    }`}>
+                        : isDark
+                          ? 'bg-slate-900/90 border-slate-800 text-cyan-400'
+                          : 'bg-blue-50 border-blue-200 text-blue-700'
+                      }`}>
                       <span className="text-slate-400 text-[9px] uppercase font-semibold">Vol:</span>
                       <span>{loadedVolume.toFixed(1)} / {maxVehicleVolumeM3.toFixed(1)} m³</span>
-                      <span className={`px-1 rounded text-[9px] font-bold ${
-                        isOvervolume ? 'bg-rose-500/30 text-rose-300' : isDark ? 'bg-cyan-500/20 text-cyan-300' : 'bg-blue-100 text-blue-800'
-                      }`}>
+                      <span className={`px-1 rounded text-[9px] font-bold ${isOvervolume ? 'bg-rose-500/30 text-rose-300' : isDark ? 'bg-cyan-500/20 text-cyan-300' : 'bg-blue-100 text-blue-800'
+                        }`}>
                         {volumeUtilizationPct}%
                       </span>
                     </div>
 
-                    <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg border whitespace-nowrap ${
-                      isOverweight
+                    <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg border whitespace-nowrap ${isOverweight
                         ? 'bg-rose-500/20 text-rose-400 border-rose-500/40'
-                        : isDark 
-                        ? 'bg-slate-900/90 border-slate-800 text-emerald-400' 
-                        : 'bg-emerald-50 border-emerald-200 text-emerald-700'
-                    }`}>
+                        : isDark
+                          ? 'bg-slate-900/90 border-slate-800 text-emerald-400'
+                          : 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                      }`}>
                       <span className="text-slate-400 text-[9px] uppercase font-semibold">Wt:</span>
                       <span>{loadedWeight.toFixed(1)} / {maxVehicleWeightTons.toFixed(1)} T</span>
-                      <span className={`px-1 rounded text-[9px] font-bold ${
-                        isOverweight ? 'bg-rose-500/30 text-rose-300' : isDark ? 'bg-emerald-500/20 text-emerald-300' : 'bg-emerald-100 text-emerald-800'
-                      }`}>
+                      <span className={`px-1 rounded text-[9px] font-bold ${isOverweight ? 'bg-rose-500/30 text-rose-300' : isDark ? 'bg-emerald-500/20 text-emerald-300' : 'bg-emerald-100 text-emerald-800'
+                        }`}>
                         {weightUtilizationPct}%
                       </span>
                     </div>
@@ -1663,17 +1630,14 @@ export default function LoadPlanningPage() {
       {/* Market Hired Truck Onboarding Modal */}
       {marketModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5 md:p-6 overflow-hidden">
-          <div className={`relative w-full max-w-lg max-h-[85vh] sm:max-h-[88vh] rounded-3xl border shadow-2xl flex flex-col overflow-hidden my-auto ${
-            isDark ? 'bg-[#0E1526] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
-          }`}>
-            {/* Pinned Header */}
-            <div className={`flex items-center justify-between border-b px-6 py-4 shrink-0 ${
-              isDark ? 'border-slate-800 bg-[#0E1526]' : 'border-slate-200 bg-white'
+          <div className={`relative w-full max-w-lg max-h-[85vh] sm:max-h-[88vh] rounded-3xl border shadow-2xl flex flex-col overflow-hidden my-auto ${isDark ? 'bg-[#0E1526] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
             }`}>
+            {/* Pinned Header */}
+            <div className={`flex items-center justify-between border-b px-6 py-4 shrink-0 ${isDark ? 'border-slate-800 bg-[#0E1526]' : 'border-slate-200 bg-white'
+              }`}>
               <div className="flex items-center gap-3">
-                <div className={`p-2.5 rounded-2xl border ${
-                  isDark ? 'bg-purple-600/20 text-purple-400 border-purple-500/30' : 'bg-purple-50 text-purple-600 border-purple-200'
-                }`}>
+                <div className={`p-2.5 rounded-2xl border ${isDark ? 'bg-purple-600/20 text-purple-400 border-purple-500/30' : 'bg-purple-50 text-purple-600 border-purple-200'
+                  }`}>
                   <Truck className="w-5 h-5" />
                 </div>
                 <div>
@@ -1684,9 +1648,8 @@ export default function LoadPlanningPage() {
               <button
                 type="button"
                 onClick={() => setMarketModalOpen(false)}
-                className={`p-1.5 rounded-xl transition-colors ${
-                  isDark ? 'text-slate-400 hover:text-white hover:bg-slate-800' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
-                }`}
+                className={`p-1.5 rounded-xl transition-colors ${isDark ? 'text-slate-400 hover:text-white hover:bg-slate-800' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
+                  }`}
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1700,248 +1663,227 @@ export default function LoadPlanningPage() {
                     <span>{marketError}</span>
                   </div>
                 )}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {/* Vehicle Number */}
-                <div className="space-y-1 sm:col-span-2">
-                  <div className="flex items-center justify-between">
-                    <label className={`text-[11px] font-bold uppercase tracking-wider block ${
-                      isDark ? 'text-slate-400' : 'text-slate-700'
-                    }`}>
-                      Vehicle Registration Number*
-                    </label>
-                    {marketForm.vehicle_number && (
-                      <span className={`text-[10px] font-semibold ${
-                        marketForm.vehicle_number.trim().length >= 5 ? (isDark ? 'text-emerald-400' : 'text-emerald-700') : (isDark ? 'text-amber-400' : 'text-amber-700')
-                      }`}>
-                        {marketForm.vehicle_number.trim().length >= 5 ? '✓ Valid Plate' : 'Min 5 characters'}
-                      </span>
-                    )}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* Vehicle Number */}
+                  <div className="space-y-1 sm:col-span-2">
+                    <div className="flex items-center justify-between">
+                      <label className={`text-[11px] font-bold uppercase tracking-wider block ${isDark ? 'text-slate-400' : 'text-slate-700'
+                        }`}>
+                        Vehicle Registration Number*
+                      </label>
+                      {marketForm.vehicle_number && (
+                        <span className={`text-[10px] font-semibold ${marketForm.vehicle_number.trim().length >= 5 ? (isDark ? 'text-emerald-400' : 'text-emerald-700') : (isDark ? 'text-amber-400' : 'text-amber-700')
+                          }`}>
+                          {marketForm.vehicle_number.trim().length >= 5 ? '✓ Valid Plate' : 'Min 5 characters'}
+                        </span>
+                      )}
+                    </div>
+                    <input
+                      type="text"
+                      required
+                      maxLength={16}
+                      value={marketForm.vehicle_number}
+                      onChange={(e) => {
+                        const val = e.target.value.toUpperCase().replace(/[^A-Z0-9 -]/g, '');
+                        setMarketForm({ ...marketForm, vehicle_number: val });
+                      }}
+                      placeholder="e.g. HR-55-AB-9876 or DL-01-XY-5510"
+                      className={`w-full px-3 py-2 rounded-xl text-xs font-mono font-bold border focus:outline-none transition-all ${isDark
+                          ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
+                          : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 shadow-sm'
+                        }`}
+                    />
                   </div>
-                  <input
-                    type="text"
-                    required
-                    maxLength={16}
-                    value={marketForm.vehicle_number}
-                    onChange={(e) => {
-                      const val = e.target.value.toUpperCase().replace(/[^A-Z0-9 -]/g, '');
-                      setMarketForm({ ...marketForm, vehicle_number: val });
-                    }}
-                    placeholder="e.g. HR-55-AB-9876 or DL-01-XY-5510"
-                    className={`w-full px-3 py-2 rounded-xl text-xs font-mono font-bold border focus:outline-none transition-all ${
-                      isDark
-                        ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
-                        : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 shadow-sm'
-                    }`}
-                  />
-                </div>
 
-                {/* Ownership Type */}
-                <div className="space-y-1">
-                  <label className={`text-[11px] font-bold uppercase tracking-wider block ${
-                    isDark ? 'text-slate-400' : 'text-slate-700'
-                  }`}>
-                    Truck Ownership*
-                  </label>
-                  <select
-                    value={marketForm.ownership}
-                    onChange={(e) => setMarketForm({ ...marketForm, ownership: e.target.value })}
-                    className={`w-full px-3 py-2 rounded-xl text-xs border font-medium focus:outline-none transition-all ${
-                      isDark
-                        ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
-                        : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 shadow-sm'
-                    }`}
-                  >
-                    <option value="MARKET">🚛 Market Hired (Ad-Hoc)</option>
-                    <option value="ATTACHED">🤝 Attached Fleet</option>
-                    <option value="OWN">🏢 Company Owned</option>
-                  </select>
-                </div>
-
-                {/* Truck Size & Body Length */}
-                <div className="space-y-1">
-                  <label className={`text-[11px] font-bold uppercase tracking-wider block ${
-                    isDark ? 'text-slate-400' : 'text-slate-700'
-                  }`}>
-                    Body Size & Rating*
-                  </label>
-                  <select
-                    value={marketForm.truck_size_feet}
-                    onChange={(e) => {
-                      const feet = e.target.value;
-                      const cap = feet === '32' ? '16.0' : feet === '24' ? '12.0' : feet === '19' ? '9.5' : feet === '14' ? '5.5' : '3.5';
-                      setMarketForm({ ...marketForm, truck_size_feet: feet, capacity_ton: cap });
-                    }}
-                    className={`w-full px-3 py-2 rounded-xl text-xs border font-medium focus:outline-none transition-all ${
-                      isDark
-                        ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
-                        : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 shadow-sm'
-                    }`}
-                  >
-                    <option value="11">11 Feet (3.5T Rated Mini Truck)</option>
-                    <option value="14">14 Feet (5.5T Rated LCV)</option>
-                    <option value="19">19 Feet (9.5T Rated ICV)</option>
-                    <option value="24">24 Feet (12.0T Rated Heavy)</option>
-                    <option value="32">32 Feet (16.0T Multi-Axle Container)</option>
-                  </select>
-                </div>
-
-                {/* Driver Name */}
-                <div className="space-y-1">
-                  <label className={`text-[11px] font-bold uppercase tracking-wider block ${
-                    isDark ? 'text-slate-400' : 'text-slate-700'
-                  }`}>
-                    Driver Full Name
-                  </label>
-                  <input
-                    type="text"
-                    value={marketForm.driver_name}
-                    onChange={(e) => setMarketForm({ ...marketForm, driver_name: e.target.value })}
-                    placeholder="e.g. Satish Kumar"
-                    className={`w-full px-3 py-2 rounded-xl text-xs border focus:outline-none transition-all ${
-                      isDark
-                        ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
-                        : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 shadow-sm'
-                    }`}
-                  />
-                </div>
-
-                {/* Driver Mobile */}
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <label className={`text-[11px] font-bold uppercase tracking-wider block ${
-                      isDark ? 'text-slate-400' : 'text-slate-700'
-                    }`}>
-                      Driver Mobile Number
-                    </label>
-                    {marketForm.driver_phone && (
-                      <span className={`text-[10px] font-semibold ${
-                        marketForm.driver_phone.length === 10 && /^[6-9]/.test(marketForm.driver_phone)
-                          ? (isDark ? 'text-emerald-400' : 'text-emerald-700')
-                          : !/^[6-9]/.test(marketForm.driver_phone)
-                          ? (isDark ? 'text-rose-400' : 'text-rose-700')
-                          : (isDark ? 'text-amber-400' : 'text-amber-700')
+                  {/* Ownership Type */}
+                  <div className="space-y-1">
+                    <label className={`text-[11px] font-bold uppercase tracking-wider block ${isDark ? 'text-slate-400' : 'text-slate-700'
                       }`}>
-                        {marketForm.driver_phone.length === 10
-                          ? /^[6-9]/.test(marketForm.driver_phone) ? '✓ Valid Mobile' : '⚠️ Must start with 6-9'
-                          : `${10 - marketForm.driver_phone.length} digits left`}
-                      </span>
-                    )}
-                  </div>
-                  <input
-                    type="tel"
-                    maxLength={10}
-                    value={marketForm.driver_phone}
-                    onChange={(e) => {
-                      const val = e.target.value.replace(/\D/g, '').slice(0, 10);
-                      setMarketForm({ ...marketForm, driver_phone: val });
-                    }}
-                    placeholder="10 digits (e.g. 9876543210)"
-                    className={`w-full px-3 py-2 rounded-xl text-xs border font-mono transition-all ${
-                      marketForm.driver_phone && (!/^[6-9]/.test(marketForm.driver_phone) || marketForm.driver_phone.length < 10)
-                        ? 'border-amber-500/60 focus:border-amber-400'
-                        : isDark
-                        ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
-                        : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 shadow-sm'
-                    }`}
-                  />
-                </div>
-
-                {/* Broker / Transporter Name */}
-                <div className="space-y-1">
-                  <label className={`text-[11px] font-bold uppercase tracking-wider block ${
-                    isDark ? 'text-slate-400' : 'text-slate-700'
-                  }`}>
-                    Broker / Transporter Name
-                  </label>
-                  <input
-                    type="text"
-                    value={marketForm.owner_name}
-                    onChange={(e) => setMarketForm({ ...marketForm, owner_name: e.target.value })}
-                    placeholder="e.g. Balaji Roadways"
-                    className={`w-full px-3 py-2 rounded-xl text-xs border focus:outline-none transition-all ${
-                      isDark
-                        ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
-                        : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 shadow-sm'
-                    }`}
-                  />
-                </div>
-
-                {/* Broker Mobile Number */}
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <label className={`text-[11px] font-bold uppercase tracking-wider block ${
-                      isDark ? 'text-slate-400' : 'text-slate-700'
-                    }`}>
-                      Broker Mobile (Optional)
+                      Truck Ownership*
                     </label>
-                    {marketForm.owner_phone && (
-                      <span className={`text-[10px] font-semibold ${
-                        marketForm.owner_phone.length === 10 && /^[6-9]/.test(marketForm.owner_phone)
-                          ? (isDark ? 'text-emerald-400' : 'text-emerald-700')
-                          : !/^[6-9]/.test(marketForm.owner_phone)
-                          ? (isDark ? 'text-rose-400' : 'text-rose-700')
-                          : (isDark ? 'text-amber-400' : 'text-amber-700')
-                      }`}>
-                        {marketForm.owner_phone.length === 10
-                          ? /^[6-9]/.test(marketForm.owner_phone) ? '✓ Valid Mobile' : '⚠️ Must start with 6-9'
-                          : `${10 - marketForm.owner_phone.length} digits left`}
-                      </span>
-                    )}
+                    <select
+                      value={marketForm.ownership}
+                      onChange={(e) => setMarketForm({ ...marketForm, ownership: e.target.value })}
+                      className={`w-full px-3 py-2 rounded-xl text-xs border font-medium focus:outline-none transition-all ${isDark
+                          ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
+                          : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 shadow-sm'
+                        }`}
+                    >
+                      <option value="MARKET">🚛 Market Hired (Ad-Hoc)</option>
+                      <option value="ATTACHED">🤝 Attached Fleet</option>
+                      <option value="OWN">🏢 Company Owned</option>
+                    </select>
                   </div>
-                  <input
-                    type="tel"
-                    maxLength={10}
-                    value={marketForm.owner_phone}
-                    onChange={(e) => {
-                      const val = e.target.value.replace(/\D/g, '').slice(0, 10);
-                      setMarketForm({ ...marketForm, owner_phone: val });
-                    }}
-                    placeholder="10 digits (e.g. 9811223344)"
-                    className={`w-full px-3 py-2 rounded-xl text-xs border font-mono transition-all ${
-                      marketForm.owner_phone && (!/^[6-9]/.test(marketForm.owner_phone) || marketForm.owner_phone.length < 10)
-                        ? 'border-amber-500/60 focus:border-amber-400'
-                        : isDark
-                        ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
-                        : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 shadow-sm'
-                    }`}
-                  />
-                </div>
 
-                {/* Starting Odometer */}
-                <div className="space-y-1 sm:col-span-2">
-                  <label className={`text-[11px] font-bold uppercase tracking-wider block ${
-                    isDark ? 'text-slate-400' : 'text-slate-700'
-                  }`}>
-                    Current Odometer (KM)
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={marketForm.current_odometer}
-                    onChange={(e) => setMarketForm({ ...marketForm, current_odometer: e.target.value })}
-                    placeholder="e.g. 45000"
-                    className={`w-full px-3 py-2 rounded-xl text-xs border font-mono focus:outline-none transition-all ${
-                      isDark
-                        ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
-                        : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 shadow-sm'
-                    }`}
-                  />
-                </div>
+                  {/* Truck Size & Body Length */}
+                  <div className="space-y-1">
+                    <label className={`text-[11px] font-bold uppercase tracking-wider block ${isDark ? 'text-slate-400' : 'text-slate-700'
+                      }`}>
+                      Body Size & Rating*
+                    </label>
+                    <select
+                      value={marketForm.truck_size_feet}
+                      onChange={(e) => {
+                        const feet = e.target.value;
+                        const cap = feet === '32' ? '16.0' : feet === '24' ? '12.0' : feet === '19' ? '9.5' : feet === '14' ? '5.5' : '3.5';
+                        setMarketForm({ ...marketForm, truck_size_feet: feet, capacity_ton: cap });
+                      }}
+                      className={`w-full px-3 py-2 rounded-xl text-xs border font-medium focus:outline-none transition-all ${isDark
+                          ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
+                          : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 shadow-sm'
+                        }`}
+                    >
+                      <option value="11">11 Feet (3.5T Rated Mini Truck)</option>
+                      <option value="14">14 Feet (5.5T Rated LCV)</option>
+                      <option value="19">19 Feet (9.5T Rated ICV)</option>
+                      <option value="24">24 Feet (12.0T Rated Heavy)</option>
+                      <option value="32">32 Feet (16.0T Multi-Axle Container)</option>
+                    </select>
+                  </div>
+
+                  {/* Driver Name */}
+                  <div className="space-y-1">
+                    <label className={`text-[11px] font-bold uppercase tracking-wider block ${isDark ? 'text-slate-400' : 'text-slate-700'
+                      }`}>
+                      Driver Full Name
+                    </label>
+                    <input
+                      type="text"
+                      value={marketForm.driver_name}
+                      onChange={(e) => setMarketForm({ ...marketForm, driver_name: e.target.value })}
+                      placeholder="e.g. Satish Kumar"
+                      className={`w-full px-3 py-2 rounded-xl text-xs border focus:outline-none transition-all ${isDark
+                          ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
+                          : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 shadow-sm'
+                        }`}
+                    />
+                  </div>
+
+                  {/* Driver Mobile */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <label className={`text-[11px] font-bold uppercase tracking-wider block ${isDark ? 'text-slate-400' : 'text-slate-700'
+                        }`}>
+                        Driver Mobile Number
+                      </label>
+                      {marketForm.driver_phone && (
+                        <span className={`text-[10px] font-semibold ${marketForm.driver_phone.length === 10 && /^[6-9]/.test(marketForm.driver_phone)
+                            ? (isDark ? 'text-emerald-400' : 'text-emerald-700')
+                            : !/^[6-9]/.test(marketForm.driver_phone)
+                              ? (isDark ? 'text-rose-400' : 'text-rose-700')
+                              : (isDark ? 'text-amber-400' : 'text-amber-700')
+                          }`}>
+                          {marketForm.driver_phone.length === 10
+                            ? /^[6-9]/.test(marketForm.driver_phone) ? '✓ Valid Mobile' : '⚠️ Must start with 6-9'
+                            : `${10 - marketForm.driver_phone.length} digits left`}
+                        </span>
+                      )}
+                    </div>
+                    <input
+                      type="tel"
+                      maxLength={10}
+                      value={marketForm.driver_phone}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+                        setMarketForm({ ...marketForm, driver_phone: val });
+                      }}
+                      placeholder="10 digits (e.g. 9876543210)"
+                      className={`w-full px-3 py-2 rounded-xl text-xs border font-mono transition-all ${marketForm.driver_phone && (!/^[6-9]/.test(marketForm.driver_phone) || marketForm.driver_phone.length < 10)
+                          ? 'border-amber-500/60 focus:border-amber-400'
+                          : isDark
+                            ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
+                            : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 shadow-sm'
+                        }`}
+                    />
+                  </div>
+
+                  {/* Broker / Transporter Name */}
+                  <div className="space-y-1">
+                    <label className={`text-[11px] font-bold uppercase tracking-wider block ${isDark ? 'text-slate-400' : 'text-slate-700'
+                      }`}>
+                      Broker / Transporter Name
+                    </label>
+                    <input
+                      type="text"
+                      value={marketForm.owner_name}
+                      onChange={(e) => setMarketForm({ ...marketForm, owner_name: e.target.value })}
+                      placeholder="e.g. Balaji Roadways"
+                      className={`w-full px-3 py-2 rounded-xl text-xs border focus:outline-none transition-all ${isDark
+                          ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
+                          : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 shadow-sm'
+                        }`}
+                    />
+                  </div>
+
+                  {/* Broker Mobile Number */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <label className={`text-[11px] font-bold uppercase tracking-wider block ${isDark ? 'text-slate-400' : 'text-slate-700'
+                        }`}>
+                        Broker Mobile (Optional)
+                      </label>
+                      {marketForm.owner_phone && (
+                        <span className={`text-[10px] font-semibold ${marketForm.owner_phone.length === 10 && /^[6-9]/.test(marketForm.owner_phone)
+                            ? (isDark ? 'text-emerald-400' : 'text-emerald-700')
+                            : !/^[6-9]/.test(marketForm.owner_phone)
+                              ? (isDark ? 'text-rose-400' : 'text-rose-700')
+                              : (isDark ? 'text-amber-400' : 'text-amber-700')
+                          }`}>
+                          {marketForm.owner_phone.length === 10
+                            ? /^[6-9]/.test(marketForm.owner_phone) ? '✓ Valid Mobile' : '⚠️ Must start with 6-9'
+                            : `${10 - marketForm.owner_phone.length} digits left`}
+                        </span>
+                      )}
+                    </div>
+                    <input
+                      type="tel"
+                      maxLength={10}
+                      value={marketForm.owner_phone}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+                        setMarketForm({ ...marketForm, owner_phone: val });
+                      }}
+                      placeholder="10 digits (e.g. 9811223344)"
+                      className={`w-full px-3 py-2 rounded-xl text-xs border font-mono transition-all ${marketForm.owner_phone && (!/^[6-9]/.test(marketForm.owner_phone) || marketForm.owner_phone.length < 10)
+                          ? 'border-amber-500/60 focus:border-amber-400'
+                          : isDark
+                            ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
+                            : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 shadow-sm'
+                        }`}
+                    />
+                  </div>
+
+                  {/* Starting Odometer */}
+                  <div className="space-y-1 sm:col-span-2">
+                    <label className={`text-[11px] font-bold uppercase tracking-wider block ${isDark ? 'text-slate-400' : 'text-slate-700'
+                      }`}>
+                      Current Odometer (KM)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={marketForm.current_odometer}
+                      onChange={(e) => setMarketForm({ ...marketForm, current_odometer: e.target.value })}
+                      placeholder="e.g. 45000"
+                      className={`w-full px-3 py-2 rounded-xl text-xs border font-mono focus:outline-none transition-all ${isDark
+                          ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
+                          : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 shadow-sm'
+                        }`}
+                    />
+                  </div>
                 </div>
               </div>
 
               {/* Pinned Action Buttons Footer */}
-              <div className={`flex items-center justify-end gap-2.5 px-6 py-3.5 border-t shrink-0 ${
-                isDark ? 'border-slate-800 bg-[#0E1526]' : 'border-slate-200 bg-slate-50'
-              }`}>
+              <div className={`flex items-center justify-end gap-2.5 px-6 py-3.5 border-t shrink-0 ${isDark ? 'border-slate-800 bg-[#0E1526]' : 'border-slate-200 bg-slate-50'
+                }`}>
                 <button
                   type="button"
                   onClick={() => setMarketModalOpen(false)}
-                  className={`px-4 py-2 rounded-xl border text-xs font-bold transition-all ${
-                    isDark
+                  className={`px-4 py-2 rounded-xl border text-xs font-bold transition-all ${isDark
                       ? 'border-slate-700 text-slate-400 hover:text-white hover:bg-slate-800'
                       : 'border-slate-300 text-slate-700 hover:bg-slate-100 hover:text-slate-900 shadow-sm'
-                  }`}
+                    }`}
                 >
                   Cancel
                 </button>
@@ -1962,16 +1904,13 @@ export default function LoadPlanningPage() {
       {/* Quick Add Driver Modal */}
       {driverModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5 md:p-6 overflow-hidden">
-          <div className={`relative w-full max-w-md max-h-[85vh] sm:max-h-[88vh] rounded-3xl border shadow-2xl flex flex-col overflow-hidden my-auto ${
-            isDark ? 'bg-[#0E1526] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
-          }`}>
-            <div className={`flex items-center justify-between border-b px-6 py-4 shrink-0 ${
-              isDark ? 'border-slate-800 bg-[#0E1526]' : 'border-slate-200 bg-white'
+          <div className={`relative w-full max-w-md max-h-[85vh] sm:max-h-[88vh] rounded-3xl border shadow-2xl flex flex-col overflow-hidden my-auto ${isDark ? 'bg-[#0E1526] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
             }`}>
+            <div className={`flex items-center justify-between border-b px-6 py-4 shrink-0 ${isDark ? 'border-slate-800 bg-[#0E1526]' : 'border-slate-200 bg-white'
+              }`}>
               <div className="flex items-center gap-3">
-                <div className={`p-2.5 rounded-2xl border ${
-                  isDark ? 'bg-blue-600/20 text-cyan-400 border-cyan-500/30' : 'bg-blue-50 text-blue-600 border-blue-200'
-                }`}>
+                <div className={`p-2.5 rounded-2xl border ${isDark ? 'bg-blue-600/20 text-cyan-400 border-cyan-500/30' : 'bg-blue-50 text-blue-600 border-blue-200'
+                  }`}>
                   <User className="w-5 h-5" />
                 </div>
                 <div>
@@ -1982,9 +1921,8 @@ export default function LoadPlanningPage() {
               <button
                 type="button"
                 onClick={() => setDriverModalOpen(false)}
-                className={`p-1.5 rounded-xl transition-colors ${
-                  isDark ? 'text-slate-400 hover:text-white hover:bg-slate-800' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
-                }`}
+                className={`p-1.5 rounded-xl transition-colors ${isDark ? 'text-slate-400 hover:text-white hover:bg-slate-800' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
+                  }`}
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1998,99 +1936,90 @@ export default function LoadPlanningPage() {
                     <span>{driverError}</span>
                   </div>
                 )}
-              <div className="space-y-1">
-                <label className={`text-[11px] font-bold uppercase tracking-wider block ${
-                  isDark ? 'text-slate-400' : 'text-slate-700'
-                }`}>
-                  Driver Full Name*
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={driverForm.name}
-                  onChange={(e) => setDriverForm({ ...driverForm, name: e.target.value })}
-                  placeholder="e.g. Ram Singh"
-                  className={`w-full px-3 py-2 rounded-xl text-xs border focus:outline-none transition-all ${
-                    isDark
-                      ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
-                      : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 shadow-sm'
-                  }`}
-                />
-              </div>
-
-              <div className="space-y-1">
-                <div className="flex items-center justify-between">
-                  <label className={`text-[11px] font-bold uppercase tracking-wider block ${
-                    isDark ? 'text-slate-400' : 'text-slate-700'
-                  }`}>
-                    Mobile Number*
-                  </label>
-                  {driverForm.phone && (
-                    <span className={`text-[10px] font-semibold ${
-                      driverForm.phone.length === 10 && /^[6-9]/.test(driverForm.phone)
-                        ? (isDark ? 'text-emerald-400' : 'text-emerald-700')
-                        : !/^[6-9]/.test(driverForm.phone)
-                        ? (isDark ? 'text-rose-400' : 'text-rose-700')
-                        : (isDark ? 'text-amber-400' : 'text-amber-700')
+                <div className="space-y-1">
+                  <label className={`text-[11px] font-bold uppercase tracking-wider block ${isDark ? 'text-slate-400' : 'text-slate-700'
                     }`}>
-                      {driverForm.phone.length === 10
-                        ? /^[6-9]/.test(driverForm.phone) ? '✓ Valid Mobile' : '⚠️ Must start with 6-9'
-                        : `${10 - driverForm.phone.length} digits left`}
-                    </span>
-                  )}
+                    Driver Full Name*
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={driverForm.name}
+                    onChange={(e) => setDriverForm({ ...driverForm, name: e.target.value })}
+                    placeholder="e.g. Ram Singh"
+                    className={`w-full px-3 py-2 rounded-xl text-xs border focus:outline-none transition-all ${isDark
+                        ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
+                        : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 shadow-sm'
+                      }`}
+                  />
                 </div>
-                <input
-                  type="tel"
-                  required
-                  maxLength={10}
-                  value={driverForm.phone}
-                  onChange={(e) => {
-                    const val = e.target.value.replace(/\D/g, '').slice(0, 10);
-                    setDriverForm({ ...driverForm, phone: val });
-                  }}
-                  placeholder="10-digit number (e.g. 9811234567)"
-                  className={`w-full px-3 py-2 rounded-xl text-xs font-mono border transition-all ${
-                    driverForm.phone && (!/^[6-9]/.test(driverForm.phone) || driverForm.phone.length < 10)
-                      ? 'border-amber-500/60 focus:border-amber-400'
-                      : isDark
-                      ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
-                      : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 shadow-sm'
-                  }`}
-                />
-              </div>
 
-              <div className="space-y-1">
-                <label className={`text-[11px] font-bold uppercase tracking-wider block ${
-                  isDark ? 'text-slate-400' : 'text-slate-700'
-                }`}>
-                  Driver License # (Optional)
-                </label>
-                <input
-                  type="text"
-                  value={driverForm.license_number}
-                  onChange={(e) => setDriverForm({ ...driverForm, license_number: e.target.value })}
-                  placeholder="e.g. DL0420220019283"
-                  className={`w-full px-3 py-2 rounded-xl text-xs font-mono border focus:outline-none transition-all ${
-                    isDark
-                      ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
-                      : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 shadow-sm'
-                  }`}
-                />
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <label className={`text-[11px] font-bold uppercase tracking-wider block ${isDark ? 'text-slate-400' : 'text-slate-700'
+                      }`}>
+                      Mobile Number*
+                    </label>
+                    {driverForm.phone && (
+                      <span className={`text-[10px] font-semibold ${driverForm.phone.length === 10 && /^[6-9]/.test(driverForm.phone)
+                          ? (isDark ? 'text-emerald-400' : 'text-emerald-700')
+                          : !/^[6-9]/.test(driverForm.phone)
+                            ? (isDark ? 'text-rose-400' : 'text-rose-700')
+                            : (isDark ? 'text-amber-400' : 'text-amber-700')
+                        }`}>
+                        {driverForm.phone.length === 10
+                          ? /^[6-9]/.test(driverForm.phone) ? '✓ Valid Mobile' : '⚠️ Must start with 6-9'
+                          : `${10 - driverForm.phone.length} digits left`}
+                      </span>
+                    )}
+                  </div>
+                  <input
+                    type="tel"
+                    required
+                    maxLength={10}
+                    value={driverForm.phone}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+                      setDriverForm({ ...driverForm, phone: val });
+                    }}
+                    placeholder="10-digit number (e.g. 9811234567)"
+                    className={`w-full px-3 py-2 rounded-xl text-xs font-mono border transition-all ${driverForm.phone && (!/^[6-9]/.test(driverForm.phone) || driverForm.phone.length < 10)
+                        ? 'border-amber-500/60 focus:border-amber-400'
+                        : isDark
+                          ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
+                          : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 shadow-sm'
+                      }`}
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className={`text-[11px] font-bold uppercase tracking-wider block ${isDark ? 'text-slate-400' : 'text-slate-700'
+                    }`}>
+                    Driver License # (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={driverForm.license_number}
+                    onChange={(e) => setDriverForm({ ...driverForm, license_number: e.target.value })}
+                    placeholder="e.g. DL0420220019283"
+                    className={`w-full px-3 py-2 rounded-xl text-xs font-mono border focus:outline-none transition-all ${isDark
+                        ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
+                        : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 shadow-sm'
+                      }`}
+                  />
                 </div>
               </div>
 
               {/* Pinned Action Buttons Footer */}
-              <div className={`flex items-center justify-end gap-2.5 px-6 py-3.5 border-t shrink-0 ${
-                isDark ? 'border-slate-800 bg-[#0E1526]' : 'border-slate-200 bg-slate-50'
-              }`}>
+              <div className={`flex items-center justify-end gap-2.5 px-6 py-3.5 border-t shrink-0 ${isDark ? 'border-slate-800 bg-[#0E1526]' : 'border-slate-200 bg-slate-50'
+                }`}>
                 <button
                   type="button"
                   onClick={() => setDriverModalOpen(false)}
-                  className={`px-4 py-2 rounded-xl border text-xs font-bold transition-all ${
-                    isDark
+                  className={`px-4 py-2 rounded-xl border text-xs font-bold transition-all ${isDark
                       ? 'border-slate-700 text-slate-400 hover:text-white hover:bg-slate-800'
                       : 'border-slate-300 text-slate-700 hover:bg-slate-100 hover:text-slate-900 shadow-sm'
-                  }`}
+                    }`}
                 >
                   Cancel
                 </button>
@@ -2111,17 +2040,14 @@ export default function LoadPlanningPage() {
       {/* 4. Confirm Dispatch & Seal Truck Modal */}
       {dispatchModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5 md:p-6 overflow-hidden">
-          <div className={`relative w-full max-w-xl max-h-[85vh] sm:max-h-[88vh] rounded-3xl border shadow-2xl flex flex-col overflow-hidden my-auto ${
-            isDark ? 'bg-[#0E1526] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
-          }`}>
-            {/* Pinned Header */}
-            <div className={`flex items-center justify-between border-b px-6 py-4 shrink-0 ${
-              isDark ? 'border-slate-800 bg-[#0E1526]' : 'border-slate-200 bg-white'
+          <div className={`relative w-full max-w-xl max-h-[85vh] sm:max-h-[88vh] rounded-3xl border shadow-2xl flex flex-col overflow-hidden my-auto ${isDark ? 'bg-[#0E1526] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
             }`}>
+            {/* Pinned Header */}
+            <div className={`flex items-center justify-between border-b px-6 py-4 shrink-0 ${isDark ? 'border-slate-800 bg-[#0E1526]' : 'border-slate-200 bg-white'
+              }`}>
               <div className="flex items-center gap-3">
-                <div className={`p-2.5 rounded-2xl border ${
-                  isDark ? 'bg-blue-600/20 text-cyan-400 border-cyan-500/30' : 'bg-blue-50 text-blue-600 border-blue-200'
-                }`}>
+                <div className={`p-2.5 rounded-2xl border ${isDark ? 'bg-blue-600/20 text-cyan-400 border-cyan-500/30' : 'bg-blue-50 text-blue-600 border-blue-200'
+                  }`}>
                   <Send className="w-5 h-5" />
                 </div>
                 <div>
@@ -2139,9 +2065,8 @@ export default function LoadPlanningPage() {
                   setAdvanceMode('');
                   setDispatchModalOpen(false);
                 }}
-                className={`p-1.5 rounded-xl transition-colors ${
-                  isDark ? 'text-slate-400 hover:text-white hover:bg-slate-800' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
-                }`}
+                className={`p-1.5 rounded-xl transition-colors ${isDark ? 'text-slate-400 hover:text-white hover:bg-slate-800' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
+                  }`}
               >
                 <X className="w-5 h-5" />
               </button>
@@ -2150,9 +2075,8 @@ export default function LoadPlanningPage() {
             {/* Scrollable Modal Content */}
             <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
               {/* Load Overview Summary Strip */}
-              <div className={`p-4 rounded-2xl border grid grid-cols-2 sm:grid-cols-4 gap-3 shadow-sm ${
-                isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200'
-              }`}>
+              <div className={`p-4 rounded-2xl border grid grid-cols-2 sm:grid-cols-4 gap-3 shadow-sm ${isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200'
+                }`}>
                 <div>
                   <p className={`text-[10px] uppercase font-bold tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>Vehicle</p>
                   <p className={`text-xs font-black mt-0.5 font-mono ${isDark ? 'text-cyan-400' : 'text-slate-900'}`}>{currentVehicle?.vehicle_number || 'N/A'}</p>
@@ -2176,9 +2100,8 @@ export default function LoadPlanningPage() {
                   {/* Origin Departure */}
                   <div className="space-y-1">
                     <div className="flex items-center justify-between h-5">
-                      <label className={`text-[11px] font-bold uppercase tracking-wider block ${
-                        isDark ? 'text-slate-400' : 'text-slate-700'
-                      }`}>
+                      <label className={`text-[11px] font-bold uppercase tracking-wider block ${isDark ? 'text-slate-400' : 'text-slate-700'
+                        }`}>
                         Origin Departure*
                       </label>
                     </div>
@@ -2191,11 +2114,10 @@ export default function LoadPlanningPage() {
                           setDestBranchId('');
                         }
                       }}
-                      className={`w-full h-10 px-3 py-2 rounded-xl text-xs border font-medium focus:outline-none transition-all ${
-                        isDark
+                      className={`w-full h-10 px-3 py-2 rounded-xl text-xs border font-medium focus:outline-none transition-all ${isDark
                           ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
                           : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 shadow-sm'
-                      }`}
+                        }`}
                     >
                       {branches.map((b) => (
                         <option key={b.id} value={b.id} className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>
@@ -2209,9 +2131,8 @@ export default function LoadPlanningPage() {
                   {/* Destination */}
                   <div className="space-y-1">
                     <div className="flex items-center justify-between h-5">
-                      <label className={`text-[11px] font-bold uppercase tracking-wider block ${
-                        isDark ? 'text-slate-400' : 'text-slate-700'
-                      }`}>
+                      <label className={`text-[11px] font-bold uppercase tracking-wider block ${isDark ? 'text-slate-400' : 'text-slate-700'
+                        }`}>
                         Destination*
                       </label>
                       {!destBranchId ? (
@@ -2228,15 +2149,14 @@ export default function LoadPlanningPage() {
                       value={destBranchId}
                       onChange={(e) => setDestBranchId(e.target.value)}
                       required
-                      className={`w-full h-10 px-3 py-2 rounded-xl text-xs border font-medium focus:outline-none transition-all ${
-                        !destBranchId
+                      className={`w-full h-10 px-3 py-2 rounded-xl text-xs border font-medium focus:outline-none transition-all ${!destBranchId
                           ? (isDark
-                              ? 'bg-slate-900 border-amber-500/60 text-amber-300 focus:border-amber-400 ring-1 ring-amber-500/20'
-                              : 'bg-amber-50/60 border-amber-400 text-slate-800 focus:border-amber-500 ring-1 ring-amber-400/20 shadow-sm')
+                            ? 'bg-slate-900 border-amber-500/60 text-amber-300 focus:border-amber-400 ring-1 ring-amber-500/20'
+                            : 'bg-amber-50/60 border-amber-400 text-slate-800 focus:border-amber-500 ring-1 ring-amber-400/20 shadow-sm')
                           : (isDark
-                              ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
-                              : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 shadow-sm')
-                      }`}
+                            ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
+                            : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 shadow-sm')
+                        }`}
                     >
                       <option value="" className={isDark ? 'bg-slate-900 text-slate-400' : 'bg-white text-slate-500'}>
                         -- Select Destination --
@@ -2251,19 +2171,17 @@ export default function LoadPlanningPage() {
 
                   {/* Assigned Certified Driver */}
                   <div className="space-y-1">
-                    <label className={`text-[11px] font-bold uppercase tracking-wider block ${
-                      isDark ? 'text-slate-400' : 'text-slate-700'
-                    }`}>
+                    <label className={`text-[11px] font-bold uppercase tracking-wider block ${isDark ? 'text-slate-400' : 'text-slate-700'
+                      }`}>
                       Assigned Driver*
                     </label>
                     <select
                       value={selectedDriverId}
                       onChange={(e) => setSelectedDriverId(e.target.value)}
-                      className={`w-full px-3 py-2 rounded-xl text-xs border font-medium focus:outline-none transition-all ${
-                        isDark
+                      className={`w-full px-3 py-2 rounded-xl text-xs border font-medium focus:outline-none transition-all ${isDark
                           ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
                           : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 shadow-sm'
-                      }`}
+                        }`}
                     >
                       <option value="">Select Certified Driver</option>
                       {drivers.map((d) => (
@@ -2276,9 +2194,8 @@ export default function LoadPlanningPage() {
 
                   {/* Container Seal Number */}
                   <div className="space-y-1">
-                    <label className={`text-[11px] font-bold uppercase tracking-wider block ${
-                      isDark ? 'text-slate-400' : 'text-slate-700'
-                    }`}>
+                    <label className={`text-[11px] font-bold uppercase tracking-wider block ${isDark ? 'text-slate-400' : 'text-slate-700'
+                      }`}>
                       Container Seal #*
                     </label>
                     <input
@@ -2286,19 +2203,17 @@ export default function LoadPlanningPage() {
                       value={sealNumber}
                       onChange={(e) => setSealNumber(e.target.value)}
                       placeholder="e.g. SEAL-88192"
-                      className={`w-full px-3 py-2 rounded-xl text-xs border font-mono font-medium focus:outline-none transition-all ${
-                        isDark
+                      className={`w-full px-3 py-2 rounded-xl text-xs border font-mono font-medium focus:outline-none transition-all ${isDark
                           ? 'bg-slate-900 border-slate-700 text-white placeholder:text-slate-500 focus:border-cyan-400'
                           : 'bg-white border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 shadow-sm'
-                      }`}
+                        }`}
                     />
                   </div>
 
                   {/* Current / Starting Odometer */}
                   <div className="space-y-1 sm:col-span-2">
-                    <label className={`text-[11px] font-bold uppercase tracking-wider block ${
-                      isDark ? 'text-slate-400' : 'text-slate-700'
-                    }`}>
+                    <label className={`text-[11px] font-bold uppercase tracking-wider block ${isDark ? 'text-slate-400' : 'text-slate-700'
+                      }`}>
                       Starting Odometer (KM)*
                     </label>
                     <input
@@ -2306,23 +2221,20 @@ export default function LoadPlanningPage() {
                       value={startOdometer}
                       onChange={(e) => setStartOdometer(e.target.value)}
                       placeholder="e.g. 45210"
-                      className={`w-full px-3 py-2 rounded-xl text-xs border font-mono font-medium focus:outline-none transition-all ${
-                        isDark
+                      className={`w-full px-3 py-2 rounded-xl text-xs border font-mono font-medium focus:outline-none transition-all ${isDark
                           ? 'bg-slate-900 border-slate-700 text-white placeholder:text-slate-500 focus:border-cyan-400'
                           : 'bg-white border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 shadow-sm'
-                      }`}
+                        }`}
                     />
                   </div>
                 </div>
 
                 {/* Driver Cash/Fuel Advance & Expenses Disbursal */}
-                <div className={`p-3.5 rounded-xl border ${
-                  isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-blue-50/50 border-blue-200/60'
-                }`}>
+                <div className={`p-3.5 rounded-xl border ${isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-blue-50/50 border-blue-200/60'
+                  }`}>
                   <div className="flex items-center justify-between mb-2">
-                    <span className={`text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 ${
-                      isDark ? 'text-cyan-400' : 'text-blue-700'
-                    }`}>
+                    <span className={`text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 ${isDark ? 'text-cyan-400' : 'text-blue-700'
+                      }`}>
                       <span>💵</span> Driver Advance & Disbursed Expenses
                     </span>
                     <span className={`text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
@@ -2331,9 +2243,8 @@ export default function LoadPlanningPage() {
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="space-y-1">
-                      <label className={`text-[11px] font-bold block ${
-                        isDark ? 'text-slate-300' : 'text-slate-700'
-                      }`}>
+                      <label className={`text-[11px] font-bold block ${isDark ? 'text-slate-300' : 'text-slate-700'
+                        }`}>
                         Driver Advance Amount (₹)
                       </label>
                       <div className="relative">
@@ -2350,20 +2261,18 @@ export default function LoadPlanningPage() {
                             }
                           }}
                           placeholder="0"
-                          className={`w-full pl-7 pr-3 py-2 rounded-xl text-xs font-mono font-bold border focus:outline-none transition-all ${
-                            isDark
+                          className={`w-full pl-7 pr-3 py-2 rounded-xl text-xs font-mono font-bold border focus:outline-none transition-all ${isDark
                               ? 'bg-slate-950 border-slate-700 text-white placeholder:text-slate-500 focus:border-cyan-400'
                               : 'bg-white border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 shadow-sm'
-                          }`}
+                            }`}
                         />
                       </div>
                     </div>
 
                     <div className="space-y-1">
                       <div className="flex items-center justify-between">
-                        <label className={`text-[11px] font-bold block ${
-                          isDark ? 'text-slate-300' : 'text-slate-700'
-                        }`}>
+                        <label className={`text-[11px] font-bold block ${isDark ? 'text-slate-300' : 'text-slate-700'
+                          }`}>
                           Payment Disbursal Mode
                         </label>
                         {parseFloat(driverAdvance) > 0 && !advanceMode && (
@@ -2375,15 +2284,14 @@ export default function LoadPlanningPage() {
                       <select
                         value={advanceMode}
                         onChange={(e) => setAdvanceMode(e.target.value)}
-                        className={`w-full px-3 py-2 rounded-xl text-xs font-medium border focus:outline-none transition-all ${
-                          parseFloat(driverAdvance) > 0 && !advanceMode
+                        className={`w-full px-3 py-2 rounded-xl text-xs font-medium border focus:outline-none transition-all ${parseFloat(driverAdvance) > 0 && !advanceMode
                             ? (isDark
-                                ? 'bg-slate-950 border-amber-500/60 text-amber-300 focus:border-amber-400 ring-1 ring-amber-500/20'
-                                : 'bg-amber-50/60 border-amber-400 text-slate-800 focus:border-amber-500 ring-1 ring-amber-400/20 shadow-sm')
+                              ? 'bg-slate-950 border-amber-500/60 text-amber-300 focus:border-amber-400 ring-1 ring-amber-500/20'
+                              : 'bg-amber-50/60 border-amber-400 text-slate-800 focus:border-amber-500 ring-1 ring-amber-400/20 shadow-sm')
                             : (isDark
-                                ? 'bg-slate-950 border-slate-700 text-white focus:border-cyan-400'
-                                : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 shadow-sm')
-                        }`}
+                              ? 'bg-slate-950 border-slate-700 text-white focus:border-cyan-400'
+                              : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 shadow-sm')
+                          }`}
                       >
                         <option value="" className={isDark ? 'bg-slate-950 text-slate-400' : 'bg-white text-slate-500'}>
                           -- Select Payment Mode --
@@ -2399,9 +2307,8 @@ export default function LoadPlanningPage() {
 
                 {/* Dispatch Remarks */}
                 <div className="space-y-1">
-                  <label className={`text-[11px] font-bold uppercase tracking-wider block ${
-                    isDark ? 'text-slate-400' : 'text-slate-700'
-                  }`}>
+                  <label className={`text-[11px] font-bold uppercase tracking-wider block ${isDark ? 'text-slate-400' : 'text-slate-700'
+                    }`}>
                     Gate Pass / Dispatch Remarks
                   </label>
                   <textarea
@@ -2409,20 +2316,18 @@ export default function LoadPlanningPage() {
                     value={dispatchRemarks}
                     onChange={(e) => setDispatchRemarks(e.target.value)}
                     placeholder="e.g. Cleared dock inspection. Driver instructed via Expressway route."
-                    className={`w-full p-2.5 rounded-xl text-xs border font-medium focus:outline-none transition-all ${
-                      isDark
+                    className={`w-full p-2.5 rounded-xl text-xs border font-medium focus:outline-none transition-all ${isDark
                         ? 'bg-slate-900 border-slate-700 text-white placeholder:text-slate-500 focus:border-cyan-400'
                         : 'bg-white border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 shadow-sm'
-                    }`}
+                      }`}
                   />
                 </div>
               </div>
             </div>
 
             {/* Pinned Footer Actions */}
-            <div className={`flex items-center justify-end gap-2.5 px-6 py-3.5 border-t shrink-0 ${
-              isDark ? 'border-slate-800 bg-[#0E1526]' : 'border-slate-200 bg-slate-50'
-            }`}>
+            <div className={`flex items-center justify-end gap-2.5 px-6 py-3.5 border-t shrink-0 ${isDark ? 'border-slate-800 bg-[#0E1526]' : 'border-slate-200 bg-slate-50'
+              }`}>
               <button
                 type="button"
                 onClick={() => {
@@ -2430,11 +2335,10 @@ export default function LoadPlanningPage() {
                   setAdvanceMode('');
                   setDispatchModalOpen(false);
                 }}
-                className={`px-4 py-2 rounded-xl border text-xs font-bold transition-all ${
-                  isDark
+                className={`px-4 py-2 rounded-xl border text-xs font-bold transition-all ${isDark
                     ? 'border-slate-700 text-slate-400 hover:text-white hover:bg-slate-800'
                     : 'border-slate-300 text-slate-700 hover:bg-slate-100 hover:text-slate-900 shadow-sm'
-                }`}
+                  }`}
               >
                 Cancel
               </button>
@@ -2457,9 +2361,8 @@ export default function LoadPlanningPage() {
       {/* 5. Dispatch Success Modal */}
       {successResult && (
         <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className={`w-full max-w-md rounded-3xl border shadow-2xl p-6 text-center space-y-4 ${
-            isDark ? 'bg-[#0E1526] border-emerald-500/40 text-white' : 'bg-white border-emerald-500/40 text-slate-900'
-          }`}>
+          <div className={`w-full max-w-md rounded-3xl border shadow-2xl p-6 text-center space-y-4 ${isDark ? 'bg-[#0E1526] border-emerald-500/40 text-white' : 'bg-white border-emerald-500/40 text-slate-900'
+            }`}>
             <div className="w-14 h-14 rounded-3xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto border border-emerald-500/30 shadow-lg shadow-emerald-500/20">
               <CheckCircle2 className="w-8 h-8" />
             </div>
@@ -2473,9 +2376,8 @@ export default function LoadPlanningPage() {
               </p>
             </div>
 
-            <div className={`p-4 rounded-2xl border text-left space-y-2.5 text-xs font-mono shadow-sm ${
-              isDark ? 'bg-slate-900/80 border-slate-800' : 'bg-slate-50 border-slate-200'
-            }`}>
+            <div className={`p-4 rounded-2xl border text-left space-y-2.5 text-xs font-mono shadow-sm ${isDark ? 'bg-slate-900/80 border-slate-800' : 'bg-slate-50 border-slate-200'
+              }`}>
               <div className="flex justify-between items-center">
                 <span className={isDark ? 'text-slate-400' : 'text-slate-600 font-medium'}>Trip Code:</span>
                 <span className={`font-bold ${isDark ? 'text-cyan-400' : 'text-blue-600'}`}>{successResult.tripNumber}</span>
@@ -2492,9 +2394,8 @@ export default function LoadPlanningPage() {
                 <span className={isDark ? 'text-slate-400' : 'text-slate-600 font-medium'}>En-Route Destination:</span>
                 <span className={`font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{successResult.destination}</span>
               </div>
-              <div className={`flex justify-between items-center border-t pt-2.5 ${
-                isDark ? 'border-slate-800' : 'border-slate-200'
-              }`}>
+              <div className={`flex justify-between items-center border-t pt-2.5 ${isDark ? 'border-slate-800' : 'border-slate-200'
+                }`}>
                 <span className={isDark ? 'text-slate-400' : 'text-slate-600 font-medium'}>Cargo Handled:</span>
                 <span className={`font-bold ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>
                   {successResult.packagesCount} Pkgs ({successResult.totalWeight} T)
@@ -2514,11 +2415,10 @@ export default function LoadPlanningPage() {
                   setTruckDropdownOpen(false);
                   setOverrideDriverSelection(false);
                 }}
-                className={`flex-1 px-4 py-2.5 rounded-xl border text-xs font-bold transition-all ${
-                  isDark
+                className={`flex-1 px-4 py-2.5 rounded-xl border text-xs font-bold transition-all ${isDark
                     ? 'border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-slate-200'
                     : 'border-slate-300 bg-slate-100 hover:bg-slate-200 text-slate-700 shadow-sm'
-                }`}
+                  }`}
               >
                 Close
               </button>

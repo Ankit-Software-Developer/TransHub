@@ -9,16 +9,21 @@ const successResponse = (res, message = 'Success', data = {}, statusCode = 200) 
 };
 
 const paginatedResponse = (res, message = 'Success', data = [], pagination = {}, statusCode = 200) => {
+  const paginationObj = {
+    page: pagination.page || 1,
+    limit: pagination.limit || 20,
+    total: pagination.total !== undefined ? pagination.total : data.length,
+    pages: pagination.pages || Math.ceil((pagination.total !== undefined ? pagination.total : data.length) / (pagination.limit || 20)),
+    ...(pagination.summary ? { summary: pagination.summary } : {}),
+    ...pagination,
+  };
+
   return res.status(statusCode).json({
     success: true,
     message,
     data,
-    pagination: {
-      page: pagination.page || 1,
-      limit: pagination.limit || 20,
-      total: pagination.total || data.length,
-      pages: pagination.pages || Math.ceil((pagination.total || data.length) / (pagination.limit || 20)),
-    },
+    pagination: paginationObj,
+    meta: paginationObj,
   });
 };
 

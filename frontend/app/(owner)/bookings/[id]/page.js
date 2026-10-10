@@ -285,17 +285,50 @@ function ConsignmentDetailContent() {
               <p className="text-xs text-slate-600 mt-2">
                 Receiver Sign-off: <span className="font-semibold">{consignment.pod.receiver_name}</span>
               </p>
-              <div className="mt-4">
-                <a
-                  href={consignment.pod.file_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center space-x-2 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold shadow-sm"
-                >
-                  <FileCheck className="w-4 h-4" />
-                  <span>View Signed POD Document</span>
-                </a>
-              </div>
+              {consignment.pod.file_url && (
+                <div className="mt-3">
+                  {!consignment.pod.file_url.includes('application/pdf') && (
+                    <div className="mb-3">
+                      <img
+                        src={consignment.pod.file_url}
+                        alt="Signed POD"
+                        className="max-h-64 rounded-lg border border-emerald-300/60 object-contain shadow-xs bg-white"
+                      />
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const dataUrl = consignment.pod.file_url;
+                      if (!dataUrl) return;
+                      try {
+                        if (dataUrl.startsWith('data:')) {
+                          const arr = dataUrl.split(',');
+                          const mimeMatch = arr[0].match(/:(.*?);/);
+                          const mime = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+                          const bstr = atob(arr[1]);
+                          let n = bstr.length;
+                          const u8arr = new Uint8Array(n);
+                          while (n--) {
+                            u8arr[n] = bstr.charCodeAt(n);
+                          }
+                          const blob = new Blob([u8arr], { type: mime });
+                          const blobUrl = URL.createObjectURL(blob);
+                          window.open(blobUrl, '_blank');
+                        } else {
+                          window.open(dataUrl, '_blank');
+                        }
+                      } catch (e) {
+                        window.open(dataUrl, '_blank');
+                      }
+                    }}
+                    className="inline-flex items-center space-x-2 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold shadow-sm cursor-pointer"
+                  >
+                    <FileCheck className="w-4 h-4" />
+                    <span>View Full POD Document</span>
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             <div className="p-6 text-center border-2 border-dashed border-slate-200 rounded-xl">

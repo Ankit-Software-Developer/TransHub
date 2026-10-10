@@ -690,8 +690,11 @@ const completeTripAndUnload = async (req, res) => {
 
     for (const c of consignments) {
       const tally = tallyMap.get(c.id);
-      let newStatus = 'REACHED_DESTINATION';
-      let tallyRemarks = `Arrived at destination branch (${trip.destBranch?.branch_name || 'Destination'}). Gate seal: ${received_seal_number || 'N/A'} [${seal_status}].`;
+      const isFinalDestination = Boolean(c.dest_branch_id && String(c.dest_branch_id) === String(trip.dest_branch_id));
+      let newStatus = isFinalDestination ? 'REACHED_DESTINATION' : 'RECEIVED_AT_HUB';
+      let tallyRemarks = isFinalDestination
+        ? `Arrived at destination branch (${trip.destBranch?.branch_name || 'Destination'}). Gate seal: ${received_seal_number || 'N/A'} [${seal_status}]. Ready for local customer delivery.`
+        : `Arrived at transshipment hub (${trip.destBranch?.branch_name || 'Hub'}). Gate seal: ${received_seal_number || 'N/A'} [${seal_status}]. Staged for onward transit to final destination.`;
 
       if (tally) {
         if (tally.condition === 'DAMAGED') {
@@ -713,12 +716,14 @@ const completeTripAndUnload = async (req, res) => {
       await c.update({
         status: newStatus,
         current_branch_id: trip.dest_branch_id,
+        // Only set dest_branch_id if the consignment was missing one; NEVER overwrite existing final destination branch!
+        dest_branch_id: c.dest_branch_id || trip.dest_branch_id,
       }, { transaction });
 
       await ConsignmentStatusHistory.create({
         consignment_id: c.id,
         status: newStatus,
-        location: trip.destBranch ? trip.destBranch.city : 'Destination Hub',
+        location: trip.destBranch ? trip.destBranch.city : (isFinalDestination ? 'Destination Branch' : 'Transshipment Hub'),
         branch_id: trip.dest_branch_id,
         user_id: req.user?.id || null,
         remarks: tallyRemarks,

@@ -59,10 +59,10 @@ module.exports = (sequelize) => {
       defaultValue: false,
     },
     receiver_signature_url: {
-      type: DataTypes.STRING(500),
+      type: DataTypes.TEXT('long'),
     },
     delivery_photo_url: {
-      type: DataTypes.STRING(500),
+      type: DataTypes.TEXT('long'),
     },
     delivered_latitude: {
       type: DataTypes.DECIMAL(10, 8),

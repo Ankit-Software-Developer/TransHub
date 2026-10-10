@@ -29,7 +29,8 @@ import {
   Route,
   UserCheck,
   History,
-  PackageCheck
+  PackageCheck,
+  CheckCircle2
 } from 'lucide-react';
 import { usePermissions } from '../../hooks/usePermissions';
 
@@ -38,7 +39,7 @@ export default function Sidebar() {
   const { plural } = useTerminology();
   const user = useStore((state) => state.user);
   const { theme } = useTheme();
-  const { isAdmin, canAccessRoute } = usePermissions();
+  const { isAdmin, canAccessRoute, canViewAudit, hasRole, hasPermission } = usePermissions();
   const [collapsed, setCollapsed] = useState(false);
   const [pendingApprovals, setPendingApprovals] = useState(0);
 
@@ -72,21 +73,22 @@ export default function Sidebar() {
     { label: 'Branches & Hubs', href: '/branches', icon: Warehouse },
     { label: 'Fleet Management', href: '/fleet', icon: Truck },
     { label: 'Customers', href: '/customers', icon: Users },
-    { label: 'Users & Drivers', href: '/users', icon: UserCheck },
+    { label: 'Staff & Team', href: '/staff', icon: UserCheck },
     { label: 'Trips', href: '/trips', icon: Route },
     { label: 'Load Planning', href: '/load-planning', icon: Boxes },
     { label: 'Unload Planning', href: '/unload-planning', icon: PackageCheck },
+    { label: 'Deliveries & POD', href: '/deliveries', icon: CheckCircle2 },
     { label: 'Approvals', href: '/approvals', icon: ShieldCheck, badge: pendingApprovals },
     { label: 'Invoices', href: '/billing/invoices', icon: Receipt },
     { label: 'Expenses', href: '/expenses', icon: Wallet },
     { label: 'Reports', href: '/reports', icon: BarChart3 },
-    ...(isAdmin ? [{ label: 'Audit & Activity Logs', href: '/audit-logs', icon: History }] : []),
+    ...((isAdmin || canViewAudit || hasRole('AUDITOR') || hasRole('AUDIT') || hasPermission('audit.view')) ? [{ label: 'Audit & Activity Logs', href: '/audit-logs', icon: History }] : []),
     { label: 'Settings', href: '/settings', icon: Settings },
   ];
 
   return (
     <aside
-      className={`sticky top-0 h-screen overflow-hidden flex flex-col shrink-0 transition-all duration-300 z-30 border-r ${
+      className={`sticky top-0 h-screen flex flex-col shrink-0 transition-all duration-300 z-30 border-r relative ${
         collapsed ? 'w-20' : 'w-64'
       } ${
         isDark
@@ -95,45 +97,76 @@ export default function Sidebar() {
       }`}
     >
       {/* Brand Header */}
-      <div className={`h-20 flex items-center justify-between px-5 border-b ${
+      <div className={`h-20 flex items-center border-b transition-all ${
+        collapsed ? 'justify-center px-2' : 'justify-between px-5'
+      } ${
         isDark ? 'border-slate-800/80 bg-[#0B1020]' : 'border-slate-200/80 bg-slate-50/50'
       }`}>
-        <Link href="/" className="flex items-center space-x-3 overflow-hidden">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-cyan-400 flex items-center justify-center text-white font-black shadow-md shadow-cyan-500/25 shrink-0 overflow-hidden">
-            {user?.logoUrl ? (
-              <img src={user.logoUrl} alt="Logo" className="w-full h-full object-cover" />
-            ) : (
-              <Truck className="w-5 h-5 text-white" />
-            )}
-          </div>
-          {!collapsed && (
-            <div className="min-w-0">
-              <div className="flex items-center">
-                <span className={`text-lg font-black tracking-tight truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                  {user?.businessName || user?.organizationName || (
-                    <>Trans<span className="text-cyan-400">Hub</span></>
-                  )}
-                </span>
-              </div>
-              <p className={`text-[10px] font-semibold tracking-wider uppercase truncate ${
-                isDark ? 'text-slate-400' : 'text-slate-500'
-              }`}>
-                {user?.tagline || 'Logistics Without Limits'}
-              </p>
-            </div>
-          )}
-        </Link>
+        {collapsed ? (
+          <div className="relative flex items-center justify-center w-full">
+            <Link
+              href="/"
+              className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-cyan-400 flex items-center justify-center text-white font-black shadow-md shadow-cyan-500/25 shrink-0 overflow-hidden hover:scale-105 transition-transform"
+              title={user?.businessName || 'TransHub'}
+            >
+              {user?.logoUrl ? (
+                <img src={user.logoUrl} alt="Logo" className="w-full h-full object-cover" />
+              ) : (
+                <Truck className="w-5 h-5 text-white" />
+              )}
+            </Link>
 
-        {/* Collapse toggle button */}
-        <button
-          onClick={() => setCollapsed(!collapsed)}
-          className={`p-1.5 rounded-lg border text-slate-400 hover:text-white transition-colors ${
-            isDark ? 'border-slate-800 bg-slate-900/60 hover:bg-slate-800' : 'border-slate-200 bg-white hover:bg-slate-100 text-slate-600'
-          }`}
-          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        >
-          {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
-        </button>
+            {/* Floating Expand Toggle on Border */}
+            <button
+              onClick={() => setCollapsed(false)}
+              className={`absolute -right-5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full border shadow-md flex items-center justify-center transition-all z-50 cursor-pointer ${
+                isDark
+                  ? 'border-slate-700 bg-slate-900 text-slate-300 hover:text-white hover:bg-slate-800 hover:border-cyan-500/50'
+                  : 'border-slate-200 bg-white text-slate-600 hover:text-blue-600 hover:bg-slate-50'
+              }`}
+              title="Expand sidebar"
+            >
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        ) : (
+          <>
+            <Link href="/" className="flex items-center space-x-3 overflow-hidden">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-cyan-400 flex items-center justify-center text-white font-black shadow-md shadow-cyan-500/25 shrink-0 overflow-hidden">
+                {user?.logoUrl ? (
+                  <img src={user.logoUrl} alt="Logo" className="w-full h-full object-cover" />
+                ) : (
+                  <Truck className="w-5 h-5 text-white" />
+                )}
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center">
+                  <span className={`text-lg font-black tracking-tight truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                    {user?.businessName || user?.organizationName || (
+                      <>Trans<span className="text-cyan-400">Hub</span></>
+                    )}
+                  </span>
+                </div>
+                <p className={`text-[10px] font-semibold tracking-wider uppercase truncate ${
+                  isDark ? 'text-slate-400' : 'text-slate-500'
+                }`}>
+                  {user?.tagline || 'Logistics Without Limits'}
+                </p>
+              </div>
+            </Link>
+
+            {/* Collapse toggle button */}
+            <button
+              onClick={() => setCollapsed(true)}
+              className={`p-1.5 rounded-lg border text-slate-400 hover:text-white transition-colors cursor-pointer ${
+                isDark ? 'border-slate-800 bg-slate-900/60 hover:bg-slate-800' : 'border-slate-200 bg-white hover:bg-slate-100 text-slate-600'
+              }`}
+              title="Collapse sidebar"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+          </>
+        )}
       </div>
 
       {/* Navigation List */}

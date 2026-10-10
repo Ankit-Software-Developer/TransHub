@@ -241,6 +241,8 @@ const listConsignments = async ({
   organizationId,
   branchId = null,
   originBranchId = null,
+  currentBranchId = null,
+  loadPlanning = false,
   status = null,
   search = null,
   paymentType = null,
@@ -265,23 +267,53 @@ const listConsignments = async ({
     organization_id: organizationId,
   };
 
-  if (originBranchId && originBranchId !== 'ALL') {
-    where.origin_branch_id = originBranchId;
-  } else if (branchId && branchId !== 'ALL') {
-    where[Op.or] = [
-      { origin_branch_id: branchId },
-      { dest_branch_id: branchId },
-      { current_branch_id: branchId },
-    ];
-  }
+  if (loadPlanning) {
+    if (branchId && branchId !== 'ALL') {
+      where[Op.or] = [
+        {
+          origin_branch_id: branchId,
+          status: { [Op.in]: ['BOOKED', 'MATERIAL_RECEIVED', 'READY_FOR_DISPATCH'] },
+        },
+        {
+          current_branch_id: branchId,
+          status: 'RECEIVED_AT_HUB',
+        },
+      ];
+    } else {
+      where.status = { [Op.in]: ['BOOKED', 'MATERIAL_RECEIVED', 'READY_FOR_DISPATCH', 'RECEIVED_AT_HUB'] };
+    }
+  } else {
+    if (currentBranchId && currentBranchId !== 'ALL') {
+      where.current_branch_id = currentBranchId;
+    }
+    if (originBranchId && originBranchId !== 'ALL') {
+      where.origin_branch_id = originBranchId;
+    } else if (branchId && branchId !== 'ALL') {
+      where[Op.or] = [
+        { origin_branch_id: branchId },
+        { dest_branch_id: branchId },
+        { current_branch_id: branchId },
+      ];
+    }
 
-  if (status) {
-    if (typeof status === 'string' && status.includes(',')) {
-      where.status = { [Op.in]: status.split(',').map((s) => s.trim()) };
-    } else if (Array.isArray(status)) {
-      where.status = { [Op.in]: status };
-    } else if (status !== 'ALL') {
-      where.status = status;
+    if (status) {
+      if (typeof status === 'string' && status.includes(',')) {
+        where.status = { [Op.in]: status.split(',').map((s) => s.trim()) };
+      } else if (Array.isArray(status)) {
+        where.status = { [Op.in]: status };
+      } else if (status === 'PENDING') {
+        where.status = { [Op.in]: ['BOOKED', 'MATERIAL_RECEIVED', 'READY_FOR_DISPATCH', 'LOADED', 'RECEIVED_AT_HUB'] };
+      } else if (status === 'FOR_DELIVERY' || status === 'REACHED_DESTINATION' || status === 'DELIVERY') {
+        where.status = { [Op.in]: ['REACHED_DESTINATION', 'OUT_FOR_DELIVERY'] };
+      } else if (status === 'IN_TRANSIT') {
+        where.status = { [Op.in]: ['IN_TRANSIT', 'DISPATCHED', 'ON_TRIP'] };
+      } else if (status === 'DELIVERED') {
+        where.status = { [Op.in]: ['DELIVERED', 'COMPLETED', 'POD_UPLOADED'] };
+      } else if (status === 'DELAYED') {
+        where.status = { [Op.in]: ['DELAYED', 'DAMAGED', 'SHORT_MATERIAL', 'HOLD'] };
+      } else if (status !== 'ALL') {
+        where.status = status;
+      }
     }
   }
 
@@ -369,11 +401,21 @@ const listConsignments = async ({
   const orderCol = allowedSortCols[sortBy] || 'created_at';
   const orderDir = (sortOrder || 'DESC').toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
 
+  const orderClauses = [];
+  const targetBranch = originBranchId || branchId;
+  if (status === 'PENDING' && targetBranch && targetBranch !== 'ALL') {
+    orderClauses.push([
+      Sequelize.literal(`CASE WHEN "Consignment"."current_branch_id" = '${targetBranch}' OR "Consignment"."dest_branch_id" = '${targetBranch}' OR "Consignment"."origin_branch_id" = '${targetBranch}' THEN 0 ELSE 1 END`),
+      'ASC'
+    ]);
+  }
+  orderClauses.push([orderCol, orderDir]);
+
   const { count, rows } = await Consignment.findAndCountAll({
     where,
     limit: parsedLimit,
     offset: parseInt(offset, 10),
-    order: [[orderCol, orderDir]],
+    order: orderClauses,
     include: includeList,
   });
 
@@ -400,6 +442,8 @@ const listConsignments = async ({
   let summary = {
     total: count,
     pending: 0,
+    forDelivery: 0,
+    reachedDest: 0,
     inTransit: 0,
     delivered: 0,
     delayed: 0,
@@ -427,8 +471,11 @@ const listConsignments = async ({
     statusStats.forEach((s) => {
       const c = parseInt(s.count, 10) || 0;
       summary.total += c;
-      if (['BOOKED', 'MATERIAL_RECEIVED', 'READY_FOR_DISPATCH', 'LOADED'].includes(s.status)) {
+      if (['BOOKED', 'MATERIAL_RECEIVED', 'READY_FOR_DISPATCH', 'LOADED', 'RECEIVED_AT_HUB'].includes(s.status)) {
         summary.pending += c;
+      } else if (['REACHED_DESTINATION', 'OUT_FOR_DELIVERY'].includes(s.status)) {
+        summary.reachedDest += c;
+        summary.forDelivery = (summary.forDelivery || 0) + c;
       } else if (['IN_TRANSIT', 'DISPATCHED', 'ON_TRIP'].includes(s.status)) {
         summary.inTransit += c;
       } else if (['DELIVERED', 'COMPLETED', 'POD_UPLOADED'].includes(s.status)) {
@@ -598,6 +645,46 @@ const updateBooking = async ({ id, tenantId, organizationId, payload, models, se
     const taxAmount = payload.tax_amount !== undefined ? parseFloat(payload.tax_amount) : consignment.tax_amount;
     const discountAmount = payload.discount_amount !== undefined ? parseFloat(payload.discount_amount) : consignment.discount_amount;
 
+    const totalAmount = payload.total_amount !== undefined
+      ? parseFloat(payload.total_amount)
+      : (payload.totalAmount !== undefined
+          ? parseFloat(payload.totalAmount)
+          : roundToTwo(Math.max(0, freightAmount + loadingCharges + unloadingCharges + handlingCharges + hamaliCharges + doorDeliveryCharges + otherCharges + taxAmount - discountAmount)));
+
+    // Validation: If bilty is already PAID, do not allow altering financial freight charges
+    const isPaid = (consignment.payment_type || '').toUpperCase() === 'PAID' || (consignment.payment_status || '').toUpperCase() === 'PAID';
+    if (isPaid) {
+      const chargeFieldsChanged = (
+        (payload.packages_count !== undefined && parseInt(payload.packages_count, 10) !== parseInt(consignment.packages_count || 0, 10)) ||
+        (payload.charged_weight !== undefined && Math.abs(parseFloat(payload.charged_weight) - parseFloat(consignment.charged_weight || 0)) > 0.01) ||
+        (payload.actual_weight !== undefined && Math.abs(parseFloat(payload.actual_weight) - parseFloat(consignment.actual_weight || 0)) > 0.01) ||
+        (payload.rate !== undefined && Math.abs(parseFloat(payload.rate) - parseFloat(consignment.rate || 0)) > 0.01) ||
+        (payload.freight_amount !== undefined && Math.abs(parseFloat(payload.freight_amount) - parseFloat(consignment.freight_amount || 0)) > 0.01) ||
+        (payload.loading_charges !== undefined && Math.abs(parseFloat(payload.loading_charges) - parseFloat(consignment.loading_charges || 0)) > 0.01) ||
+        (payload.unloading_charges !== undefined && Math.abs(parseFloat(payload.unloading_charges) - parseFloat(consignment.unloading_charges || 0)) > 0.01) ||
+        (payload.handling_charges !== undefined && Math.abs(parseFloat(payload.handling_charges) - parseFloat(consignment.handling_charges || 0)) > 0.01) ||
+        (payload.hamali_charges !== undefined && Math.abs(parseFloat(payload.hamali_charges) - parseFloat(consignment.hamali_charges || 0)) > 0.01) ||
+        (payload.door_delivery_charges !== undefined && Math.abs(parseFloat(payload.door_delivery_charges) - parseFloat(consignment.door_delivery_charges || 0)) > 0.01) ||
+        (payload.other_charges !== undefined && Math.abs(parseFloat(payload.other_charges) - parseFloat(consignment.other_charges || 0)) > 0.01) ||
+        (payload.discount_amount !== undefined && Math.abs(parseFloat(payload.discount_amount) - parseFloat(consignment.discount_amount || 0)) > 0.01) ||
+        (payload.tax_percent !== undefined && Math.abs(parseFloat(payload.tax_percent) - parseFloat(consignment.tax_percent || 0)) > 0.01) ||
+        (payload.tax_amount !== undefined && Math.abs(parseFloat(payload.tax_amount) - parseFloat(consignment.tax_amount || 0)) > 0.01) ||
+        (payload.total_amount !== undefined && Math.abs(parseFloat(payload.total_amount) - parseFloat(consignment.total_amount || 0)) > 0.01)
+      );
+      const deliveryTypeChanged = payload.delivery_type !== undefined && payload.delivery_type !== consignment.delivery_type;
+
+      if (chargeFieldsChanged || deliveryTypeChanged) {
+        await transaction.rollback();
+        const err = new Error(
+          deliveryTypeChanged
+            ? 'Delivery type cannot be modified on a PAID bilty. Payment has already been settled.'
+            : 'Weight, packages count, and freight charges cannot be modified on a PAID bilty. Payment has already been settled.'
+        );
+        err.statusCode = 400;
+        throw err;
+      }
+    }
+
     const updateFields = {
       docket_number: payload.docket_number || payload.lr_number || consignment.docket_number,
       lr_number: payload.lr_number || payload.docket_number || consignment.lr_number,
@@ -622,6 +709,7 @@ const updateBooking = async ({ id, tenantId, organizationId, payload, models, se
       tax_amount: taxAmount,
       discount_amount: discountAmount,
       total_amount: totalAmount,
+      delivery_type: payload.delivery_type || payload.deliveryType || consignment.delivery_type,
       payment_type: payload.payment_type || payload.payment_mode || consignment.payment_type,
       transport_mode: payload.transport_mode || payload.transportMode || consignment.transport_mode || 'ROAD',
       status: payload.status || consignment.status,

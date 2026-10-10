@@ -223,6 +223,33 @@ const settleTrip = async (req, res) => {
       status: 'COMPLETED',
     }, { transaction });
 
+    // Transition loaded consignments to REACHED_DESTINATION at destination branch if still in transit
+    try {
+      const { Consignment, TripConsignment } = req.tenantDb || defaultModels;
+      if (Consignment && TripConsignment && trip.dest_branch_id) {
+        const tConsignments = await TripConsignment.findAll({
+          where: { trip_id: trip.id },
+          attributes: ['consignment_id'],
+          transaction,
+        });
+        if (tConsignments.length > 0) {
+          const cIds = tConsignments.map((tc) => tc.consignment_id);
+          await Consignment.update({
+            status: 'REACHED_DESTINATION',
+            current_branch_id: trip.dest_branch_id,
+          }, {
+            where: {
+              id: { [Op.in]: cIds },
+              status: { [Op.in]: ['DISPATCHED', 'IN_TRANSIT', 'LOADED', 'BOOKED'] },
+            },
+            transaction,
+          });
+        }
+      }
+    } catch (cErr) {
+      console.warn('Settlement consignment sync notice:', cErr.message);
+    }
+
     await transaction.commit();
 
     logAudit({

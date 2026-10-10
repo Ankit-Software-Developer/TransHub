@@ -42,7 +42,19 @@ import {
   BarChart3,
   Settings as SettingsIcon,
   Shield,
-  ArrowRight
+  ArrowRight,
+  Radio,
+  MapPin,
+  Activity,
+  Cpu,
+  Zap,
+  X,
+  Key,
+  Signal,
+  Navigation,
+  Clock,
+  Power,
+  Search,
 } from 'lucide-react';
 import Link from 'next/link';
 import RolePermissionMatrix from '../../../components/roles/RolePermissionMatrix';
@@ -67,6 +79,76 @@ const ACCENT_PRESETS = [
   { name: 'Royal Violet', value: '#8B5CF6', hex: '#8B5CF6', bg: 'bg-purple-500', text: 'text-purple-400' },
   { name: 'Sunset Amber', value: '#F59E0B', hex: '#F59E0B', bg: 'bg-amber-500', text: 'text-amber-400' },
   { name: 'Crimson Red', value: '#EF4444', hex: '#EF4444', bg: 'bg-rose-500', text: 'text-rose-400' },
+];
+
+const GPS_PROVIDER_TEMPLATES = [
+  {
+    code: 'WHEELSEYE',
+    name: 'WheelsEye Fleet GPS',
+    description: 'Premier telematics provider for Indian commercial transport fleets. Live vehicle tracking, speed, ignition, and fuel monitoring.',
+    defaultBaseUrl: 'https://api.wheelseye.com/v1',
+    keyPlaceholder: 'WE_api_key_xxxxxxxxxxxxx',
+    popular: true,
+    badge: 'Popular for Indian Transporters',
+    color: 'from-amber-500 to-orange-600',
+    accentText: 'text-amber-500',
+    borderActive: 'border-amber-500/40 bg-amber-500/5',
+  },
+  {
+    code: 'LOCONAV',
+    name: 'LocoNav Telematics',
+    description: 'AI-driven IoT platform for fleet management, video telematics, and vehicle tracking across India & SEA.',
+    defaultBaseUrl: 'https://api.loconav.com/v1',
+    keyPlaceholder: 'loconav_access_token_xxxx',
+    popular: false,
+    color: 'from-blue-600 to-indigo-700',
+    accentText: 'text-blue-500',
+    borderActive: 'border-blue-500/40 bg-blue-500/5',
+  },
+  {
+    code: 'INTANGLES',
+    name: 'Intangles Digital Twin',
+    description: 'Edge-to-cloud vehicle health, AI predictive maintenance, and precise fuel pilferage tracking.',
+    defaultBaseUrl: 'https://api.intangles.com/v2',
+    keyPlaceholder: 'intangles_auth_key_xxxx',
+    popular: false,
+    color: 'from-emerald-500 to-teal-700',
+    accentText: 'text-emerald-500',
+    borderActive: 'border-emerald-500/40 bg-emerald-500/5',
+  },
+  {
+    code: 'FLEETX',
+    name: 'Fleetx IoT & GPS',
+    description: 'Enterprise fleet & asset management, cold storage sensor tracking, and line-haul trip automation.',
+    defaultBaseUrl: 'https://api.fleetx.io/api/v1',
+    keyPlaceholder: 'fleetx_token_xxxx',
+    popular: false,
+    color: 'from-purple-600 to-violet-800',
+    accentText: 'text-purple-400',
+    borderActive: 'border-purple-500/40 bg-purple-500/5',
+  },
+  {
+    code: 'MAPMYINDIA',
+    name: 'MapmyIndia / Mappls GPS',
+    description: 'Indigenous Indian GIS map platform offering high-accuracy vehicle tracking & geofencing APIs.',
+    defaultBaseUrl: 'https://apis.mapmyindia.com/advancedmaps/v1',
+    keyPlaceholder: 'mmi_rest_key_xxxx',
+    popular: false,
+    color: 'from-rose-500 to-red-700',
+    accentText: 'text-rose-500',
+    borderActive: 'border-rose-500/40 bg-rose-500/5',
+  },
+  {
+    code: 'CUSTOM_API',
+    name: 'Custom REST GPS Endpoint',
+    description: 'Connect any proprietary GPS server, broker integration, or third-party vehicle tracking API.',
+    defaultBaseUrl: 'https://api.your-gps-provider.com/v1',
+    keyPlaceholder: 'Custom Bearer or API Key',
+    popular: false,
+    color: 'from-slate-600 to-slate-800',
+    accentText: 'text-slate-400',
+    borderActive: 'border-slate-500/40 bg-slate-500/5',
+  },
 ];
 
 export default function SettingsPage() {
@@ -145,6 +227,31 @@ export default function SettingsPage() {
   const [selectedAccent, setSelectedAccent] = useState('#00F0FF');
   const [selectedTerm, setSelectedTerm] = useState(terminology || 'Bilty');
 
+  // GPS & API Integrations State
+  const [gpsConfigs, setGpsConfigs] = useState([]);
+  const [gpsStats, setGpsStats] = useState({ totalFleetVehicles: 0, vehiclesWithGps: 0, activeProviders: 0 });
+  const [gpsTelemetryList, setGpsTelemetryList] = useState([]);
+  const [isLoadingGps, setIsLoadingGps] = useState(false);
+  const [isGpsModalOpen, setIsGpsModalOpen] = useState(false);
+  const [editingGpsId, setEditingGpsId] = useState(null);
+  const [isTestingGps, setIsTestingGps] = useState(false);
+  const [isSyncingGps, setIsSyncingGps] = useState(false);
+  const [gpsTestResult, setGpsTestResult] = useState(null);
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [gpsSearchTerm, setGpsSearchTerm] = useState('');
+  const [gpsFilterStatus, setGpsFilterStatus] = useState('ALL'); // 'ALL' | 'ACTIVE' | 'OFFLINE'
+
+  const [gpsForm, setGpsForm] = useState({
+    provider_code: 'WHEELSEYE',
+    provider_name: 'WheelsEye Fleet GPS',
+    api_key: '',
+    api_secret: '',
+    client_id: '',
+    base_url: 'https://api.wheelseye.com/v1',
+    sync_interval_mins: 5,
+    is_active: true,
+  });
+
   // Load initial data from user store & organizations profile API
   useEffect(() => {
     if (user) {
@@ -163,7 +270,7 @@ export default function SettingsPage() {
 
       const params = new URLSearchParams(window.location.search);
       const tabParam = params.get('tab');
-      if (tabParam && ['branding', 'theme', 'terminology', 'roles'].includes(tabParam)) {
+      if (tabParam && ['branding', 'theme', 'terminology', 'roles', 'gps'].includes(tabParam)) {
         setActiveTab(tabParam);
       } else if (tabParam === 'profile' || tabParam === 'security') {
         window.location.href = '/profile';
@@ -610,6 +717,196 @@ export default function SettingsPage() {
     }
   };
 
+  // 10. Fetch GPS configs and fleet telemetry
+  const fetchGpsData = async () => {
+    setIsLoadingGps(true);
+    try {
+      const [configsRes, telemetryRes] = await Promise.all([
+        api.get('/gps/configs'),
+        api.get('/gps/telemetry'),
+      ]);
+      if (configsRes.data?.success) {
+        setGpsConfigs(configsRes.data.data.configs || []);
+        if (configsRes.data.data.stats) {
+          setGpsStats(configsRes.data.data.stats);
+        }
+      }
+      if (telemetryRes.data?.success) {
+        setGpsTelemetryList(telemetryRes.data.data || []);
+      }
+    } catch (err) {
+      console.warn('Failed to load GPS integrations:', err);
+    } finally {
+      setIsLoadingGps(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'gps') {
+      fetchGpsData();
+    }
+  }, [activeTab]);
+
+  const handleOpenGpsModal = (providerCode = 'WHEELSEYE', existing = null) => {
+    setGpsTestResult(null);
+    setShowApiKey(false);
+    if (existing) {
+      setEditingGpsId(existing.id);
+      setGpsForm({
+        provider_code: existing.provider_code,
+        provider_name: existing.provider_name,
+        api_key: existing.api_key,
+        api_secret: existing.api_secret || '',
+        client_id: existing.client_id || '',
+        base_url: existing.base_url || '',
+        sync_interval_mins: existing.sync_interval_mins || 5,
+        is_active: existing.is_active ?? true,
+      });
+    } else {
+      setEditingGpsId(null);
+      const template = GPS_PROVIDER_TEMPLATES.find((t) => t.code === providerCode) || GPS_PROVIDER_TEMPLATES[0];
+      setGpsForm({
+        provider_code: template.code,
+        provider_name: template.name,
+        api_key: '',
+        api_secret: '',
+        client_id: '',
+        base_url: template.defaultBaseUrl,
+        sync_interval_mins: 5,
+        is_active: true,
+      });
+    }
+    setIsGpsModalOpen(true);
+  };
+
+  const handleSelectGpsProvider = (code) => {
+    const template = GPS_PROVIDER_TEMPLATES.find((t) => t.code === code);
+    if (template) {
+      setGpsForm((prev) => ({
+        ...prev,
+        provider_code: template.code,
+        provider_name: template.name,
+        base_url: template.defaultBaseUrl,
+      }));
+    }
+  };
+
+  const handleTestGpsConnection = async () => {
+    if (!gpsForm.api_key?.trim()) {
+      setGpsTestResult({ success: false, message: 'Please enter an API Key / Access Token to test connection.' });
+      return;
+    }
+    setIsTestingGps(true);
+    setGpsTestResult(null);
+    try {
+      const res = await api.post('/gps/test-connection', {
+        provider_code: gpsForm.provider_code,
+        api_key: gpsForm.api_key.trim(),
+        api_secret: gpsForm.api_secret?.trim() || null,
+        base_url: gpsForm.base_url?.trim() || null,
+      });
+      if (res.data?.success) {
+        setGpsTestResult({
+          success: true,
+          message: res.data.message || 'Connection successful! Verified API connectivity.',
+          devicesDetected: res.data.data?.devicesDetected,
+        });
+      } else {
+        setGpsTestResult({
+          success: false,
+          message: res.data?.message || 'Connection test failed.',
+        });
+      }
+    } catch (err) {
+      setGpsTestResult({
+        success: false,
+        message: err.response?.data?.message || err.message || 'Connection test failed. Check API credentials.',
+      });
+    } finally {
+      setIsTestingGps(false);
+    }
+  };
+
+  const handleSaveGpsConfig = async (e) => {
+    e.preventDefault();
+    if (!gpsForm.api_key?.trim()) {
+      triggerError('API Key / Access Token is required');
+      return;
+    }
+    setIsSaving(true);
+    try {
+      if (editingGpsId) {
+        const res = await api.put(`/gps/configs/${editingGpsId}`, gpsForm);
+        if (res.data?.success) {
+          triggerSuccess('GPS Provider integration updated successfully!');
+          setIsGpsModalOpen(false);
+          fetchGpsData();
+        }
+      } else {
+        const res = await api.post('/gps/configs', gpsForm);
+        if (res.data?.success) {
+          triggerSuccess('GPS Provider connected successfully!');
+          setIsGpsModalOpen(false);
+          fetchGpsData();
+        }
+      }
+    } catch (err) {
+      triggerError(err.response?.data?.message || 'Failed to save GPS configuration');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDeleteGpsConfig = async (id, name) => {
+    if (!window.confirm(`Are you sure you want to disconnect and delete "${name}"?`)) return;
+    try {
+      const res = await api.delete(`/gps/configs/${id}`);
+      if (res.data?.success) {
+        triggerSuccess(`GPS configuration "${name}" removed successfully.`);
+        fetchGpsData();
+      }
+    } catch (err) {
+      triggerError(err.response?.data?.message || 'Failed to delete GPS integration');
+    }
+  };
+
+  const handleSyncGpsNow = async (integrationId = null) => {
+    setIsSyncingGps(true);
+    try {
+      const payload = integrationId ? { integration_id: integrationId } : {};
+      const res = await api.post('/gps/sync-now', payload);
+      if (res.data?.success) {
+        const syncedCount = res.data.data?.syncedVehicles ?? 0;
+        triggerSuccess(`GPS Sync complete! Updated telemetry for ${syncedCount} fleet vehicle(s).`);
+        fetchGpsData();
+      }
+    } catch (err) {
+      triggerError(err.response?.data?.message || 'GPS sync failed');
+    } finally {
+      setIsSyncingGps(false);
+    }
+  };
+
+  const handleTestExistingConfig = async (cfg) => {
+    try {
+      triggerSuccess(`Testing connection to ${cfg.provider_name}...`);
+      const res = await api.post('/gps/test-connection', {
+        provider_code: cfg.provider_code,
+        api_key: cfg.api_key,
+        api_secret: cfg.api_secret,
+        base_url: cfg.base_url,
+      });
+      if (res.data?.success) {
+        triggerSuccess(res.data.message || `Connection to ${cfg.provider_name} verified successfully!`);
+        fetchGpsData();
+      } else {
+        triggerError(res.data?.message || 'Connection test failed.');
+      }
+    } catch (err) {
+      triggerError(err.response?.data?.message || `Failed to connect to ${cfg.provider_name}`);
+    }
+  };
+
   const terminologyOptions = ['Bilty', 'LR', 'GR', 'Docket', 'Consignment Note'];
 
   if (!isAdmin) {
@@ -745,6 +1042,24 @@ export default function SettingsPage() {
                 >
                   <Layers className="w-4 h-4 shrink-0" />
                   <span>Series & Prefixes</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('gps')}
+                  className={`flex items-center space-x-2.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                    activeTab === 'gps'
+                      ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
+                      : isDark ? 'text-slate-400 hover:text-white hover:bg-slate-900' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  }`}
+                >
+                  <Radio className="w-4 h-4 shrink-0 text-cyan-400" />
+                  <span>GPS & API Integrations</span>
+                  {gpsConfigs.length > 0 && (
+                    <span className="px-1.5 py-0.5 text-[9px] font-black rounded-full bg-emerald-500 text-slate-950">
+                      {gpsConfigs.filter(c => c.is_active).length}
+                    </span>
+                  )}
                 </button>
 
               </div>
@@ -1548,6 +1863,536 @@ export default function SettingsPage() {
                 </div>
               )}
 
+              {/* TAB 7: GPS & API INTEGRATIONS */}
+              {activeTab === 'gps' && (
+                <div className="space-y-6">
+                  {/* Top GPS Overview & Control Banner */}
+                  <div className={`p-6 sm:p-7 rounded-3xl border shadow-xl flex flex-col lg:flex-row lg:items-center justify-between gap-6 ${
+                    isDark ? 'bg-[#0B1020]/90 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
+                  }`}>
+                    <div className="space-y-1.5 max-w-2xl">
+                      <div className="flex items-center gap-2">
+                        <span className="p-2 rounded-xl bg-cyan-500/10 text-cyan-500">
+                          <Radio className="w-5 h-5 animate-pulse" />
+                        </span>
+                        <h2 className="text-lg font-bold">GPS & Telematics Integrations</h2>
+                        <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-blue-500/10 text-blue-500 border border-blue-500/20">
+                          IoT Fleet Control Tower
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                        Connect external vehicle GPS devices (<strong className="text-amber-500">WheelsEye</strong>, LocoNav, Intangles, Fleetx, MapmyIndia) via API keys. Live coordinates, speed, and ignition signals will sync automatically into your trips and fleet tracking.
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleSyncGpsNow()}
+                        disabled={isSyncingGps}
+                        className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                          isDark
+                            ? 'bg-slate-900 border-slate-700 hover:bg-slate-800 text-slate-200'
+                            : 'bg-slate-100 border-slate-200 hover:bg-slate-200 text-slate-700'
+                        } disabled:opacity-50`}
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${isSyncingGps ? 'animate-spin text-cyan-400' : ''}`} />
+                        <span>{isSyncingGps ? 'Syncing Telemetry...' : 'Sync Fleet Telemetry Now'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleOpenGpsModal('WHEELSEYE')}
+                        className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 transition-all cursor-pointer"
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span>Connect GPS Provider</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Fleet Telemetry Metric Cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className={`p-4 rounded-2xl border transition-all ${
+                      isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-white border-slate-200 shadow-xs'
+                    }`}>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Total Fleet Trucks</span>
+                        <Truck className="w-4 h-4 text-blue-500" />
+                      </div>
+                      <div className="mt-2 flex items-baseline gap-2">
+                        <span className="text-2xl font-black">{gpsStats.totalFleetVehicles || 0}</span>
+                        <span className="text-[10px] text-slate-400">vehicles</span>
+                      </div>
+                      <p className="mt-1 text-[11px] text-slate-500">Registered across all branches</p>
+                    </div>
+
+                    <div className={`p-4 rounded-2xl border transition-all ${
+                      isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-white border-slate-200 shadow-xs'
+                    }`}>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Live GPS Linked</span>
+                        <Activity className="w-4 h-4 text-emerald-500" />
+                      </div>
+                      <div className="mt-2 flex items-baseline gap-2">
+                        <span className="text-2xl font-black text-emerald-500">{gpsStats.vehiclesWithGps || 0}</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 font-bold">
+                          {gpsStats.totalFleetVehicles > 0 ? Math.round(((gpsStats.vehiclesWithGps || 0) / gpsStats.totalFleetVehicles) * 100) : 0}% Coverage
+                        </span>
+                      </div>
+                      <p className="mt-1 text-[11px] text-slate-500">Broadcasting live coordinates</p>
+                    </div>
+
+                    <div className={`p-4 rounded-2xl border transition-all ${
+                      isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-white border-slate-200 shadow-xs'
+                    }`}>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Active Providers</span>
+                        <Cpu className="w-4 h-4 text-purple-500" />
+                      </div>
+                      <div className="mt-2 flex items-baseline gap-2">
+                        <span className="text-2xl font-black text-purple-400">{gpsStats.activeProviders || 0}</span>
+                        <span className="text-[10px] text-slate-400">of {gpsConfigs.length} configured</span>
+                      </div>
+                      <p className="mt-1 text-[11px] text-slate-500">API connection tunnels</p>
+                    </div>
+
+                    <div className={`p-4 rounded-2xl border transition-all ${
+                      isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-white border-slate-200 shadow-xs'
+                    }`}>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Gateway Status</span>
+                        <Signal className={`w-4 h-4 ${gpsConfigs.some(c => c.is_active) ? 'text-emerald-500' : 'text-slate-400'}`} />
+                      </div>
+                      <div className="mt-2 flex items-baseline gap-2">
+                        <span className={`text-base font-black ${gpsConfigs.some(c => c.is_active) ? 'text-emerald-500' : 'text-slate-400'}`}>
+                          {gpsConfigs.some(c => c.is_active) ? 'OPERATIONAL' : 'STANDBY'}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-[11px] text-slate-500">
+                        {gpsConfigs.length > 0 ? 'Auto-sync active' : 'Click connect to link provider'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Supported Providers Showcase Grid */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="text-sm font-bold flex items-center gap-2">
+                          <Cpu className="w-4 h-4 text-blue-500" />
+                          <span>Supported GPS & Telematics Providers</span>
+                        </h3>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                          Select your hardware tracker or fleet software provider to connect with your API credentials
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {GPS_PROVIDER_TEMPLATES.map((tpl) => {
+                        const existingCfg = gpsConfigs.find((c) => c.provider_code === tpl.code);
+                        const isConnected = !!existingCfg;
+
+                        return (
+                          <div
+                            key={tpl.code}
+                            className={`p-4 rounded-2xl border relative flex flex-col justify-between transition-all hover:scale-[1.01] ${
+                              tpl.popular
+                                ? isDark ? 'border-amber-500/40 bg-gradient-to-br from-amber-500/10 via-slate-900/60 to-slate-900' : 'border-amber-400 bg-amber-50/40 shadow-sm'
+                                : isDark ? 'border-slate-800 bg-slate-900/60' : 'border-slate-200 bg-white shadow-xs'
+                            }`}
+                          >
+                            <div>
+                              {tpl.popular && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-amber-500 text-slate-950 mb-2">
+                                  ★ {tpl.badge}
+                                </span>
+                              )}
+
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex items-center gap-2.5">
+                                  <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${tpl.color} text-white flex items-center justify-center font-black text-xs shadow-sm`}>
+                                    {tpl.code.slice(0, 2)}
+                                  </div>
+                                  <div>
+                                    <h4 className="text-xs font-bold">{tpl.name}</h4>
+                                    <span className="font-mono text-[10px] text-slate-400">{tpl.code}</span>
+                                  </div>
+                                </div>
+
+                                {isConnected && (
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 flex items-center gap-1">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+                                    Active
+                                  </span>
+                                )}
+                              </div>
+
+                              <p className="mt-2.5 text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                                {tpl.description}
+                              </p>
+                            </div>
+
+                            <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2">
+                              <span className="text-[10px] font-mono text-slate-400 truncate max-w-[160px]">
+                                {tpl.defaultBaseUrl.replace('https://', '')}
+                              </span>
+
+                              {isConnected ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenGpsModal(tpl.code, existingCfg)}
+                                  className="px-3 py-1.5 rounded-xl border text-[11px] font-bold transition-all text-blue-500 border-blue-500/30 hover:bg-blue-500/10 cursor-pointer"
+                                >
+                                  Configure
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenGpsModal(tpl.code)}
+                                  className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold shadow-xs transition-all cursor-pointer"
+                                >
+                                  + Connect API
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Active Configured Providers List */}
+                  {gpsConfigs.length > 0 && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-bold flex items-center gap-2">
+                          <Radio className="w-4 h-4 text-emerald-500" />
+                          <span>Connected GPS Gateways ({gpsConfigs.length})</span>
+                        </h3>
+                      </div>
+
+                      <div className="space-y-3">
+                        {gpsConfigs.map((cfg) => (
+                          <div
+                            key={cfg.id}
+                            className={`p-4 sm:p-5 rounded-2xl border transition-all flex flex-col md:flex-row md:items-center justify-between gap-4 ${
+                              isDark ? 'bg-slate-900/80 border-slate-800' : 'bg-white border-slate-200 shadow-xs'
+                            }`}
+                          >
+                            <div className="space-y-1.5 flex-1 min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <h4 className="text-sm font-bold">{cfg.provider_name}</h4>
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                                  {cfg.provider_code}
+                                </span>
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                  cfg.is_active ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-slate-500/10 text-slate-400'
+                                }`}>
+                                  {cfg.is_active ? '● Running' : '○ Disabled'}
+                                </span>
+                                {cfg.last_sync_status && (
+                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                    cfg.last_sync_status === 'SUCCESS'
+                                      ? 'bg-emerald-500/10 text-emerald-400'
+                                      : cfg.last_sync_status === 'FAILED'
+                                      ? 'bg-rose-500/10 text-rose-400'
+                                      : 'bg-amber-500/10 text-amber-400'
+                                  }`}>
+                                    Sync: {cfg.last_sync_status}
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+                                <span className="flex items-center gap-1 font-mono text-[11px]">
+                                  <Key className="w-3 h-3 text-slate-400" />
+                                  <span>API Key:</span>
+                                  <span className="font-bold text-slate-300">
+                                    {cfg.api_key ? `${cfg.api_key.slice(0, 6)}••••••••${cfg.api_key.slice(-4)}` : 'N/A'}
+                                  </span>
+                                </span>
+
+                                <span className="flex items-center gap-1 text-[11px]">
+                                  <Clock className="w-3 h-3 text-slate-400" />
+                                  <span>Frequency: Every {cfg.sync_interval_mins || 5} min</span>
+                                </span>
+
+                                <span className="flex items-center gap-1 text-[11px]">
+                                  <Truck className="w-3 h-3 text-slate-400" />
+                                  <span>{cfg.vehicles_count || 0} Vehicles linked</span>
+                                </span>
+
+                                {cfg.last_sync_at && (
+                                  <span className="text-[11px] text-slate-400">
+                                    Last synced: {new Date(cfg.last_sync_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                                  </span>
+                                )}
+                              </div>
+
+                              {cfg.last_sync_message && (
+                                <p className="text-[11px] text-slate-400 italic truncate max-w-xl">
+                                  {cfg.last_sync_message}
+                                </p>
+                              )}
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => handleTestExistingConfig(cfg)}
+                                className="px-3 py-1.5 rounded-xl border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                                title="Test live authentication"
+                              >
+                                <Zap className="w-3.5 h-3.5 text-amber-400" />
+                                <span>Test Ping</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleSyncGpsNow(cfg.id)}
+                                disabled={isSyncingGps}
+                                className="px-3 py-1.5 rounded-xl border border-cyan-800 bg-cyan-950/40 hover:bg-cyan-900/40 text-cyan-300 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                                title="Sync live vehicle locations"
+                              >
+                                <RefreshCw className={`w-3.5 h-3.5 ${isSyncingGps ? 'animate-spin' : ''}`} />
+                                <span>Sync Now</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleOpenGpsModal(cfg.provider_code, cfg)}
+                                className="px-3 py-1.5 rounded-xl border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition-all cursor-pointer"
+                              >
+                                Edit
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteGpsConfig(cfg.id, cfg.provider_name)}
+                                className="p-1.5 rounded-xl border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 transition-all cursor-pointer"
+                                title="Disconnect integration"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Live Fleet GPS Telemetry Diagnostic Table */}
+                  <div className={`p-5 sm:p-6 rounded-3xl border shadow-xl space-y-4 ${
+                    isDark ? 'bg-[#0B1020]/90 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
+                  }`}>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
+                      <div>
+                        <h3 className="text-base font-bold flex items-center gap-2">
+                          <Navigation className="w-5 h-5 text-cyan-400" />
+                          <span>Live Fleet Telemetry Stream</span>
+                        </h3>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                          Real-time truck coordinates, speed, and ignition status received from connected GPS providers
+                        </p>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        {/* Search Input */}
+                        <div className="relative">
+                          <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                          <input
+                            type="text"
+                            placeholder="Filter vehicle, driver, IMEI..."
+                            value={gpsSearchTerm}
+                            onChange={(e) => setGpsSearchTerm(e.target.value)}
+                            className={`pl-8 pr-3 py-1.5 rounded-xl border text-xs focus:outline-none w-52 ${
+                              isDark ? 'bg-slate-900 border-slate-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                            }`}
+                          />
+                        </div>
+
+                        {/* Filter Status Pills */}
+                        <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+                          {['ALL', 'ACTIVE', 'OFFLINE'].map((st) => (
+                            <button
+                              key={st}
+                              type="button"
+                              onClick={() => setGpsFilterStatus(st)}
+                              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                                gpsFilterStatus === st
+                                  ? 'bg-blue-600 text-white'
+                                  : 'text-slate-400 hover:text-slate-200'
+                              }`}
+                            >
+                              {st === 'ALL' ? 'All Fleet' : st === 'ACTIVE' ? 'Live Signal' : 'No Signal'}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Table View */}
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead>
+                          <tr className={`border-b text-[10px] uppercase font-bold tracking-wider ${
+                            isDark ? 'border-slate-800 text-slate-400' : 'border-slate-200 text-slate-500'
+                          }`}>
+                            <th className="py-3 px-3">Vehicle Number</th>
+                            <th className="py-3 px-3">Driver & Branch</th>
+                            <th className="py-3 px-3">GPS Provider / IMEI</th>
+                            <th className="py-3 px-3">Live Coordinates & Location</th>
+                            <th className="py-3 px-3">Speed</th>
+                            <th className="py-3 px-3">Ignition</th>
+                            <th className="py-3 px-3">Last Ping</th>
+                            <th className="py-3 px-3 text-right">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200 dark:divide-slate-800/60 font-sans">
+                          {gpsTelemetryList.length === 0 ? (
+                            <tr>
+                              <td colSpan={8} className="py-10 text-center text-slate-400">
+                                <Truck className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                                <p className="text-xs font-bold">No vehicles registered in fleet yet</p>
+                                <p className="text-[11px] text-slate-500 mt-0.5">
+                                  Add vehicles under Fleet & Vehicles or connect a GPS provider above
+                                </p>
+                              </td>
+                            </tr>
+                          ) : (
+                            gpsTelemetryList
+                              .filter((v) => {
+                                const q = gpsSearchTerm.toLowerCase();
+                                const matchesSearch =
+                                  !q ||
+                                  v.vehicle_number?.toLowerCase().includes(q) ||
+                                  v.driver?.name?.toLowerCase().includes(q) ||
+                                  v.gps_device_id?.toLowerCase().includes(q) ||
+                                  v.gps_provider_name?.toLowerCase().includes(q) ||
+                                  v.branch?.branch_name?.toLowerCase().includes(q) ||
+                                  v.last_location_name?.toLowerCase().includes(q);
+
+                                if (!matchesSearch) return false;
+                                if (gpsFilterStatus === 'ACTIVE') return v.last_latitude !== null && v.last_latitude !== undefined;
+                                if (gpsFilterStatus === 'OFFLINE') return v.last_latitude === null || v.last_latitude === undefined;
+                                return true;
+                              })
+                              .map((v) => {
+                                const hasSignal = v.last_latitude !== null && v.last_latitude !== undefined;
+
+                                return (
+                                  <tr
+                                    key={v.id}
+                                    className={`transition-colors ${
+                                      isDark ? 'hover:bg-slate-900/50' : 'hover:bg-slate-50'
+                                    }`}
+                                  >
+                                    <td className="py-3 px-3">
+                                      <div className="font-mono font-bold text-xs text-blue-600 dark:text-cyan-400">
+                                        {v.vehicle_number}
+                                      </div>
+                                      <span className="text-[10px] text-slate-400">{v.vehicle_type || 'Commercial'}</span>
+                                    </td>
+
+                                    <td className="py-3 px-3">
+                                      <div className="font-semibold">{v.driver?.name || 'Unassigned'}</div>
+                                      <span className="text-[10px] text-slate-400">{v.branch?.branch_name || 'Hub'}</span>
+                                    </td>
+
+                                    <td className="py-3 px-3">
+                                      <div className="flex items-center gap-1 font-semibold text-slate-300">
+                                        <span>{v.gps_provider_name || (hasSignal ? 'Connected GPS' : 'None')}</span>
+                                      </div>
+                                      <span className="font-mono text-[10px] text-slate-400">
+                                        {v.gps_device_id || 'No Device ID'}
+                                      </span>
+                                    </td>
+
+                                    <td className="py-3 px-3">
+                                      {hasSignal ? (
+                                        <div className="space-y-0.5">
+                                          <div className="flex items-center gap-1 text-[11px] font-semibold text-emerald-400">
+                                            <MapPin className="w-3 h-3 shrink-0" />
+                                            <span className="truncate max-w-[200px]">
+                                              {v.last_location_name || `${parseFloat(v.last_latitude).toFixed(4)}, ${parseFloat(v.last_longitude).toFixed(4)}`}
+                                            </span>
+                                          </div>
+                                          <div className="font-mono text-[10px] text-slate-400">
+                                            {parseFloat(v.last_latitude).toFixed(5)}, {parseFloat(v.last_longitude).toFixed(5)}
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <span className="text-[11px] text-slate-400 italic">No GPS coordinates</span>
+                                      )}
+                                    </td>
+
+                                    <td className="py-3 px-3">
+                                      {hasSignal ? (
+                                        <span className={`px-2 py-0.5 rounded-full font-mono text-[11px] font-bold ${
+                                          v.last_speed > 0
+                                            ? 'bg-blue-500/10 text-cyan-400 border border-blue-500/20'
+                                            : 'bg-slate-500/10 text-slate-400'
+                                        }`}>
+                                          {v.last_speed ? `${Math.round(v.last_speed)} km/h` : '0 km/h (Halt)'}
+                                        </span>
+                                      ) : (
+                                        <span className="text-slate-500 text-[11px]">—</span>
+                                      )}
+                                    </td>
+
+                                    <td className="py-3 px-3">
+                                      {hasSignal ? (
+                                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                                          v.last_ignition
+                                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                            : 'bg-slate-800 text-slate-400'
+                                        }`}>
+                                          <Power className="w-2.5 h-2.5" />
+                                          {v.last_ignition ? 'ON' : 'OFF'}
+                                        </span>
+                                      ) : (
+                                        <span className="text-slate-500 text-[11px]">—</span>
+                                      )}
+                                    </td>
+
+                                    <td className="py-3 px-3 font-mono text-[11px] text-slate-400">
+                                      {v.last_gps_updated_at ? (
+                                        <span>
+                                          {new Date(v.last_gps_updated_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                                        </span>
+                                      ) : (
+                                        <span>Never</span>
+                                      )}
+                                    </td>
+
+                                    <td className="py-3 px-3 text-right">
+                                      {hasSignal ? (
+                                        <a
+                                          href={`https://www.google.com/maps?q=${v.last_latitude},${v.last_longitude}`}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 border border-blue-500/20 text-[11px] font-bold transition-all"
+                                        >
+                                          <span>Map</span>
+                                          <ExternalLink className="w-3 h-3" />
+                                        </a>
+                                      ) : (
+                                        <span className="text-[10px] text-slate-500">—</span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
             </div>
 
           </div>
@@ -1618,6 +2463,201 @@ export default function SettingsPage() {
                     >
                       {isSavingRolePerms ? 'Creating...' : 'Create Role'}
                     </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* CONFIGURE GPS INTEGRATION MODAL */}
+          {isGpsModalOpen && (
+            <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4 sm:p-6">
+              <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setIsGpsModalOpen(false)} />
+              <div className={`relative w-full max-w-lg rounded-3xl shadow-2xl border p-6 z-10 space-y-4 ${
+                isDark ? 'bg-[#0B1020] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
+              }`}>
+                <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+                  <div className="flex items-center gap-2">
+                    <Radio className="w-5 h-5 text-blue-600 dark:text-cyan-400 animate-pulse" />
+                    <div>
+                      <h3 className="text-base font-bold">
+                        {editingGpsId ? 'Edit GPS Provider Integration' : 'Connect GPS Telematics Provider'}
+                      </h3>
+                      <span className="text-[11px] text-slate-400">Stream live vehicle positions via REST API</span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsGpsModalOpen(false)}
+                    className="p-1 rounded-lg text-slate-400 hover:text-white cursor-pointer"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <form onSubmit={handleSaveGpsConfig} className="space-y-4">
+                  {/* Select Provider */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold">Select Telematics Provider *</label>
+                    <select
+                      value={gpsForm.provider_code}
+                      onChange={(e) => handleSelectGpsProvider(e.target.value)}
+                      className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-semibold focus:outline-none ${
+                        isDark ? 'bg-slate-900 border-slate-800 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                      }`}
+                    >
+                      {GPS_PROVIDER_TEMPLATES.map((t) => (
+                        <option key={t.code} value={t.code}>
+                          {t.name} {t.popular ? '★ (Recommended for India)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Provider Display Name */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold">Integration Label / Name *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. WheelsEye Fleet GPS"
+                      value={gpsForm.provider_name}
+                      onChange={(e) => setGpsForm({ ...gpsForm, provider_name: e.target.value })}
+                      className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none ${
+                        isDark ? 'bg-slate-900 border-slate-800 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                      }`}
+                    />
+                  </div>
+
+                  {/* API Key / Token */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold">API Key / Access Token *</label>
+                      <button
+                        type="button"
+                        onClick={() => setShowApiKey(!showApiKey)}
+                        className="text-[11px] text-cyan-400 hover:underline flex items-center gap-1 cursor-pointer"
+                      >
+                        {showApiKey ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                        <span>{showApiKey ? 'Hide Key' : 'Show Key'}</span>
+                      </button>
+                    </div>
+                    <input
+                      type={showApiKey ? 'text' : 'password'}
+                      required
+                      placeholder={
+                        GPS_PROVIDER_TEMPLATES.find((t) => t.code === gpsForm.provider_code)?.keyPlaceholder ||
+                        'Paste your WheelsEye or provider API Key here'
+                      }
+                      value={gpsForm.api_key}
+                      onChange={(e) => setGpsForm({ ...gpsForm, api_key: e.target.value })}
+                      className={`w-full px-3.5 py-2.5 rounded-xl border font-mono text-xs focus:outline-none ${
+                        isDark ? 'bg-slate-900 border-slate-800 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                      }`}
+                    />
+                    <span className="text-[10px] text-slate-400">
+                      Obtained from your GPS provider's developer console or account manager.
+                    </span>
+                  </div>
+
+                  {/* Base URL */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold">API Gateway Base URL</label>
+                    <input
+                      type="text"
+                      placeholder="https://api.wheelseye.com/v1"
+                      value={gpsForm.base_url}
+                      onChange={(e) => setGpsForm({ ...gpsForm, base_url: e.target.value })}
+                      className={`w-full px-3.5 py-2.5 rounded-xl border font-mono text-xs focus:outline-none ${
+                        isDark ? 'bg-slate-900 border-slate-800 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                      }`}
+                    />
+                  </div>
+
+                  {/* Sync Interval & Active Switch */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold">Auto-Sync Interval</label>
+                      <select
+                        value={gpsForm.sync_interval_mins}
+                        onChange={(e) => setGpsForm({ ...gpsForm, sync_interval_mins: parseInt(e.target.value, 10) || 5 })}
+                        className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none ${
+                          isDark ? 'bg-slate-900 border-slate-800 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                        }`}
+                      >
+                        <option value={2}>Every 2 Minutes (High Precision)</option>
+                        <option value={5}>Every 5 Minutes (Standard)</option>
+                        <option value={10}>Every 10 Minutes</option>
+                        <option value={15}>Every 15 Minutes</option>
+                        <option value={30}>Every 30 Minutes</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold">Integration Status</label>
+                      <div className="flex items-center h-[38px]">
+                        <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold">
+                          <input
+                            type="checkbox"
+                            checked={gpsForm.is_active}
+                            onChange={(e) => setGpsForm({ ...gpsForm, is_active: e.target.checked })}
+                            className="w-4 h-4 rounded text-blue-600 focus:ring-0"
+                          />
+                          <span>Active / Enable Sync</span>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Test Connection Inline Alert */}
+                  {gpsTestResult && (
+                    <div className={`p-3 rounded-xl border text-xs flex items-start gap-2 ${
+                      gpsTestResult.success
+                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                        : 'bg-rose-500/10 border-rose-500/30 text-rose-400'
+                    }`}>
+                      {gpsTestResult.success ? (
+                        <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+                      ) : (
+                        <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                      )}
+                      <div>
+                        <div className="font-bold">{gpsTestResult.success ? 'Success' : 'Test Failed'}</div>
+                        <p className="text-[11px] mt-0.5">{gpsTestResult.message}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Action Buttons */}
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-200 dark:border-slate-800">
+                    <button
+                      type="button"
+                      onClick={handleTestGpsConnection}
+                      disabled={isTestingGps}
+                      className="px-4 py-2 rounded-xl border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center gap-1.5 transition-all disabled:opacity-50 cursor-pointer"
+                    >
+                      <Zap className={`w-3.5 h-3.5 text-amber-400 ${isTestingGps ? 'animate-bounce' : ''}`} />
+                      <span>{isTestingGps ? 'Testing API...' : 'Test Connection'}</span>
+                    </button>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setIsGpsModalOpen(false)}
+                        className={`px-4 py-2 rounded-xl border text-xs font-bold cursor-pointer ${
+                          isDark ? 'border-slate-800 bg-slate-900 text-slate-400' : 'border-slate-200 bg-slate-100 text-slate-600'
+                        }`}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isSaving}
+                        className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 disabled:opacity-50 cursor-pointer"
+                      >
+                        {isSaving ? 'Saving...' : editingGpsId ? 'Update Settings' : 'Save & Connect'}
+                      </button>
+                    </div>
                   </div>
                 </form>
               </div>

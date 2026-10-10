@@ -82,6 +82,52 @@ export default function Navbar() {
   const profileMenuRef = useRef(null);
   const alertsDropdownRef = useRef(null);
 
+  const [branchInfo, setBranchInfo] = useState({
+    code: user?.branchCode || user?.branch_code || user?.branch?.branch_code || (activeBranch?.code && activeBranch.code !== 'ALL' ? activeBranch.code : ''),
+    name: user?.branchName || user?.branch_name || user?.branch?.branch_name || (activeBranch?.name && activeBranch.name !== 'All Branches' ? activeBranch.name : ''),
+  });
+
+  useEffect(() => {
+    const directCode = user?.branchCode || user?.branch_code || user?.branch?.branch_code || (activeBranch?.code && activeBranch.code !== 'ALL' ? activeBranch.code : null);
+    const directName = user?.branchName || user?.branch_name || user?.branch?.branch_name || (activeBranch?.name && activeBranch.name !== 'All Branches' ? activeBranch.name : null);
+
+    if (directCode) {
+      setBranchInfo({ code: directCode, name: directName || directCode });
+      return;
+    }
+
+    const branchId = user?.branch_id || user?.branchId;
+    if (branchId) {
+      api.get(`/branches/${branchId}`).then((res) => {
+        if (res.data?.data) {
+          const b = res.data.data;
+          setBranchInfo({
+            code: b.branch_code || 'HQ',
+            name: b.branch_name || 'Head Office',
+          });
+        }
+      }).catch(() => {
+        setBranchInfo({ code: 'HQ', name: 'Head Office' });
+      });
+    } else {
+      api.get('/branches?limit=1').then((res) => {
+        const list = res.data?.data || [];
+        if (list.length > 0 && list[0]?.branch_code) {
+          setBranchInfo({
+            code: list[0].branch_code,
+            name: list[0].branch_name || list[0].branch_code,
+          });
+        } else {
+          setBranchInfo({ code: 'HQ', name: 'Head Office' });
+        }
+      }).catch(() => {
+        setBranchInfo({ code: 'HQ', name: 'Head Office' });
+      });
+    }
+  }, [user, activeBranch]);
+
+  const displayBranchCode = branchInfo.code || user?.branchCode || user?.branch_code || (activeBranch?.code && activeBranch.code !== 'ALL' ? activeBranch.code : 'HQ');
+
   const isDark = theme === 'dark';
 
   // Auto-close profile & alerts dropdown when clicking outside
@@ -181,10 +227,10 @@ export default function Navbar() {
 
   return (
     <>
-      <header className={`h-16 px-4 sm:px-6 flex items-center justify-between gap-4 sticky top-0 z-20 border-b backdrop-blur-xl transition-colors ${
+      <header className={`h-16 py-[2px] px-4 sm:px-6 flex items-center justify-between gap-4 sticky top-0 z-20 border-b backdrop-blur-xl transition-colors ${
         isDark
           ? 'bg-[#090D18]/95 border-slate-800 text-white shadow-xs'
-          : 'bg-white/95 border-slate-200/90 text-slate-800 shadow-[0_1px_3px_rgba(0,0,0,0.03)]'
+          : 'bg-white/95 border-slate-200 text-slate-800 shadow-[0_1px_3px_rgba(0,0,0,0.04)]'
       }`}>
         {/* Left: Organization / Operational Context */}
         <div className="flex items-center space-x-3 shrink-0">
@@ -197,15 +243,23 @@ export default function Navbar() {
           </div>
         </div>
 
+        {/* Vertical Separation Line */}
+        <div className={`hidden xl:block h-4 w-px shrink-0 mx-1 ${isDark ? 'bg-slate-800' : 'bg-slate-200'}`} />
+
         {/* Center Slogan - Naturally Centered in Open Middle Space without Overlapping */}
         <div className="hidden xl:flex flex-1 items-center justify-center min-w-0 px-2 select-none">
-          <span className="text-xs text-slate-400 dark:text-slate-400 font-serif italic whitespace-nowrap truncate tracking-wide">
+          <span className={`text-xs font-serif italic whitespace-nowrap truncate tracking-wide ${
+            isDark ? 'text-slate-400' : 'text-slate-500'
+          }`}>
             "Moving Businesses Across Bharat"
           </span>
         </div>
 
+        {/* Vertical Separation Line */}
+        <div className={`hidden xl:block h-4 w-px shrink-0 mx-1 ${isDark ? 'bg-slate-800' : 'bg-slate-200'}`} />
+
         {/* Right: Controls, Live Clock, Notifications & User Profile */}
-        <div className="flex items-center gap-2.5 sm:gap-3.5 shrink-0">
+        <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
         {/* Live IST Clock Widget */}
         <div className={`hidden sm:flex items-center space-x-2 px-3 py-1.5 rounded-xl border text-xs ${
           isDark ? 'bg-slate-900/60 border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'
@@ -218,7 +272,9 @@ export default function Navbar() {
         {/* Theme Toggle */}
         <ThemeToggle />
 
-        {/* Notifications Bell with Dropdown */}
+        {/* Vertical Separation Divider between System status and Action controls */}
+        <div className={`hidden sm:block h-4 w-px shrink-0 mx-0.5 ${isDark ? 'bg-slate-800' : 'bg-slate-200'}`} />
+
         {/* Notifications Bell with Dropdown */}
         <div className="relative" ref={alertsDropdownRef}>
           <button
@@ -467,6 +523,9 @@ export default function Navbar() {
           <HelpCircle className="w-4 h-4" />
         </button>
 
+        {/* Vertical Separation Divider before User Profile */}
+        <div className={`h-4 w-px shrink-0 mx-0.5 ${isDark ? 'bg-slate-800' : 'bg-slate-200'}`} />
+
         {/* User Profile Dropdown */}
         <div className="relative" ref={profileMenuRef}>
           <button
@@ -493,6 +552,14 @@ export default function Navbar() {
               </div>
               <div className="text-[10px] text-cyan-400 font-medium flex items-center gap-1.5 mt-0.5">
                 <span className="truncate max-w-[120px]">{user?.organizationName || user?.businessName || 'Fleet Operations'}</span>
+                {displayBranchCode && (
+                  <span
+                    title={branchInfo.name ? `Branch: ${branchInfo.name} (${displayBranchCode})` : `Branch: ${displayBranchCode}`}
+                    className="inline-flex items-center px-1.5 py-0.2 rounded font-mono font-bold text-[9px] bg-cyan-500/15 text-cyan-500 dark:text-cyan-300 border border-cyan-500/30 uppercase tracking-wide shrink-0"
+                  >
+                    {displayBranchCode}
+                  </span>
+                )}
                 {daysLeft !== null && daysLeft <= 10 && (
                   <span className="text-[9px] font-bold text-amber-400 bg-amber-500/15 border border-amber-500/30 px-1 rounded font-mono">
                     {daysLeft > 0 ? `${daysLeft}d left` : 'Expired'}
@@ -513,6 +580,15 @@ export default function Navbar() {
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${badgeColor}`}>
                     {planName}
                   </span>
+                  {displayBranchCode && (
+                    <span
+                      title={branchInfo.name ? `${branchInfo.name} (${displayBranchCode})` : displayBranchCode}
+                      className="text-[10px] font-bold px-2 py-0.5 rounded-full font-mono bg-cyan-500/15 text-cyan-500 dark:text-cyan-300 border border-cyan-500/30 flex items-center gap-1"
+                    >
+                      <Building2 className="w-3 h-3 text-cyan-400" />
+                      <span>{displayBranchCode}</span>
+                    </span>
+                  )}
                   {daysLeft !== null && (
                     daysLeft <= 10 ? (
                       <span className="text-[10px] font-bold text-amber-400 bg-amber-500/15 px-2 py-0.5 rounded-full border border-amber-500/30 flex items-center gap-1">

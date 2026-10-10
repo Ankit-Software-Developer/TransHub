@@ -5,7 +5,12 @@ const { successResponse, errorResponse } = require('../utils/apiResponse');
 const getOwnerDashboard = async (req, res) => {
   try {
     const { branch_id, date_filter } = req.query;
-    const branchId = branch_id || req.branchId || null;
+    let branchId = req.branchId || null;
+    if (branch_id === 'ALL') {
+      branchId = null;
+    } else if (branch_id) {
+      branchId = branch_id;
+    }
 
     const data = await dashboardService.getOwnerDashboard({
       tenantId: req.tenant.tenantId,

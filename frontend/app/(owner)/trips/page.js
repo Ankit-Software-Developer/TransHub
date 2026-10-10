@@ -857,10 +857,10 @@ export default function TripsPage() {
             <div>
               <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
                 <Truck className="w-6 h-6 text-blue-500" />
-                Line-Haul Trips & Movement
+                Trip and Movement
               </h1>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                Monitor long-distance line haul journeys, assign commercial fleet vehicles, and reconcile settlements.
+                Monitor fleet journeys, assign commercial vehicles, and reconcile trip settlements.
               </p>
             </div>
 

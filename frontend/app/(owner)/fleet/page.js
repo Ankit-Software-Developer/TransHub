@@ -41,9 +41,16 @@ import {
   FileText,
   CreditCard,
   User,
-  Gauge
+  Gauge,
+  UserCheck,
+  Award,
+  Mail,
+  Building,
+  Edit2,
+  Users
 } from 'lucide-react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import DataTable from '../../../components/ui/DataTable';
 import { usePermissions } from '../../../hooks/usePermissions';
 
@@ -52,6 +59,9 @@ import { usePermissions } from '../../../hooks/usePermissions';
 export default function FleetManagementPage() {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
+
+  const searchParams = useSearchParams();
+  const [activeFleetTab, setActiveFleetTab] = useState(searchParams?.get('tab') === 'drivers' ? 'drivers' : 'vehicles');
 
   const [vehicles, setVehicles] = useState([]);
   const [branches, setBranches] = useState([]);
@@ -70,6 +80,179 @@ export default function FleetManagementPage() {
   const [formError, setFormError] = useState('');
   const [addModalTab, setAddModalTab] = useState('basic');
   const [editModalTab, setEditModalTab] = useState('basic');
+
+  // Driver management state & forms
+  const [driverSearch, setDriverSearch] = useState('');
+  const [driverStatusFilter, setDriverStatusFilter] = useState('ALL');
+  const [driverBranchFilter, setDriverBranchFilter] = useState('ALL');
+  const [isDriverModalOpen, setIsDriverModalOpen] = useState(false);
+  const [editingDriver, setEditingDriver] = useState(null);
+  const [driverToDelete, setDriverToDelete] = useState(null);
+  const [isDriverDeleteOpen, setIsDriverDeleteOpen] = useState(false);
+  const [driverCountryCode, setDriverCountryCode] = useState('+91');
+  const [driverPhone, setDriverPhone] = useState('');
+  const [driverPhoneError, setDriverPhoneError] = useState('');
+  const [driverSubmitting, setDriverSubmitting] = useState(false);
+  const [driverFormError, setDriverFormError] = useState('');
+
+  const initialDriverForm = {
+    name: '',
+    driver_code: '',
+    phone: '',
+    alt_phone: '',
+    license_number: '',
+    license_type: 'Heavy Commercial (HMV)',
+    license_expiry: '',
+    branch_id: '',
+    address: '',
+    emergency_contact: '',
+    salary_type: 'MONTHLY',
+    salary_amount: '',
+    status: 'ACTIVE',
+  };
+  const [driverForm, setDriverForm] = useState(initialDriverForm);
+
+  const parsePhoneAndCountry = (rawPhone) => {
+    if (!rawPhone) return { countryCode: '+91', digits: '' };
+    const str = String(rawPhone).trim();
+    const codes = ['+91', '+971', '+966', '+1', '+44', '+65'];
+    const matched = codes.find((c) => str.startsWith(c));
+    if (matched) {
+      const digits = str.slice(matched.length).replace(/[^0-9]/g, '');
+      return { countryCode: matched, digits };
+    }
+    if (str.startsWith('0') && str.length === 11) {
+      return { countryCode: '+91', digits: str.slice(1) };
+    }
+    const digits = str.replace(/[^0-9]/g, '');
+    return { countryCode: '+91', digits };
+  };
+
+  const handleDriverPhoneChange = (val) => {
+    let digits = val.replace(/[^0-9]/g, '');
+    if (driverCountryCode === '+91') {
+      if (digits.startsWith('91') && digits.length === 12) digits = digits.slice(2);
+      else if (digits.startsWith('0') && digits.length === 11) digits = digits.slice(1);
+      digits = digits.slice(0, 10);
+    } else {
+      digits = digits.slice(0, 15);
+    }
+    setDriverPhone(digits);
+    if (driverPhoneError) setDriverPhoneError('');
+  };
+
+  const openAddDriverModal = () => {
+    setEditingDriver(null);
+    setDriverForm({
+      ...initialDriverForm,
+      driver_code: `DRV-${String(drivers.length + 1).padStart(3, '0')}`,
+    });
+    setDriverCountryCode('+91');
+    setDriverPhone('');
+    setDriverPhoneError('');
+    setDriverFormError('');
+    setIsDriverModalOpen(true);
+  };
+
+  const openEditDriverModal = (driver) => {
+    setEditingDriver(driver);
+    const parsed = parsePhoneAndCountry(driver.phone);
+    setDriverCountryCode(parsed.countryCode);
+    setDriverPhone(parsed.digits);
+    setDriverPhoneError('');
+    setDriverForm({
+      name: driver.name || '',
+      driver_code: driver.driver_code || '',
+      phone: driver.phone || '',
+      alt_phone: driver.alt_phone || '',
+      license_number: driver.license_number || '',
+      license_type: driver.license_type || 'Heavy Commercial (HMV)',
+      license_expiry: driver.license_expiry || '',
+      branch_id: driver.branch_id || '',
+      address: driver.address || '',
+      emergency_contact: driver.emergency_contact || '',
+      salary_type: driver.salary_type || 'MONTHLY',
+      salary_amount: driver.salary_amount || '',
+      status: driver.status || 'ACTIVE',
+    });
+    setDriverFormError('');
+    setIsDriverModalOpen(true);
+  };
+
+  const handleSaveDriver = async (e) => {
+    e.preventDefault();
+    if (!driverForm.name.trim() || !driverForm.license_number.trim()) {
+      setDriverFormError('Please enter driver name and commercial license number.');
+      return;
+    }
+    if (driverCountryCode === '+91' && driverPhone.trim().length !== 10) {
+      setDriverPhoneError('Please enter a valid 10-digit mobile number');
+      setDriverFormError('Please enter a valid 10-digit mobile number');
+      return;
+    }
+
+    try {
+      setDriverSubmitting(true);
+      setDriverFormError('');
+
+      const finalPhone = `${driverCountryCode} ${driverPhone.trim()}`;
+      const payload = {
+        ...driverForm,
+        phone: finalPhone,
+      };
+
+      if (editingDriver) {
+        const res = await api.put(`/fleet/drivers/${editingDriver.id}`, payload);
+        if (res.data?.success) {
+          setDrivers((prev) =>
+            prev.map((d) => (d.id === editingDriver.id ? { ...d, ...res.data.data } : d))
+          );
+          setIsDriverModalOpen(false);
+        }
+      } else {
+        const res = await api.post('/fleet/drivers', payload);
+        if (res.data?.success) {
+          setDrivers((prev) => [...prev, res.data.data]);
+          setIsDriverModalOpen(false);
+        }
+      }
+    } catch (err) {
+      setDriverFormError(err.response?.data?.message || err.message || 'Failed to save driver');
+    } finally {
+      setDriverSubmitting(false);
+    }
+  };
+
+  const handleToggleDriverStatus = async (driver) => {
+    const newStatus = driver.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+    try {
+      const res = await api.patch(`/fleet/drivers/${driver.id}/status`, { status: newStatus });
+      if (res.data?.success) {
+        setDrivers((prev) =>
+          prev.map((d) => (d.id === driver.id ? { ...d, status: newStatus } : d))
+        );
+      }
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to toggle driver status');
+    }
+  };
+
+  const handleDeleteDriver = async () => {
+    if (!driverToDelete) return;
+    try {
+      setDriverSubmitting(true);
+      const res = await api.delete(`/fleet/drivers/${driverToDelete.id}`);
+      if (res.data?.success) {
+        setDrivers((prev) => prev.filter((d) => d.id !== driverToDelete.id));
+      }
+      setIsDriverDeleteOpen(false);
+      setDriverToDelete(null);
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to delete driver');
+    } finally {
+      setDriverSubmitting(false);
+    }
+  };
 
   const initialVehicleForm = {
     vehicle_number: '',
@@ -394,7 +577,65 @@ export default function FleetManagementPage() {
     canEditVehicle,
     canDeleteVehicle,
     canViewFleet,
+    canManageDriver,
   } = usePermissions();
+
+  const filteredDrivers = useMemo(() => {
+    return drivers.filter((d) => {
+      const matchSearch =
+        driverSearch === '' ||
+        d.name?.toLowerCase().includes(driverSearch.toLowerCase()) ||
+        d.driver_code?.toLowerCase().includes(driverSearch.toLowerCase()) ||
+        d.phone?.includes(driverSearch) ||
+        d.license_number?.toLowerCase().includes(driverSearch.toLowerCase());
+
+      const matchStatus = driverStatusFilter === 'ALL' || d.status === driverStatusFilter;
+      const matchBranch = driverBranchFilter === 'ALL' || d.branch_id === driverBranchFilter;
+
+      return matchSearch && matchStatus && matchBranch;
+    });
+  }, [drivers, driverSearch, driverStatusFilter, driverBranchFilter]);
+
+  const driverStats = useMemo(() => {
+    const total = drivers.length;
+    const active = drivers.filter((d) => d.status === 'ACTIVE' || d.status === 'ON_TRIP').length;
+    const onTrip = drivers.filter((d) => d.status === 'ON_TRIP').length;
+    const available = drivers.filter((d) => d.status === 'ACTIVE').length;
+
+    const now = new Date();
+    const thirtyDays = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    const expiringSoon = drivers.filter((d) => {
+      if (!d.license_expiry) return false;
+      const exp = new Date(d.license_expiry);
+      return exp <= thirtyDays;
+    }).length;
+
+    return { total, active, onTrip, available, expiringSoon };
+  }, [drivers]);
+
+  const exportDriversData = () => {
+    const headers = ['Driver Code', 'Name', 'Phone', 'License Number', 'License Type', 'License Expiry', 'Branch', 'Salary Type', 'Amount', 'Status'];
+    const rows = drivers.map((d) => [
+      d.driver_code || '',
+      `"${d.name || ''}"`,
+      d.phone || '',
+      d.license_number || '',
+      `"${d.license_type || ''}"`,
+      d.license_expiry || '',
+      `"${d.branch?.branch_name || 'Unassigned'}"`,
+      d.salary_type || '',
+      d.salary_amount || 0,
+      d.status || ''
+    ]);
+    const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `TransHub_Commercial_Drivers_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+  };
+
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(15);
   const [sortBy, setSortBy] = useState('plate');
@@ -682,6 +923,62 @@ export default function FleetManagementPage() {
     [isDark, branches, drivers]
   );
 
+  const renderFleetSwitcher = () => (
+    <div className="flex items-center space-x-2.5 pt-1">
+      <button
+        type="button"
+        onClick={() => setActiveFleetTab('vehicles')}
+        className={`flex items-center space-x-2.5 px-4 py-2.5 rounded-xl font-bold text-sm transition-all cursor-pointer ${
+          activeFleetTab === 'vehicles'
+            ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30'
+            : isDark
+              ? 'bg-slate-900/80 text-slate-400 hover:text-white border border-slate-800'
+              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+        }`}
+      >
+        <Truck className="w-4 h-4" />
+        <span>Commercial Vehicles</span>
+        <span
+          className={`text-xs px-2 py-0.5 rounded-full font-mono ${
+            activeFleetTab === 'vehicles'
+              ? 'bg-white/20 text-white'
+              : isDark
+                ? 'bg-slate-800 text-slate-300'
+                : 'bg-slate-100 text-slate-700'
+          }`}
+        >
+          {vehicles.length}
+        </span>
+      </button>
+
+      <button
+        type="button"
+        onClick={() => setActiveFleetTab('drivers')}
+        className={`flex items-center space-x-2.5 px-4 py-2.5 rounded-xl font-bold text-sm transition-all cursor-pointer ${
+          activeFleetTab === 'drivers'
+            ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30'
+            : isDark
+              ? 'bg-slate-900/80 text-slate-400 hover:text-white border border-slate-800'
+              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+        }`}
+      >
+        <Users className="w-4 h-4" />
+        <span>Commercial Drivers & Configuration</span>
+        <span
+          className={`text-xs px-2 py-0.5 rounded-full font-mono ${
+            activeFleetTab === 'drivers'
+              ? 'bg-white/20 text-white'
+              : isDark
+                ? 'bg-slate-800 text-slate-300'
+                : 'bg-slate-100 text-slate-700'
+          }`}
+        >
+          {drivers.length}
+        </span>
+      </button>
+    </div>
+  );
+
   return (
     <div className={`flex min-h-screen transition-colors duration-300 ${isDark ? 'bg-[#06080F] text-slate-100' : 'bg-[#F4F6FB] text-slate-900'
       } font-sans`}>
@@ -691,161 +988,521 @@ export default function FleetManagementPage() {
 
         <main className="flex-1 p-5 sm:p-6 lg:p-8 space-y-6 max-w-[1720px] mx-auto w-full">
 
-          {/* Header Action Bar */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <div className="flex items-center space-x-2.5">
-                <Truck className="w-6 h-6 text-cyan-400" />
-                <h1 className={`text-2xl sm:text-3xl font-black tracking-tight ${isDark ? 'text-white' : 'text-slate-900'
-                  }`}>
-                  Fleet & Vehicle Asset Management
-                </h1>
+          {/* TAB 1: COMMERCIAL VEHICLES */}
+          {activeFleetTab === 'vehicles' && (
+            <div className="space-y-6">
+              {/* Header Action Bar */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <div className="flex items-center space-x-2.5">
+                    <Truck className="w-6 h-6 text-cyan-400" />
+                    <h1 className={`text-2xl sm:text-3xl font-black tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                      Fleet & Vehicle Asset Management
+                    </h1>
+                  </div>
+                  <p className={`text-xs sm:text-sm mt-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                    {vehicles.length} heavy commercial vehicles registered with AIS-140 live GPS telematics.
+                  </p>
+                </div>
+
+                {canCreateVehicle && (
+                  <button
+                    type="button"
+                    onClick={() => setIsAddModalOpen(true)}
+                    className="flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 transition-all active:scale-95 cursor-pointer shrink-0"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Add Vehicle</span>
+                  </button>
+                )}
               </div>
-              <p className={`text-xs sm:text-sm mt-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                {vehicles.length} heavy commercial vehicles registered with AIS-140 live GPS telematics.
-              </p>
-            </div>
 
-            <div className="flex items-center space-x-3">
-              {canCreateVehicle && (
-                <button
-                  onClick={() => setIsAddModalOpen(true)}
-                  className="flex items-center space-x-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 transition-all active:scale-95 cursor-pointer"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Add Vehicle</span>
-                </button>
-              )}
-            </div>
-          </div>
+              {/* Operational Fleet Health & Utilization Strip */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
+                <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
+                  <div className={`text-[11px] font-semibold mb-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Total Vehicles</div>
+                  <div className={`text-2xl font-black font-mono ${isDark ? 'text-white' : 'text-slate-900'}`}>{vehicles.length}</div>
+                  <div className={`text-[10px] mt-1 ${isDark ? 'text-cyan-400' : 'text-blue-600 font-semibold'}`}>100% GPS Equipped</div>
+                </div>
 
-          {/* Operational Fleet Health & Utilization Strip */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
-            <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
-              <div className={`text-[11px] font-semibold mb-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Total Vehicles</div>
-              <div className={`text-2xl font-black font-mono ${isDark ? 'text-white' : 'text-slate-900'}`}>{vehicles.length}</div>
-              <div className={`text-[10px] mt-1 ${isDark ? 'text-cyan-400' : 'text-blue-600 font-semibold'}`}>100% GPS Equipped</div>
-            </div>
+                <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
+                  <div className={`text-[11px] font-semibold mb-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Active On Road</div>
+                  <div className="text-2xl font-black text-emerald-500 dark:text-emerald-400 font-mono">
+                    {vehicles.filter(v => v.status === 'ON_ROAD').length}
+                  </div>
+                  <div className="text-[10px] text-emerald-600 dark:text-emerald-400/80 mt-1 font-semibold">
+                    {vehicles.length > 0 ? ((vehicles.filter(v => v.status === 'ON_ROAD').length / vehicles.length) * 100).toFixed(1) : 0}% Utilization
+                  </div>
+                </div>
 
-            <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
-              <div className={`text-[11px] font-semibold mb-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Active On Road</div>
-              <div className="text-2xl font-black text-emerald-500 dark:text-emerald-400 font-mono">
-                {vehicles.filter(v => v.status === 'ON_ROAD').length}
+                <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
+                  <div className={`text-[11px] font-semibold mb-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>In Yard (Available)</div>
+                  <div className="text-2xl font-black text-blue-600 dark:text-blue-400 font-mono">
+                    {vehicles.filter(v => v.status === 'YARD').length}
+                  </div>
+                  <div className={`text-[10px] mt-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Ready for Line-haul</div>
+                </div>
+
+                <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
+                  <div className={`text-[11px] font-semibold mb-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Under Maintenance</div>
+                  <div className="text-2xl font-black text-amber-500 dark:text-amber-400 font-mono">
+                    {vehicles.filter(v => v.status === 'MAINTENANCE').length}
+                  </div>
+                  <div className="text-[10px] text-amber-600 dark:text-amber-400/80 mt-1 font-semibold">Scheduled Workshop</div>
+                </div>
+
+                <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
+                  <div className={`text-[11px] font-semibold mb-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Compliance Alerts</div>
+                  <div className="text-2xl font-black text-rose-500 dark:text-rose-400 font-mono">
+                    {vehicles.filter(v => (v.insurance_days != null && v.insurance_days < 30) || (v.fitness_days != null && v.fitness_days < 30) || (v.puc_days != null && v.puc_days < 0)).length}
+                  </div>
+                  <div className="text-[10px] text-rose-600 dark:text-rose-400/80 mt-1 font-semibold">Insurance / PUC Due</div>
+                </div>
               </div>
-              <div className="text-[10px] text-emerald-600 dark:text-emerald-400/80 mt-1 font-semibold">
-                {vehicles.length > 0 ? ((vehicles.filter(v => v.status === 'ON_ROAD').length / vehicles.length) * 100).toFixed(1) : 0}% Utilization
-              </div>
-            </div>
 
-            <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
-              <div className={`text-[11px] font-semibold mb-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>In Yard (Available)</div>
-              <div className="text-2xl font-black text-blue-600 dark:text-blue-400 font-mono">
-                {vehicles.filter(v => v.status === 'YARD').length}
-              </div>
-              <div className={`text-[10px] mt-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Ready for Line-haul</div>
-            </div>
+              {/* View Switcher Tabs: Before Table after metric tabs */}
+              {renderFleetSwitcher()}
 
-            <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
-              <div className={`text-[11px] font-semibold mb-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Under Maintenance</div>
-              <div className="text-2xl font-black text-amber-500 dark:text-amber-400 font-mono">
-                {vehicles.filter(v => v.status === 'MAINTENANCE').length}
-              </div>
-              <div className="text-[10px] text-amber-600 dark:text-amber-400/80 mt-1 font-semibold">Scheduled Workshop</div>
+              {/* High-Density Vehicle Directory Server-side DataTable */}
+              <DataTable
+                columns={fleetColumns}
+                data={paginatedVehicles}
+                totalCount={sortedVehicles.length}
+                isLoading={loading}
+                page={page}
+                pageSize={pageSize}
+                pageSizeOptions={[10, 15, 25, 50, 100]}
+                onPageChange={(newPage) => setPage(newPage)}
+                onPageSizeChange={(newSize) => {
+                  setPageSize(newSize);
+                  setPage(1);
+                }}
+                sortBy={sortBy}
+                sortOrder={sortOrder}
+                onSortChange={({ sortBy: newSortBy, sortOrder: newSortOrder }) => {
+                  setSortBy(newSortBy);
+                  setSortOrder(newSortOrder);
+                }}
+                searchQuery={search}
+                onSearchChange={(val) => {
+                  setSearch(val);
+                  setPage(1);
+                }}
+                searchPlaceholder="Search by Registration Plate, Model, Driver, Current City..."
+                exportFilename="Fleet_Asset_Register"
+                emptyTitle="No Vehicles Found"
+                emptySubtitle="No commercial vehicles match your filter criteria."
+                filtersSlot={
+                  <div className="flex flex-wrap items-center gap-1.5 text-xs font-bold">
+                    <button
+                      type="button"
+                      onClick={() => { setFilterType('ALL'); setPage(1); }}
+                      className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${filterType === 'ALL'
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : isDark ? 'bg-slate-900 text-slate-400 hover:text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
+                    >
+                      All Vehicles ({vehicles.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setFilterType('ON_ROAD'); setPage(1); }}
+                      className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${filterType === 'ON_ROAD'
+                          ? 'bg-emerald-600 text-white shadow-sm'
+                          : isDark ? 'bg-slate-900 text-slate-400 hover:text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
+                    >
+                      On Road ({vehicles.filter((v) => v.status === 'ON_ROAD').length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setFilterType('YARD'); setPage(1); }}
+                      className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${filterType === 'YARD'
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : isDark ? 'bg-slate-900 text-slate-400 hover:text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
+                    >
+                      In Yard ({vehicles.filter((v) => v.status === 'YARD').length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setFilterType('MAINTENANCE'); setPage(1); }}
+                      className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${filterType === 'MAINTENANCE'
+                          ? 'bg-amber-600 text-white shadow-sm'
+                          : isDark ? 'bg-slate-900 text-slate-400 hover:text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
+                    >
+                      Maintenance ({vehicles.filter((v) => v.status === 'MAINTENANCE').length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setFilterType('INACTIVE'); setPage(1); }}
+                      className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${filterType === 'INACTIVE'
+                          ? 'bg-rose-600 text-white shadow-sm'
+                          : isDark ? 'bg-slate-900 text-slate-400 hover:text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
+                    >
+                      Inactive ({vehicles.filter((v) => v.status === 'INACTIVE').length})
+                    </button>
+                  </div>
+                }
+              />
             </div>
+          )}
 
-            <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
-              <div className={`text-[11px] font-semibold mb-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Compliance Alerts</div>
-              <div className="text-2xl font-black text-rose-500 dark:text-rose-400 font-mono">
-                {vehicles.filter(v => (v.insurance_days != null && v.insurance_days < 30) || (v.fitness_days != null && v.fitness_days < 30) || (v.puc_days != null && v.puc_days < 0)).length}
+          {/* TAB 2: COMMERCIAL DRIVERS & CONFIGURATION */}
+          {activeFleetTab === 'drivers' && (
+            <div className="space-y-6">
+              {/* Drivers Header info */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <div className="flex items-center space-x-2.5">
+                    <Users className="w-6 h-6 text-cyan-400" />
+                    <h1 className={`text-2xl sm:text-3xl font-black tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                      Commercial Fleet Drivers Directory
+                    </h1>
+                  </div>
+                  <p className={`text-xs sm:text-sm mt-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                    Register and configure commercial drivers, track license compliance, and assign to hubs or long-haul routes.
+                  </p>
+                </div>
+
+                {canManageDriver && (
+                  <div className="flex items-center space-x-2 shrink-0">
+                    {canExport && (
+                      <button
+                        type="button"
+                        onClick={exportDriversData}
+                        className={`flex items-center space-x-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold border transition-colors cursor-pointer ${
+                          isDark
+                            ? 'border-slate-800 bg-slate-900/80 hover:bg-slate-800 text-slate-300'
+                            : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700 shadow-xs'
+                        }`}
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        <span>Export CSV</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={openAddDriverModal}
+                      className="flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md shadow-emerald-600/30 transition-all active:scale-95 cursor-pointer"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Register Driver</span>
+                    </button>
+                  </div>
+                )}
               </div>
-              <div className="text-[10px] text-rose-600 dark:text-rose-400/80 mt-1 font-semibold">Insurance / PUC Due</div>
-            </div>
-          </div>
 
-          {/* High-Density Vehicle Directory Server-side DataTable */}
-          <DataTable
-            columns={fleetColumns}
-            data={paginatedVehicles}
-            totalCount={sortedVehicles.length}
-            isLoading={loading}
-            page={page}
-            pageSize={pageSize}
-            pageSizeOptions={[10, 15, 25, 50, 100]}
-            onPageChange={(newPage) => setPage(newPage)}
-            onPageSizeChange={(newSize) => {
-              setPageSize(newSize);
-              setPage(1);
-            }}
-            sortBy={sortBy}
-            sortOrder={sortOrder}
-            onSortChange={({ sortBy: newSortBy, sortOrder: newSortOrder }) => {
-              setSortBy(newSortBy);
-              setSortOrder(newSortOrder);
-            }}
-            searchQuery={search}
-            onSearchChange={(val) => {
-              setSearch(val);
-              setPage(1);
-            }}
-            searchPlaceholder="Search by Registration Plate, Model, Driver, Current City..."
-            exportFilename="Fleet_Asset_Register"
-            emptyTitle="No Vehicles Found"
-            emptySubtitle="No commercial vehicles match your filter criteria."
-            filtersSlot={
-              <div className="flex flex-wrap items-center gap-1.5 text-xs font-bold">
-                <button
-                  type="button"
-                  onClick={() => { setFilterType('ALL'); setPage(1); }}
-                  className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${filterType === 'ALL'
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : isDark ? 'bg-slate-900 text-slate-400 hover:text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              {/* Driver Stats Strip */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className={`text-xs font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                      Fleet Drivers
+                    </span>
+                    <Truck className="w-4 h-4 text-emerald-500" />
+                  </div>
+                  <div className="flex items-baseline space-x-2">
+                    <span className="text-2xl font-black">{driverStats.total}</span>
+                    <span className="text-xs font-semibold text-emerald-500">{driverStats.active} Active</span>
+                  </div>
+                  <div className={`text-[11px] mt-1 flex items-center space-x-2 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                    <span>🛣️ {driverStats.onTrip} On Highway</span>
+                    <span>•</span>
+                    <span>🏕️ {driverStats.available} In Yard</span>
+                  </div>
+                </div>
+
+                <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className={`text-xs font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                      License Health
+                    </span>
+                    <AlertTriangle className={`w-4 h-4 ${driverStats.expiringSoon > 0 ? 'text-amber-500' : 'text-blue-500'}`} />
+                  </div>
+                  <div className="flex items-baseline space-x-2">
+                    <span className={`text-2xl font-black ${driverStats.expiringSoon > 0 ? 'text-amber-500' : ''}`}>
+                      {driverStats.expiringSoon}
+                    </span>
+                    <span className="text-xs font-medium text-amber-500">Expiring (&lt;30d)</span>
+                  </div>
+                  <p className={`text-[11px] mt-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                    {driverStats.expiringSoon === 0 ? 'All driver licenses valid' : 'Requires renewal attention'}
+                  </p>
+                </div>
+
+                <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className={`text-xs font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                      Assigned Vehicles
+                    </span>
+                    <CheckCircle2 className="w-4 h-4 text-cyan-400" />
+                  </div>
+                  <div className="flex items-baseline space-x-2">
+                    <span className="text-2xl font-black font-mono">
+                      {vehicles.filter(v => v.driver && v.driver !== 'Assigned Driver').length}
+                    </span>
+                    <span className="text-xs font-semibold text-cyan-400">Assigned</span>
+                  </div>
+                  <p className={`text-[11px] mt-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                    Paired with commercial fleet
+                  </p>
+                </div>
+
+                <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className={`text-xs font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                      Operating Stations
+                    </span>
+                    <Building className="w-4 h-4 text-purple-500" />
+                  </div>
+                  <div className="flex items-baseline space-x-2">
+                    <span className="text-2xl font-black">{branches.length}</span>
+                    <span className="text-xs font-medium text-purple-500">Active Stations</span>
+                  </div>
+                  <p className={`text-[11px] mt-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                    Dispatches, yard & line-haul
+                  </p>
+                </div>
+              </div>
+
+              {/* View Switcher Tabs: Before Table after metric tabs */}
+              {renderFleetSwitcher()}
+
+              {/* Driver Filters Bar */}
+              <div className={`p-3.5 rounded-2xl border flex flex-col md:flex-row items-center justify-between gap-3 ${
+                isDark ? 'bg-[#0B1020]/80 border-slate-800' : 'bg-white border-slate-200 shadow-xs'
+              }`}>
+                <div className="relative flex-1 w-full">
+                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    type="text"
+                    value={driverSearch}
+                    onChange={(e) => setDriverSearch(e.target.value)}
+                    placeholder="Search by driver name, code (DRV-001), phone, or DL number..."
+                    className={`w-full pl-10 pr-4 py-2 rounded-xl text-xs font-medium transition-all outline-hidden border ${
+                      isDark
+                        ? 'bg-slate-900/60 border-slate-800 text-white placeholder-slate-500 focus:border-cyan-500/50'
+                        : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400 focus:border-blue-500'
                     }`}
-                >
-                  All Vehicles ({vehicles.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setFilterType('ON_ROAD'); setPage(1); }}
-                  className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${filterType === 'ON_ROAD'
-                      ? 'bg-emerald-600 text-white shadow-sm'
-                      : isDark ? 'bg-slate-900 text-slate-400 hover:text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  />
+                  {driverSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setDriverSearch('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center space-x-2 w-full md:w-auto">
+                  <select
+                    value={driverStatusFilter}
+                    onChange={(e) => setDriverStatusFilter(e.target.value)}
+                    className={`px-3 py-2 rounded-xl text-xs font-semibold outline-hidden border cursor-pointer ${
+                      isDark ? 'bg-slate-900 border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'
                     }`}
-                >
-                  On Road ({vehicles.filter((v) => v.status === 'ON_ROAD').length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setFilterType('YARD'); setPage(1); }}
-                  className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${filterType === 'YARD'
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : isDark ? 'bg-slate-900 text-slate-400 hover:text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  >
+                    <option value="ALL">All Statuses</option>
+                    <option value="ACTIVE">Active / Available</option>
+                    <option value="ON_TRIP">On Trip</option>
+                    <option value="INACTIVE">Inactive</option>
+                  </select>
+
+                  <select
+                    value={driverBranchFilter}
+                    onChange={(e) => setDriverBranchFilter(e.target.value)}
+                    className={`px-3 py-2 rounded-xl text-xs font-semibold outline-hidden border cursor-pointer ${
+                      isDark ? 'bg-slate-900 border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'
                     }`}
-                >
-                  In Yard ({vehicles.filter((v) => v.status === 'YARD').length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setFilterType('MAINTENANCE'); setPage(1); }}
-                  className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${filterType === 'MAINTENANCE'
-                      ? 'bg-amber-600 text-white shadow-sm'
-                      : isDark ? 'bg-slate-900 text-slate-400 hover:text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                    }`}
-                >
-                  Maintenance ({vehicles.filter((v) => v.status === 'MAINTENANCE').length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setFilterType('INACTIVE'); setPage(1); }}
-                  className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${filterType === 'INACTIVE'
-                      ? 'bg-rose-600 text-white shadow-sm'
-                      : isDark ? 'bg-slate-900 text-slate-400 hover:text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                    }`}
-                >
-                  Inactive ({vehicles.filter((v) => v.status === 'INACTIVE').length})
-                </button>
+                  >
+                    <option value="ALL">All Stations / Hubs</option>
+                    {branches.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.branch_name || b.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
-            }
-          />
+
+              {/* Drivers Table */}
+              <div className={`rounded-2xl border overflow-hidden ${
+                isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'
+              }`}>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className={`border-b text-[11px] font-bold uppercase tracking-wider ${
+                        isDark ? 'border-slate-800 bg-slate-900/50 text-slate-400' : 'border-slate-100 bg-slate-50 text-slate-500'
+                      }`}>
+                        <th className="py-3 px-4">Driver Profile</th>
+                        <th className="py-3 px-4">Contact</th>
+                        <th className="py-3 px-4">Commercial License (DL)</th>
+                        <th className="py-3 px-4">Assigned Hub</th>
+                        <th className="py-3 px-4">Remuneration</th>
+                        <th className="py-3 px-4">Status</th>
+                        <th className="py-3 px-4 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className={`divide-y text-xs ${
+                      isDark ? 'divide-slate-800/80 text-slate-200' : 'divide-slate-100 text-slate-700'
+                    }`}>
+                      {filteredDrivers.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="py-12 text-center text-slate-500">
+                            No commercial drivers match your search filters.
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredDrivers.map((driver) => {
+                          const isExpiring = driver.license_expiry && new Date(driver.license_expiry) <= new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+                          return (
+                            <tr
+                              key={driver.id}
+                              className={`transition-colors ${
+                                isDark ? 'hover:bg-slate-900/40' : 'hover:bg-slate-50/80'
+                              }`}
+                            >
+                              <td className="py-3.5 px-4">
+                                <div className="flex items-center space-x-3">
+                                  <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 text-white flex items-center justify-center font-bold text-xs shadow-sm">
+                                    {driver.name ? driver.name.charAt(0).toUpperCase() : 'D'}
+                                  </div>
+                                  <div>
+                                    <div className="font-bold flex items-center space-x-2">
+                                      <span className={isDark ? 'text-white' : 'text-slate-900'}>{driver.name}</span>
+                                    </div>
+                                    <div className="text-[10px] font-mono text-emerald-500 font-semibold">
+                                      {driver.driver_code || 'NO-CODE'}
+                                    </div>
+                                  </div>
+                                </div>
+                              </td>
+
+                              <td className="py-3.5 px-4 font-mono text-[11px]">
+                                <div className="flex items-center space-x-1.5">
+                                  <Phone className="w-3 h-3 text-slate-400" />
+                                  <span>{driver.phone || '—'}</span>
+                                </div>
+                                {driver.alt_phone && (
+                                  <div className="text-[10px] text-slate-400 mt-0.5">Alt: {driver.alt_phone}</div>
+                                )}
+                              </td>
+
+                              <td className="py-3.5 px-4">
+                                <div className="font-mono font-bold text-xs flex items-center space-x-1.5">
+                                  <FileText className="w-3.5 h-3.5 text-blue-500" />
+                                  <span>{driver.license_number}</span>
+                                </div>
+                                <div className="flex items-center space-x-2 text-[10px] text-slate-400 mt-0.5">
+                                  <span>{driver.license_type || 'HMV'}</span>
+                                  {driver.license_expiry && (
+                                    <>
+                                      <span>•</span>
+                                      <span className={isExpiring ? 'text-amber-500 font-bold' : ''}>
+                                        Exp: {driver.license_expiry}
+                                      </span>
+                                    </>
+                                  )}
+                                </div>
+                              </td>
+
+                              <td className="py-3.5 px-4">
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-lg text-[11px] font-medium ${
+                                  isDark ? 'bg-slate-800 text-slate-300' : 'bg-slate-100 text-slate-700'
+                                }`}>
+                                  <Building className="w-3 h-3 mr-1 text-slate-400" />
+                                  {driver.branch?.branch_name || 'Unassigned Yard'}
+                                </span>
+                              </td>
+
+                              <td className="py-3.5 px-4">
+                                <div className="font-bold">
+                                  ₹{Number(driver.salary_amount || 0).toLocaleString()}
+                                </div>
+                                <div className="text-[10px] text-slate-400 uppercase">
+                                  {driver.salary_type || 'MONTHLY'}
+                                </div>
+                              </td>
+
+                              <td className="py-3.5 px-4">
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                  driver.status === 'ACTIVE'
+                                    ? 'bg-emerald-500/10 text-emerald-500'
+                                    : driver.status === 'ON_TRIP'
+                                      ? 'bg-blue-500/10 text-blue-500'
+                                      : 'bg-rose-500/10 text-rose-500'
+                                }`}>
+                                  <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${
+                                    driver.status === 'ACTIVE'
+                                      ? 'bg-emerald-500'
+                                      : driver.status === 'ON_TRIP'
+                                        ? 'bg-blue-500'
+                                        : 'bg-rose-500'
+                                  }`} />
+                                  {driver.status === 'ACTIVE' ? 'Available' : driver.status === 'ON_TRIP' ? 'On Highway' : 'Inactive'}
+                                </span>
+                              </td>
+
+                              <td className="py-3.5 px-4 text-right">
+                                <div className="flex items-center justify-end space-x-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleDriverStatus(driver)}
+                                    title={driver.status === 'ACTIVE' ? 'Deactivate Driver' : 'Activate Driver'}
+                                    className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${
+                                      driver.status === 'ACTIVE'
+                                        ? isDark ? 'border-slate-800 text-slate-400 hover:text-amber-400' : 'border-slate-200 text-slate-500 hover:text-amber-600'
+                                        : 'border-emerald-500/30 text-emerald-500 hover:bg-emerald-500/10'
+                                    }`}
+                                  >
+                                    <Power className="w-3.5 h-3.5" />
+                                  </button>
+                                  {canManageDriver && (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={() => openEditDriverModal(driver)}
+                                        title="Edit Driver Configuration"
+                                        className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${
+                                          isDark ? 'border-slate-800 text-slate-400 hover:text-white' : 'border-slate-200 text-slate-600 hover:text-slate-900'
+                                        }`}
+                                      >
+                                        <Pencil className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setDriverToDelete(driver);
+                                          setIsDriverDeleteOpen(true);
+                                        }}
+                                        title="Delete Driver"
+                                        className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${
+                                          isDark ? 'border-slate-800 text-slate-400 hover:text-rose-400' : 'border-slate-200 text-slate-500 hover:text-rose-600'
+                                        }`}
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
 
         </main>
       </div>
@@ -2625,7 +3282,6 @@ export default function FleetManagementPage() {
                 </div>
               </div>
             </div>
-
             <div className={`p-4 border-t flex justify-end ${isDark ? 'border-slate-800 bg-[#0E1528]' : 'border-slate-100 bg-slate-50'}`}>
               <button
                 type="button"
@@ -2633,6 +3289,380 @@ export default function FleetManagementPage() {
                 className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all shadow-md shadow-blue-600/20 cursor-pointer"
               >
                 Close Asset Sheet
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Register / Edit Driver Modal */}
+      {isDriverModalOpen && (
+        <div className={`fixed inset-0 z-[9999] backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-150 ${
+          isDark ? 'bg-slate-950/80' : 'bg-slate-900/50'
+        }`}>
+          <div className={`relative w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden border max-h-[92vh] flex flex-col ${
+            isDark ? 'bg-[#0B1020] border-cyan-500/40 text-white' : 'bg-white border-slate-200 text-slate-900'
+          }`}>
+            {/* Modal Header */}
+            <div className={`px-6 py-4 border-b flex items-center justify-between shrink-0 ${
+              isDark ? 'border-slate-800 bg-[#0E1528]' : 'border-slate-100 bg-slate-50/70'
+            }`}>
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-600 to-blue-500 text-white flex items-center justify-center shadow-md">
+                  <Users className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-lg">
+                    {editingDriver ? 'Edit Commercial Driver' : 'Register Commercial Driver'}
+                  </h3>
+                  <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                    Configure driver credentials, commercial license compliance, and assigned hub.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsDriverModalOpen(false)}
+                className={`p-2 rounded-xl transition-colors cursor-pointer ${
+                  isDark ? 'hover:bg-slate-800 text-slate-400 hover:text-white' : 'hover:bg-slate-200 text-slate-500'
+                }`}
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <form onSubmit={handleSaveDriver} className="flex-1 overflow-y-auto p-6 space-y-4">
+              {driverFormError && (
+                <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-500 text-xs font-semibold flex items-center space-x-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span>{driverFormError}</span>
+                </div>
+              )}
+
+              {/* Personal & Badge Info */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold mb-1.5">
+                    Driver Full Name <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={driverForm.name}
+                    onChange={(e) => setDriverForm({ ...driverForm, name: e.target.value })}
+                    placeholder="e.g. Rajesh Kumar"
+                    className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-medium border outline-hidden transition-all ${
+                      isDark
+                        ? 'bg-slate-900/60 border-slate-800 text-white focus:border-cyan-500/50'
+                        : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
+                    }`}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold mb-1.5">
+                    Driver Code / Badge ID
+                  </label>
+                  <input
+                    type="text"
+                    value={driverForm.driver_code}
+                    onChange={(e) => setDriverForm({ ...driverForm, driver_code: e.target.value })}
+                    placeholder="e.g. DRV-001"
+                    className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-mono font-bold border outline-hidden transition-all ${
+                      isDark
+                        ? 'bg-slate-900/60 border-slate-800 text-cyan-400 focus:border-cyan-500/50'
+                        : 'bg-slate-50 border-slate-200 text-blue-600 focus:border-blue-500'
+                    }`}
+                  />
+                </div>
+              </div>
+
+              {/* Mobile Phone & Alt Phone */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold mb-1.5">
+                    Mobile Phone <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="flex space-x-2">
+                    <select
+                      value={driverCountryCode}
+                      onChange={(e) => setDriverCountryCode(e.target.value)}
+                      className={`px-2 py-2.5 rounded-xl text-xs font-bold border outline-hidden cursor-pointer ${
+                        isDark ? 'bg-slate-900 border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'
+                      }`}
+                    >
+                      <option value="+91">🇮🇳 +91</option>
+                      <option value="+971">🇦🇪 +971</option>
+                      <option value="+966">🇸🇦 +966</option>
+                      <option value="+1">🇺🇸 +1</option>
+                      <option value="+44">🇬🇧 +44</option>
+                      <option value="+65">🇸🇬 +65</option>
+                    </select>
+                    <input
+                      type="tel"
+                      required
+                      value={driverPhone}
+                      onChange={(e) => handleDriverPhoneChange(e.target.value)}
+                      placeholder="9876543210"
+                      className={`flex-1 px-3.5 py-2.5 rounded-xl text-xs font-mono font-medium border outline-hidden transition-all ${
+                        driverPhoneError ? 'border-rose-500' : ''
+                      } ${
+                        isDark
+                          ? 'bg-slate-900/60 border-slate-800 text-white focus:border-cyan-500/50'
+                          : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
+                      }`}
+                    />
+                  </div>
+                  {driverPhoneError && (
+                    <p className="text-[11px] text-rose-500 mt-1 font-medium">{driverPhoneError}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold mb-1.5">Alternate Contact Phone</label>
+                  <input
+                    type="tel"
+                    value={driverForm.alt_phone}
+                    onChange={(e) => setDriverForm({ ...driverForm, alt_phone: e.target.value })}
+                    placeholder="e.g. 9811223344"
+                    className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-mono font-medium border outline-hidden transition-all ${
+                      isDark
+                        ? 'bg-slate-900/60 border-slate-800 text-white focus:border-cyan-500/50'
+                        : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
+                    }`}
+                  />
+                </div>
+              </div>
+
+              {/* Commercial Driving License (DL) details */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-bold mb-1.5">
+                    Commercial DL Number <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={driverForm.license_number}
+                    onChange={(e) => setDriverForm({ ...driverForm, license_number: e.target.value.toUpperCase() })}
+                    placeholder="DL-1420110012345"
+                    className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-mono font-bold border outline-hidden transition-all ${
+                      isDark
+                        ? 'bg-slate-900/60 border-slate-800 text-white focus:border-cyan-500/50'
+                        : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
+                    }`}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold mb-1.5">License Classification</label>
+                  <select
+                    value={driverForm.license_type}
+                    onChange={(e) => setDriverForm({ ...driverForm, license_type: e.target.value })}
+                    className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-medium border outline-hidden cursor-pointer ${
+                      isDark ? 'bg-slate-900 border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'
+                    }`}
+                  >
+                    <option value="Heavy Commercial (HMV)">Heavy Commercial (HMV)</option>
+                    <option value="Medium Commercial (MGV)">Medium Commercial (MGV)</option>
+                    <option value="Light Commercial (LMV)">Light Commercial (LMV)</option>
+                    <option value="Hazardous Goods / Tanker">Hazardous Goods / Tanker</option>
+                    <option value="Heavy Trailer / Articulated">Heavy Trailer / Articulated</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold mb-1.5">DL Expiry Date</label>
+                  <input
+                    type="date"
+                    value={driverForm.license_expiry}
+                    onChange={(e) => setDriverForm({ ...driverForm, license_expiry: e.target.value })}
+                    className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-medium border outline-hidden ${
+                      isDark ? 'bg-slate-900 border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'
+                    }`}
+                  />
+                </div>
+              </div>
+
+              {/* Station Assignment & Remuneration */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-bold mb-1.5">Assigned Station / Hub</label>
+                  <select
+                    value={driverForm.branch_id}
+                    onChange={(e) => setDriverForm({ ...driverForm, branch_id: e.target.value })}
+                    className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-medium border outline-hidden cursor-pointer ${
+                      isDark ? 'bg-slate-900 border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'
+                    }`}
+                  >
+                    <option value="">Unassigned Yard</option>
+                    {branches.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.branch_name || b.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold mb-1.5">Salary Model</label>
+                  <select
+                    value={driverForm.salary_type}
+                    onChange={(e) => setDriverForm({ ...driverForm, salary_type: e.target.value })}
+                    className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-medium border outline-hidden cursor-pointer ${
+                      isDark ? 'bg-slate-900 border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'
+                    }`}
+                  >
+                    <option value="MONTHLY">Monthly Fixed Salary</option>
+                    <option value="TRIP_BASED">Trip Commission Based</option>
+                    <option value="PER_KM">Per Kilometer Rate</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold mb-1.5">Remuneration Amount (₹)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={driverForm.salary_amount}
+                    onChange={(e) => setDriverForm({ ...driverForm, salary_amount: e.target.value })}
+                    placeholder="25000"
+                    className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-mono font-medium border outline-hidden ${
+                      isDark
+                        ? 'bg-slate-900/60 border-slate-800 text-white focus:border-cyan-500/50'
+                        : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
+                    }`}
+                  />
+                </div>
+              </div>
+
+              {/* Address & Emergency Contact */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold mb-1.5">Residential Address</label>
+                  <input
+                    type="text"
+                    value={driverForm.address}
+                    onChange={(e) => setDriverForm({ ...driverForm, address: e.target.value })}
+                    placeholder="e.g. Village/Town, District, State"
+                    className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-medium border outline-hidden ${
+                      isDark
+                        ? 'bg-slate-900/60 border-slate-800 text-white focus:border-cyan-500/50'
+                        : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
+                    }`}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold mb-1.5">Emergency Contact Details</label>
+                  <input
+                    type="text"
+                    value={driverForm.emergency_contact}
+                    onChange={(e) => setDriverForm({ ...driverForm, emergency_contact: e.target.value })}
+                    placeholder="Name & Emergency Mobile"
+                    className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-medium border outline-hidden ${
+                      isDark
+                        ? 'bg-slate-900/60 border-slate-800 text-white focus:border-cyan-500/50'
+                        : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
+                    }`}
+                  />
+                </div>
+              </div>
+
+              {/* Status */}
+              <div>
+                <label className="block text-xs font-bold mb-1.5">Operational Status</label>
+                <div className="flex items-center space-x-4">
+                  <label className="flex items-center space-x-2 text-xs font-semibold cursor-pointer">
+                    <input
+                      type="radio"
+                      name="driverStatus"
+                      checked={driverForm.status === 'ACTIVE'}
+                      onChange={() => setDriverForm({ ...driverForm, status: 'ACTIVE' })}
+                      className="text-emerald-500 focus:ring-emerald-500"
+                    />
+                    <span className="text-emerald-500">Active / Ready for Line-haul</span>
+                  </label>
+                  <label className="flex items-center space-x-2 text-xs font-semibold cursor-pointer">
+                    <input
+                      type="radio"
+                      name="driverStatus"
+                      checked={driverForm.status === 'INACTIVE'}
+                      onChange={() => setDriverForm({ ...driverForm, status: 'INACTIVE' })}
+                      className="text-rose-500 focus:ring-rose-500"
+                    />
+                    <span className="text-rose-500">Inactive / On Leave</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Modal Footer Buttons */}
+              <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end space-x-3">
+                <button
+                  type="button"
+                  onClick={() => setIsDriverModalOpen(false)}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold border transition-colors cursor-pointer ${
+                    isDark ? 'border-slate-800 hover:bg-slate-800 text-slate-400' : 'border-slate-200 hover:bg-slate-100 text-slate-600'
+                  }`}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={driverSubmitting}
+                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                >
+                  {driverSubmitting ? 'Saving Driver...' : editingDriver ? 'Update Driver' : 'Register Driver'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Driver Confirmation Modal */}
+      {isDriverDeleteOpen && driverToDelete && (
+        <div className={`fixed inset-0 z-[9999] backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-150 ${
+          isDark ? 'bg-slate-950/80' : 'bg-slate-900/50'
+        }`}>
+          <div className={`relative w-full max-w-md rounded-3xl shadow-2xl p-6 border ${
+            isDark ? 'bg-[#0B1020] border-rose-500/30 text-white' : 'bg-white border-slate-200 text-slate-900'
+          }`}>
+            <div className="flex items-center space-x-3 mb-4">
+              <div className="w-10 h-10 rounded-2xl bg-rose-500/10 text-rose-500 flex items-center justify-center">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-base">Remove Commercial Driver</h3>
+                <p className="text-xs text-slate-400">Transporter Fleet Registry</p>
+              </div>
+            </div>
+
+            <p className={`text-xs leading-relaxed mb-6 ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+              Are you sure you want to remove <span className="font-bold font-mono">{driverToDelete.name}</span> ({driverToDelete.driver_code || driverToDelete.license_number}) from the fleet? Active trip logs and history will be maintained.
+            </p>
+
+            <div className="flex items-center justify-end space-x-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsDriverDeleteOpen(false);
+                  setDriverToDelete(null);
+                }}
+                className={`px-4 py-2 rounded-xl text-xs font-bold border transition-colors cursor-pointer ${
+                  isDark ? 'border-slate-800 hover:bg-slate-800 text-slate-400' : 'border-slate-200 hover:bg-slate-100 text-slate-600'
+                }`}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteDriver}
+                disabled={driverSubmitting}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-md shadow-rose-600/30 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+              >
+                {driverSubmitting ? 'Deleting...' : 'Confirm Remove'}
               </button>
             </div>
           </div>

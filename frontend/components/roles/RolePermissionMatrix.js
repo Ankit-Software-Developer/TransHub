@@ -77,8 +77,8 @@ export default function RolePermissionMatrix() {
       const fetchedRoles = rolesRes.data?.data || [];
       const fetchedPerms = permsRes.data?.data?.definitions || permsRes.data?.data?.raw || [];
 
-      // Sort roles: ADMIN -> BRANCH_MANAGER -> DRIVER -> other custom roles
-      const rolePriority = { 'ADMIN': 1, 'BRANCH_MANAGER': 2, 'DRIVER': 3 };
+      // Sort roles: ADMIN -> BRANCH_MANAGER -> AUDITOR -> DRIVER -> other custom roles
+      const rolePriority = { 'ADMIN': 1, 'BRANCH_MANAGER': 2, 'AUDITOR': 3, 'AUDIT': 3, 'DRIVER': 4 };
       const sortedRoles = [...fetchedRoles].sort((a, b) => {
         const pA = rolePriority[a.name] || (a.is_system ? 10 : 20);
         const pB = rolePriority[b.name] || (b.is_system ? 10 : 20);
@@ -396,7 +396,7 @@ export default function RolePermissionMatrix() {
               const permCount = permsList.length;
 
               const roleDisplayName = role.name === 'ADMIN' ? 'Admin' : role.display_name;
-              const level = role.name === 'ADMIN' ? 50 : role.name === 'BRANCH_MANAGER' ? 40 : isSystem ? 30 : 20;
+              const level = role.name === 'ADMIN' ? 50 : role.name === 'BRANCH_MANAGER' ? 40 : (role.name === 'AUDITOR' || role.name === 'AUDIT') ? 35 : isSystem ? 30 : 20;
 
               return (
                 <div

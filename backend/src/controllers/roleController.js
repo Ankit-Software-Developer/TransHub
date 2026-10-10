@@ -83,6 +83,10 @@ const MODULE_PERMISSIONS_DEF = [
   { code: 'settings.view', module: 'Settings & Administration', action: 'view', description: 'View organization profile and terminology' },
   { code: 'settings.manage', module: 'Settings & Administration', action: 'edit', description: 'Configure branding, password, and terminology' },
   { code: 'role.manage', module: 'Settings & Administration', action: 'approve', description: 'Modify roles and page access matrix' },
+
+  // 12. Audit & System Logs
+  { code: 'audit.view', module: 'Audit & System Logs', action: 'view', description: 'View immutable system audit logs, user activity & security trails' },
+  { code: 'audit.export', module: 'Audit & System Logs', action: 'export', description: 'Export tamper-evident audit trail logs to CSV/Excel' },
 ];
 
 // Helper to seed permissions in DB if missing
@@ -139,7 +143,7 @@ const ensureStandardRoles = async (Role, Permission, RolePermission, tenantId, U
     console.warn('Role migration check warning:', mErr.message);
   }
 
-  // 2. Define strictly ADMIN as the only core System Role
+  // 2. Define ADMIN, BRANCH_MANAGER, and AUDITOR as standard System Roles
   const allPerms = await ensurePermissions(Permission);
   const permMap = {};
   allPerms.forEach((p) => { permMap[p.code] = p; });
@@ -148,17 +152,57 @@ const ensureStandardRoles = async (Role, Permission, RolePermission, tenantId, U
     {
       name: 'ADMIN',
       display_name: 'Admin',
-      description: 'Tenant administrator with full access to tenant features',
+      description: 'Tenant administrator with full access to all system modules, features, and settings',
       is_system: true,
       perms: Object.keys(permMap),
     },
+    {
+      name: 'BRANCH_MANAGER',
+      display_name: 'Branch Manager',
+      description: 'Station manager overseeing branch godown, dockets, dispatches, trips, and local deliveries',
+      is_system: true,
+      perms: [
+        'booking.view', 'booking.create', 'booking.update', 'consignment.update', 'booking.export',
+        'branch.view',
+        'customer.view', 'customer.create', 'customer.manage', 'customer.export',
+        'vehicle.view', 'driver.manage', 'vehicle.export',
+        'dispatch.view', 'dispatch.create', 'dispatch.manage', 'dispatch.approve', 'dispatch.export',
+        'trip.view', 'trip.create', 'trip.manage', 'trip.settle',
+        'delivery.view', 'delivery.create', 'delivery.manage', 'pod.verify', 'pod.upload',
+        'invoice.view', 'invoice.create', 'payment.create', 'invoice.export',
+        'expense.view', 'expense.create', 'expense.update', 'expense.approve', 'expense.export',
+        'reports.view', 'data.export',
+        'settings.view',
+      ],
+    },
+    {
+      name: 'AUDITOR',
+      display_name: 'Auditor',
+      description: 'Compliance & audit officer with full access to inspect activity logs, registers, and financial trails',
+      is_system: true,
+      perms: [
+        'audit.view', 'audit.export',
+        'booking.view', 'booking.export',
+        'branch.view',
+        'customer.view', 'customer.export',
+        'vehicle.view', 'vehicle.export',
+        'dispatch.view', 'dispatch.export',
+        'trip.view',
+        'delivery.view',
+        'invoice.view', 'invoice.export',
+        'expense.view', 'expense.export',
+        'reports.view', 'data.export',
+        'settings.view',
+      ],
+    },
   ];
 
-  // 3. Demote active roles to Custom and remove unused system roles
+  // 3. Demote active roles to Custom and remove unused legacy pre-seeded roles
   try {
+    const standardRoleNames = ['ADMIN', 'BRANCH_MANAGER', 'AUDITOR', 'AUDIT'];
     const extraRoles = await Role.findAll({
       where: {
-        name: { [Op.ne]: 'ADMIN' },
+        name: { [Op.notIn]: standardRoleNames },
       },
     });
 
@@ -209,19 +253,21 @@ const ensureStandardRoles = async (Role, Permission, RolePermission, tenantId, U
       },
     });
 
-    // If existing ADMIN, ensure display_name is Admin and has all permissions
-    if (!created && rDef.name === 'ADMIN') {
+    // For ADMIN, ensure all permissions (including newly registered ones like audit.view) are present
+    if (rDef.name === 'ADMIN') {
       if (role.display_name !== 'Admin' || !role.is_system) {
         await role.update({ display_name: 'Admin', is_system: true });
       }
-      const existingPerms = await role.getPermissions?.();
-      if (!existingPerms || existingPerms.length === 0) {
-        const matchedPerms = rDef.perms.map((code) => permMap[code]).filter(Boolean);
-        if (role.setPermissions) {
-          await role.setPermissions(matchedPerms);
+      const existingPerms = (await role.getPermissions?.()) || [];
+      const existingCodes = existingPerms.map((p) => p.code);
+      const missingCodes = rDef.perms.filter((c) => !existingCodes.includes(c));
+      if (missingCodes.length > 0) {
+        const missingRecords = missingCodes.map((c) => permMap[c]).filter(Boolean);
+        if (role.addPermissions) {
+          await role.addPermissions(missingRecords);
         } else if (RolePermission) {
-          for (const p of matchedPerms) {
-            await RolePermission.create({ role_id: role.id, permission_id: p.id }).catch(() => {});
+          for (const p of missingRecords) {
+            await RolePermission.findOrCreate({ where: { role_id: role.id, permission_id: p.id } }).catch(() => {});
           }
         }
       }
@@ -232,6 +278,18 @@ const ensureStandardRoles = async (Role, Permission, RolePermission, tenantId, U
       } else if (RolePermission) {
         for (const p of matchedPerms) {
           await RolePermission.create({ role_id: role.id, permission_id: p.id }).catch(() => {});
+        }
+      }
+    } else if (!created && (rDef.name === 'AUDITOR' || rDef.name === 'BRANCH_MANAGER')) {
+      const existingPerms = await role.getPermissions?.();
+      if (!existingPerms || existingPerms.length === 0) {
+        const matchedPerms = rDef.perms.map((code) => permMap[code]).filter(Boolean);
+        if (role.setPermissions) {
+          await role.setPermissions(matchedPerms);
+        } else if (RolePermission) {
+          for (const p of matchedPerms) {
+            await RolePermission.create({ role_id: role.id, permission_id: p.id }).catch(() => {});
+          }
         }
       }
     }

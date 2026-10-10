@@ -73,6 +73,29 @@ module.exports = (sequelize) => {
     gps_device_id: {
       type: DataTypes.STRING(50),
     },
+    last_latitude: {
+      type: DataTypes.DECIMAL(10, 7),
+    },
+    last_longitude: {
+      type: DataTypes.DECIMAL(10, 7),
+    },
+    last_location_name: {
+      type: DataTypes.TEXT,
+    },
+    last_speed: {
+      type: DataTypes.DECIMAL(5, 2),
+      defaultValue: 0.00,
+    },
+    last_ignition: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+    },
+    last_gps_updated_at: {
+      type: DataTypes.DATE,
+    },
+    gps_provider_name: {
+      type: DataTypes.STRING(50),
+    },
     current_odometer: {
       type: DataTypes.INTEGER,
       defaultValue: 0,

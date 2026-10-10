@@ -580,7 +580,14 @@ function UnloadPlanningContent() {
                   className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white text-xs font-bold transition-all cursor-pointer shadow-md"
                 >
                   <Truck className="w-4 h-4" />
-                  Proceed to Trip Settlement
+                  Trip Settlement
+                </Link>
+                <Link
+                  href="/deliveries"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white text-xs font-bold transition-all cursor-pointer shadow-md"
+                >
+                  <PackageCheck className="w-4 h-4" />
+                  Customer Deliveries & DRS
                 </Link>
                 <button
                   type="button"

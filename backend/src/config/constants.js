@@ -5,6 +5,7 @@ const ROLES = {
   ADMIN: 'ADMIN',
   TRANSPORT_OWNER: 'ADMIN', // Canonical alias: Transport Owner is Admin everywhere
   BRANCH_MANAGER: 'BRANCH_MANAGER',
+  AUDITOR: 'AUDITOR',
   BOOKING_OPERATOR: 'BOOKING_OPERATOR',
   DISPATCH_OPERATOR: 'DISPATCH_OPERATOR',
   DELIVERY_OPERATOR: 'DELIVERY_OPERATOR',
@@ -55,6 +56,10 @@ const PERMISSIONS = {
   BRANCH_MANAGE: 'branch.manage',
   ORGANIZATION_MANAGE: 'organization.manage',
   SETTINGS_MANAGE: 'settings.manage',
+
+  // Audit & Security Logs
+  AUDIT_VIEW: 'audit.view',
+  AUDIT_EXPORT: 'audit.export',
 };
 
 const CONSIGNMENT_STATUSES = {

@@ -29,32 +29,91 @@ const getOwnerDashboard = async ({ tenantId, organizationId, branchId = null, da
     organization_id: organizationId,
   };
 
-  const branchScope = { ...whereScope };
-  if (branchId) {
-    branchScope.origin_branch_id = branchId;
-  }
-
   // 1. Core Counts
-  const totalBookings = await Consignment.count({ where: branchScope });
-  const inTransitCount = await Consignment.count({
-    where: { ...branchScope, status: { [Op.in]: ['LOADED', 'DISPATCHED', 'IN_TRANSIT'] } },
-  });
-  const deliveredCount = await Consignment.count({
-    where: { ...branchScope, status: { [Op.in]: ['DELIVERED', 'POD_UPLOADED', 'COMPLETED'] } },
-  });
-  const pendingDeliveryCount = await Consignment.count({
-    where: { ...branchScope, status: { [Op.in]: ['REACHED_DESTINATION', 'OUT_FOR_DELIVERY'] } },
-  });
-  const pendingPodCount = await Consignment.count({
-    where: { ...branchScope, status: { [Op.in]: ['DELIVERED', 'POD_PENDING'] } },
-  });
-  const delayedShipmentsCount = await Consignment.count({
-    where: { ...branchScope, status: 'DELAYED' },
-  });
+  // Total Bookings: ONLY bookings created/originated at this branch (or all for admin)
+  const bookingScope = { ...whereScope };
+  if (branchId) {
+    bookingScope.origin_branch_id = branchId;
+  }
+  const totalBookings = await Consignment.count({ where: bookingScope });
+
+  // In-Transit Shipments: Outward departing or inward arriving at this branch
+  const inTransitScope = {
+    ...whereScope,
+    status: { [Op.in]: ['LOADED', 'DISPATCHED', 'IN_TRANSIT'] },
+  };
+  if (branchId) {
+    inTransitScope[Op.or] = [
+      { origin_branch_id: branchId },
+      { dest_branch_id: branchId },
+    ];
+  }
+  const inTransitCount = await Consignment.count({ where: inTransitScope });
+
+  // Deliveries Completed: strictly scoped to the receiving DESTINATION delivery branch (dest_branch_id)
+  const deliveredScope = {
+    ...whereScope,
+    status: { [Op.in]: ['DELIVERED', 'POD_UPLOADED', 'COMPLETED'] },
+  };
+  if (branchId) {
+    deliveredScope.dest_branch_id = branchId;
+  }
+  const deliveredCount = await Consignment.count({ where: deliveredScope });
+
+  // Pending Delivery: Cargo arrived at destination godown awaiting handover/DRS
+  const pendingDeliveryScope = {
+    ...whereScope,
+    status: { [Op.in]: ['REACHED_DESTINATION', 'OUT_FOR_DELIVERY'] },
+  };
+  if (branchId) {
+    pendingDeliveryScope.dest_branch_id = branchId;
+  }
+  const pendingDeliveryCount = await Consignment.count({ where: pendingDeliveryScope });
+
+  // Pending POD: Delivered at destination but physical/digital POD sign-off pending
+  const pendingPodScope = {
+    ...whereScope,
+    status: { [Op.in]: ['DELIVERED', 'POD_PENDING'] },
+  };
+  if (branchId) {
+    pendingPodScope.dest_branch_id = branchId;
+  }
+  const pendingPodCount = await Consignment.count({ where: pendingPodScope });
+
+  // Delayed Shipments
+  const delayedScope = { ...whereScope, status: 'DELAYED' };
+  if (branchId) {
+    delayedScope[Op.or] = [
+      { origin_branch_id: branchId },
+      { dest_branch_id: branchId },
+    ];
+  }
+  const delayedShipmentsCount = await Consignment.count({ where: delayedScope });
 
   // 2. Financial Aggregations
-  const totalFreight = await Consignment.sum('total_amount', { where: branchScope }) || 0;
-  
+  // Origin Booked Freight (created at this branch)
+  const originBookedFreight = await Consignment.sum('total_amount', {
+    where: branchId ? { ...whereScope, origin_branch_id: branchId } : whereScope,
+  }) || 0;
+
+  // Destination TO-PAY Freight Collected at Handover (collected at this delivery branch)
+  let destToPayCollected = 0;
+  if (branchId) {
+    destToPayCollected = await Consignment.sum('total_amount', {
+      where: {
+        ...whereScope,
+        dest_branch_id: branchId,
+        payment_type: 'TO_PAY',
+        status: { [Op.in]: ['DELIVERED', 'POD_UPLOADED', 'COMPLETED'] },
+      },
+    }) || 0;
+  }
+
+  // Combined Branch Operational Revenue (Booked freight + Handover TO-PAY collections)
+  const totalFreight = branchId
+    ? Number(originBookedFreight) + Number(destToPayCollected)
+    : Number(originBookedFreight);
+
   const expenseScope = { tenant_id: tenantId, organization_id: organizationId };
   if (branchId) expenseScope.branch_id = branchId;
   const totalExpenses = await Expense.sum('amount', { where: expenseScope }) || 0;
@@ -65,7 +124,19 @@ const getOwnerDashboard = async ({ tenantId, organizationId, branchId = null, da
   const totalCollected = await Payment.sum('amount', { where: invoiceScope }) || 0;
   const outstandingAmount = Math.max(0, totalBilled - totalCollected);
 
-  // 3. Fleet Metrics
+  // 3. Active Trips & Fleet Metrics
+  const tripScope = {
+    ...whereScope,
+    status: { [Op.in]: ['RUNNING', 'READY', 'IN_TRANSIT', 'LOADED'] },
+  };
+  if (branchId) {
+    tripScope[Op.or] = [
+      { origin_branch_id: branchId },
+      { dest_branch_id: branchId },
+    ];
+  }
+  const activeTripsCount = await Trip.count({ where: tripScope });
+
   const vehicleScope = { tenant_id: tenantId, organization_id: organizationId };
   if (branchId) vehicleScope.branch_id = branchId;
   const vehiclesRunning = await Vehicle.count({ where: { ...vehicleScope, status: 'ON_TRIP' } });
@@ -73,7 +144,7 @@ const getOwnerDashboard = async ({ tenantId, organizationId, branchId = null, da
   const vehiclesMaintenance = await Vehicle.count({ where: { ...vehicleScope, status: 'MAINTENANCE' } });
   const totalVehicles = await Vehicle.count({ where: vehicleScope });
 
-  // 4. 7-Day Booking Trends
+  // 4. 7-Day Booking Trends (Scoped to origin bookings of the branch or company total)
   const bookingTrends = [];
   for (let i = 6; i >= 0; i--) {
     const dayDate = new Date();
@@ -82,9 +153,9 @@ const getOwnerDashboard = async ({ tenantId, organizationId, branchId = null, da
     const dayEnd = new Date(dayDate.getFullYear(), dayDate.getMonth(), dayDate.getDate(), 23, 59, 59, 999);
     const dayCount = await Consignment.count({
       where: {
-        ...branchScope,
-        created_at: { [Op.between]: [dayStart, dayEnd] }
-      }
+        ...bookingScope,
+        created_at: { [Op.between]: [dayStart, dayEnd] },
+      },
     });
     bookingTrends.push({
       day: dayStart.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
@@ -93,7 +164,7 @@ const getOwnerDashboard = async ({ tenantId, organizationId, branchId = null, da
     });
   }
 
-  // 5. Branch Comparisons (Consolidated vs Branch-level)
+  // 5. Branch Comparisons (Consolidated breakdown)
   const branches = await Branch.findAll({
     where: { tenant_id: tenantId, organization_id: organizationId },
     raw: true,
@@ -105,12 +176,12 @@ const getOwnerDashboard = async ({ tenantId, organizationId, branchId = null, da
     const bFreight = await Consignment.sum('total_amount', { where: { origin_branch_id: b.id } }) || 0;
     const bExpense = await Expense.sum('amount', { where: { branch_id: b.id } }) || 0;
     const bPending = await Consignment.count({
-      where: { origin_branch_id: b.id, status: { [Op.notIn]: ['DELIVERED', 'COMPLETED', 'POD_UPLOADED'] } },
+      where: { dest_branch_id: b.id, status: { [Op.in]: ['REACHED_DESTINATION', 'OUT_FOR_DELIVERY'] } },
     });
     const bDelivered = await Consignment.count({
-      where: { origin_branch_id: b.id, status: { [Op.in]: ['DELIVERED', 'COMPLETED', 'POD_UPLOADED'] } },
+      where: { dest_branch_id: b.id, status: { [Op.in]: ['DELIVERED', 'COMPLETED', 'POD_UPLOADED'] } },
     });
-    const deliveryRate = bBookings > 0 ? Math.round((bDelivered / bBookings) * 100) : 100;
+    const deliveryRate = bDelivered > 0 ? Math.round((bDelivered / (bDelivered + bPending || 1)) * 100) : 100;
 
     branchComparisons.push({
       branchId: b.id,
@@ -121,11 +192,12 @@ const getOwnerDashboard = async ({ tenantId, organizationId, branchId = null, da
       revenue: parseFloat(bFreight).toFixed(2),
       expense: parseFloat(bExpense).toFixed(2),
       pending: bPending,
+      delivered: bDelivered,
       deliveryRate: `${deliveryRate}%`,
     });
   }
 
-  // 6. Action Center: Real actionable alerts only
+  // 6. Action Center: Real actionable alerts
   const actionCenter = [];
   if (delayedShipmentsCount > 0) {
     actionCenter.push({
@@ -133,7 +205,7 @@ const getOwnerDashboard = async ({ tenantId, organizationId, branchId = null, da
       title: `${delayedShipmentsCount} Shipments Delayed`,
       count: delayedShipmentsCount,
       type: 'danger',
-      description: 'Shipments exceeding route SLA or flagged with exceptions',
+      description: 'Shipments exceeding route SLA or flagged with transit delays',
       actionUrl: '/bookings?status=DELAYED',
     });
   }
@@ -144,7 +216,7 @@ const getOwnerDashboard = async ({ tenantId, organizationId, branchId = null, da
       count: pendingPodCount,
       type: 'warning',
       description: 'Consignments delivered awaiting physical or digital proof of delivery',
-      actionUrl: '/pods?status=POD_PENDING',
+      actionUrl: '/deliveries?tab=DELIVERED',
     });
   }
   if (outstandingAmount > 0) {
@@ -159,8 +231,15 @@ const getOwnerDashboard = async ({ tenantId, organizationId, branchId = null, da
   }
 
   // 7. Recent Consignments (Top 10)
+  const recentScope = { ...whereScope };
+  if (branchId) {
+    recentScope[Op.or] = [
+      { origin_branch_id: branchId },
+      { dest_branch_id: branchId },
+    ];
+  }
   const recentConsignments = await Consignment.findAll({
-    where: branchScope,
+    where: recentScope,
     limit: 10,
     order: [['created_at', 'DESC']],
     include: [
@@ -175,15 +254,23 @@ const getOwnerDashboard = async ({ tenantId, organizationId, branchId = null, da
     order: [['brief_date', 'DESC']],
   });
 
+  // On-time delivery rate
+  const onTimePercentage = deliveredCount > 0
+    ? Math.max(0, Math.min(100, Math.round((deliveredCount / (deliveredCount + delayedShipmentsCount || 1)) * 100)))
+    : 100;
+
   return {
     kpis: {
       bookings: totalBookings,
       inTransit: inTransitCount,
+      activeTrips: activeTripsCount,
       delivered: deliveredCount,
       pendingDelivery: pendingDeliveryCount,
       pendingPod: pendingPodCount,
       delayed: delayedShipmentsCount,
       totalFreight: parseFloat(totalFreight).toFixed(2),
+      originBookedFreight: parseFloat(originBookedFreight).toFixed(2),
+      destToPayCollected: parseFloat(destToPayCollected).toFixed(2),
       totalExpenses: parseFloat(totalExpenses).toFixed(2),
       outstanding: parseFloat(outstandingAmount).toFixed(2),
       collected: parseFloat(totalCollected).toFixed(2),
@@ -191,6 +278,7 @@ const getOwnerDashboard = async ({ tenantId, organizationId, branchId = null, da
       vehiclesRunning,
       vehiclesAvailable,
       vehiclesMaintenance,
+      onTimeDeliveryRate: onTimePercentage,
     },
     bookingTrends,
     actionCenter,

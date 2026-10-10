@@ -94,6 +94,8 @@ const listBookings = async (req, res) => {
       organizationId: req.tenant.organizationId,
       branchId,
       originBranchId: (req.query.origin_branch_id && req.query.origin_branch_id !== 'ALL') ? req.query.origin_branch_id : null,
+      currentBranchId: (req.query.current_branch_id && req.query.current_branch_id !== 'ALL') ? req.query.current_branch_id : null,
+      loadPlanning: req.query.load_planning === 'true' || req.query.load_planning === true,
       status: (status && status !== 'ALL') ? status : null,
       search,
       paymentType: payment_type,

@@ -47,6 +47,7 @@ const defineSaaSPlan = require('./SaaSPlan');
 const defineSaaSSubscription = require('./SaaSSubscription');
 const defineDailyBrief = require('./DailyBrief');
 const defineApprovalRequest = require('./ApprovalRequest');
+const defineGpsIntegration = require('./GpsIntegration');
 
 /**
  * Initializes and associates strictly Master Database models (12 tables)
@@ -162,6 +163,7 @@ const initTenantModels = (targetSequelize) => {
     AuditLog: defineAuditLog(targetSequelize),
     DailyBrief: defineDailyBrief(targetSequelize),
     ApprovalRequest: defineApprovalRequest(targetSequelize),
+    GpsIntegration: defineGpsIntegration(targetSequelize),
   };
 
   const {
@@ -170,8 +172,11 @@ const initTenantModels = (targetSequelize) => {
     Booking, Consignment, ConsignmentItem, ConsignmentStatusHistory, Trip, TripConsignment,
     Dispatch, DeliveryRecord, Pod, Warehouse, WarehouseMovement, Invoice, InvoiceItem,
     Payment, CustomerLedger, Expense, ExpenseCategory, DriverAdvance, TripSettlement,
-    FuelEntry, VehicleMaintenance, Claim, ApprovalRequest
+    FuelEntry, VehicleMaintenance, Claim, ApprovalRequest, GpsIntegration
   } = m;
+
+  Organization.hasMany(GpsIntegration, { foreignKey: 'organization_id', as: 'gpsIntegrations' });
+  GpsIntegration.belongsTo(Organization, { foreignKey: 'organization_id', as: 'organization' });
 
   Organization.hasMany(Branch, { foreignKey: 'organization_id', as: 'branches' });
   Branch.belongsTo(Organization, { foreignKey: 'organization_id', as: 'organization' });

@@ -2,6 +2,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef, Suspense } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Sidebar from '../../../components/layout/Sidebar';
@@ -48,7 +49,9 @@ import {
   UserCheck,
   Phone,
   QrCode,
-  Info
+  Info,
+  Globe,
+  Lock
 } from 'lucide-react';
 import DataTable from '../../../components/ui/DataTable';
 import Barcode from '../../../components/ui/Barcode';
@@ -71,7 +74,7 @@ const numberToWordsIndian = (num) => {
   let paisePart = Math.round((Math.abs(Number(num) || 0) - integerPart) * 100);
 
   let words = '';
-  
+
   if (integerPart >= 10000000) {
     const crore = Math.floor(integerPart / 10000000);
     words += inWords(crore) + ' Crore ';
@@ -107,19 +110,29 @@ const numberToWordsIndian = (num) => {
 const mapConsignmentFromApi = (c) => {
   const statusToneMap = {
     IN_TRANSIT: 'cyan',
+    DISPATCHED: 'cyan',
     DELIVERED: 'emerald',
     DELAYED: 'rose',
     OUT_FOR_DELIVERY: 'amber',
     CANCELLED: 'rose',
     BOOKED: 'purple',
+    RECEIVED_AT_HUB: 'blue',
+    REACHED_DESTINATION: 'teal',
+    LOADED: 'indigo',
+    READY_FOR_DISPATCH: 'violet',
   };
   const statusLabelMap = {
     IN_TRANSIT: 'In Transit',
+    DISPATCHED: 'Dispatched',
     DELIVERED: 'Delivered',
     DELAYED: 'Delayed',
     OUT_FOR_DELIVERY: 'Out for Delivery',
     CANCELLED: 'Cancelled',
     BOOKED: 'Booked / Godown',
+    RECEIVED_AT_HUB: 'At Hub (Transshipment)',
+    REACHED_DESTINATION: 'Reached Destination',
+    LOADED: 'Loaded',
+    READY_FOR_DISPATCH: 'Ready for Dispatch',
   };
 
   const status = c.status || 'BOOKED';
@@ -177,6 +190,7 @@ const mapConsignmentFromApi = (c) => {
     driver_phone: c.driver_phone || (c.active_trip?.driver?.phone) || (c.trips?.[0]?.driver?.phone) || '',
     trip_number: c.trip_number || (c.active_trip?.trip_number) || (c.trips?.[0]?.trip_number) || null,
     transport_mode: c.transport_mode || 'ROAD',
+    delivery_type: c.delivery_type || (parseFloat(c.door_delivery_charges || 0) > 0 ? 'DOOR_DELIVERY' : 'GODOWN_DELIVERY'),
     total_amount: parseFloat(c.total_amount || c.freight_amount || 0),
     payment_mode: c.payment_type || 'TO_PAY',
     status: status,
@@ -184,15 +198,381 @@ const mapConsignmentFromApi = (c) => {
     status_tone: statusToneMap[status] || 'purple',
     current_milestone: status === 'DELIVERED'
       ? 'Receiver Signed with Stamp'
-      : status === 'IN_TRANSIT'
-      ? 'In Line-haul Highway Transit'
-      : status === 'OUT_FOR_DELIVERY'
-      ? 'Out for Local Delivery'
-      : 'Staged at Origin Warehouse Dock',
-    eta: status === 'DELIVERED' ? 'Delivered' : 'ETA in 24-48 Hours',
-    progress_percent: status === 'DELIVERED' ? 100 : status === 'IN_TRANSIT' ? 65 : status === 'OUT_FOR_DELIVERY' ? 90 : 15,
+      : status === 'IN_TRANSIT' || status === 'DISPATCHED'
+        ? 'In Line-haul Highway Transit'
+        : status === 'OUT_FOR_DELIVERY'
+          ? 'Out for Local Delivery'
+          : status === 'RECEIVED_AT_HUB'
+            ? 'Received at Transshipment Hub (Staged for Next Leg)'
+            : status === 'REACHED_DESTINATION'
+              ? 'Arrived at Destination Branch (Ready for Delivery)'
+              : 'Staged at Origin Warehouse Dock',
+    eta: status === 'DELIVERED' ? 'Delivered' : status === 'REACHED_DESTINATION' ? 'Ready for Delivery' : 'ETA in 24-48 Hours',
+    progress_percent: status === 'DELIVERED' ? 100 : status === 'OUT_FOR_DELIVERY' ? 90 : status === 'REACHED_DESTINATION' ? 80 : status === 'RECEIVED_AT_HUB' ? 50 : status === 'IN_TRANSIT' || status === 'DISPATCHED' ? 65 : 15,
   };
 };
+
+// Helper to match customer to nearest branch based on assigned branch, PIN code, or city location
+const getNearestBranchForCustomer = (customer, branchList) => {
+  if (!customer || !branchList || branchList.length === 0) return null;
+
+  // 1. Direct assigned branch
+  const directBranchId = customer.branch_id || customer.branch?.id;
+  if (directBranchId) {
+    const found = branchList.find((b) => b.id === directBranchId);
+    if (found) return found;
+  }
+
+  const cleanPin = (customer.pincode || '').replace(/\D/g, '');
+  const cleanCity = (customer.city || '').trim().toLowerCase();
+
+  if (!cleanPin && !cleanCity) {
+    return branchList.find((b) => b.is_hub) || branchList[0];
+  }
+
+  let best = null;
+  let maxScore = -1;
+
+  for (const b of branchList) {
+    let score = 0;
+    const bCity = (b.city || '').toLowerCase();
+    const bPin = (b.pincode || '').replace(/\D/g, '');
+
+    // 1. Exact 6-digit Pincode match
+    if (cleanPin && bPin && cleanPin === bPin) {
+      score += 1500;
+    }
+    // 2. 4-digit Pincode cluster match
+    else if (cleanPin.length >= 4 && bPin.length >= 4 && cleanPin.slice(0, 4) === bPin.slice(0, 4)) {
+      score += 1000;
+    }
+    // 3. 3-digit Pincode district match
+    else if (cleanPin.length >= 3 && bPin.length >= 3 && cleanPin.slice(0, 3) === bPin.slice(0, 3)) {
+      score += 700;
+    }
+    // 4. 2-digit Pincode state circle match
+    else if (cleanPin.length >= 2 && bPin.length >= 2 && cleanPin.slice(0, 2) === bPin.slice(0, 2)) {
+      score += 400;
+    }
+    // 5. 1-digit Pincode postal zone match
+    else if (cleanPin.length >= 1 && bPin.length >= 1 && cleanPin.slice(0, 1) === bPin.slice(0, 1)) {
+      score += 150;
+    }
+
+    // Continuous numerical PIN distance proximity (closer PIN in India = higher score)
+    if (cleanPin.length === 6 && bPin.length === 6) {
+      const pinDiff = Math.abs(parseInt(cleanPin, 10) - parseInt(bPin, 10));
+      // Proximity score: if diff is 0 -> 500, if diff is 10000 -> 450, etc.
+      const proximityBonus = Math.max(0, 500 - Math.floor(pinDiff / 200));
+      score += proximityBonus;
+    }
+
+    // 6. Direct City match
+    if (cleanCity && bCity && (cleanCity === bCity || bCity.includes(cleanCity) || cleanCity.includes(bCity))) {
+      score += 600;
+    }
+
+    // 7. Metro regional zones
+    const isDelhiNCR = /delhi|gurugram|gurgaon|noida|faridabad|ghaziabad/i.test(cleanCity);
+    const isBranchDelhiNCR = /delhi|gurugram|gurgaon|noida|faridabad|ghaziabad/i.test(bCity) || /delhi/i.test(b.branch_name);
+    if (isDelhiNCR && isBranchDelhiNCR) score += 500;
+
+    const isBlr = /bengaluru|bangalore/i.test(cleanCity);
+    const isBranchBlr = /bengaluru|bangalore/i.test(bCity) || /bengaluru|bangalore/i.test(b.branch_name);
+    if (isBlr && isBranchBlr) score += 500;
+
+    const isMum = /mumbai|thane|bhiwandi|navi mumbai/i.test(cleanCity);
+    const isBranchMum = /mumbai|thane|bhiwandi|navi mumbai/i.test(bCity) || /mumbai/i.test(b.branch_name);
+    if (isMum && isBranchMum) score += 500;
+
+    if (b.is_hub && score > 0) score += 30;
+
+    if (score > maxScore) {
+      maxScore = score;
+      best = b;
+    }
+  }
+
+  return best || (branchList.find((b) => b.is_hub) || branchList[0]);
+};
+
+// Custom Professional Branch / Hub Dropdown for Bookings Modal (Portaled to render cleanly over footer)
+function BranchSelectDropdown({
+  label,
+  required = true,
+  selectedBranchId,
+  onSelect,
+  branches = [],
+  placeholder = '-- Select Hub / Branch --',
+  isDark = true,
+  addHubLink = false
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [mounted, setMounted] = useState(false);
+  const triggerRef = useRef(null);
+  const dropdownMenuRef = useRef(null);
+  const [coords, setCoords] = useState({
+    top: 0,
+    bottom: 0,
+    left: 0,
+    width: 0,
+    maxHeight: 240,
+    opensUpward: false,
+  });
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const updateCoords = () => {
+    if (triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      const viewportHeight = window.innerHeight || (document.documentElement ? document.documentElement.clientHeight : 800);
+      const viewportWidth = window.innerWidth || (document.documentElement ? document.documentElement.clientWidth : 1200);
+
+      // Distance from button to edges of screen
+      const spaceBelow = viewportHeight - rect.bottom - 12; // 12px safety gap to screen bottom/taskbar
+      const spaceAbove = rect.top - 12; // 12px safety gap to screen top
+
+      // Flip upward if space below is too small (< 220px) and there's more space above
+      const opensUpward = spaceBelow < 220 && spaceAbove > spaceBelow;
+
+      // Available space in chosen direction
+      const availableSpace = opensUpward ? spaceAbove : spaceBelow;
+      // Responsive max height capped between 130px and 240px, never exceeding available screen space
+      const responsiveMaxHeight = Math.max(130, Math.min(240, Math.floor(availableSpace)));
+
+      const dropdownWidth = Math.max(rect.width, 300);
+      // Ensure dropdown does not overflow horizontally off screen
+      const clampedLeft = Math.max(8, Math.min(rect.left, viewportWidth - dropdownWidth - 8));
+
+      setCoords({
+        top: opensUpward ? 0 : rect.bottom + 5,
+        bottom: opensUpward ? viewportHeight - rect.top + 5 : 0,
+        left: clampedLeft,
+        width: dropdownWidth,
+        maxHeight: responsiveMaxHeight,
+        opensUpward,
+      });
+    }
+  };
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    updateCoords();
+
+    function handleClickOutside(e) {
+      if (
+        triggerRef.current && !triggerRef.current.contains(e.target) &&
+        dropdownMenuRef.current && !dropdownMenuRef.current.contains(e.target)
+      ) {
+        setIsOpen(false);
+      }
+    }
+
+    function handleScrollOrResize() {
+      updateCoords();
+    }
+
+    document.addEventListener('mousedown', handleClickOutside);
+    window.addEventListener('resize', handleScrollOrResize);
+    window.addEventListener('scroll', handleScrollOrResize, true);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('resize', handleScrollOrResize);
+      window.removeEventListener('scroll', handleScrollOrResize, true);
+    };
+  }, [isOpen]);
+
+  const selectedBranch = useMemo(() => {
+    return branches.find((b) => b.id === selectedBranchId) || null;
+  }, [branches, selectedBranchId]);
+
+  const filteredBranches = useMemo(() => {
+    if (!query.trim()) return branches;
+    const q = query.toLowerCase().trim();
+    return branches.filter((b) => {
+      const name = (b.branch_name || '').toLowerCase();
+      const code = (b.branch_code || '').toLowerCase();
+      const city = (b.city || '').toLowerCase();
+      const pin = (b.pincode || '').toLowerCase();
+      return name.includes(q) || code.includes(q) || city.includes(q) || pin.includes(q);
+    });
+  }, [branches, query]);
+
+  return (
+    <div className="space-y-1.5 relative z-10">
+      {label && (
+        <div className="flex items-center justify-between">
+          <label className={`text-xs font-bold flex items-center ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+            <span>{label}</span>
+            {required && <span className="text-rose-500 font-bold ml-0.5">*</span>}
+          </label>
+          {addHubLink && (
+            <Link
+              href="/branches"
+              target="_blank"
+              className={`text-[10px] font-semibold flex items-center gap-0.5 ${isDark ? 'text-cyan-400 hover:text-cyan-300' : 'text-blue-600 hover:text-blue-700'
+                }`}
+            >
+              <span>+ Add Hub</span>
+            </Link>
+          )}
+        </div>
+      )}
+
+      {/* Trigger Button */}
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => {
+          updateCoords();
+          setIsOpen((prev) => !prev);
+        }}
+        className={`w-full px-3 py-2.5 rounded-xl border text-xs font-semibold flex items-center justify-between transition-all cursor-pointer text-left ${isDark
+            ? 'border-slate-800 bg-slate-900/80 text-white hover:border-slate-700'
+            : 'border-slate-200 bg-slate-50 text-slate-900 hover:border-slate-300'
+          } ${isOpen ? (isDark ? 'ring-2 ring-cyan-500/40 border-cyan-500' : 'ring-2 ring-blue-500/40 border-blue-500') : ''}`}
+      >
+        {selectedBranch ? (
+          <div className="flex items-center gap-1.5 min-w-0 flex-1 mr-2 text-xs truncate">
+            <Building2 className={`w-3.5 h-3.5 shrink-0 ${isDark ? 'text-cyan-400' : 'text-blue-600'}`} />
+            <span className="font-bold truncate">{selectedBranch.branch_name}</span>
+            {selectedBranch.branch_code && (
+              <span className={`font-mono text-[10px] font-bold px-1.5 py-0.2 rounded shrink-0 ${isDark ? 'bg-slate-800 text-cyan-300 border border-slate-700' : 'bg-slate-200 text-slate-800'
+                }`}>
+                [{selectedBranch.branch_code}]
+              </span>
+            )}
+            <span className={`text-[11px] truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+              — {selectedBranch.city} {selectedBranch.pincode ? `[PIN: ${selectedBranch.pincode}]` : ''}
+            </span>
+            {selectedBranch.is_hub && (
+              <span className="text-[9px] px-1.5 py-0.2 rounded font-bold bg-amber-500/15 text-amber-500 border border-amber-500/20 shrink-0">
+                HUB
+              </span>
+            )}
+          </div>
+        ) : (
+          <span className="text-slate-400 text-xs">{placeholder}</span>
+        )}
+        <ChevronDown className={`w-3.5 h-3.5 text-slate-400 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180 text-cyan-400' : ''}`} />
+      </button>
+
+      {/* Floating Dropdown Menu Portaled to document.body to render cleanly with solid background and screen-responsive height */}
+      {isOpen && mounted && typeof document !== 'undefined' && createPortal(
+        <div
+          ref={dropdownMenuRef}
+          style={{
+            position: 'fixed',
+            left: `${coords.left}px`,
+            width: `${coords.width}px`,
+            maxHeight: `${coords.maxHeight}px`,
+            zIndex: 99999,
+            ...(coords.opensUpward
+              ? { bottom: `${coords.bottom}px`, top: 'auto' }
+              : { top: `${coords.top}px`, bottom: 'auto' }),
+          }}
+          className={`flex flex-col rounded-xl border shadow-2xl overflow-hidden transition-all duration-100 ${isDark
+              ? 'bg-slate-900 border-slate-700 text-white shadow-black/80'
+              : 'bg-white border-slate-300 text-slate-900 shadow-slate-900/25'
+            }`}
+        >
+          {/* Search box inside dropdown (Sticky header) */}
+          <div className={`p-2 px-3 border-b flex items-center gap-2 shrink-0 ${isDark ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-200'
+            }`}>
+            <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+            <input
+              type="text"
+              autoFocus
+              placeholder="Search branch name, code, city, PIN..."
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className={`w-full text-xs bg-transparent focus:outline-none ${isDark ? 'text-white placeholder-slate-500' : 'text-slate-900 placeholder-slate-400'
+                }`}
+            />
+            {query && (
+              <button
+                type="button"
+                onClick={() => setQuery('')}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Branch list (Solid background, dynamic responsive scroll) */}
+          <div className={`flex-1 min-h-0 overflow-y-auto divide-y ${isDark ? 'divide-slate-800 bg-slate-900' : 'divide-slate-100 bg-white'
+            }`}>
+            {/* Unassign / Default option */}
+            <div
+              onClick={() => {
+                onSelect('', '');
+                setIsOpen(false);
+              }}
+              className={`p-2.5 px-3.5 cursor-pointer text-xs transition-colors flex items-center justify-between ${!selectedBranchId
+                  ? isDark ? 'bg-cyan-500/20 text-cyan-300 font-bold' : 'bg-blue-50 text-blue-800 font-bold'
+                  : isDark ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-50 text-slate-600'
+                }`}
+            >
+              <span>{placeholder}</span>
+              {!selectedBranchId && <Check className={`w-3.5 h-3.5 ${isDark ? 'text-cyan-400' : 'text-blue-600'}`} />}
+            </div>
+
+            {filteredBranches.length > 0 ? (
+              filteredBranches.map((b) => {
+                const isSelected = selectedBranchId === b.id;
+                return (
+                  <div
+                    key={b.id}
+                    onClick={() => {
+                      onSelect(b.id, b.city || '');
+                      setIsOpen(false);
+                    }}
+                    className={`p-2.5 px-3.5 cursor-pointer transition-colors flex items-center justify-between gap-2 ${isSelected
+                        ? isDark ? 'bg-cyan-500/20 text-cyan-300 font-bold' : 'bg-blue-50 text-blue-900 font-bold'
+                        : isDark ? 'hover:bg-slate-800 text-slate-200' : 'hover:bg-slate-50 text-slate-800'
+                      }`}
+                  >
+                    <div className="flex items-center gap-1.5 min-w-0 flex-1 truncate">
+                      <span className="text-xs font-bold truncate">{b.branch_name}</span>
+                      {b.branch_code && (
+                        <span className={`font-mono text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${isDark ? 'bg-slate-800 text-cyan-300 border border-slate-700' : 'bg-slate-100 text-slate-800 border border-slate-200'
+                          }`}>
+                          [{b.branch_code}]
+                        </span>
+                      )}
+                      <span className={`text-[11px] truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                        — {b.city} {b.pincode ? `[PIN: ${b.pincode}]` : ''}
+                      </span>
+                      {b.is_hub && (
+                        <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 shrink-0">
+                          HUB
+                        </span>
+                      )}
+                    </div>
+                    {isSelected && (
+                      <Check className={`w-3.5 h-3.5 shrink-0 ${isDark ? 'text-cyan-400' : 'text-blue-600'}`} />
+                    )}
+                  </div>
+                );
+              })
+            ) : (
+              <div className="p-3 text-center text-xs text-slate-400">
+                No branch or hub found matching &quot;{query}&quot;
+              </div>
+            )}
+          </div>
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}
 
 export default function BookingsMasterPage() {
   const { theme } = useTheme();
@@ -214,6 +594,8 @@ export default function BookingsMasterPage() {
   const [statusSummary, setStatusSummary] = useState({
     total: 0,
     pending: 0,
+    forDelivery: 0,
+    reachedDest: 0,
     inTransit: 0,
     delivered: 0,
     delayed: 0,
@@ -256,6 +638,7 @@ export default function BookingsMasterPage() {
     totalAmount: '9450',
     paymentMode: 'TO_PAY',
     transportMode: 'ROAD',
+    deliveryType: 'GODOWN_DELIVERY',
     status: 'BOOKED',
   });
 
@@ -266,7 +649,7 @@ export default function BookingsMasterPage() {
 
   // Bilty Print Preview Modal State
   const user = useStore((state) => state.user);
-  const userBranchId = user?.branch_id || user?.branchId || null;
+  const userBranchId = user?.branch_id || user?.branchId || user?.branch?.id || null;
   const isGlobalUser = user?.role === 'SUPER_ADMIN' || user?.role === 'TRANSPORT_OWNER' || user?.role === 'ADMIN';
   const isRestrictedBranchUser = !isGlobalUser && !!userBranchId;
   const [printConsignment, setPrintConsignment] = useState(null);
@@ -323,8 +706,8 @@ export default function BookingsMasterPage() {
     const badgeTheme = isConsignorCopy
       ? 'border-rose-600 bg-rose-50 text-rose-800'
       : isConsigCopy
-      ? 'border-emerald-600 bg-emerald-50 text-emerald-800'
-      : 'border-blue-600 bg-blue-50 text-blue-800';
+        ? 'border-emerald-600 bg-emerald-50 text-emerald-800'
+        : 'border-blue-600 bg-blue-50 text-blue-800';
 
     const freightAmt = parseFloat(c.freight_amount || 0);
     const loadingAmt = parseFloat(c.loading_charges || 0);
@@ -339,7 +722,7 @@ export default function BookingsMasterPage() {
 
     return (
       <div className="bilty-slip-sheet bg-white text-slate-900 border-2 border-slate-900 rounded-none shadow-xl p-5 sm:p-7 max-w-[860px] mx-auto text-[11px] leading-tight font-sans relative my-4">
-        
+
         {/* Faint Background Security Watermark */}
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.035] select-none overflow-hidden">
           <span className="text-8xl font-black rotate-[-22deg] uppercase tracking-widest text-slate-900 whitespace-nowrap">
@@ -356,7 +739,7 @@ export default function BookingsMasterPage() {
 
         {/* 2. Main Header: Transporter Info (Left) & LR / Bilty Box (Right) */}
         <div className="grid grid-cols-12 gap-3 border-b-2 border-slate-900 pb-3 items-center">
-          
+
           {/* Transporter Brand */}
           <div className="col-span-7 sm:col-span-8 flex items-start space-x-3">
             <div className="w-14 h-14 rounded-lg border-2 border-slate-900 bg-slate-900 text-white flex items-center justify-center shrink-0 overflow-hidden shadow-xs">
@@ -509,19 +892,18 @@ export default function BookingsMasterPage() {
 
         {/* 6. Accounting & Freight Charges Breakdown (Split into Left Stamp & Right Financials) */}
         <div className="grid grid-cols-12 border-b-2 border-slate-900">
-          
+
           {/* Left Side: Payment Stamp & Amount in Words */}
           <div className="col-span-7 border-r border-slate-900 p-3 flex flex-col justify-between">
             <div>
               {/* Payment Rubber Stamp */}
               <div className="flex items-center space-x-3">
-                <div className={`inline-block px-3 py-1 border-2 border-dashed font-black text-xs tracking-widest uppercase rounded rotate-[-3deg] shadow-xs ${
-                  paymentType === 'TO_PAY'
+                <div className={`inline-block px-3 py-1 border-2 border-dashed font-black text-xs tracking-widest uppercase rounded rotate-[-3deg] shadow-xs ${paymentType === 'TO_PAY'
                     ? 'border-red-600 text-red-600 bg-red-50/70'
                     : paymentType === 'PAID'
-                    ? 'border-emerald-600 text-emerald-600 bg-emerald-50/70'
-                    : 'border-blue-600 text-blue-600 bg-blue-50/70'
-                }`}>
+                      ? 'border-emerald-600 text-emerald-600 bg-emerald-50/70'
+                      : 'border-blue-600 text-blue-600 bg-blue-50/70'
+                  }`}>
                   ★ {paymentType === 'TO_PAY' ? 'TO PAY' : paymentType === 'PAID' ? 'FREIGHT PAID' : 'TO BE BILLED (TBB)'} ★
                 </div>
                 <span className="text-[9px] text-slate-500 font-semibold">
@@ -627,6 +1009,7 @@ export default function BookingsMasterPage() {
   const [customersList, setCustomersList] = useState([]);
   const [showConsignorDropdown, setShowConsignorDropdown] = useState(false);
   const [showConsigneeDropdown, setShowConsigneeDropdown] = useState(false);
+  const [showAllConsignors, setShowAllConsignors] = useState(false);
   const consignorDropdownRef = useRef(null);
   const consigneeDropdownRef = useRef(null);
 
@@ -654,6 +1037,7 @@ export default function BookingsMasterPage() {
     paymentMode: 'TO_PAY',
     pickupDate: new Date().toISOString().split('T')[0],
     transportMode: 'ROAD', // 'ROAD' | 'RAIL' | 'AIR'
+    deliveryType: 'GODOWN_DELIVERY', // 'GODOWN_DELIVERY' | 'DOOR_DELIVERY'
     // Dynamic & Editable Charges
     loadingCharges: '450',
     unloadingCharges: '0',
@@ -795,6 +1179,7 @@ export default function BookingsMasterPage() {
       fetchBranches();
       fetchCustomers();
       fetchDocketSeriesPreview();
+      setShowAllConsignors(false);
     }
   }, [isDrawerOpen]);
 
@@ -821,19 +1206,56 @@ export default function BookingsMasterPage() {
     };
   }, []);
 
+  const currentOriginBranch = useMemo(() => {
+    const targetBranchId = userBranchId || formData.originBranchId;
+    return branchesList.find((b) => b.id === targetBranchId) || null;
+  }, [userBranchId, formData.originBranchId, branchesList]);
+
   const filteredConsignors = useMemo(() => {
     if (!customersList || customersList.length === 0) return [];
+
+    // Filter out CONSIGNEE-only customers
+    let list = customersList.filter((c) => c.customer_type !== 'CONSIGNEE');
+
+    // For Branch Managers (non-admins): show only nearest branch customers unless "View All" is toggled
+    if (!isAdmin && !showAllConsignors) {
+      const targetBranchId = formData.originBranchId || userBranchId;
+      if (targetBranchId && branchesList && branchesList.length > 0) {
+        list = list.filter((c) => {
+          const nearest = getNearestBranchForCustomer(c, branchesList);
+          return nearest && nearest.id === targetBranchId;
+        });
+      }
+    }
+
     const q = (formData.consignorName || '').toLowerCase().trim();
-    if (!q) return customersList;
-    return customersList.filter((c) => {
+    if (!q) return list;
+
+    return list.filter((c) => {
       const name = (c.name || '').toLowerCase();
       const code = (c.customer_code || '').toLowerCase();
       const city = (c.city || '').toLowerCase();
       const phone = (c.phone || '').toLowerCase();
       const gstin = (c.gstin || '').toLowerCase();
-      return name.includes(q) || code.includes(q) || city.includes(q) || phone.includes(q) || gstin.includes(q);
+      const pin = (c.pincode || '').toLowerCase();
+      return (
+        name.includes(q) ||
+        code.includes(q) ||
+        city.includes(q) ||
+        phone.includes(q) ||
+        gstin.includes(q) ||
+        pin.includes(q)
+      );
     });
-  }, [customersList, formData.consignorName]);
+  }, [
+    customersList,
+    formData.consignorName,
+    isAdmin,
+    showAllConsignors,
+    userBranchId,
+    formData.originBranchId,
+    branchesList,
+  ]);
 
   const filteredConsignees = useMemo(() => {
     if (!customersList || customersList.length === 0) return [];
@@ -958,9 +1380,15 @@ export default function BookingsMasterPage() {
       if (sq) url += `&search=${encodeURIComponent(sq)}`;
       if (sf && sf !== 'ALL') {
         if (sf === 'PENDING') {
-          url += `&status=BOOKED,MATERIAL_RECEIVED,READY_FOR_DISPATCH,LOADED`;
+          url += `&status=BOOKED,MATERIAL_RECEIVED,READY_FOR_DISPATCH,LOADED,RECEIVED_AT_HUB`;
+        } else if (sf === 'FOR_DELIVERY' || sf === 'REACHED_DESTINATION') {
+          url += `&status=REACHED_DESTINATION,OUT_FOR_DELIVERY`;
         } else if (sf === 'IN_TRANSIT') {
           url += `&status=IN_TRANSIT,DISPATCHED,ON_TRIP`;
+        } else if (sf === 'DELIVERED') {
+          url += `&status=DELIVERED,COMPLETED,POD_UPLOADED`;
+        } else if (sf === 'DELAYED') {
+          url += `&status=DELAYED,DAMAGED,SHORT_MATERIAL,HOLD`;
         } else {
           url += `&status=${sf}`;
         }
@@ -994,9 +1422,15 @@ export default function BookingsMasterPage() {
       if (searchQuery) url += `&search=${encodeURIComponent(searchQuery)}`;
       if (statusFilter && statusFilter !== 'ALL') {
         if (statusFilter === 'PENDING') {
-          url += `&status=BOOKED,MATERIAL_RECEIVED,READY_FOR_DISPATCH,LOADED`;
+          url += `&status=BOOKED,MATERIAL_RECEIVED,READY_FOR_DISPATCH,LOADED,RECEIVED_AT_HUB`;
+        } else if (statusFilter === 'FOR_DELIVERY' || statusFilter === 'REACHED_DESTINATION') {
+          url += `&status=REACHED_DESTINATION,OUT_FOR_DELIVERY`;
         } else if (statusFilter === 'IN_TRANSIT') {
           url += `&status=IN_TRANSIT,DISPATCHED,ON_TRIP`;
+        } else if (statusFilter === 'DELIVERED') {
+          url += `&status=DELIVERED,COMPLETED,POD_UPLOADED`;
+        } else if (statusFilter === 'DELAYED') {
+          url += `&status=DELAYED,DAMAGED,SHORT_MATERIAL,HOLD`;
         } else {
           url += `&status=${statusFilter}`;
         }
@@ -1060,15 +1494,55 @@ export default function BookingsMasterPage() {
       discountAmount: discount.toString(),
       taxPercent: taxP.toString(),
       totalAmount: total.toString(),
-      paymentMode: c.payment_mode || 'TO_PAY',
+      paymentMode: c.payment_type || c.payment_mode || 'TO_PAY',
       transportMode: c.transport_mode || 'ROAD',
+      deliveryType: c.delivery_type || (parseFloat(c.door_delivery_charges || 0) > 0 ? 'DOOR_DELIVERY' : 'GODOWN_DELIVERY'),
       status: c.status || 'BOOKED',
     });
     setIsEditModalOpen(true);
   };
 
+  const isEditingDocketPaid = Boolean(
+    editingDocket && (
+      (editingDocket.payment_type || '').toUpperCase() === 'PAID' ||
+      (editingDocket.payment_status || '').toUpperCase() === 'PAID' ||
+      (editingDocket.payment_mode || '').toUpperCase() === 'PAID'
+    )
+  );
+
   const updateEditField = (field, value, customChargesOverride = null) => {
+    if (isEditingDocketPaid) {
+      const lockedFinancialFields = [
+        'deliveryType',
+        'packagesCount',
+        'weightKg',
+        'ratePerKg',
+        'loadingCharges',
+        'unloadingCharges',
+        'doorDeliveryCharges',
+        'otherCharges',
+        'customCharges',
+        'discountAmount',
+        'taxPercent',
+        'totalAmount',
+      ];
+      if (lockedFinancialFields.includes(field)) {
+        return;
+      }
+    }
     const updated = { ...editFormData, [field]: value };
+    if (field === 'deliveryType') {
+      if (value === 'DOOR_DELIVERY') {
+        const curDdc = parseFloat(editFormData.doorDeliveryCharges || 0);
+        if (curDdc < 100) {
+          updated.doorDeliveryCharges = '100';
+        }
+      } else if (value === 'GODOWN_DELIVERY') {
+        if (parseFloat(editFormData.doorDeliveryCharges || 0) === 100) {
+          updated.doorDeliveryCharges = '0';
+        }
+      }
+    }
     if (customChargesOverride !== null) {
       updated.customCharges = customChargesOverride;
     }
@@ -1120,6 +1594,29 @@ export default function BookingsMasterPage() {
       const calculatedTotal = Math.round(subtotal + taxAmount);
       const totalAmount = parseFloat(editFormData.totalAmount) || calculatedTotal;
 
+      if (isEditingDocketPaid) {
+        const origRate = parseFloat(editingDocket.rate || 0);
+        const origTotal = parseFloat(editingDocket.total_amount || 0);
+        const origWeight = parseFloat(editingDocket.charged_weight || editingDocket.actual_weight || 0);
+        const origPackages = parseInt(editingDocket.packages_count || 0, 10);
+        const origDeliveryType = editingDocket.delivery_type || (parseFloat(editingDocket.door_delivery_charges || 0) > 0 ? 'DOOR_DELIVERY' : 'GODOWN_DELIVERY');
+        if (editFormData.deliveryType && editFormData.deliveryType !== origDeliveryType) {
+          alert('Delivery type cannot be modified for a PAID bilty. Payment has already been settled.');
+          setIsSubmittingEdit(false);
+          return;
+        }
+        if (
+          Math.abs(rate - origRate) > 0.01 ||
+          Math.abs(totalAmount - origTotal) > 0.01 ||
+          Math.abs(weight - origWeight) > 0.01 ||
+          (parseInt(editFormData.packagesCount, 10) !== origPackages && origPackages > 0)
+        ) {
+          alert('Packages count, weight, and freight charges cannot be modified for a PAID bilty. Payment has already been settled.');
+          setIsSubmittingEdit(false);
+          return;
+        }
+      }
+
       const payload = {
         docket_number: editFormData.docketNumber,
         lr_number: editFormData.docketNumber,
@@ -1146,6 +1643,7 @@ export default function BookingsMasterPage() {
         total_amount: totalAmount,
         payment_type: editFormData.paymentMode,
         transport_mode: editFormData.transportMode || 'ROAD',
+        delivery_type: editFormData.deliveryType || (doorDelivery > 0 ? 'DOOR_DELIVERY' : 'GODOWN_DELIVERY'),
         status: editFormData.status,
       };
 
@@ -1190,9 +1688,12 @@ export default function BookingsMasterPage() {
   // KPI Calculations
   const totalBookingsCount = statusSummary.total || consignments.length;
   const inTransitCount = statusSummary.inTransit || consignments.filter((c) => c.status === 'IN_TRANSIT' || c.status === 'DISPATCHED' || c.status === 'ON_TRIP').length;
-  const deliveredCount = statusSummary.delivered || consignments.filter((c) => c.status === 'DELIVERED').length;
-  const pendingOrGodownCount = statusSummary.pending || consignments.filter((c) => c.status === 'BOOKED' || c.status === 'MATERIAL_RECEIVED' || c.status === 'READY_FOR_DISPATCH' || c.status === 'LOADED' || c.status === 'OUT_FOR_DELIVERY').length;
-  const delayedCount = statusSummary.delayed || consignments.filter((c) => c.status === 'DELAYED').length;
+  const deliveredCount = statusSummary.delivered || consignments.filter((c) => c.status === 'DELIVERED' || c.status === 'COMPLETED' || c.status === 'POD_UPLOADED').length;
+  const forDeliveryCount = statusSummary.forDelivery || statusSummary.reachedDest || consignments.filter((c) => c.status === 'REACHED_DESTINATION' || c.status === 'OUT_FOR_DELIVERY').length;
+  const pendingOrGodownCount = statusSummary.pending || consignments.filter((c) =>
+    ['BOOKED', 'MATERIAL_RECEIVED', 'READY_FOR_DISPATCH', 'LOADED', 'RECEIVED_AT_HUB'].includes(c.status)
+  ).length;
+  const delayedCount = statusSummary.delayed || consignments.filter((c) => c.status === 'DELAYED' || c.status === 'DAMAGED' || c.status === 'SHORT_MATERIAL' || c.status === 'HOLD').length;
 
   const kpis = [
     {
@@ -1204,34 +1705,34 @@ export default function BookingsMasterPage() {
       icon: FileText
     },
     {
+      title: 'Pending / Dock',
+      count: pendingOrGodownCount.toString(),
+      change: 'Staged',
+      subtext: 'Origin / Transit Hub dock',
+      color: 'rose',
+      icon: AlertTriangle
+    },
+    {
+      title: 'Ready for Delivery',
+      count: forDeliveryCount.toString(),
+      change: 'At Terminal',
+      subtext: 'Destination branch dock',
+      color: 'teal',
+      icon: CheckCircle2
+    },
+    {
       title: 'In Transit',
       count: inTransitCount.toString(),
       change: 'Active',
       subtext: 'Active on road',
       color: 'cyan',
       icon: Truck
-    },
-    {
-      title: 'Delivered',
-      count: deliveredCount.toString(),
-      change: 'Completed',
-      subtext: 'Delivered consignments',
-      color: 'emerald',
-      icon: CheckCircle2
-    },
-    {
-      title: 'Pending / Godown',
-      count: pendingOrGodownCount.toString(),
-      change: 'Staged',
-      subtext: 'Ready for loading',
-      color: 'rose',
-      icon: AlertTriangle
     }
   ];
 
-  // Filtered List
+  // Filtered & Priority-Sorted List
   const filteredConsignments = useMemo(() => {
-    return consignments.filter((c) => {
+    const list = consignments.filter((c) => {
       const matchesSearch =
         (c.lr_number || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
         (c.booking_id || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -1241,15 +1742,41 @@ export default function BookingsMasterPage() {
         (c.destination_city || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
         (c.vehicle_number || '').toLowerCase().includes(searchQuery.toLowerCase());
 
-      if (statusFilter === 'ALL') return matchesSearch;
-      if (statusFilter === 'IN_TRANSIT') return matchesSearch && (c.status === 'IN_TRANSIT' || c.status === 'DISPATCHED' || c.status === 'ON_TRIP');
-      if (statusFilter === 'DELIVERED') return matchesSearch && c.status === 'DELIVERED';
-      if (statusFilter === 'DELAYED') return matchesSearch && c.status === 'DELAYED';
-      if (statusFilter === 'PENDING') return matchesSearch && (c.status === 'BOOKED' || c.status === 'MATERIAL_RECEIVED' || c.status === 'READY_FOR_DISPATCH' || c.status === 'LOADED' || c.status === 'OUT_FOR_DELIVERY');
+      if (!matchesSearch) return false;
 
-      return matchesSearch;
+      if (statusFilter === 'ALL') return true;
+      if (statusFilter === 'IN_TRANSIT') return c.status === 'IN_TRANSIT' || c.status === 'DISPATCHED' || c.status === 'ON_TRIP';
+      if (statusFilter === 'FOR_DELIVERY' || statusFilter === 'REACHED_DESTINATION') return c.status === 'REACHED_DESTINATION' || c.status === 'OUT_FOR_DELIVERY';
+      if (statusFilter === 'DELIVERED') return c.status === 'DELIVERED' || c.status === 'COMPLETED' || c.status === 'POD_UPLOADED';
+      if (statusFilter === 'DELAYED') return c.status === 'DELAYED' || c.status === 'DAMAGED' || c.status === 'SHORT_MATERIAL' || c.status === 'HOLD';
+      if (statusFilter === 'PENDING') return ['BOOKED', 'MATERIAL_RECEIVED', 'READY_FOR_DISPATCH', 'LOADED', 'RECEIVED_AT_HUB'].includes(c.status);
+
+      return true;
     });
-  }, [consignments, searchQuery, statusFilter]);
+
+    // Priority Sort for Pending / Dock:
+    // Dockets arriving or stationed at THIS branch first, then other branch dockets
+    if (statusFilter === 'PENDING') {
+      const branchId = activeBranch !== 'ALL' ? activeBranch : userBranchId;
+      return [...list].sort((a, b) => {
+        const aIsThisBranch = branchId && (a.current_branch_id === branchId || a.dest_branch_id === branchId || a.origin_branch_id === branchId);
+        const bIsThisBranch = branchId && (b.current_branch_id === branchId || b.dest_branch_id === branchId || b.origin_branch_id === branchId);
+
+        if (aIsThisBranch && !bIsThisBranch) return -1;
+        if (!aIsThisBranch && bIsThisBranch) return 1;
+
+        // Dockets arriving at transit hub (RECEIVED_AT_HUB) prioritized for prompt loading
+        const aAtHub = a.status === 'RECEIVED_AT_HUB';
+        const bAtHub = b.status === 'RECEIVED_AT_HUB';
+        if (aAtHub && !bAtHub) return -1;
+        if (!aAtHub && bAtHub) return 1;
+
+        return 0;
+      });
+    }
+
+    return list;
+  }, [consignments, searchQuery, statusFilter, activeBranch, userBranchId]);
 
   const handleOpenDetails = (c) => {
     setSelectedConsignment(c);
@@ -1316,6 +1843,7 @@ export default function BookingsMasterPage() {
         total_amount: breakdown.totalDocketFreight,
         payment_type: formData.paymentMode || 'TO_PAY',
         transport_mode: formData.transportMode || 'ROAD',
+        delivery_type: formData.deliveryType || (breakdown.doorDelivery > 0 ? 'DOOR_DELIVERY' : 'GODOWN_DELIVERY'),
         pickup_address: formData.consignorCity || formData.originCity,
         delivery_address: formData.consigneeCity || formData.destinationCity,
         booking_remarks: customRemarks ? `Additional Charges: ${customRemarks}` : undefined,
@@ -1348,6 +1876,7 @@ export default function BookingsMasterPage() {
         paymentMode: 'TO_PAY',
         pickupDate: new Date().toISOString().split('T')[0],
         transportMode: 'ROAD',
+        deliveryType: 'GODOWN_DELIVERY',
         loadingCharges: '450',
         unloadingCharges: '0',
         doorDeliveryCharges: '0',
@@ -1383,9 +1912,8 @@ export default function BookingsMasterPage() {
         exportValue: (row) => row.lr_number,
         render: (val, row) => (
           <div>
-            <div className={`font-mono font-bold group-hover:underline flex items-center gap-1.5 ${
-              isDark ? 'text-cyan-400' : 'text-blue-600'
-            }`}>
+            <div className={`font-mono font-bold group-hover:underline flex items-center gap-1.5 ${isDark ? 'text-cyan-400' : 'text-blue-600'
+              }`}>
               <FileText className="w-3.5 h-3.5 shrink-0" />
               <span>{row.lr_number}</span>
             </div>
@@ -1417,9 +1945,8 @@ export default function BookingsMasterPage() {
         exportValue: (row) => `${row.origin_city} ➔ ${row.destination_city} (${row.transport_mode || 'ROAD'})`,
         render: (val, row) => (
           <div>
-            <span className={`px-2 py-0.5 rounded font-mono font-bold text-[11px] inline-block ${
-              isDark ? 'bg-slate-900 border border-slate-800 text-slate-200' : 'bg-slate-100 text-slate-800'
-            }`}>
+            <span className={`px-2 py-0.5 rounded font-mono font-bold text-[11px] inline-block ${isDark ? 'bg-slate-900 border border-slate-800 text-slate-200' : 'bg-slate-100 text-slate-800'
+              }`}>
               {row.route_code}
             </span>
             <div className="mt-1 flex items-center gap-1 text-[10px]">
@@ -1546,13 +2073,21 @@ export default function BookingsMasterPage() {
             <div className={`font-black font-mono text-xs ${isDark ? 'text-white' : 'text-slate-900'}`}>
               ₹ {row.total_amount?.toLocaleString('en-IN')}
             </div>
-            <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded border ${
-              row.payment_mode === 'PAID'
-                ? isDark ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                : isDark ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' : 'bg-amber-50 text-amber-700 border-amber-200'
-            }`}>
-              {row.payment_mode}
-            </span>
+            <div className="flex items-center justify-end gap-1 mt-0.5">
+              <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded border ${row.payment_mode === 'PAID'
+                  ? isDark ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                  : isDark ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' : 'bg-amber-50 text-amber-700 border-amber-200'
+                }`}>
+                {row.payment_mode}
+              </span>
+              <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded border ${row.delivery_type === 'DOOR_DELIVERY'
+                  ? isDark ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                  : isDark ? 'bg-slate-800 text-slate-400 border-slate-700' : 'bg-slate-100 text-slate-600 border-slate-200'
+                }`}
+                title={row.delivery_type === 'DOOR_DELIVERY' ? 'Door Delivery' : 'Godown Delivery'}>
+                {row.delivery_type === 'DOOR_DELIVERY' ? 'Door' : 'Godown'}
+              </span>
+            </div>
           </div>
         ),
       },
@@ -1561,20 +2096,23 @@ export default function BookingsMasterPage() {
         header: 'Status',
         sortable: true,
         align: 'center',
-        width: 140,
-        minWidth: 120,
+        width: 180,
+        minWidth: 160,
         exportValue: (row) => row.status_label,
         render: (val, row) => (
           <div className="text-center whitespace-nowrap">
-            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-              row.status === 'IN_TRANSIT'
+            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${row.status === 'IN_TRANSIT' || row.status === 'DISPATCHED' || row.status === 'ON_TRIP'
                 ? isDark ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30' : 'bg-cyan-50 text-cyan-800 border-cyan-200'
-                : row.status === 'DELIVERED'
-                ? isDark ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' : 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                : row.status === 'DELAYED'
-                ? isDark ? 'bg-rose-500/15 text-rose-300 border-rose-500/30' : 'bg-rose-50 text-rose-800 border-rose-200'
-                : isDark ? 'bg-purple-500/15 text-purple-300 border-purple-500/30' : 'bg-purple-50 text-purple-800 border-purple-200'
-            }`}>
+                : row.status === 'DELIVERED' || row.status === 'COMPLETED'
+                  ? isDark ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                  : row.status === 'DELAYED' || row.status === 'HOLD' || row.status === 'DAMAGED'
+                    ? isDark ? 'bg-rose-500/15 text-rose-300 border-rose-500/30' : 'bg-rose-50 text-rose-800 border-rose-200'
+                    : row.status === 'REACHED_DESTINATION' || row.status === 'OUT_FOR_DELIVERY'
+                      ? isDark ? 'bg-teal-500/15 text-teal-300 border-teal-500/30' : 'bg-teal-50 text-teal-800 border-teal-200'
+                      : row.status === 'RECEIVED_AT_HUB'
+                        ? isDark ? 'bg-blue-500/15 text-blue-300 border-blue-500/30' : 'bg-blue-50 text-blue-800 border-blue-200'
+                        : isDark ? 'bg-purple-500/15 text-purple-300 border-purple-500/30' : 'bg-purple-50 text-purple-800 border-purple-200'
+              }`}>
               <span className="w-1.5 h-1.5 rounded-full bg-current mr-1 animate-pulse" />
               {row.status_label}
             </span>
@@ -1593,11 +2131,10 @@ export default function BookingsMasterPage() {
           <div className="flex items-center justify-center space-x-1.5" onClick={(e) => e.stopPropagation()}>
             <button
               onClick={() => handleOpenDetails(row)}
-              className={`p-1.5 rounded-lg border transition-all ${
-                isDark
+              className={`p-1.5 rounded-lg border transition-all ${isDark
                   ? 'bg-slate-900 border-slate-800 text-slate-300 hover:text-cyan-400 hover:border-cyan-500/40'
                   : 'bg-slate-50 border-slate-200 text-slate-600 hover:text-blue-600'
-              }`}
+                }`}
               title="View Consignment Details"
             >
               <Eye className="w-3.5 h-3.5" />
@@ -1606,11 +2143,10 @@ export default function BookingsMasterPage() {
             {canEdit && (
               <button
                 onClick={() => handleOpenEdit(row)}
-                className={`p-1.5 rounded-lg border transition-all ${
-                  isDark
+                className={`p-1.5 rounded-lg border transition-all ${isDark
                     ? 'bg-slate-900 border-slate-800 text-amber-400 hover:text-amber-300 hover:border-amber-500/40 hover:bg-amber-500/10'
                     : 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100'
-                }`}
+                  }`}
                 title="Edit Docket (Admin)"
               >
                 <Pencil className="w-3.5 h-3.5" />
@@ -1620,11 +2156,10 @@ export default function BookingsMasterPage() {
             {canDelete && (
               <button
                 onClick={() => handleOpenDelete(row)}
-                className={`p-1.5 rounded-lg border transition-all ${
-                  isDark
+                className={`p-1.5 rounded-lg border transition-all ${isDark
                     ? 'bg-slate-900 border-slate-800 text-rose-400 hover:text-rose-300 hover:border-rose-500/40 hover:bg-rose-500/10'
                     : 'bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100'
-                }`}
+                  }`}
                 title="Delete Docket (Admin)"
               >
                 <Trash2 className="w-3.5 h-3.5" />
@@ -1633,11 +2168,10 @@ export default function BookingsMasterPage() {
 
             <button
               onClick={() => handleOpenPrintPreview(row)}
-              className={`p-1.5 rounded-lg border transition-all ${
-                isDark
+              className={`p-1.5 rounded-lg border transition-all ${isDark
                   ? 'bg-slate-900 border-slate-800 text-slate-300 hover:text-cyan-400 hover:border-cyan-500/40'
                   : 'bg-slate-50 border-slate-200 text-slate-600 hover:text-blue-600'
-              }`}
+                }`}
               title="Print 3-Part Lorry Receipt / Bilty"
             >
               <Printer className="w-3.5 h-3.5" />
@@ -1650,23 +2184,21 @@ export default function BookingsMasterPage() {
   );
 
   return (
-    <div className={`flex h-screen overflow-hidden transition-colors duration-300 ${
-      isDark ? 'bg-[#06080F] text-slate-100' : 'bg-[#F4F6FB] text-slate-900'
-    } font-sans`}>
+    <div className={`flex h-screen overflow-hidden transition-colors duration-300 ${isDark ? 'bg-[#06080F] text-slate-100' : 'bg-[#F4F6FB] text-slate-900'
+      } font-sans`}>
       <Sidebar />
       <div className="flex-1 flex flex-col h-screen overflow-y-auto min-w-0">
         <Navbar />
 
         <main className="flex-1 p-5 sm:p-6 lg:p-8 space-y-6 max-w-[1720px] mx-auto w-full">
-          
+
           {/* Header Action Bar */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <div className="flex items-center space-x-2.5">
                 <div className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
-                <h1 className={`text-2xl sm:text-3xl font-black tracking-tight ${
-                  isDark ? 'text-white' : 'text-slate-900'
-                }`}>
+                <h1 className={`text-2xl sm:text-3xl font-black tracking-tight ${isDark ? 'text-white' : 'text-slate-900'
+                  }`}>
                   Bookings & Consignments
                 </h1>
               </div>
@@ -1700,19 +2232,17 @@ export default function BookingsMasterPage() {
               return (
                 <div
                   key={idx}
-                  className={`p-4 rounded-2xl border transition-all duration-200 shadow-sm ${
-                    isDark
+                  className={`p-4 rounded-2xl border transition-all duration-200 shadow-sm ${isDark
                       ? 'bg-[#0B1020]/90 border-slate-800/90'
                       : 'bg-white border-slate-200'
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center justify-between mb-2">
                     <span className={`text-[11px] font-semibold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                       {kpi.title}
                     </span>
-                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${
-                      isDark ? 'bg-slate-800 text-cyan-400' : 'bg-slate-100 text-blue-600'
-                    }`}>
+                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${isDark ? 'bg-slate-800 text-cyan-400' : 'bg-slate-100 text-blue-600'
+                      }`}>
                       <Icon className="w-3.5 h-3.5" />
                     </div>
                   </div>
@@ -1794,67 +2324,74 @@ export default function BookingsMasterPage() {
                 <button
                   type="button"
                   onClick={() => { setStatusFilter('PENDING'); setPage(1); }}
-                  className={`px-3 py-1.5 rounded-xl transition-all ${
-                    statusFilter === 'PENDING'
+                  className={`px-3 py-1.5 rounded-xl transition-all ${statusFilter === 'PENDING'
                       ? 'bg-purple-600 text-white shadow-sm'
                       : isDark
-                      ? 'bg-slate-900 text-slate-400 hover:text-white'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
+                        ? 'bg-slate-900 text-slate-400 hover:text-white'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
                 >
-                  Pending / Dock{statusFilter === 'PENDING' ? ` (${pendingOrGodownCount})` : ''}
+                  Pending / Dock ({pendingOrGodownCount})
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setStatusFilter('IN_TRANSIT'); setPage(1); }}
-                  className={`px-3 py-1.5 rounded-xl transition-all ${
-                    statusFilter === 'IN_TRANSIT'
-                      ? 'bg-cyan-500 text-slate-950 font-black shadow-sm'
+                  onClick={() => { setStatusFilter('FOR_DELIVERY'); setPage(1); }}
+                  className={`px-3 py-1.5 rounded-xl transition-all ${statusFilter === 'FOR_DELIVERY' || statusFilter === 'REACHED_DESTINATION'
+                      ? 'bg-teal-600 text-white shadow-sm'
                       : isDark
-                      ? 'bg-slate-900 text-slate-400 hover:text-white'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
+                        ? 'bg-slate-900 text-slate-400 hover:text-white'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
                 >
-                  In Transit{statusFilter === 'IN_TRANSIT' ? ` (${inTransitCount})` : ''}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setStatusFilter('DELIVERED'); setPage(1); }}
-                  className={`px-3 py-1.5 rounded-xl transition-all ${
-                    statusFilter === 'DELIVERED'
-                      ? 'bg-emerald-600 text-white shadow-sm'
-                      : isDark
-                      ? 'bg-slate-900 text-slate-400 hover:text-white'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  Delivered{statusFilter === 'DELIVERED' ? ` (${deliveredCount})` : ''}
+                  Ready for Delivery ({forDeliveryCount})
                 </button>
                 <button
                   type="button"
                   onClick={() => { setStatusFilter('DELAYED'); setPage(1); }}
-                  className={`px-3 py-1.5 rounded-xl transition-all ${
-                    statusFilter === 'DELAYED'
+                  className={`px-3 py-1.5 rounded-xl transition-all ${statusFilter === 'DELAYED'
                       ? 'bg-rose-600 text-white shadow-sm'
                       : isDark
-                      ? 'bg-slate-900 text-slate-400 hover:text-white'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
+                        ? 'bg-slate-900 text-slate-400 hover:text-white'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
                 >
-                  Delayed{statusFilter === 'DELAYED' ? ` (${delayedCount})` : ''}
+                  Delayed ({delayedCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setStatusFilter('IN_TRANSIT'); setPage(1); }}
+                  className={`px-3 py-1.5 rounded-xl transition-all ${statusFilter === 'IN_TRANSIT'
+                      ? 'bg-cyan-500 text-slate-950 font-black shadow-sm'
+                      : isDark
+                        ? 'bg-slate-900 text-slate-400 hover:text-white'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                >
+                  In Transit ({inTransitCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setStatusFilter('DELIVERED'); setPage(1); }}
+                  className={`px-3 py-1.5 rounded-xl transition-all ${statusFilter === 'DELIVERED'
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : isDark
+                        ? 'bg-slate-900 text-slate-400 hover:text-white'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                >
+                  Delivered ({deliveredCount})
                 </button>
                 <button
                   type="button"
                   onClick={() => { setStatusFilter('ALL'); setPage(1); }}
-                  className={`px-3 py-1.5 rounded-xl transition-all ${
-                    statusFilter === 'ALL'
+                  className={`px-3 py-1.5 rounded-xl transition-all ${statusFilter === 'ALL'
                       ? 'bg-blue-600 text-white shadow-sm'
                       : isDark
-                      ? 'bg-slate-900 text-slate-400 hover:text-white'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
+                        ? 'bg-slate-900 text-slate-400 hover:text-white'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
                 >
-                  All{statusFilter === 'ALL' ? ` (${totalBookingsCount})` : ''}
+                  All ({totalBookingsCount})
                 </button>
               </div>
             }
@@ -1875,21 +2412,18 @@ export default function BookingsMasterPage() {
           />
 
           {/* Modal Body */}
-          <div className={`relative w-full max-w-2xl max-h-[90vh] my-auto rounded-3xl shadow-2xl flex flex-col z-10 border overflow-hidden ${
-            isDark ? 'bg-[#0A0E1A] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
-          }`}>
-            
-            {/* Modal Header */}
-            <div className={`p-5 border-b flex items-center justify-between shrink-0 ${
-              isDark ? 'border-slate-800' : 'border-slate-200'
+          <div className={`relative w-full max-w-2xl max-h-[90vh] my-auto rounded-3xl shadow-2xl flex flex-col z-10 border overflow-hidden ${isDark ? 'bg-[#0A0E1A] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
             }`}>
+
+            {/* Modal Header */}
+            <div className={`p-5 border-b flex items-center justify-between shrink-0 ${isDark ? 'border-slate-800' : 'border-slate-200'
+              }`}>
               <div>
                 <div className="flex items-center gap-2">
-                  <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold border ${
-                    isDark 
-                      ? 'bg-blue-500/20 text-cyan-400 border-blue-500/30' 
+                  <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold border ${isDark
+                      ? 'bg-blue-500/20 text-cyan-400 border-blue-500/30'
                       : 'bg-blue-50 text-blue-700 border-blue-200'
-                  }`}>
+                    }`}>
                     DOCKET (LR / BILTY)
                   </span>
                   <h2 className="text-lg font-bold">Issue New Consignment</h2>
@@ -1902,20 +2436,18 @@ export default function BookingsMasterPage() {
               <button
                 type="button"
                 onClick={() => setIsDrawerOpen(false)}
-                className={`p-2 rounded-xl border transition-colors ${
-                  isDark 
-                    ? 'border-slate-800 bg-slate-900/60 text-slate-400 hover:text-white' 
+                className={`p-2 rounded-xl border transition-colors ${isDark
+                    ? 'border-slate-800 bg-slate-900/60 text-slate-400 hover:text-white'
                     : 'border-slate-200 bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900'
-                }`}
+                  }`}
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             {/* TOP BAR: DOCKET NUMBER DISPLAY + INFO TOOLTIP ON RIGHT */}
-            <div className={`px-6 py-2.5 border-b flex items-center justify-between shrink-0 ${
-              isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-blue-50/70 border-blue-100'
-            }`}>
+            <div className={`px-6 py-2.5 border-b flex items-center justify-between shrink-0 ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-blue-50/70 border-blue-100'
+              }`}>
               <div className="flex items-center gap-2.5">
                 <FileText className={`w-4 h-4 ${isDark ? 'text-cyan-400' : 'text-blue-600'}`} />
                 <span className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
@@ -1942,15 +2474,14 @@ export default function BookingsMasterPage() {
                 <div
                   role="tooltip"
                   tabIndex={0}
-                  className={`w-6 h-6 rounded-full flex items-center justify-center border cursor-help transition-all ${
-                    isDark
+                  className={`w-6 h-6 rounded-full flex items-center justify-center border cursor-help transition-all ${isDark
                       ? 'bg-slate-800/80 border-slate-700 text-cyan-400 hover:border-cyan-400 hover:bg-slate-800'
                       : 'bg-white border-blue-200 text-blue-600 hover:border-blue-400 shadow-xs hover:bg-blue-50'
-                  }`}
+                    }`}
                 >
                   <Info className="w-3.5 h-3.5" />
                 </div>
-                
+
                 {/* Tooltip on hover */}
                 <div className="absolute right-0 top-full mt-2 hidden group-hover:flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium shadow-2xl border z-50 whitespace-nowrap transition-all duration-150 pointer-events-none bg-slate-900 border-slate-700 text-slate-100 dark:bg-slate-800 dark:border-slate-700">
                   <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
@@ -1961,28 +2492,25 @@ export default function BookingsMasterPage() {
             </div>
 
             {/* Stepper Indicator */}
-            <div className={`px-6 py-3 border-b flex items-center justify-between shrink-0 ${
-              isDark ? 'border-slate-800/80 bg-slate-950/40' : 'border-slate-200 bg-slate-50/80'
-            }`}>
+            <div className={`px-6 py-3 border-b flex items-center justify-between shrink-0 ${isDark ? 'border-slate-800/80 bg-slate-950/40' : 'border-slate-200 bg-slate-50/80'
+              }`}>
               <button
                 type="button"
                 onClick={() => setBookingStep(1)}
                 className="flex items-center space-x-2 cursor-pointer focus:outline-none"
               >
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                  bookingStep === 1 
-                    ? 'bg-blue-600 text-white' 
-                    : isDark 
-                      ? 'bg-emerald-500/20 text-emerald-400' 
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${bookingStep === 1
+                    ? 'bg-blue-600 text-white'
+                    : isDark
+                      ? 'bg-emerald-500/20 text-emerald-400'
                       : 'bg-emerald-100 text-emerald-700'
-                }`}>
+                  }`}>
                   {bookingStep > 1 ? <Check className="w-3.5 h-3.5" /> : '1'}
                 </div>
-                <span className={`text-xs font-bold ${
-                  bookingStep === 1 
-                    ? isDark ? 'text-cyan-400' : 'text-blue-600' 
+                <span className={`text-xs font-bold ${bookingStep === 1
+                    ? isDark ? 'text-cyan-400' : 'text-blue-600'
                     : isDark ? 'text-slate-400' : 'text-slate-600'
-                }`}>
+                  }`}>
                   Parties & Hubs
                 </span>
               </button>
@@ -1993,25 +2521,22 @@ export default function BookingsMasterPage() {
                 onClick={() => {
                   if (isStep1Valid) setBookingStep(2);
                 }}
-                className={`flex items-center space-x-2 focus:outline-none transition-opacity ${
-                  isStep1Valid ? 'cursor-pointer opacity-100' : 'cursor-not-allowed opacity-50'
-                }`}
+                className={`flex items-center space-x-2 focus:outline-none transition-opacity ${isStep1Valid ? 'cursor-pointer opacity-100' : 'cursor-not-allowed opacity-50'
+                  }`}
                 title={!isStep1Valid ? 'Fill mandatory fields in Step 1 to unlock' : 'Cargo & Rates'}
               >
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                  bookingStep === 2 
-                    ? 'bg-blue-600 text-white' 
-                    : bookingStep > 2 
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${bookingStep === 2
+                    ? 'bg-blue-600 text-white'
+                    : bookingStep > 2
                       ? isDark ? 'bg-emerald-500/20 text-emerald-400' : 'bg-emerald-100 text-emerald-700'
                       : isDark ? 'bg-slate-800 text-slate-500' : 'bg-slate-200 text-slate-500'
-                }`}>
+                  }`}>
                   {bookingStep > 2 ? <Check className="w-3.5 h-3.5" /> : '2'}
                 </div>
-                <span className={`text-xs font-bold ${
-                  bookingStep === 2 
-                    ? isDark ? 'text-cyan-400' : 'text-blue-600' 
+                <span className={`text-xs font-bold ${bookingStep === 2
+                    ? isDark ? 'text-cyan-400' : 'text-blue-600'
                     : isDark ? 'text-slate-400' : 'text-slate-600'
-                }`}>
+                  }`}>
                   Cargo & Rates
                 </span>
               </button>
@@ -2022,23 +2547,20 @@ export default function BookingsMasterPage() {
                 onClick={() => {
                   if (isStep1Valid && isStep2Valid) setBookingStep(3);
                 }}
-                className={`flex items-center space-x-2 focus:outline-none transition-opacity ${
-                  isStep1Valid && isStep2Valid ? 'cursor-pointer opacity-100' : 'cursor-not-allowed opacity-50'
-                }`}
+                className={`flex items-center space-x-2 focus:outline-none transition-opacity ${isStep1Valid && isStep2Valid ? 'cursor-pointer opacity-100' : 'cursor-not-allowed opacity-50'
+                  }`}
                 title={!isStep1Valid || !isStep2Valid ? 'Fill mandatory fields in Steps 1 & 2 to unlock' : 'Confirm'}
               >
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                  bookingStep === 3 
-                    ? 'bg-blue-600 text-white' 
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${bookingStep === 3
+                    ? 'bg-blue-600 text-white'
                     : isDark ? 'bg-slate-800 text-slate-500' : 'bg-slate-200 text-slate-500'
-                }`}>
+                  }`}>
                   3
                 </div>
-                <span className={`text-xs font-bold ${
-                  bookingStep === 3 
-                    ? isDark ? 'text-cyan-400' : 'text-blue-600' 
+                <span className={`text-xs font-bold ${bookingStep === 3
+                    ? isDark ? 'text-cyan-400' : 'text-blue-600'
                     : isDark ? 'text-slate-400' : 'text-slate-600'
-                }`}>
+                  }`}>
                   Confirm
                 </span>
               </button>
@@ -2047,562 +2569,628 @@ export default function BookingsMasterPage() {
             {/* Modal Form Body */}
             <form onSubmit={handleCreateBookingSubmit} className="flex-1 flex flex-col overflow-hidden min-h-0">
               <div className="flex-1 overflow-y-auto p-6 space-y-5">
-              
-              {/* STEP 1: Parties & Route Hubs */}
-              {bookingStep === 1 && (
-                <div className="space-y-4">
-                  {/* DOCKET / BILTY NUMBER ASSIGNMENT CARD (Moved Up) */}
-                  <div className={`p-3 rounded-2xl border transition-all ${
-                    isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200 shadow-xs'
-                  }`}>
-                    {/* Row: Mode Buttons on Left, Series info & link on Right */}
-                    <div className="flex items-center justify-between gap-3 flex-wrap">
-                      <div className="flex items-center gap-2">
-                        <span className={`text-[11px] font-bold uppercase tracking-wider mr-1 ${
-                          isDark ? 'text-slate-400' : 'text-slate-500'
-                        }`}>
-                          Docket Mode:
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => setFormData(prev => ({ ...prev, docketNumberMode: 'auto', customDocketNumber: '' }))}
-                          className={`px-3.5 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all ${
-                            formData.docketNumberMode === 'auto'
-                              ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
-                              : isDark 
-                                ? 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white' 
-                                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
-                          }`}
-                        >
-                          <Sparkles className="w-3.5 h-3.5" />
-                          <span>Auto</span>
-                        </button>
 
-                        <button
-                          type="button"
-                          onClick={() => setFormData(prev => ({ ...prev, docketNumberMode: 'manual' }))}
-                          className={`px-3.5 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all ${
-                            formData.docketNumberMode === 'manual'
-                              ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
-                              : isDark 
-                                ? 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white' 
-                                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
-                          }`}
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                          <span>Enter Manually</span>
-                        </button>
-                      </div>
-
-                      {/* Right side: Series Preview & Configure Link (keeps right side clean, non-empty) */}
-                      <div className="flex items-center gap-2.5">
-                        {formData.docketNumberMode === 'auto' && (
-                          <span className={`text-[11px] font-mono font-bold px-2 py-0.5 rounded-lg border ${
-                            isDark ? 'bg-slate-800/80 border-slate-700 text-cyan-300' : 'bg-white border-slate-200 text-slate-700'
+                {/* STEP 1: Parties & Route Hubs */}
+                {bookingStep === 1 && (
+                  <div className="space-y-4">
+                    {/* DOCKET / BILTY NUMBER ASSIGNMENT CARD */}
+                    <div className={`p-3.5 rounded-2xl border transition-all ${
+                      isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200 shadow-xs'
+                    }`}>
+                      {/* Top Row: Mode Buttons on Left, Series info or Manual badge on Right */}
+                      <div className="flex items-center justify-between gap-3 flex-wrap">
+                        <div className="flex items-center gap-2">
+                          <span className={`text-[11px] font-bold uppercase tracking-wider mr-1 ${
+                            isDark ? 'text-slate-400' : 'text-slate-500'
                           }`}>
-                            Series: {docketSeriesPreview?.prefix || 'BAL'} ({docketSeriesPreview?.nextNumber || 'Auto'})
+                            Docket Mode:
                           </span>
-                        )}
-                        {isAdmin && (
-                          <Link
-                            href="/settings?tab=terminology"
-                            target="_blank"
-                            className="text-[11px] font-semibold text-blue-600 dark:text-cyan-400 hover:underline flex items-center gap-1"
+                          <button
+                            type="button"
+                            onClick={() => setFormData(prev => ({ ...prev, docketNumberMode: 'auto', customDocketNumber: '' }))}
+                            className={`px-3.5 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all ${
+                              formData.docketNumberMode === 'auto'
+                                ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
+                                : isDark
+                                  ? 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                                  : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                            }`}
                           >
-                            <span>Configure Series</span>
-                            <ExternalLink className="w-3 h-3" />
-                          </Link>
-                        )}
+                            <Sparkles className="w-3.5 h-3.5" />
+                            <span>Auto</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setFormData(prev => ({ ...prev, docketNumberMode: 'manual' }))}
+                            className={`px-3.5 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all ${
+                              formData.docketNumberMode === 'manual'
+                                ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
+                                : isDark
+                                  ? 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                                  : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                            }`}
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                            <span>Enter Manually</span>
+                          </button>
+                        </div>
+
+                        {/* Right Side: Series Preview (in Auto Mode) OR Manual Mode Status Badge */}
+                        <div className="flex items-center gap-2">
+                          {formData.docketNumberMode === 'auto' ? (
+                            <>
+                              <span className={`text-[11px] font-mono font-bold px-2.5 py-1 rounded-xl border ${
+                                isDark ? 'bg-slate-800/80 border-slate-700 text-cyan-300' : 'bg-white border-slate-200 text-slate-700 shadow-2xs'
+                              }`}>
+                                Series: {docketSeriesPreview?.prefix || 'BAL'} ({docketSeriesPreview?.nextNumber || 'Auto'})
+                              </span>
+                              {isAdmin && (
+                                <Link
+                                  href="/settings?tab=terminology"
+                                  target="_blank"
+                                  title="Configure Docket Series"
+                                  className={`p-1.5 rounded-lg border text-[11px] font-semibold flex items-center gap-1 transition-colors ${
+                                    isDark
+                                      ? 'border-slate-800 bg-slate-900 text-slate-400 hover:text-cyan-400 hover:border-slate-700'
+                                      : 'border-slate-200 bg-white text-slate-600 hover:text-blue-600 hover:border-slate-300'
+                                  }`}
+                                >
+                                  <span className="hidden md:inline">Configure</span>
+                                  <ExternalLink className="w-3 h-3" />
+                                </Link>
+                              )}
+                            </>
+                          ) : (
+                            <span className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border flex items-center gap-1.5 ${
+                              isDark ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' : 'bg-amber-50 border-amber-200 text-amber-700'
+                            }`}>
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                              <span>Manual Stationery Mode</span>
+                            </span>
+                          )}
+                        </div>
                       </div>
+
+                      {/* Full-width Input section when Enter Manually is selected */}
+                      {formData.docketNumberMode === 'manual' && (
+                        <div className="space-y-1.5 pt-3 border-t border-slate-200/80 dark:border-slate-800/80 mt-3 animate-in fade-in duration-150">
+                          <label className={`text-xs font-bold flex items-center gap-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                            <span>Enter Manual Docket / DWB Number</span>
+                            <span className="text-rose-500 font-bold ml-0.5">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            autoFocus
+                            value={formData.customDocketNumber}
+                            onChange={(e) => setFormData(prev => ({
+                              ...prev,
+                              customDocketNumber: e.target.value.toUpperCase().replace(/\s+/g, '')
+                            }))}
+                            placeholder="e.g. DWB123222322 or BAL823883"
+                            className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono font-bold tracking-wide uppercase focus:outline-none transition-colors ${
+                              isDark
+                                ? 'border-slate-800 bg-slate-900/90 text-white placeholder-slate-500 focus:border-cyan-400'
+                                : 'border-slate-200 bg-white text-slate-900 placeholder-slate-400 focus:border-blue-500'
+                            }`}
+                          />
+                          <span className="text-[10px] text-slate-400 block">
+                            Enter your physical pre-printed stationery or custom consignment number.
+                          </span>
+                        </div>
+                      )}
                     </div>
 
-                    {/* Input box shown when Enter Manually is active */}
-                    {formData.docketNumberMode === 'manual' && (
-                      <div className="space-y-1.5 pt-3 border-t border-slate-200/60 dark:border-slate-800/60 mt-3 animate-in fade-in duration-150">
-                        <label className={`text-xs font-bold flex items-center gap-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                          <span>Enter Manual Docket / DWB Number</span>
+                    {/* Consignor (Shipper) - Separate Row */}
+                    <div className={`space-y-1.5 relative ${showConsignorDropdown ? 'z-50' : 'z-30'}`} ref={consignorDropdownRef}>
+                      <div className="flex items-center justify-between">
+                        <label className={`text-xs font-bold flex items-center gap-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'
+                          }`}>
+                          <span>Consignor (Shipper)</span>
                           <span className="text-rose-500 font-bold ml-0.5">*</span>
+                          {formData.consignorId && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
+                              <UserCheck className="w-3 h-3" />
+                              Registered Customer
+                            </span>
+                          )}
                         </label>
+                        <div className="flex items-center gap-2">
+                          {formData.consignorId ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setFormData(prev => ({
+                                  ...prev,
+                                  consignorName: '',
+                                  consignorId: '',
+                                  consignorPhone: '',
+                                  consignorCity: ''
+                                }));
+                                setShowConsignorDropdown(true);
+                              }}
+                              className="text-[10px] font-semibold text-rose-400 hover:text-rose-300 transition-colors"
+                            >
+                              Change / New Party
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setFormData(prev => ({
+                                  ...prev,
+                                  consignorName: '',
+                                  consignorId: '',
+                                  consignorPhone: '',
+                                  consignorCity: ''
+                                }));
+                                setShowConsignorDropdown(false);
+                              }}
+                              className={`text-[10px] font-semibold transition-colors ${isDark ? 'text-cyan-400 hover:text-cyan-300' : 'text-blue-600 hover:text-blue-700'
+                                }`}
+                            >
+                              New Party (Manual)
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="relative">
                         <input
                           type="text"
                           required
-                          autoFocus
-                          value={formData.customDocketNumber}
-                          onChange={(e) => setFormData(prev => ({ 
-                            ...prev, 
-                            customDocketNumber: e.target.value.toUpperCase().replace(/\s+/g, '') 
-                          }))}
-                          placeholder="e.g. DWB123222322 or BAL823883"
-                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono font-bold tracking-wide uppercase focus:outline-none transition-colors ${
-                            isDark
+                          placeholder="Search or select registered customer (e.g. Reliance Retail Ltd)"
+                          value={formData.consignorName}
+                          onFocus={() => setShowConsignorDropdown(true)}
+                          onChange={(e) => {
+                            setFormData(prev => ({
+                              ...prev,
+                              consignorName: e.target.value,
+                              consignorId: '' // Detach ID on manual text editing
+                            }));
+                            setShowConsignorDropdown(true);
+                          }}
+                          className={`w-full px-3.5 py-2.5 pr-16 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
                               ? 'border-slate-800 bg-slate-900/80 text-white placeholder-slate-500 focus:border-cyan-400'
                               : 'border-slate-200 bg-slate-50 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:bg-white'
-                          }`}
+                            }`}
                         />
-                        <span className="text-[10px] text-slate-400 block">
-                          Enter your physical pre-printed stationery or custom consignment number.
-                        </span>
-                      </div>
-                    )}
-                  </div>
 
-                  {/* Consignor (Shipper) */}
-                  <div className="space-y-1.5 relative z-30" ref={consignorDropdownRef}>
-                    <div className="flex items-center justify-between">
-                      <label className={`text-xs font-bold flex items-center gap-1.5 ${
-                        isDark ? 'text-slate-300' : 'text-slate-700'
-                      }`}>
-                        <span>Consignor (Shipper)</span>
-                        <span className="text-rose-500 font-bold ml-0.5">*</span>
-                        {formData.consignorId && (
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
-                            <UserCheck className="w-3 h-3" />
-                            Registered Customer
-                          </span>
-                        )}
-                      </label>
-                      <div className="flex items-center gap-2">
-                        {formData.consignorId ? (
+                        <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                          {formData.consignorName && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setFormData(prev => ({
+                                  ...prev,
+                                  consignorName: '',
+                                  consignorId: '',
+                                  consignorPhone: '',
+                                  consignorCity: ''
+                                }));
+                                setShowConsignorDropdown(true);
+                              }}
+                              className="p-1 rounded-lg hover:bg-slate-500/20 text-slate-400 hover:text-slate-200 transition-colors"
+                              title="Clear input"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                           <button
                             type="button"
-                            onClick={() => {
-                              setFormData(prev => ({
-                                ...prev,
-                                consignorName: '',
-                                consignorId: '',
-                                consignorPhone: '',
-                                consignorCity: ''
-                              }));
-                              setShowConsignorDropdown(true);
-                            }}
-                            className="text-[10px] font-semibold text-rose-400 hover:text-rose-300 transition-colors"
-                          >
-                            Change / New Party
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setFormData(prev => ({
-                                ...prev,
-                                consignorName: '',
-                                consignorId: '',
-                                consignorPhone: '',
-                                consignorCity: ''
-                              }));
-                              setShowConsignorDropdown(false);
-                            }}
-                            className={`text-[10px] font-semibold transition-colors ${
-                              isDark ? 'text-cyan-400 hover:text-cyan-300' : 'text-blue-600 hover:text-blue-700'
-                            }`}
-                          >
-                            New Party (Manual)
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="relative">
-                      <input
-                        type="text"
-                        required
-                        placeholder="Search or select registered customer (e.g. Reliance Retail Ltd)"
-                        value={formData.consignorName}
-                        onFocus={() => setShowConsignorDropdown(true)}
-                        onChange={(e) => {
-                          setFormData(prev => ({
-                            ...prev,
-                            consignorName: e.target.value,
-                            consignorId: '' // Detach ID on manual text editing
-                          }));
-                          setShowConsignorDropdown(true);
-                        }}
-                        className={`w-full px-3.5 py-2.5 pr-16 rounded-xl border text-xs focus:outline-none transition-colors ${
-                          isDark 
-                            ? 'border-slate-800 bg-slate-900/80 text-white placeholder-slate-500 focus:border-cyan-400' 
-                            : 'border-slate-200 bg-slate-50 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:bg-white'
-                        }`}
-                      />
-
-                      <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                        {formData.consignorName && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setFormData(prev => ({
-                                ...prev,
-                                consignorName: '',
-                                consignorId: '',
-                                consignorPhone: '',
-                                consignorCity: ''
-                              }));
-                              setShowConsignorDropdown(true);
-                            }}
+                            onClick={() => setShowConsignorDropdown(prev => !prev)}
                             className="p-1 rounded-lg hover:bg-slate-500/20 text-slate-400 hover:text-slate-200 transition-colors"
-                            title="Clear input"
+                            title="Toggle customer list"
                           >
-                            <X className="w-3.5 h-3.5" />
+                            <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${showConsignorDropdown ? 'rotate-180 text-cyan-400' : ''}`} />
                           </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => setShowConsignorDropdown(prev => !prev)}
-                          className="p-1 rounded-lg hover:bg-slate-500/20 text-slate-400 hover:text-slate-200 transition-colors"
-                          title="Toggle customer list"
-                        >
-                          <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${showConsignorDropdown ? 'rotate-180 text-cyan-400' : ''}`} />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Consignor Suggestion Dropdown */}
-                    {showConsignorDropdown && (
-                      <div className={`absolute left-0 right-0 top-full mt-1.5 z-50 rounded-2xl border shadow-2xl overflow-hidden backdrop-blur-md transition-all ${
-                        isDark 
-                          ? 'bg-slate-900/95 border-slate-700/80 text-white shadow-cyan-950/20' 
-                          : 'bg-white border-slate-200 text-slate-900 shadow-slate-400/20'
-                      }`}>
-                        <div className={`px-3.5 py-2 border-b flex items-center justify-between text-[11px] font-semibold ${
-                          isDark ? 'bg-slate-950/60 border-slate-800 text-slate-400' : 'bg-slate-50 border-slate-100 text-slate-600'
-                        }`}>
-                          <span className="flex items-center gap-1.5">
-                            <Users className="w-3.5 h-3.5 text-cyan-400" />
-                            Registered Customers ({filteredConsignors.length})
-                          </span>
-                          <Link
-                            href="/customers"
-                            target="_blank"
-                            className="text-[10px] text-cyan-500 hover:underline flex items-center gap-0.5"
-                          >
-                            + Add New in CRM
-                          </Link>
                         </div>
+                      </div>
 
-                        <div className="max-h-52 overflow-y-auto divide-y divide-slate-800/40">
-                          {filteredConsignors.length > 0 ? (
-                            filteredConsignors.map((c) => {
-                              const isSelected = formData.consignorId === c.id;
-                              return (
-                                <div
-                                  key={c.id}
-                                  onClick={() => {
-                                    setFormData(prev => ({
-                                      ...prev,
-                                      consignorName: c.name,
-                                      consignorId: c.id,
-                                      consignorPhone: c.phone || prev.consignorPhone,
-                                      consignorCity: c.city || prev.consignorCity,
-                                    }));
-                                    setShowConsignorDropdown(false);
-                                  }}
-                                  className={`p-2.5 px-3.5 cursor-pointer transition-colors flex items-center justify-between gap-3 ${
-                                    isSelected 
-                                      ? isDark ? 'bg-cyan-500/20 text-cyan-300' : 'bg-blue-50 text-blue-900 font-semibold'
-                                      : isDark 
-                                        ? 'hover:bg-slate-800/80 text-slate-200' 
-                                        : 'hover:bg-slate-50 text-slate-700'
-                                  }`}
-                                >
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-xs font-bold truncate">{c.name}</span>
-                                      <span className={`text-[10px] px-1.5 py-0.2 rounded font-mono font-medium ${
-                                        isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-600'
-                                      }`}>
-                                        {c.customer_code || 'ID: ' + c.id}
-                                      </span>
-                                      {c.customer_type && (
-                                        <span className="text-[9px] px-1.5 py-0.2 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 uppercase font-semibold">
-                                          {c.customer_type}
-                                        </span>
-                                      )}
-                                    </div>
-                                    <div className={`text-[11px] flex items-center gap-3 mt-0.5 ${
-                                      isDark ? 'text-slate-400' : 'text-slate-500'
-                                    }`}>
-                                      {c.city && (
-                                        <span className="flex items-center gap-1">
-                                          <MapPin className="w-3 h-3 text-cyan-400" />
-                                          {c.city}
-                                        </span>
-                                      )}
-                                      {c.phone && (
-                                        <span className="flex items-center gap-1">
-                                          <Phone className="w-3 h-3 text-emerald-400" />
-                                          {c.phone}
-                                        </span>
-                                      )}
-                                      {c.gstin && (
-                                        <span className="font-mono text-[10px] text-slate-400">
-                                          GST: {c.gstin}
-                                        </span>
-                                      )}
-                                    </div>
-                                  </div>
-
-                                  {isSelected && (
-                                    <Check className="w-4 h-4 text-cyan-400 shrink-0" />
+                      {/* Consignor Suggestion Dropdown */}
+                      {showConsignorDropdown && (
+                        <div className={`absolute left-0 right-0 top-full mt-1.5 z-50 rounded-2xl border shadow-2xl overflow-hidden backdrop-blur-md transition-all ${isDark
+                            ? 'bg-slate-900/95 border-slate-700/80 text-white shadow-cyan-950/20'
+                            : 'bg-white border-slate-200 text-slate-900 shadow-slate-400/20'
+                          }`}>
+                          <div className={`px-3.5 py-2 border-b flex items-center justify-between text-[11px] font-semibold ${isDark ? 'bg-slate-950/60 border-slate-800 text-slate-400' : 'bg-slate-50 border-slate-100 text-slate-600'
+                            }`}>
+                            <span className="flex items-center gap-1.5">
+                              <Users className="w-3.5 h-3.5 text-cyan-400" />
+                              {isAdmin || showAllConsignors ? (
+                                <span>Registered Customers ({filteredConsignors.length})</span>
+                              ) : (
+                                <span>
+                                  Nearest Shippers ({filteredConsignors.length})
+                                  {currentOriginBranch && (
+                                    <span className="text-[10px] text-cyan-400 font-mono font-bold ml-1">
+                                      [{currentOriginBranch.branch_code || currentOriginBranch.city}]
+                                    </span>
                                   )}
-                                </div>
-                              );
-                            })
-                          ) : (
-                            <div className="p-4 text-center space-y-1">
-                              <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                                No registered customer matching &quot;{formData.consignorName}&quot;
-                              </p>
-                              <p className="text-[10px] text-slate-500">
-                                Keep typing to register as a <b>New Party</b>, or add in Customers page.
-                              </p>
+                                </span>
+                              )}
+                            </span>
+
+                            <div className="flex items-center gap-2.5">
+                              {!isAdmin && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setShowAllConsignors((prev) => !prev);
+                                  }}
+                                  className="text-[10px] font-bold text-amber-500 hover:text-amber-400 hover:underline cursor-pointer"
+                                >
+                                  {showAllConsignors ? '⚡ Nearest Only' : '🌐 View All'}
+                                </button>
+                              )}
+                              <Link
+                                href="/customers"
+                                target="_blank"
+                                className="text-[10px] text-cyan-500 hover:underline flex items-center gap-0.5"
+                              >
+                                + Add New in CRM
+                              </Link>
+                            </div>
+                          </div>
+
+                          <div className="max-h-52 overflow-y-auto divide-y divide-slate-800/40">
+                            {filteredConsignors.length > 0 ? (
+                              filteredConsignors.map((c) => {
+                                const isSelected = formData.consignorId === c.id;
+                                return (
+                                  <div
+                                    key={c.id}
+                                    onClick={() => {
+                                      setFormData(prev => ({
+                                        ...prev,
+                                        consignorName: c.name,
+                                        consignorId: c.id,
+                                        consignorPhone: c.phone || prev.consignorPhone,
+                                        consignorCity: c.city || prev.consignorCity,
+                                      }));
+                                      setShowConsignorDropdown(false);
+                                    }}
+                                    className={`p-2.5 px-3.5 cursor-pointer transition-colors flex items-center justify-between gap-3 ${isSelected
+                                        ? isDark ? 'bg-cyan-500/20 text-cyan-300' : 'bg-blue-50 text-blue-900 font-semibold'
+                                        : isDark
+                                          ? 'hover:bg-slate-800/80 text-slate-200'
+                                          : 'hover:bg-slate-50 text-slate-700'
+                                      }`}
+                                  >
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-xs font-bold truncate">{c.name}</span>
+                                        <span className={`text-[10px] px-1.5 py-0.2 rounded font-mono font-medium ${isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-600'
+                                          }`}>
+                                          {c.customer_code || 'ID: ' + c.id}
+                                        </span>
+                                        {c.customer_type && (
+                                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 uppercase font-semibold">
+                                            {c.customer_type}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className={`text-[11px] flex items-center gap-2.5 mt-0.5 flex-wrap ${isDark ? 'text-slate-400' : 'text-slate-500'
+                                        }`}>
+                                        {c.city && (
+                                          <span className="flex items-center gap-1">
+                                            <MapPin className="w-3 h-3 text-cyan-400" />
+                                            {c.city}
+                                          </span>
+                                        )}
+                                        {c.pincode && (
+                                          <span className="font-mono text-[10px] font-bold text-cyan-500 dark:text-cyan-400">
+                                            PIN: {c.pincode}
+                                          </span>
+                                        )}
+                                        {c.phone && (
+                                          <span className="flex items-center gap-1">
+                                            <Phone className="w-3 h-3 text-emerald-400" />
+                                            {c.phone}
+                                          </span>
+                                        )}
+                                        {c.gstin && (
+                                          <span className="font-mono text-[10px] text-slate-400">
+                                            GST: {c.gstin}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    {isSelected && (
+                                      <Check className="w-4 h-4 text-cyan-400 shrink-0" />
+                                    )}
+                                  </div>
+                                );
+                              })
+                            ) : (
+                              <div className="p-4 text-center space-y-2">
+                                {!formData.consignorName ? (
+                                  <>
+                                    <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mx-auto text-slate-400">
+                                      <Users className="w-4 h-4" />
+                                    </div>
+                                    <div>
+                                      <p className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                                        {!isAdmin && !showAllConsignors
+                                          ? `No Shippers Mapped to Branch ${currentOriginBranch ? `[${currentOriginBranch.branch_code || currentOriginBranch.city}]` : ''}`
+                                          : 'No Registered Shippers Found'}
+                                      </p>
+                                      <p className={`text-[11px] mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                                        {!isAdmin && !showAllConsignors
+                                          ? 'No customers in CRM have their serving branch set to this depot.'
+                                          : 'You can type a name to create a walk-in shipper party.'}
+                                      </p>
+                                    </div>
+                                    {!isAdmin && !showAllConsignors && (
+                                      <div className="pt-1">
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setShowAllConsignors(true);
+                                          }}
+                                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-50 hover:bg-blue-100 text-blue-600 dark:bg-blue-950/40 dark:hover:bg-blue-900/60 dark:text-cyan-400 border border-blue-200 dark:border-blue-800 transition-all cursor-pointer"
+                                        >
+                                          <Globe className="w-3.5 h-3.5" />
+                                          <span>View All Customers Across Branches</span>
+                                        </button>
+                                      </div>
+                                    )}
+                                  </>
+                                ) : (
+                                  <>
+                                    <p className={`text-xs font-semibold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                                      No registered shipper matching &quot;{formData.consignorName}&quot;
+                                    </p>
+                                    <p className="text-[11px] text-slate-500">
+                                      Continue typing to issue as a <b>New / Walk-in Party</b>, or add in Customers CRM.
+                                    </p>
+                                  </>
+                                )}
+                              </div>
+                            )}
+                          </div>
+
+                          {formData.consignorName && (
+                            <div
+                              onClick={() => setShowConsignorDropdown(false)}
+                              className={`p-2 px-3.5 border-t text-xs cursor-pointer flex items-center justify-between font-medium ${isDark ? 'bg-slate-950/80 border-slate-800 text-cyan-400 hover:bg-slate-800' : 'bg-slate-50 border-slate-100 text-blue-600 hover:bg-slate-100'
+                                }`}
+                            >
+                              <span>Use &quot;{formData.consignorName}&quot; as New Custom Party</span>
+                              <ArrowRight className="w-3.5 h-3.5" />
                             </div>
                           )}
                         </div>
-
-                        {formData.consignorName && (
-                          <div 
-                            onClick={() => setShowConsignorDropdown(false)}
-                            className={`p-2 px-3.5 border-t text-xs cursor-pointer flex items-center justify-between font-medium ${
-                              isDark ? 'bg-slate-950/80 border-slate-800 text-cyan-400 hover:bg-slate-800' : 'bg-slate-50 border-slate-100 text-blue-600 hover:bg-slate-100'
-                            }`}
-                          >
-                            <span>Use &quot;{formData.consignorName}&quot; as New Custom Party</span>
-                            <ArrowRight className="w-3.5 h-3.5" />
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Consignee (Receiver) */}
-                  <div className="space-y-1.5 relative z-20" ref={consigneeDropdownRef}>
-                    <div className="flex items-center justify-between">
-                      <label className={`text-xs font-bold flex items-center gap-1.5 ${
-                        isDark ? 'text-slate-300' : 'text-slate-700'
-                      }`}>
-                        <span>Consignee (Receiver)</span>
-                        <span className="text-rose-500 font-bold ml-0.5">*</span>
-                        {formData.consigneeId && (
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
-                            <UserCheck className="w-3 h-3" />
-                            Registered Customer
-                          </span>
-                        )}
-                      </label>
-                      <div className="flex items-center gap-2">
-                        {formData.consigneeId ? (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setFormData(prev => ({
-                                ...prev,
-                                consigneeName: '',
-                                consigneeId: '',
-                                consigneePhone: '',
-                                consigneeCity: ''
-                              }));
-                              setShowConsigneeDropdown(true);
-                            }}
-                            className="text-[10px] font-semibold text-rose-400 hover:text-rose-300 transition-colors"
-                          >
-                            Change / New Party
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setFormData(prev => ({
-                                ...prev,
-                                consigneeName: '',
-                                consigneeId: '',
-                                consigneePhone: '',
-                                consigneeCity: ''
-                              }));
-                              setShowConsigneeDropdown(false);
-                            }}
-                            className={`text-[10px] font-semibold transition-colors ${
-                              isDark ? 'text-cyan-400 hover:text-cyan-300' : 'text-blue-600 hover:text-blue-700'
-                            }`}
-                          >
-                            New Party (Manual)
-                          </button>
-                        )}
-                      </div>
+                      )}
                     </div>
 
-                    <div className="relative">
-                      <input
-                        type="text"
-                        required
-                        placeholder="Search or select registered customer (e.g. Apollo Supply Chain Solutions)"
-                        value={formData.consigneeName}
-                        onFocus={() => setShowConsigneeDropdown(true)}
-                        onChange={(e) => {
-                          setFormData(prev => ({
-                            ...prev,
-                            consigneeName: e.target.value,
-                            consigneeId: '' // Detach ID on manual text editing
-                          }));
-                          setShowConsigneeDropdown(true);
-                        }}
-                        className={`w-full px-3.5 py-2.5 pr-16 rounded-xl border text-xs focus:outline-none transition-colors ${
-                          isDark 
-                            ? 'border-slate-800 bg-slate-900/80 text-white placeholder-slate-500 focus:border-cyan-400' 
-                            : 'border-slate-200 bg-slate-50 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:bg-white'
-                        }`}
-                      />
-
-                      <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                        {formData.consigneeName && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setFormData(prev => ({
-                                ...prev,
-                                consigneeName: '',
-                                consigneeId: '',
-                                consigneePhone: '',
-                                consigneeCity: ''
-                              }));
-                              setShowConsigneeDropdown(true);
-                            }}
-                            className="p-1 rounded-lg hover:bg-slate-500/20 text-slate-400 hover:text-slate-200 transition-colors"
-                            title="Clear input"
-                          >
-                            <X className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => setShowConsigneeDropdown(prev => !prev)}
-                          className="p-1 rounded-lg hover:bg-slate-500/20 text-slate-400 hover:text-slate-200 transition-colors"
-                          title="Toggle customer list"
-                        >
-                          <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${showConsigneeDropdown ? 'rotate-180 text-cyan-400' : ''}`} />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Consignee Suggestion Dropdown */}
-                    {showConsigneeDropdown && (
-                      <div className={`absolute left-0 right-0 top-full mt-1.5 z-50 rounded-2xl border shadow-2xl overflow-hidden backdrop-blur-md transition-all ${
-                        isDark 
-                          ? 'bg-slate-900/95 border-slate-700/80 text-white shadow-cyan-950/20' 
-                          : 'bg-white border-slate-200 text-slate-900 shadow-slate-400/20'
-                      }`}>
-                        <div className={`px-3.5 py-2 border-b flex items-center justify-between text-[11px] font-semibold ${
-                          isDark ? 'bg-slate-950/60 border-slate-800 text-slate-400' : 'bg-slate-50 border-slate-100 text-slate-600'
-                        }`}>
-                          <span className="flex items-center gap-1.5">
-                            <Users className="w-3.5 h-3.5 text-cyan-400" />
-                            Registered Customers ({filteredConsignees.length})
-                          </span>
-                          <Link
-                            href="/customers"
-                            target="_blank"
-                            className="text-[10px] text-cyan-500 hover:underline flex items-center gap-0.5"
-                          >
-                            + Add New in CRM
-                          </Link>
-                        </div>
-
-                        <div className="max-h-52 overflow-y-auto divide-y divide-slate-800/40">
-                          {filteredConsignees.length > 0 ? (
-                            filteredConsignees.map((c) => {
-                              const isSelected = formData.consigneeId === c.id;
-                              return (
-                                <div
-                                  key={c.id}
-                                  onClick={() => {
-                                    setFormData(prev => ({
-                                      ...prev,
-                                      consigneeName: c.name,
-                                      consigneeId: c.id,
-                                      consigneePhone: c.phone || prev.consigneePhone,
-                                      consigneeCity: c.city || prev.consigneeCity,
-                                    }));
-                                    setShowConsigneeDropdown(false);
-                                  }}
-                                  className={`p-2.5 px-3.5 cursor-pointer transition-colors flex items-center justify-between gap-3 ${
-                                    isSelected 
-                                      ? isDark ? 'bg-cyan-500/20 text-cyan-300' : 'bg-blue-50 text-blue-900 font-semibold'
-                                      : isDark 
-                                        ? 'hover:bg-slate-800/80 text-slate-200' 
-                                        : 'hover:bg-slate-50 text-slate-700'
-                                  }`}
-                                >
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-xs font-bold truncate">{c.name}</span>
-                                      <span className={`text-[10px] px-1.5 py-0.2 rounded font-mono font-medium ${
-                                        isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-600'
-                                      }`}>
-                                        {c.customer_code || 'ID: ' + c.id}
-                                      </span>
-                                      {c.customer_type && (
-                                        <span className="text-[9px] px-1.5 py-0.2 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 uppercase font-semibold">
-                                          {c.customer_type}
-                                        </span>
-                                      )}
-                                    </div>
-                                    <div className={`text-[11px] flex items-center gap-3 mt-0.5 ${
-                                      isDark ? 'text-slate-400' : 'text-slate-500'
-                                    }`}>
-                                      {c.city && (
-                                        <span className="flex items-center gap-1">
-                                          <MapPin className="w-3 h-3 text-cyan-400" />
-                                          {c.city}
-                                        </span>
-                                      )}
-                                      {c.phone && (
-                                        <span className="flex items-center gap-1">
-                                          <Phone className="w-3 h-3 text-emerald-400" />
-                                          {c.phone}
-                                        </span>
-                                      )}
-                                      {c.gstin && (
-                                        <span className="font-mono text-[10px] text-slate-400">
-                                          GST: {c.gstin}
-                                        </span>
-                                      )}
-                                    </div>
-                                  </div>
-
-                                  {isSelected && (
-                                    <Check className="w-4 h-4 text-cyan-400 shrink-0" />
-                                  )}
-                                </div>
-                              );
-                            })
+                    {/* Consignee (Receiver) - Separate Row */}
+                    <div className={`space-y-1.5 relative ${showConsigneeDropdown ? 'z-50' : 'z-20'}`} ref={consigneeDropdownRef}>
+                      <div className="flex items-center justify-between">
+                        <label className={`text-xs font-bold flex items-center gap-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'
+                          }`}>
+                          <span>Consignee (Receiver)</span>
+                          <span className="text-rose-500 font-bold ml-0.5">*</span>
+                          {formData.consigneeId && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
+                              <UserCheck className="w-3 h-3" />
+                              Registered Customer
+                            </span>
+                          )}
+                        </label>
+                        <div className="flex items-center gap-2">
+                          {formData.consigneeId ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setFormData(prev => ({
+                                  ...prev,
+                                  consigneeName: '',
+                                  consigneeId: '',
+                                  consigneePhone: '',
+                                  consigneeCity: ''
+                                }));
+                                setShowConsigneeDropdown(true);
+                              }}
+                              className="text-[10px] font-semibold text-rose-400 hover:text-rose-300 transition-colors"
+                            >
+                              Change / New Party
+                            </button>
                           ) : (
-                            <div className="p-4 text-center space-y-1">
-                              <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                                No registered customer matching &quot;{formData.consigneeName}&quot;
-                              </p>
-                              <p className="text-[10px] text-slate-500">
-                                Keep typing to register as a <b>New Party</b>, or add in Customers page.
-                              </p>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setFormData(prev => ({
+                                  ...prev,
+                                  consigneeName: '',
+                                  consigneeId: '',
+                                  consigneePhone: '',
+                                  consigneeCity: ''
+                                }));
+                                setShowConsigneeDropdown(false);
+                              }}
+                              className={`text-[10px] font-semibold transition-colors ${isDark ? 'text-cyan-400 hover:text-cyan-300' : 'text-blue-600 hover:text-blue-700'
+                                }`}
+                            >
+                              New Party (Manual)
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="relative">
+                        <input
+                          type="text"
+                          required
+                          placeholder="Search or select registered customer (e.g. Apollo Supply Chain Solutions)"
+                          value={formData.consigneeName}
+                          onFocus={() => setShowConsigneeDropdown(true)}
+                          onChange={(e) => {
+                            setFormData(prev => ({
+                              ...prev,
+                              consigneeName: e.target.value,
+                              consigneeId: '' // Detach ID on manual text editing
+                            }));
+                            setShowConsigneeDropdown(true);
+                          }}
+                          className={`w-full px-3.5 py-2.5 pr-16 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
+                              ? 'border-slate-800 bg-slate-900/80 text-white placeholder-slate-500 focus:border-cyan-400'
+                              : 'border-slate-200 bg-slate-50 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:bg-white'
+                            }`}
+                        />
+
+                        <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                          {formData.consigneeName && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setFormData(prev => ({
+                                  ...prev,
+                                  consigneeName: '',
+                                  consigneeId: '',
+                                  consigneePhone: '',
+                                  consigneeCity: ''
+                                }));
+                                setShowConsigneeDropdown(true);
+                              }}
+                              className="p-1 rounded-lg hover:bg-slate-500/20 text-slate-400 hover:text-slate-200 transition-colors"
+                              title="Clear input"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setShowConsigneeDropdown(prev => !prev)}
+                            className="p-1 rounded-lg hover:bg-slate-500/20 text-slate-400 hover:text-slate-200 transition-colors"
+                            title="Toggle customer list"
+                          >
+                            <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${showConsigneeDropdown ? 'rotate-180 text-cyan-400' : ''}`} />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Consignee Suggestion Dropdown */}
+                      {showConsigneeDropdown && (
+                        <div className={`absolute left-0 right-0 top-full mt-1.5 z-50 rounded-2xl border shadow-2xl overflow-hidden backdrop-blur-md transition-all ${isDark
+                            ? 'bg-slate-900/95 border-slate-700/80 text-white shadow-cyan-950/20'
+                            : 'bg-white border-slate-200 text-slate-900 shadow-slate-400/20'
+                          }`}>
+                          <div className={`px-3.5 py-2 border-b flex items-center justify-between text-[11px] font-semibold ${isDark ? 'bg-slate-950/60 border-slate-800 text-slate-400' : 'bg-slate-50 border-slate-100 text-slate-600'
+                            }`}>
+                            <span className="flex items-center gap-1.5">
+                              <Users className="w-3.5 h-3.5 text-cyan-400" />
+                              Registered Customers ({filteredConsignees.length})
+                            </span>
+                            <Link
+                              href="/customers"
+                              target="_blank"
+                              className="text-[10px] text-cyan-500 hover:underline flex items-center gap-0.5"
+                            >
+                              + Add New in CRM
+                            </Link>
+                          </div>
+
+                          <div className="max-h-52 overflow-y-auto divide-y divide-slate-800/40">
+                            {filteredConsignees.length > 0 ? (
+                              filteredConsignees.map((c) => {
+                                const isSelected = formData.consigneeId === c.id;
+                                return (
+                                  <div
+                                    key={c.id}
+                                    onClick={() => {
+                                      setFormData(prev => ({
+                                        ...prev,
+                                        consigneeName: c.name,
+                                        consigneeId: c.id,
+                                        consigneePhone: c.phone || prev.consigneePhone,
+                                        consigneeCity: c.city || prev.consigneeCity,
+                                      }));
+                                      setShowConsigneeDropdown(false);
+                                    }}
+                                    className={`p-2.5 px-3.5 cursor-pointer transition-colors flex items-center justify-between gap-3 ${isSelected
+                                        ? isDark ? 'bg-cyan-500/20 text-cyan-300' : 'bg-blue-50 text-blue-900 font-semibold'
+                                        : isDark
+                                          ? 'hover:bg-slate-800/80 text-slate-200'
+                                          : 'hover:bg-slate-50 text-slate-700'
+                                      }`}
+                                  >
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-xs font-bold truncate">{c.name}</span>
+                                        <span className={`text-[10px] px-1.5 py-0.2 rounded font-mono font-medium ${isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-600'
+                                          }`}>
+                                          {c.customer_code || 'ID: ' + c.id}
+                                        </span>
+                                        {c.customer_type && (
+                                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 uppercase font-semibold">
+                                            {c.customer_type}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className={`text-[11px] flex items-center gap-3 mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'
+                                        }`}>
+                                        {c.city && (
+                                          <span className="flex items-center gap-1">
+                                            <MapPin className="w-3 h-3 text-cyan-400" />
+                                            {c.city}
+                                          </span>
+                                        )}
+                                        {c.phone && (
+                                          <span className="flex items-center gap-1">
+                                            <Phone className="w-3 h-3 text-emerald-400" />
+                                            {c.phone}
+                                          </span>
+                                        )}
+                                        {c.gstin && (
+                                          <span className="font-mono text-[10px] text-slate-400">
+                                            GST: {c.gstin}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    {isSelected && (
+                                      <Check className="w-4 h-4 text-cyan-400 shrink-0" />
+                                    )}
+                                  </div>
+                                );
+                              })
+                            ) : (
+                              <div className="p-4 text-center space-y-1.5">
+                                <p className={`text-xs font-semibold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                                  {formData.consigneeName
+                                    ? `No registered receiver matching "${formData.consigneeName}"`
+                                    : 'No registered receivers found'}
+                                </p>
+                                <p className="text-[11px] text-slate-500">
+                                  Keep typing to register as a <b>New / Walk-in Party</b>, or add in Customers CRM.
+                                </p>
+                              </div>
+                            )}
+                          </div>
+
+                          {formData.consigneeName && (
+                            <div
+                              onClick={() => setShowConsigneeDropdown(false)}
+                              className={`p-2 px-3.5 border-t text-xs cursor-pointer flex items-center justify-between font-medium ${isDark ? 'bg-slate-950/80 border-slate-800 text-cyan-400 hover:bg-slate-800' : 'bg-slate-50 border-slate-100 text-blue-600 hover:bg-slate-100'
+                                }`}
+                            >
+                              <span>Use &quot;{formData.consigneeName}&quot; as New Custom Party</span>
+                              <ArrowRight className="w-3.5 h-3.5" />
                             </div>
                           )}
                         </div>
+                      )}
+                    </div>
 
-                        {formData.consigneeName && (
-                          <div 
-                            onClick={() => setShowConsigneeDropdown(false)}
-                            className={`p-2 px-3.5 border-t text-xs cursor-pointer flex items-center justify-between font-medium ${
-                              isDark ? 'bg-slate-950/80 border-slate-800 text-cyan-400 hover:bg-slate-800' : 'bg-slate-50 border-slate-100 text-blue-600 hover:bg-slate-100'
-                            }`}
-                          >
-                            <span>Use &quot;{formData.consigneeName}&quot; as New Custom Party</span>
-                            <ArrowRight className="w-3.5 h-3.5" />
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Origin & Destination Grid */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
+                    {/* Origin & Destination Grid */}
+                    <div className="grid grid-cols-2 gap-3 relative z-10">
+                      <div className="space-y-1.5">
                       <div className="flex items-center justify-between">
                         <label className={`text-xs font-bold flex items-center ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
                           <span>Origin Hub / Branch</span>
@@ -2617,57 +3205,37 @@ export default function BookingsMasterPage() {
                           <Link
                             href="/branches"
                             target="_blank"
-                            className={`text-[10px] font-semibold flex items-center gap-0.5 ${
-                              isDark ? 'text-cyan-400 hover:text-cyan-300' : 'text-blue-600 hover:text-blue-700'
-                            }`}
+                            className={`text-[10px] font-semibold flex items-center gap-0.5 ${isDark ? 'text-cyan-400 hover:text-cyan-300' : 'text-blue-600 hover:text-blue-700'
+                              }`}
                           >
                             <span>+ Add Hub</span>
                           </Link>
                         )}
                       </div>
                       {isRestrictedBranchUser ? (
-                        <div className={`w-full px-3 py-2.5 rounded-xl border text-xs font-bold flex items-center justify-between shadow-xs ${
-                          isDark 
-                            ? 'border-slate-800 bg-slate-900/90 text-cyan-300' 
+                        <div className={`w-full px-3 py-2.5 rounded-xl border text-xs font-bold flex items-center justify-between shadow-xs ${isDark
+                            ? 'border-slate-800 bg-slate-900/90 text-cyan-300'
                             : 'border-slate-200 bg-slate-100 text-blue-900'
-                        }`}>
+                          }`}>
                           <span className="truncate">
                             {branchesList.find((b) => b.id === userBranchId)?.branch_name || user?.branchName || 'Your Branch'} ({branchesList.find((b) => b.id === userBranchId)?.branch_code || 'HUB'}) - {branchesList.find((b) => b.id === userBranchId)?.city || user?.city || 'South Delhi'}
                           </span>
                           <span className="text-[10px] text-slate-400 font-normal shrink-0 ml-1">🔒 Locked</span>
                         </div>
                       ) : (
-                        <select
-                          value={formData.originBranchId}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            const found = branchesList.find((b) => b.id === val);
-                            setFormData({
-                              ...formData,
-                              originBranchId: val,
-                              originCity: found ? found.city : '',
-                            });
+                        <BranchSelectDropdown
+                          selectedBranchId={formData.originBranchId}
+                          onSelect={(branchId, city) => {
+                            setFormData((prev) => ({
+                              ...prev,
+                              originBranchId: branchId,
+                              originCity: city,
+                            }));
                           }}
-                          required
-                          className={`w-full px-3 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                            isDark 
-                              ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400' 
-                              : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
-                          }`}
-                        >
-                          {branchesList.length > 0 ? (
-                            <>
-                              <option value="">-- Select Origin Hub / Branch --</option>
-                              {branchesList.map((b) => (
-                                <option key={b.id} value={b.id}>
-                                  {b.branch_name} ({b.branch_code}) - {b.city} {b.pincode ? `[PIN: ${b.pincode}]` : ''}
-                                </option>
-                              ))}
-                            </>
-                          ) : (
-                            <option value="">-- No Branch or Hub Present (Click "+ Add Hub") --</option>
-                          )}
-                        </select>
+                          branches={branchesList}
+                          placeholder="-- Select Origin Hub / Branch --"
+                          isDark={isDark}
+                        />
                       )}
                       {branchesList.length === 0 && !isRestrictedBranchUser && (
                         <p className="text-[11px] text-amber-500 font-semibold mt-1">
@@ -2686,47 +3254,26 @@ export default function BookingsMasterPage() {
                           <Link
                             href="/branches"
                             target="_blank"
-                            className={`text-[10px] font-semibold flex items-center gap-0.5 ${
-                              isDark ? 'text-cyan-400 hover:text-cyan-300' : 'text-blue-600 hover:text-blue-700'
-                            }`}
+                            className={`text-[10px] font-semibold flex items-center gap-0.5 ${isDark ? 'text-cyan-400 hover:text-cyan-300' : 'text-blue-600 hover:text-blue-700'
+                              }`}
                           >
                             <span>+ Add Hub</span>
                           </Link>
                         )}
                       </div>
-                      <select
-                        value={formData.destBranchId}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          const found = branchesList.find((b) => b.id === val);
-                          setFormData({
-                            ...formData,
-                            destBranchId: val,
-                            destinationCity: found ? found.city : '',
-                          });
+                      <BranchSelectDropdown
+                        selectedBranchId={formData.destBranchId}
+                        onSelect={(branchId, city) => {
+                          setFormData((prev) => ({
+                            ...prev,
+                            destBranchId: branchId,
+                            destinationCity: city,
+                          }));
                         }}
-                        required
-                        className={`w-full px-3 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                          isDark 
-                            ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400' 
-                            : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
-                        }`}
-                      >
-                        {branchesList.length > 0 ? (
-                          <>
-                            <option value="">-- Select Destination Hub / Branch --</option>
-                            {branchesList
-                              .filter((b) => b.id !== formData.originBranchId)
-                              .map((b) => (
-                              <option key={b.id} value={b.id}>
-                                {b.branch_name} ({b.branch_code}) - {b.city} {b.pincode ? `[PIN: ${b.pincode}]` : ''}
-                              </option>
-                            ))}
-                          </>
-                        ) : (
-                          <option value="">-- No Branch or Hub Present (Click "+ Add Hub") --</option>
-                        )}
-                      </select>
+                        branches={branchesList.filter((b) => b.id !== formData.originBranchId)}
+                        placeholder="-- Select Destination Hub / Branch --"
+                        isDark={isDark}
+                      />
                       {branchesList.length === 0 && (
                         <p className="text-[11px] text-amber-500 font-semibold mt-1">
                           ⚠️ No branch or hub added yet. Click <Link href="/branches" target="_blank" className="underline font-bold">+ Add Hub</Link> to create one.
@@ -2735,661 +3282,748 @@ export default function BookingsMasterPage() {
                     </div>
                   </div>
 
-                  {/* Pickup Date & Priority */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
-                      <label className={`text-xs font-bold flex items-center ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                        <span>Pickup Date</span>
-                        <span className="text-rose-500 font-bold ml-0.5">*</span>
-                      </label>
-                      <input
-                        type="date"
-                        value={formData.pickupDate}
-                        onChange={(e) => setFormData({ ...formData, pickupDate: e.target.value })}
-                        className={`w-full px-3 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                          isDark 
-                            ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400 [color-scheme:dark]' 
-                            : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white [color-scheme:light]'
-                        }`}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className={`text-xs font-bold flex items-center justify-between ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                        <span className="flex items-center">
-                          <span>Mode of Transport</span>
+                    {/* Pickup Date & Priority */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <label className={`text-xs font-bold flex items-center ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                          <span>Pickup Date</span>
                           <span className="text-rose-500 font-bold ml-0.5">*</span>
-                        </span>
-                        <span className="text-[10px] text-slate-400 font-normal">Select Mode</span>
-                      </label>
-                      <div className="grid grid-cols-3 gap-1.5">
-                        {[
-                          { id: 'ROAD', label: 'By Road', icon: Truck },
-                          { id: 'RAIL', label: 'By Rail', icon: Train },
-                          { id: 'AIR', label: 'By Air', icon: Plane },
-                        ].map((m) => {
-                          const IconComp = m.icon;
-                          const isSelected = (formData.transportMode || 'ROAD') === m.id;
-                          return (
-                            <button
-                              key={m.id}
-                              type="button"
-                              onClick={() => setFormData({ ...formData, transportMode: m.id })}
-                              className={`py-2 px-1.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
-                                isSelected
-                                  ? 'bg-blue-600 text-white border-blue-500 shadow-md shadow-blue-600/30'
-                                  : isDark
-                                  ? 'bg-slate-900/80 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
-                                  : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-white hover:border-slate-300'
-                              }`}
-                            >
-                              <IconComp className="w-3.5 h-3.5 shrink-0" />
-                              <span className="truncate">{m.label}</span>
-                            </button>
-                          );
-                        })}
+                        </label>
+                        <input
+                          type="date"
+                          value={formData.pickupDate}
+                          onChange={(e) => setFormData({ ...formData, pickupDate: e.target.value })}
+                          className={`w-full px-3 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
+                              ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400 [color-scheme:dark]'
+                              : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white [color-scheme:light]'
+                            }`}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className={`text-xs font-bold flex items-center justify-between ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                          <span className="flex items-center">
+                            <span>Mode of Transport</span>
+                            <span className="text-rose-500 font-bold ml-0.5">*</span>
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-normal">Select Mode</span>
+                        </label>
+                        <div className="grid grid-cols-3 gap-1.5">
+                          {[
+                            { id: 'ROAD', label: 'By Road', icon: Truck },
+                            { id: 'RAIL', label: 'By Rail', icon: Train },
+                            { id: 'AIR', label: 'By Air', icon: Plane },
+                          ].map((m) => {
+                            const IconComp = m.icon;
+                            const isSelected = (formData.transportMode || 'ROAD') === m.id;
+                            return (
+                              <button
+                                key={m.id}
+                                type="button"
+                                onClick={() => setFormData({ ...formData, transportMode: m.id })}
+                                className={`py-2 px-1.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${isSelected
+                                    ? 'bg-blue-600 text-white border-blue-500 shadow-md shadow-blue-600/30'
+                                    : isDark
+                                      ? 'bg-slate-900/80 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
+                                      : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-white hover:border-slate-300'
+                                  }`}
+                              >
+                                <IconComp className="w-3.5 h-3.5 shrink-0" />
+                                <span className="truncate">{m.label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </div>
-              )}
 
-              {/* STEP 2: Cargo & Freight Charges */}
-              {bookingStep === 2 && (
-                <div className="space-y-4">
-                  <div className="space-y-1.5">
-                    <label className={`text-xs font-bold flex items-center ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                      <span>Declared Cargo Commodity</span>
-                      <span className="text-rose-500 font-bold ml-0.5">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Consumer Electronics & Inverters"
-                      value={formData.cargoType}
-                      onChange={(e) => setFormData({ ...formData, cargoType: e.target.value })}
-                      className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                        isDark 
-                          ? 'border-slate-800 bg-slate-900/80 text-white placeholder-slate-500 focus:border-cyan-400' 
-                          : 'border-slate-200 bg-slate-50 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:bg-white'
-                      }`}
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="space-y-1.5">
-                      <label className={`text-xs font-bold flex items-center ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                        <span>Packages</span>
-                        <span className="text-rose-500 font-bold ml-0.5">*</span>
-                      </label>
-                      <input
-                        type="number"
-                        value={formData.packagesCount}
-                        onChange={(e) => setFormData({ ...formData, packagesCount: e.target.value })}
-                        className={`w-full px-3 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                          isDark 
-                            ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400' 
-                            : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
-                        }`}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className={`text-xs font-bold flex items-center ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                        <span>Weight (KG)</span>
-                        <span className="text-rose-500 font-bold ml-0.5">*</span>
-                      </label>
-                      <input
-                        type="number"
-                        value={formData.weightKg}
-                        onChange={(e) => setFormData({ ...formData, weightKg: e.target.value })}
-                        className={`w-full px-3 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                          isDark 
-                            ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400' 
-                            : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
-                        }`}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Rate / KG (₹)</label>
-                      <input
-                        type="number"
-                        value={formData.ratePerKg}
-                        onChange={(e) => setFormData({ ...formData, ratePerKg: e.target.value })}
-                        className={`w-full px-3 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                          isDark 
-                            ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400' 
-                            : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
-                        }`}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Payment Mode */}
-                  <div className="space-y-1.5">
-                    <label className={`text-xs font-bold flex items-center ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                      <span>Payment Term</span>
-                      <span className="text-rose-500 font-bold ml-0.5">*</span>
-                    </label>
-                    <div className="grid grid-cols-3 gap-2">
-                      {['PAID', 'TO_PAY', 'TBB'].map((mode) => (
+                    {/* Delivery Type (Godown Delivery vs Door Delivery) */}
+                    <div className="space-y-1.5 pt-0.5">
+                      <div className="flex items-center justify-between">
+                        <label className={`text-xs font-bold flex items-center ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                          <span>Delivery Type</span>
+                          <span className="text-rose-500 font-bold ml-0.5">*</span>
+                        </label>
+                        <span className="text-[10px] text-slate-400 font-normal">
+                          {formData.deliveryType === 'DOOR_DELIVERY' ? 'Consignee Doorstep Delivery' : 'Hub / Godown Delivery'}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
                         <button
-                          key={mode}
                           type="button"
-                          onClick={() => setFormData({ ...formData, paymentMode: mode })}
-                          className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all ${
-                            formData.paymentMode === mode
-                              ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
-                              : isDark 
-                                ? 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white' 
-                                : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200 hover:text-slate-900'
+                          onClick={() => {
+                            const curDdc = parseFloat(formData.doorDeliveryCharges || 0);
+                            setFormData({
+                              ...formData,
+                              deliveryType: 'GODOWN_DELIVERY',
+                              doorDeliveryCharges: curDdc === 100 ? '0' : formData.doorDeliveryCharges,
+                            });
+                          }}
+                          className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all ${
+                            (formData.deliveryType || 'GODOWN_DELIVERY') === 'GODOWN_DELIVERY'
+                              ? 'bg-blue-600 text-white border-blue-500 shadow-md shadow-blue-600/30'
+                              : isDark
+                                ? 'bg-slate-900/80 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
+                                : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-white hover:border-slate-300'
                           }`}
                         >
-                          {mode === 'TBB' ? 'T.B.B. (Bill)' : mode}
+                          <Building2 className="w-4 h-4 shrink-0" />
+                          <div className="text-left">
+                            <span className="block leading-tight">Godown Delivery</span>
+                            <span className={`block text-[10px] font-normal ${
+                              (formData.deliveryType || 'GODOWN_DELIVERY') === 'GODOWN_DELIVERY' ? 'text-blue-100' : 'text-slate-400'
+                            }`}>Pickup from branch</span>
+                          </div>
                         </button>
-                      ))}
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const curDdc = parseFloat(formData.doorDeliveryCharges || 0);
+                            setFormData({
+                              ...formData,
+                              deliveryType: 'DOOR_DELIVERY',
+                              doorDeliveryCharges: curDdc < 100 ? '100' : formData.doorDeliveryCharges,
+                            });
+                          }}
+                          className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all ${
+                            formData.deliveryType === 'DOOR_DELIVERY'
+                              ? 'bg-emerald-600 text-white border-emerald-500 shadow-md shadow-emerald-600/30'
+                              : isDark
+                                ? 'bg-slate-900/80 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
+                                : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-white hover:border-slate-300'
+                          }`}
+                        >
+                          <Truck className="w-4 h-4 shrink-0" />
+                          <div className="text-left">
+                            <span className="block leading-tight">Door Delivery</span>
+                            <span className={`block text-[10px] font-normal ${
+                              formData.deliveryType === 'DOOR_DELIVERY' ? 'text-emerald-100' : 'text-slate-400'
+                            }`}>Direct doorstep delivery</span>
+                          </div>
+                        </button>
+                      </div>
                     </div>
                   </div>
+                )}
 
-                  {/* Freight Charges & Tariff Configuration */}
-                  {(() => {
-                    const liveBreakdown = calculateFreightBreakdown(formData);
-                    return (
-                      <div className="space-y-3 pt-1">
-                        {/* Section Header */}
-                        <div className="flex items-center justify-between">
-                          <label className={`text-xs font-bold flex items-center gap-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                            <IndianRupee className={`w-3.5 h-3.5 ${isDark ? 'text-cyan-400' : 'text-blue-600'}`} />
-                            <span>Charges & Tariff Configuration</span>
-                          </label>
+                {/* STEP 2: Cargo & Freight Charges */}
+                {bookingStep === 2 && (
+                  <div className="space-y-4">
+                    <div className="space-y-1.5">
+                      <label className={`text-xs font-bold flex items-center ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                        <span>Declared Cargo Commodity</span>
+                        <span className="text-rose-500 font-bold ml-0.5">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Consumer Electronics & Inverters"
+                        value={formData.cargoType}
+                        onChange={(e) => setFormData({ ...formData, cargoType: e.target.value })}
+                        className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
+                            ? 'border-slate-800 bg-slate-900/80 text-white placeholder-slate-500 focus:border-cyan-400'
+                            : 'border-slate-200 bg-slate-50 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:bg-white'
+                          }`}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="space-y-1.5">
+                        <label className={`text-xs font-bold flex items-center h-5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                          <span>Packages</span>
+                          <span className="text-rose-500 font-bold ml-0.5">*</span>
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            min="1"
+                            required
+                            value={formData.packagesCount}
+                            onChange={(e) => setFormData({ ...formData, packagesCount: e.target.value })}
+                            className={`w-full px-3.5 pr-12 py-2.5 rounded-xl border text-xs font-semibold focus:outline-none transition-colors ${isDark
+                                ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                                : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                              }`}
+                          />
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400 uppercase pointer-events-none">
+                            Pkgs
+                          </span>
+                        </div>
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className={`text-xs font-bold flex items-center h-5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                          <span>Weight (KG)</span>
+                          <span className="text-rose-500 font-bold ml-0.5">*</span>
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            min="0"
+                            step="any"
+                            required
+                            value={formData.weightKg}
+                            onChange={(e) => setFormData({ ...formData, weightKg: e.target.value })}
+                            className={`w-full px-3.5 pr-10 py-2.5 rounded-xl border text-xs font-semibold focus:outline-none transition-colors ${isDark
+                                ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                                : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                              }`}
+                          />
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400 uppercase pointer-events-none">
+                            KG
+                          </span>
+                        </div>
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className={`text-xs font-bold flex items-center h-5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                          <span>Rate / KG (₹)</span>
+                          <span className="text-rose-500 font-bold ml-0.5">*</span>
+                        </label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 pointer-events-none">
+                            ₹
+                          </span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="any"
+                            required
+                            value={formData.ratePerKg}
+                            onChange={(e) => setFormData({ ...formData, ratePerKg: e.target.value })}
+                            className={`w-full pl-7 pr-12 py-2.5 rounded-xl border text-xs font-semibold focus:outline-none transition-colors ${isDark
+                                ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                                : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                              }`}
+                          />
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400 uppercase pointer-events-none">
+                            / KG
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Payment Mode */}
+                    <div className="space-y-1.5">
+                      <label className={`text-xs font-bold flex items-center ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                        <span>Payment Term</span>
+                        <span className="text-rose-500 font-bold ml-0.5">*</span>
+                      </label>
+                      <div className="grid grid-cols-3 gap-2">
+                        {['PAID', 'TO_PAY', 'TBB'].map((mode) => (
                           <button
+                            key={mode}
                             type="button"
-                            onClick={() => {
-                              const newId = Date.now().toString();
-                              setFormData({
-                                ...formData,
-                                customCharges: [
-                                  ...(formData.customCharges || []),
-                                  { id: newId, name: 'Toll / Border Tax', amount: '' },
-                                ],
-                              });
-                            }}
-                            className={`text-xs font-bold px-2.5 py-1 rounded-lg border flex items-center gap-1 transition-all ${
-                              isDark
-                                ? 'border-cyan-500/30 bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/20'
-                                : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
-                            }`}
+                            onClick={() => setFormData({ ...formData, paymentMode: mode })}
+                            className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all ${formData.paymentMode === mode
+                                ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
+                                : isDark
+                                  ? 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                                  : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200 hover:text-slate-900'
+                              }`}
                           >
-                            <Plus className="w-3 h-3" />
-                            <span>Add Other Charge</span>
+                            {mode === 'TBB' ? 'T.B.B. (Bill)' : mode}
                           </button>
-                        </div>
+                        ))}
+                      </div>
+                    </div>
 
-                        {/* Standard Indian Logistics Charges Grid */}
-                        <div className="grid grid-cols-2 gap-2.5">
-                          {/* Loading / Hamali */}
-                          <div className="space-y-1">
-                            <span className={`text-[11px] font-semibold flex items-center justify-between ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-                              <span>Loading / Hamali</span>
-                              <span className="text-[10px] text-slate-500">₹</span>
-                            </span>
-                            <input
-                              type="number"
-                              min="0"
-                              value={formData.loadingCharges}
-                              onChange={(e) => setFormData({ ...formData, loadingCharges: e.target.value })}
-                              placeholder="0"
-                              className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${
-                                isDark
-                                  ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
-                                  : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
-                              }`}
-                            />
-                          </div>
-
-                          {/* Bilty / LR Fee */}
-                          <div className="space-y-1">
-                            <span className={`text-[11px] font-semibold flex items-center justify-between ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-                              <span>Bilty / LR Fee</span>
-                              <span className="text-[10px] text-slate-500">₹</span>
-                            </span>
-                            <input
-                              type="number"
-                              min="0"
-                              value={formData.biltyFee}
-                              onChange={(e) => setFormData({ ...formData, biltyFee: e.target.value })}
-                              placeholder="0"
-                              className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${
-                                isDark
-                                  ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
-                                  : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
-                              }`}
-                            />
-                          </div>
-
-                          {/* Door Delivery (DDC) */}
-                          <div className="space-y-1">
-                            <span className={`text-[11px] font-semibold flex items-center justify-between ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-                              <span>Door Delivery (DDC)</span>
-                              <span className="text-[10px] text-slate-500">₹</span>
-                            </span>
-                            <input
-                              type="number"
-                              min="0"
-                              value={formData.doorDeliveryCharges}
-                              onChange={(e) => setFormData({ ...formData, doorDeliveryCharges: e.target.value })}
-                              placeholder="0"
-                              className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${
-                                isDark
-                                  ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
-                                  : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
-                              }`}
-                            />
-                          </div>
-
-                          {/* Unloading Charges */}
-                          <div className="space-y-1">
-                            <span className={`text-[11px] font-semibold flex items-center justify-between ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-                              <span>Unloading Charges</span>
-                              <span className="text-[10px] text-slate-500">₹</span>
-                            </span>
-                            <input
-                              type="number"
-                              min="0"
-                              value={formData.unloadingCharges}
-                              onChange={(e) => setFormData({ ...formData, unloadingCharges: e.target.value })}
-                              placeholder="0"
-                              className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${
-                                isDark
-                                  ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
-                                  : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
-                              }`}
-                            />
-                          </div>
-                        </div>
-
-                        {/* Dynamic Custom Charges Added by User */}
-                        {formData.customCharges && formData.customCharges.length > 0 && (
-                          <div className="space-y-2 pt-1">
-                            <span className={`text-[10px] font-bold uppercase tracking-wider block ${isDark ? 'text-cyan-400' : 'text-blue-600'}`}>
-                              Custom Charges Added ({formData.customCharges.length})
-                            </span>
-                            {formData.customCharges.map((item, index) => (
-                              <div
-                                key={item.id || index}
-                                className={`flex items-center gap-2 p-2 rounded-xl border ${
-                                  isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-slate-50 border-slate-200'
+                    {/* Freight Charges & Tariff Configuration */}
+                    {(() => {
+                      const liveBreakdown = calculateFreightBreakdown(formData);
+                      return (
+                        <div className="space-y-3 pt-1">
+                          {/* Section Header */}
+                          <div className="flex items-center justify-between">
+                            <label className={`text-xs font-bold flex items-center gap-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                              <IndianRupee className={`w-3.5 h-3.5 ${isDark ? 'text-cyan-400' : 'text-blue-600'}`} />
+                              <span>Charges & Tariff Configuration</span>
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newId = Date.now().toString();
+                                setFormData({
+                                  ...formData,
+                                  customCharges: [
+                                    ...(formData.customCharges || []),
+                                    { id: newId, name: 'Toll / Border Tax', amount: '' },
+                                  ],
+                                });
+                              }}
+                              className={`text-xs font-bold px-2.5 py-1 rounded-lg border flex items-center gap-1 transition-all ${isDark
+                                  ? 'border-cyan-500/30 bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/20'
+                                  : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
                                 }`}
-                              >
-                                <div className="flex-1">
-                                  <input
-                                    type="text"
-                                    list={`charge-suggestions-${index}`}
-                                    value={item.name}
-                                    placeholder="Charge Name (e.g. Toll Tax)"
-                                    onChange={(e) => {
-                                      const updated = [...formData.customCharges];
-                                      updated[index] = { ...updated[index], name: e.target.value };
-                                      setFormData({ ...formData, customCharges: updated });
-                                    }}
-                                    className={`w-full px-2.5 py-1.5 rounded-lg border text-xs focus:outline-none ${
-                                      isDark
-                                        ? 'border-slate-700 bg-slate-800 text-white focus:border-cyan-400'
-                                        : 'border-slate-300 bg-white text-slate-900 focus:border-blue-500'
-                                    }`}
-                                  />
-                                  <datalist id={`charge-suggestions-${index}`}>
-                                    <option value="Toll / Border Tax" />
-                                    <option value="Cartage / Pickup Charge" />
-                                    <option value="FOV / Insurance Charge" />
-                                    <option value="Demurrage / Detention" />
-                                    <option value="Fuel Surcharge" />
-                                    <option value="Handling / Labour" />
-                                    <option value="Statistical / Misc Charge" />
-                                  </datalist>
-                                </div>
-                                <div className="w-28 relative">
-                                  <span className="absolute left-2.5 top-1.5 text-xs text-slate-400">₹</span>
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    value={item.amount}
-                                    placeholder="0"
-                                    onChange={(e) => {
-                                      const updated = [...formData.customCharges];
-                                      updated[index] = { ...updated[index], amount: e.target.value };
-                                      setFormData({ ...formData, customCharges: updated });
-                                    }}
-                                    className={`w-full pl-6 pr-2.5 py-1.5 rounded-lg border text-xs font-mono font-bold focus:outline-none ${
-                                      isDark
-                                        ? 'border-slate-700 bg-slate-800 text-white focus:border-cyan-400'
-                                        : 'border-slate-300 bg-white text-slate-900 focus:border-blue-500'
-                                    }`}
-                                  />
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const updated = formData.customCharges.filter((_, i) => i !== index);
-                                    setFormData({ ...formData, customCharges: updated });
-                                  }}
-                                  className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-500/10 transition-colors"
-                                  title="Remove Charge"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-
-                        {/* Discount & GST Controls */}
-                        <div className="grid grid-cols-2 gap-2.5 pt-1">
-                          <div className="space-y-1">
-                            <span className={`text-[11px] font-semibold flex items-center justify-between ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-                              <span>Discount (₹)</span>
-                              <span className="text-[10px] text-slate-500">Deduction</span>
-                            </span>
-                            <input
-                              type="number"
-                              min="0"
-                              value={formData.discountAmount}
-                              onChange={(e) => setFormData({ ...formData, discountAmount: e.target.value })}
-                              placeholder="0"
-                              className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${
-                                isDark
-                                  ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
-                                  : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
-                              }`}
-                            />
-                          </div>
-
-                          <div className="space-y-1">
-                            <span className={`text-[11px] font-semibold block ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-                              GST / Tax Terms
-                            </span>
-                            <select
-                              value={formData.gstMode}
-                              onChange={(e) => setFormData({ ...formData, gstMode: e.target.value })}
-                              className={`w-full px-3 py-2 rounded-xl border text-xs font-semibold focus:outline-none transition-colors ${
-                                isDark
-                                  ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
-                                  : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
-                              }`}
                             >
-                              <option value="RCM">5% GTA (RCM - ₹0 added)</option>
-                              <option value="GST_5">5% Forward Charge (+5%)</option>
-                              <option value="GST_12">12% Forward Charge (+12%)</option>
-                              <option value="EXEMPT">Exempt / Nil (0% GST)</option>
-                            </select>
-                          </div>
-                        </div>
-
-                        {/* Calculated Live Tariff Card */}
-                        <div className={`p-4 rounded-2xl border space-y-2 mt-2 ${
-                          isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-slate-50 border-slate-200'
-                        }`}>
-                          <div className={`text-xs font-bold flex items-center justify-between ${
-                            isDark ? 'text-slate-300' : 'text-slate-700'
-                          }`}>
-                            <span>Basic Freight ({formData.weightKg || 0} kg @ ₹{formData.ratePerKg || 0})</span>
-                            <span className={`font-mono ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                              ₹ {(liveBreakdown.basicFreight || 0).toLocaleString('en-IN')}
-                            </span>
+                              <Plus className="w-3 h-3" />
+                              <span>Add Other Charge</span>
+                            </button>
                           </div>
 
-                          {/* Editable Loading/Hamali line */}
-                          {liveBreakdown.loading > 0 && (
-                            <div className={`text-xs font-medium flex items-center justify-between ${
-                              isDark ? 'text-slate-400' : 'text-slate-500'
-                            }`}>
-                              <span>Loading / Hamali Charges</span>
-                              <span className={`font-mono ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                                ₹ {(liveBreakdown.loading || 0).toLocaleString('en-IN')}
+                          {/* Standard Indian Logistics Charges Grid */}
+                          <div className="grid grid-cols-2 gap-2.5">
+                            {/* Loading / Hamali */}
+                            <div className="space-y-1">
+                              <span className={`text-[11px] font-semibold flex items-center justify-between ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                                <span>Loading / Hamali</span>
+                                <span className="text-[10px] text-slate-500">₹</span>
                               </span>
+                              <input
+                                type="number"
+                                min="0"
+                                value={formData.loadingCharges}
+                                onChange={(e) => setFormData({ ...formData, loadingCharges: e.target.value })}
+                                placeholder="0"
+                                className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
+                                    ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                                    : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                                  }`}
+                              />
+                            </div>
+
+                            {/* Bilty / LR Fee */}
+                            <div className="space-y-1">
+                              <span className={`text-[11px] font-semibold flex items-center justify-between ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                                <span>Bilty / LR Fee</span>
+                                <span className="text-[10px] text-slate-500">₹</span>
+                              </span>
+                              <input
+                                type="number"
+                                min="0"
+                                value={formData.biltyFee}
+                                onChange={(e) => setFormData({ ...formData, biltyFee: e.target.value })}
+                                placeholder="0"
+                                className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
+                                    ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                                    : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                                  }`}
+                              />
+                            </div>
+
+                            {/* Door Delivery (DDC) */}
+                            <div className="space-y-1">
+                              <span className={`text-[11px] font-semibold flex items-center justify-between ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                                <span className="flex items-center gap-1.5">
+                                  <span>Door Delivery (DDC)</span>
+                                  {formData.deliveryType === 'DOOR_DELIVERY' && (
+                                    <span className="text-[9px] px-1 py-0.5 rounded font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
+                                      Door Active
+                                    </span>
+                                  )}
+                                </span>
+                                <span className="text-[10px] text-slate-500">₹ (Editable)</span>
+                              </span>
+                              <input
+                                type="number"
+                                min="0"
+                                value={formData.doorDeliveryCharges}
+                                onChange={(e) => setFormData({ ...formData, doorDeliveryCharges: e.target.value })}
+                                placeholder="0"
+                                className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${
+                                  formData.deliveryType === 'DOOR_DELIVERY' && parseFloat(formData.doorDeliveryCharges || 0) >= 100
+                                    ? isDark
+                                      ? 'border-emerald-500/50 bg-slate-900/80 text-emerald-300 focus:border-emerald-400 font-semibold'
+                                      : 'border-emerald-300 bg-emerald-50/30 text-emerald-900 focus:border-emerald-500 focus:bg-white font-semibold'
+                                    : isDark
+                                      ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                                      : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                                }`}
+                              />
+                            </div>
+
+                            {/* Unloading Charges */}
+                            <div className="space-y-1">
+                              <span className={`text-[11px] font-semibold flex items-center justify-between ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                                <span>Unloading Charges</span>
+                                <span className="text-[10px] text-slate-500">₹</span>
+                              </span>
+                              <input
+                                type="number"
+                                min="0"
+                                value={formData.unloadingCharges}
+                                onChange={(e) => setFormData({ ...formData, unloadingCharges: e.target.value })}
+                                placeholder="0"
+                                className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
+                                    ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                                    : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                                  }`}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Dynamic Custom Charges Added by User */}
+                          {formData.customCharges && formData.customCharges.length > 0 && (
+                            <div className="space-y-2 pt-1">
+                              <span className={`text-[10px] font-bold uppercase tracking-wider block ${isDark ? 'text-cyan-400' : 'text-blue-600'}`}>
+                                Custom Charges Added ({formData.customCharges.length})
+                              </span>
+                              {formData.customCharges.map((item, index) => (
+                                <div
+                                  key={item.id || index}
+                                  className={`flex items-center gap-2 p-2 rounded-xl border ${isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-slate-50 border-slate-200'
+                                    }`}
+                                >
+                                  <div className="flex-1">
+                                    <input
+                                      type="text"
+                                      list={`charge-suggestions-${index}`}
+                                      value={item.name}
+                                      placeholder="Charge Name (e.g. Toll Tax)"
+                                      onChange={(e) => {
+                                        const updated = [...formData.customCharges];
+                                        updated[index] = { ...updated[index], name: e.target.value };
+                                        setFormData({ ...formData, customCharges: updated });
+                                      }}
+                                      className={`w-full px-2.5 py-1.5 rounded-lg border text-xs focus:outline-none ${isDark
+                                          ? 'border-slate-700 bg-slate-800 text-white focus:border-cyan-400'
+                                          : 'border-slate-300 bg-white text-slate-900 focus:border-blue-500'
+                                        }`}
+                                    />
+                                    <datalist id={`charge-suggestions-${index}`}>
+                                      <option value="Toll / Border Tax" />
+                                      <option value="Cartage / Pickup Charge" />
+                                      <option value="FOV / Insurance Charge" />
+                                      <option value="Demurrage / Detention" />
+                                      <option value="Fuel Surcharge" />
+                                      <option value="Handling / Labour" />
+                                      <option value="Statistical / Misc Charge" />
+                                    </datalist>
+                                  </div>
+                                  <div className="w-28 relative">
+                                    <span className="absolute left-2.5 top-1.5 text-xs text-slate-400">₹</span>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      value={item.amount}
+                                      placeholder="0"
+                                      onChange={(e) => {
+                                        const updated = [...formData.customCharges];
+                                        updated[index] = { ...updated[index], amount: e.target.value };
+                                        setFormData({ ...formData, customCharges: updated });
+                                      }}
+                                      className={`w-full pl-6 pr-2.5 py-1.5 rounded-lg border text-xs font-mono font-bold focus:outline-none ${isDark
+                                          ? 'border-slate-700 bg-slate-800 text-white focus:border-cyan-400'
+                                          : 'border-slate-300 bg-white text-slate-900 focus:border-blue-500'
+                                        }`}
+                                    />
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const updated = formData.customCharges.filter((_, i) => i !== index);
+                                      setFormData({ ...formData, customCharges: updated });
+                                    }}
+                                    className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-500/10 transition-colors"
+                                    title="Remove Charge"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              ))}
                             </div>
                           )}
 
-                          {/* Bilty Fee */}
-                          {liveBreakdown.biltyFee > 0 && (
-                            <div className={`text-xs font-medium flex items-center justify-between ${
-                              isDark ? 'text-slate-400' : 'text-slate-500'
-                            }`}>
-                              <span>Bilty / LR Stationary Fee</span>
-                              <span className={`font-mono ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                                ₹ {(liveBreakdown.biltyFee || 0).toLocaleString('en-IN')}
+                          {/* Discount & GST Controls */}
+                          <div className="grid grid-cols-2 gap-2.5 pt-1">
+                            <div className="space-y-1">
+                              <span className={`text-[11px] font-semibold flex items-center justify-between ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                                <span>Discount (₹)</span>
+                                <span className="text-[10px] text-slate-500">Deduction</span>
                               </span>
+                              <input
+                                type="number"
+                                min="0"
+                                value={formData.discountAmount}
+                                onChange={(e) => setFormData({ ...formData, discountAmount: e.target.value })}
+                                placeholder="0"
+                                className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
+                                    ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                                    : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                                  }`}
+                              />
                             </div>
-                          )}
 
-                          {/* Door Delivery */}
-                          {liveBreakdown.doorDelivery > 0 && (
-                            <div className={`text-xs font-medium flex items-center justify-between ${
-                              isDark ? 'text-slate-400' : 'text-slate-500'
-                            }`}>
-                              <span>Door Delivery Charges (DDC)</span>
-                              <span className={`font-mono ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                                ₹ {(liveBreakdown.doorDelivery || 0).toLocaleString('en-IN')}
+                            <div className="space-y-1">
+                              <span className={`text-[11px] font-semibold block ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                                GST / Tax Terms
                               </span>
+                              <select
+                                value={formData.gstMode}
+                                onChange={(e) => setFormData({ ...formData, gstMode: e.target.value })}
+                                className={`w-full px-3 py-2 rounded-xl border text-xs font-semibold focus:outline-none transition-colors ${isDark
+                                    ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                                    : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                                  }`}
+                              >
+                                <option value="RCM">5% GTA (RCM - ₹0 added)</option>
+                                <option value="GST_5">5% Forward Charge (+5%)</option>
+                                <option value="GST_12">12% Forward Charge (+12%)</option>
+                                <option value="EXEMPT">Exempt / Nil (0% GST)</option>
+                              </select>
                             </div>
-                          )}
+                          </div>
 
-                          {/* Unloading */}
-                          {liveBreakdown.unloading > 0 && (
-                            <div className={`text-xs font-medium flex items-center justify-between ${
-                              isDark ? 'text-slate-400' : 'text-slate-500'
+                          {/* Calculated Live Tariff Card */}
+                          <div className={`p-4 rounded-2xl border space-y-2 mt-2 ${isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-slate-50 border-slate-200'
                             }`}>
-                              <span>Unloading Charges</span>
-                              <span className={`font-mono ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                                ₹ {(liveBreakdown.unloading || 0).toLocaleString('en-IN')}
-                              </span>
-                            </div>
-                          )}
-
-                          {/* Custom charges list */}
-                          {formData.customCharges && formData.customCharges
-                            .filter(c => parseFloat(c.amount) > 0)
-                            .map((c, i) => (
-                              <div key={i} className={`text-xs font-medium flex items-center justify-between ${
-                                isDark ? 'text-slate-400' : 'text-slate-500'
+                            <div className={`text-xs font-bold flex items-center justify-between ${isDark ? 'text-slate-300' : 'text-slate-700'
                               }`}>
-                                <span>{c.name || 'Additional Charge'}</span>
+                              <span>Basic Freight ({formData.weightKg || 0} kg @ ₹{formData.ratePerKg || 0})</span>
+                              <span className={`font-mono ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                                ₹ {(liveBreakdown.basicFreight || 0).toLocaleString('en-IN')}
+                              </span>
+                            </div>
+
+                            {/* Editable Loading/Hamali line */}
+                            {liveBreakdown.loading > 0 && (
+                              <div className={`text-xs font-medium flex items-center justify-between ${isDark ? 'text-slate-400' : 'text-slate-500'
+                                }`}>
+                                <span>Loading / Hamali Charges</span>
                                 <span className={`font-mono ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                                  ₹ {parseFloat(c.amount || 0).toLocaleString('en-IN')}
+                                  ₹ {(liveBreakdown.loading || 0).toLocaleString('en-IN')}
                                 </span>
                               </div>
-                            ))}
+                            )}
 
-                          {/* Discount */}
-                          {liveBreakdown.discount > 0 && (
-                            <div className="text-xs font-medium flex items-center justify-between text-rose-500">
-                              <span>Special Discount</span>
-                              <span className="font-mono font-semibold">- ₹ {(liveBreakdown.discount || 0).toLocaleString('en-IN')}</span>
-                            </div>
-                          )}
+                            {/* Bilty Fee */}
+                            {liveBreakdown.biltyFee > 0 && (
+                              <div className={`text-xs font-medium flex items-center justify-between ${isDark ? 'text-slate-400' : 'text-slate-500'
+                                }`}>
+                                <span>Bilty / LR Stationary Fee</span>
+                                <span className={`font-mono ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                                  ₹ {(liveBreakdown.biltyFee || 0).toLocaleString('en-IN')}
+                                </span>
+                              </div>
+                            )}
 
-                          {/* GST */}
-                          <div className={`text-xs font-medium flex items-center justify-between ${
-                            isDark ? 'text-slate-400' : 'text-slate-500'
-                          }`}>
-                            <span>
-                              GST ({formData.gstMode === 'RCM'
-                                ? '5% GTA RCM Applicable'
-                                : formData.gstMode === 'GST_5'
-                                ? '5% Forward Charge'
-                                : formData.gstMode === 'GST_12'
-                                ? '12% Forward Charge'
-                                : 'Exempt Goods'})
-                            </span>
-                            <span className={`font-mono ${liveBreakdown.isRcm ? (isDark ? 'text-emerald-400' : 'text-emerald-600 font-semibold') : (isDark ? 'text-white' : 'text-slate-900')}`}>
-                              {liveBreakdown.isRcm ? '₹ 0 (RCM)' : `₹ ${(liveBreakdown.gstAmount ?? liveBreakdown.taxAmount ?? 0).toLocaleString('en-IN')}`}
-                            </span>
-                          </div>
+                            {/* Door Delivery */}
+                            {liveBreakdown.doorDelivery > 0 && (
+                              <div className={`text-xs font-medium flex items-center justify-between ${isDark ? 'text-slate-400' : 'text-slate-500'
+                                }`}>
+                                <span>Door Delivery Charges (DDC)</span>
+                                <span className={`font-mono ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                                  ₹ {(liveBreakdown.doorDelivery || 0).toLocaleString('en-IN')}
+                                </span>
+                              </div>
+                            )}
 
-                          <div className={`pt-2 border-t flex items-center justify-between font-black text-sm ${
-                            isDark ? 'border-slate-800' : 'border-slate-200'
-                          }`}>
-                            <span className={isDark ? 'text-cyan-400' : 'text-blue-600 font-bold'}>Total Docket Freight:</span>
-                            <span className={`font-mono text-base ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                              ₹ {(liveBreakdown.totalDocketFreight || 0).toLocaleString('en-IN')}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })()}
-                </div>
-              )}
+                            {/* Unloading */}
+                            {liveBreakdown.unloading > 0 && (
+                              <div className={`text-xs font-medium flex items-center justify-between ${isDark ? 'text-slate-400' : 'text-slate-500'
+                                }`}>
+                                <span>Unloading Charges</span>
+                                <span className={`font-mono ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                                  ₹ {(liveBreakdown.unloading || 0).toLocaleString('en-IN')}
+                                </span>
+                              </div>
+                            )}
 
-              {/* STEP 3: Review & Generate Docket (LR / Bilty) */}
-              {bookingStep === 3 && (
-                <div className="space-y-4">
-                  <div className={`p-4 rounded-2xl border space-y-3 ${
-                    isDark 
-                      ? 'bg-gradient-to-br from-blue-950/40 via-slate-900 to-cyan-950/30 border-cyan-500/40' 
-                      : 'bg-gradient-to-br from-blue-50/70 via-slate-50 to-indigo-50/50 border-blue-200'
-                  }`}>
-                    <div className={`flex items-center justify-between pb-2 border-b ${
-                      isDark ? 'border-slate-800' : 'border-slate-200'
-                    }`}>
-                      <div>
-                        <span className={`text-[10px] font-mono ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                          DOCKET NUMBER ({formData.docketNumberMode === 'manual' ? 'MANUAL LR' : 'AUTO-SERIES'})
-                        </span>
-                        <div className={`font-mono text-base font-black ${isDark ? 'text-cyan-400' : 'text-blue-700'}`}>
-                          {formData.docketNumberMode === 'manual'
-                            ? (formData.customDocketNumber || 'Manual (Pending Input)')
-                            : (docketSeriesPreview?.nextNumber || 'BAL000001 (Auto)')}
-                        </div>
-                      </div>
-                      <span className={`text-xs font-bold px-2 py-0.5 rounded border ${
-                        formData.docketNumberMode === 'manual'
-                          ? isDark 
-                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' 
-                            : 'bg-amber-50 text-amber-700 border-amber-200'
-                          : isDark 
-                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' 
-                            : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                      }`}>
-                        {formData.docketNumberMode === 'manual' ? 'Manual Stationery' : 'Auto Sequenced'}
-                      </span>
-                    </div>
+                            {/* Custom charges list */}
+                            {formData.customCharges && formData.customCharges
+                              .filter(c => parseFloat(c.amount) > 0)
+                              .map((c, i) => (
+                                <div key={i} className={`text-xs font-medium flex items-center justify-between ${isDark ? 'text-slate-400' : 'text-slate-500'
+                                  }`}>
+                                  <span>{c.name || 'Additional Charge'}</span>
+                                  <span className={`font-mono ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                                    ₹ {parseFloat(c.amount || 0).toLocaleString('en-IN')}
+                                  </span>
+                                </div>
+                              ))}
 
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div>
-                        <span className={`text-[10px] block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Shipper:</span>
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className={`font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{formData.consignorName || 'Apex Logistics Partner'}</span>
-                          {formData.consignorId && (
-                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 font-bold">
-                              Registered
-                            </span>
-                          )}
-                        </div>
-                        {formData.consignorCity && (
-                          <span className="text-[10px] text-slate-400 block mt-0.5">{formData.consignorCity} {formData.consignorPhone ? `• ${formData.consignorPhone}` : ''}</span>
-                        )}
-                      </div>
-                      <div>
-                        <span className={`text-[10px] block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Receiver:</span>
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className={`font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{formData.consigneeName || 'Universal Distributing Corp'}</span>
-                          {formData.consigneeId && (
-                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 font-bold">
-                              Registered
-                            </span>
-                          )}
-                        </div>
-                        {formData.consigneeCity && (
-                          <span className="text-[10px] text-slate-400 block mt-0.5">{formData.consigneeCity} {formData.consigneePhone ? `• ${formData.consigneePhone}` : ''}</span>
-                        )}
-                      </div>
-                      <div>
-                        <span className={`text-[10px] block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Corridor Route:</span>
-                        <span className={`font-bold ${isDark ? 'text-cyan-300' : 'text-blue-600'}`}>
-                          {branchesList.find((b) => b.id === formData.originBranchId)?.branch_name || formData.originCity || 'Origin'} ➔ {branchesList.find((b) => b.id === formData.destBranchId)?.branch_name || formData.destinationCity || 'Destination'}
-                        </span>
-                      </div>
-                      <div>
-                        <span className={`text-[10px] block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Transport Mode:</span>
-                        <span className={`font-bold inline-flex items-center gap-1.5 ${
-                          formData.transportMode === 'AIR'
-                            ? isDark ? 'text-purple-400' : 'text-purple-700'
-                            : formData.transportMode === 'RAIL'
-                            ? isDark ? 'text-emerald-400' : 'text-emerald-700'
-                            : isDark ? 'text-cyan-400' : 'text-blue-700'
-                        }`}>
-                          {formData.transportMode === 'AIR' ? <Plane className="w-3.5 h-3.5" /> : formData.transportMode === 'RAIL' ? <Train className="w-3.5 h-3.5" /> : <Truck className="w-3.5 h-3.5" />}
-                          {formData.transportMode === 'AIR' ? 'By Air Cargo' : formData.transportMode === 'RAIL' ? 'By Rail Express' : 'By Road Line-haul'}
-                        </span>
-                      </div>
-                      <div>
-                        <span className={`text-[10px] block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Payment:</span>
-                        <span className={`font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{formData.paymentMode}</span>
-                      </div>
-                    </div>
+                            {/* Discount */}
+                            {liveBreakdown.discount > 0 && (
+                              <div className="text-xs font-medium flex items-center justify-between text-rose-500">
+                                <span>Special Discount</span>
+                                <span className="font-mono font-semibold">- ₹ {(liveBreakdown.discount || 0).toLocaleString('en-IN')}</span>
+                              </div>
+                            )}
 
-                    {/* Step 3 Live Itemized Charges Summary */}
-                    {(() => {
-                      const breakdown = calculateFreightBreakdown(formData);
-                      return (
-                        <div className={`pt-3 border-t space-y-1.5 ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
-                          <div className="flex items-center justify-between text-xs">
-                            <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>Basic Freight:</span>
-                            <span className={`font-mono font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                              ₹ {(breakdown.basicFreight || 0).toLocaleString('en-IN')}
-                            </span>
-                          </div>
-                          {breakdown.totalAdditionalCharges > 0 && (
-                            <div className="flex items-center justify-between text-xs">
-                              <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>Additional Charges:</span>
-                              <span className="font-mono font-semibold text-amber-500">
-                                + ₹ {(breakdown.totalAdditionalCharges || 0).toLocaleString('en-IN')}
+                            {/* GST */}
+                            <div className={`text-xs font-medium flex items-center justify-between ${isDark ? 'text-slate-400' : 'text-slate-500'
+                              }`}>
+                              <span>
+                                GST ({formData.gstMode === 'RCM'
+                                  ? '5% GTA RCM Applicable'
+                                  : formData.gstMode === 'GST_5'
+                                    ? '5% Forward Charge'
+                                    : formData.gstMode === 'GST_12'
+                                      ? '12% Forward Charge'
+                                      : 'Exempt Goods'})
+                              </span>
+                              <span className={`font-mono ${liveBreakdown.isRcm ? (isDark ? 'text-emerald-400' : 'text-emerald-600 font-semibold') : (isDark ? 'text-white' : 'text-slate-900')}`}>
+                                {liveBreakdown.isRcm ? '₹ 0 (RCM)' : `₹ ${(liveBreakdown.gstAmount ?? liveBreakdown.taxAmount ?? 0).toLocaleString('en-IN')}`}
                               </span>
                             </div>
-                          )}
-                          {breakdown.discount > 0 && (
-                            <div className="flex items-center justify-between text-xs text-rose-500">
-                              <span>Discount:</span>
-                              <span className="font-mono font-semibold">- ₹ {(breakdown.discount || 0).toLocaleString('en-IN')}</span>
+
+                            <div className={`pt-2 border-t flex items-center justify-between font-black text-sm ${isDark ? 'border-slate-800' : 'border-slate-200'
+                              }`}>
+                              <span className={isDark ? 'text-cyan-400' : 'text-blue-600 font-bold'}>Total Docket Freight:</span>
+                              <span className={`font-mono text-base ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                                ₹ {(liveBreakdown.totalDocketFreight || 0).toLocaleString('en-IN')}
+                              </span>
                             </div>
-                          )}
-                          <div className="flex items-center justify-between text-xs">
-                            <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>GST:</span>
-                            <span className={`font-mono font-semibold ${breakdown.isRcm ? (isDark ? 'text-emerald-400' : 'text-emerald-600') : (isDark ? 'text-white' : 'text-slate-900')}`}>
-                              {breakdown.isRcm ? '₹ 0 (5% RCM)' : `₹ ${(breakdown.gstAmount ?? breakdown.taxAmount ?? 0).toLocaleString('en-IN')}`}
-                            </span>
-                          </div>
-                          <div className={`pt-2 border-t flex items-center justify-between font-mono font-black text-sm ${
-                            isDark ? 'border-slate-800' : 'border-slate-200'
-                          }`}>
-                            <span className={isDark ? 'text-slate-300' : 'text-slate-700'}>Total Docket Value:</span>
-                            <span className={`text-lg ${isDark ? 'text-cyan-400' : 'text-blue-700'}`}>
-                              ₹ {(breakdown.totalDocketFreight || 0).toLocaleString('en-IN')}
-                            </span>
                           </div>
                         </div>
                       );
                     })()}
                   </div>
+                )}
 
-                  <p className={`text-[11px] leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                    By confirming this consignment, an official 3-copy digital bilty (Consignor, Consignee, Driver) will be registered and queued in the Load Planning terminal for multi-axle truck allocation.
-                  </p>
-                </div>
-              )}
-            </div>
+                {/* STEP 3: Review & Generate Docket (LR / Bilty) */}
+                {bookingStep === 3 && (
+                  <div className="space-y-4">
+                    <div className={`p-4 rounded-2xl border space-y-3 ${isDark
+                        ? 'bg-gradient-to-br from-blue-950/40 via-slate-900 to-cyan-950/30 border-cyan-500/40'
+                        : 'bg-gradient-to-br from-blue-50/70 via-slate-50 to-indigo-50/50 border-blue-200'
+                      }`}>
+                      <div className={`flex items-center justify-between pb-2 border-b ${isDark ? 'border-slate-800' : 'border-slate-200'
+                        }`}>
+                        <div>
+                          <span className={`text-[10px] font-mono ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                            DOCKET NUMBER ({formData.docketNumberMode === 'manual' ? 'MANUAL LR' : 'AUTO-SERIES'})
+                          </span>
+                          <div className={`font-mono text-base font-black ${isDark ? 'text-cyan-400' : 'text-blue-700'}`}>
+                            {formData.docketNumberMode === 'manual'
+                              ? (formData.customDocketNumber || 'Manual (Pending Input)')
+                              : (docketSeriesPreview?.nextNumber || 'BAL000001 (Auto)')}
+                          </div>
+                        </div>
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded border ${formData.docketNumberMode === 'manual'
+                            ? isDark
+                              ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                              : 'bg-amber-50 text-amber-700 border-amber-200'
+                            : isDark
+                              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                              : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          }`}>
+                          {formData.docketNumberMode === 'manual' ? 'Manual Stationery' : 'Auto Sequenced'}
+                        </span>
+                      </div>
 
-            {/* Modal Footer Actions */}
-              <div className={`p-4 px-6 border-t flex items-center justify-between shrink-0 ${
-                isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200'
-              }`}>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                          <span className={`text-[10px] block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Shipper:</span>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className={`font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{formData.consignorName || 'Apex Logistics Partner'}</span>
+                            {formData.consignorId && (
+                              <span className="text-[9px] px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 font-bold">
+                                Registered
+                              </span>
+                            )}
+                          </div>
+                          {formData.consignorCity && (
+                            <span className="text-[10px] text-slate-400 block mt-0.5">{formData.consignorCity} {formData.consignorPhone ? `• ${formData.consignorPhone}` : ''}</span>
+                          )}
+                        </div>
+                        <div>
+                          <span className={`text-[10px] block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Receiver:</span>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className={`font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{formData.consigneeName || 'Universal Distributing Corp'}</span>
+                            {formData.consigneeId && (
+                              <span className="text-[9px] px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 font-bold">
+                                Registered
+                              </span>
+                            )}
+                          </div>
+                          {formData.consigneeCity && (
+                            <span className="text-[10px] text-slate-400 block mt-0.5">{formData.consigneeCity} {formData.consigneePhone ? `• ${formData.consigneePhone}` : ''}</span>
+                          )}
+                        </div>
+                        <div>
+                          <span className={`text-[10px] block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Corridor Route:</span>
+                          <span className={`font-bold ${isDark ? 'text-cyan-300' : 'text-blue-600'}`}>
+                            {branchesList.find((b) => b.id === formData.originBranchId)?.branch_name || formData.originCity || 'Origin'} ➔ {branchesList.find((b) => b.id === formData.destBranchId)?.branch_name || formData.destinationCity || 'Destination'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className={`text-[10px] block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Transport Mode:</span>
+                          <span className={`font-bold inline-flex items-center gap-1.5 ${formData.transportMode === 'AIR'
+                              ? isDark ? 'text-purple-400' : 'text-purple-700'
+                              : formData.transportMode === 'RAIL'
+                                ? isDark ? 'text-emerald-400' : 'text-emerald-700'
+                                : isDark ? 'text-cyan-400' : 'text-blue-700'
+                            }`}>
+                            {formData.transportMode === 'AIR' ? <Plane className="w-3.5 h-3.5" /> : formData.transportMode === 'RAIL' ? <Train className="w-3.5 h-3.5" /> : <Truck className="w-3.5 h-3.5" />}
+                            {formData.transportMode === 'AIR' ? 'By Air Cargo' : formData.transportMode === 'RAIL' ? 'By Rail Express' : 'By Road Line-haul'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className={`text-[10px] block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Delivery Type:</span>
+                          <span className={`font-bold inline-flex items-center gap-1.5 ${
+                            formData.deliveryType === 'DOOR_DELIVERY'
+                              ? isDark ? 'text-emerald-400' : 'text-emerald-700'
+                              : isDark ? 'text-cyan-400' : 'text-blue-700'
+                          }`}>
+                            {formData.deliveryType === 'DOOR_DELIVERY' ? <Truck className="w-3.5 h-3.5" /> : <Building2 className="w-3.5 h-3.5" />}
+                            {formData.deliveryType === 'DOOR_DELIVERY' ? 'Door Delivery' : 'Godown Delivery'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className={`text-[10px] block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Payment:</span>
+                          <span className={`font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{formData.paymentMode}</span>
+                        </div>
+                      </div>
+
+                      {/* Step 3 Live Itemized Charges Summary */}
+                      {(() => {
+                        const breakdown = calculateFreightBreakdown(formData);
+                        return (
+                          <div className={`pt-3 border-t space-y-1.5 ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
+                            <div className="flex items-center justify-between text-xs">
+                              <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>Basic Freight:</span>
+                              <span className={`font-mono font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                                ₹ {(breakdown.basicFreight || 0).toLocaleString('en-IN')}
+                              </span>
+                            </div>
+                            {breakdown.totalAdditionalCharges > 0 && (
+                              <div className="flex items-center justify-between text-xs">
+                                <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>Additional Charges:</span>
+                                <span className="font-mono font-semibold text-amber-500">
+                                  + ₹ {(breakdown.totalAdditionalCharges || 0).toLocaleString('en-IN')}
+                                </span>
+                              </div>
+                            )}
+                            {breakdown.discount > 0 && (
+                              <div className="flex items-center justify-between text-xs text-rose-500">
+                                <span>Discount:</span>
+                                <span className="font-mono font-semibold">- ₹ {(breakdown.discount || 0).toLocaleString('en-IN')}</span>
+                              </div>
+                            )}
+                            <div className="flex items-center justify-between text-xs">
+                              <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>GST:</span>
+                              <span className={`font-mono font-semibold ${breakdown.isRcm ? (isDark ? 'text-emerald-400' : 'text-emerald-600') : (isDark ? 'text-white' : 'text-slate-900')}`}>
+                                {breakdown.isRcm ? '₹ 0 (5% RCM)' : `₹ ${(breakdown.gstAmount ?? breakdown.taxAmount ?? 0).toLocaleString('en-IN')}`}
+                              </span>
+                            </div>
+                            <div className={`pt-2 border-t flex items-center justify-between font-mono font-black text-sm ${isDark ? 'border-slate-800' : 'border-slate-200'
+                              }`}>
+                              <span className={isDark ? 'text-slate-300' : 'text-slate-700'}>Total Docket Value:</span>
+                              <span className={`text-lg ${isDark ? 'text-cyan-400' : 'text-blue-700'}`}>
+                                ₹ {(breakdown.totalDocketFreight || 0).toLocaleString('en-IN')}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    <p className={`text-[11px] leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                      By confirming this consignment, an official 3-copy digital bilty (Consignor, Consignee, Driver) will be registered and queued in the Load Planning terminal for multi-axle truck allocation.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Footer Actions */}
+              <div className={`p-4 px-6 border-t flex items-center justify-between shrink-0 ${isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200'
+                }`}>
                 {bookingStep > 1 ? (
                   <button
                     type="button"
                     onClick={() => setBookingStep(bookingStep - 1)}
-                    className={`px-4 py-2 rounded-xl border text-xs font-bold transition-colors ${
-                      isDark 
-                        ? 'border-slate-800 bg-slate-900 text-slate-300 hover:text-white' 
+                    className={`px-4 py-2 rounded-xl border text-xs font-bold transition-colors ${isDark
+                        ? 'border-slate-800 bg-slate-900 text-slate-300 hover:text-white'
                         : 'border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200 hover:text-slate-900'
-                    }`}
+                      }`}
                   >
                     ← Previous
                   </button>
@@ -3397,11 +4031,10 @@ export default function BookingsMasterPage() {
                   <button
                     type="button"
                     onClick={() => setIsDrawerOpen(false)}
-                    className={`px-4 py-2 rounded-xl border text-xs font-bold transition-colors ${
-                      isDark 
-                        ? 'border-slate-800 bg-slate-900 text-slate-400 hover:text-white' 
+                    className={`px-4 py-2 rounded-xl border text-xs font-bold transition-colors ${isDark
+                        ? 'border-slate-800 bg-slate-900 text-slate-400 hover:text-white'
                         : 'border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200 hover:text-slate-900'
-                    }`}
+                      }`}
                   >
                     Cancel
                   </button>
@@ -3417,11 +4050,10 @@ export default function BookingsMasterPage() {
                         if (!isCurrentStepValid) return;
                         setBookingStep(bookingStep + 1);
                       }}
-                      className={`px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
-                        isCurrentStepValid
+                      className={`px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${isCurrentStepValid
                           ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-600/30 cursor-pointer active:scale-95'
                           : 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border border-slate-300 dark:border-slate-700/60 shadow-none cursor-not-allowed opacity-60'
-                      }`}
+                        }`}
                     >
                       <span>Next: {bookingStep === 1 ? 'Cargo & Rates' : 'Review & Confirm'}</span>
                       <span>➔</span>
@@ -3430,11 +4062,10 @@ export default function BookingsMasterPage() {
                     <button
                       type="submit"
                       disabled={isLoading || !isStep1Valid || !isStep2Valid}
-                      className={`px-6 py-2.5 rounded-xl text-white text-xs font-black shadow-lg shadow-cyan-500/25 active:scale-95 transition-all flex items-center gap-1.5 ${
-                        isLoading || !isStep1Valid || !isStep2Valid
+                      className={`px-6 py-2.5 rounded-xl text-white text-xs font-black shadow-lg shadow-cyan-500/25 active:scale-95 transition-all flex items-center gap-1.5 ${isLoading || !isStep1Valid || !isStep2Valid
                           ? 'bg-slate-700 opacity-60 cursor-not-allowed'
                           : 'bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 cursor-pointer'
-                      }`}
+                        }`}
                     >
                       {isLoading ? (
                         <>
@@ -3467,42 +4098,38 @@ export default function BookingsMasterPage() {
             onClick={() => setIsDetailsOpen(false)}
           />
 
-          <div className={`relative w-full max-w-2xl max-h-[90vh] my-auto rounded-3xl shadow-2xl flex flex-col z-10 border overflow-hidden ${
-            isDark ? 'bg-[#0A0E1A] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
-          }`}>
-            
+          <div className={`relative w-full max-w-2xl max-h-[90vh] my-auto rounded-3xl shadow-2xl flex flex-col z-10 border overflow-hidden ${isDark ? 'bg-[#0A0E1A] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
+            }`}>
+
             {/* 30s Countdown Progress Indicator Bar */}
             <div className="w-full h-1 bg-slate-100 dark:bg-slate-800/80 overflow-hidden shrink-0">
               <div
-                className={`h-full transition-all duration-1000 ease-linear ${
-                  isAutoClosePaused 
-                    ? 'bg-amber-500/50' 
-                    : autoCloseCountdown <= 5 
-                    ? 'bg-rose-500' 
-                    : 'bg-gradient-to-r from-blue-500 to-cyan-400'
-                }`}
+                className={`h-full transition-all duration-1000 ease-linear ${isAutoClosePaused
+                    ? 'bg-amber-500/50'
+                    : autoCloseCountdown <= 5
+                      ? 'bg-rose-500'
+                      : 'bg-gradient-to-r from-blue-500 to-cyan-400'
+                  }`}
                 style={{ width: `${(autoCloseCountdown / 30) * 100}%` }}
               />
             </div>
 
             {/* Header */}
-            <div className={`p-5 border-b flex items-center justify-between shrink-0 ${
-              isDark ? 'border-slate-800' : 'border-slate-200'
-            }`}>
+            <div className={`p-5 border-b flex items-center justify-between shrink-0 ${isDark ? 'border-slate-800' : 'border-slate-200'
+              }`}>
               <div>
                 <div className="flex items-center gap-2">
                   <span className={`font-mono font-black text-base ${isDark ? 'text-cyan-400' : 'text-blue-600'}`}>
                     {selectedConsignment.lr_number}
                   </span>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                    selectedConsignment.status === 'IN_TRANSIT'
-                      ? isDark 
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${selectedConsignment.status === 'IN_TRANSIT'
+                      ? isDark
                         ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30'
                         : 'bg-cyan-50 text-cyan-700 border-cyan-200'
                       : isDark
                         ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
                         : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                  }`}>
+                    }`}>
                     {selectedConsignment.status_label}
                   </span>
                 </div>
@@ -3516,13 +4143,12 @@ export default function BookingsMasterPage() {
                 <button
                   type="button"
                   onClick={() => setIsAutoClosePaused((p) => !p)}
-                  className={`text-[10px] font-mono px-2 py-1.5 rounded-xl border flex items-center gap-1 transition-all ${
-                    isAutoClosePaused
+                  className={`text-[10px] font-mono px-2 py-1.5 rounded-xl border flex items-center gap-1 transition-all ${isAutoClosePaused
                       ? 'border-amber-500/40 bg-amber-500/10 text-amber-500 font-bold'
                       : isDark
-                      ? 'border-slate-800 bg-slate-900/60 text-slate-400 hover:text-slate-200'
-                      : 'border-slate-200 bg-slate-100 text-slate-600 hover:text-slate-900'
-                  }`}
+                        ? 'border-slate-800 bg-slate-900/60 text-slate-400 hover:text-slate-200'
+                        : 'border-slate-200 bg-slate-100 text-slate-600 hover:text-slate-900'
+                    }`}
                   title={isAutoClosePaused ? "Auto-close is paused. Click to resume 30s timer" : "Auto-closes after 30 seconds. Click to pause"}
                 >
                   <Clock className={`w-3 h-3 ${isAutoClosePaused ? 'text-amber-500' : 'text-cyan-500'}`} />
@@ -3536,44 +4162,40 @@ export default function BookingsMasterPage() {
 
                 <button
                   onClick={() => handleOpenEdit(selectedConsignment)}
-                  className={`p-2 rounded-xl border transition-colors ${
-                    isDark
+                  className={`p-2 rounded-xl border transition-colors ${isDark
                       ? 'border-slate-800 bg-slate-900/60 text-amber-400 hover:text-amber-300 hover:bg-amber-500/10'
                       : 'border-slate-200 bg-amber-50 text-amber-600 hover:bg-amber-100 hover:text-amber-700'
-                  }`}
+                    }`}
                   title="Edit Docket"
                 >
                   <Pencil className="w-4 h-4" />
                 </button>
                 <button
                   onClick={() => handleOpenDelete(selectedConsignment)}
-                  className={`p-2 rounded-xl border transition-colors ${
-                    isDark
+                  className={`p-2 rounded-xl border transition-colors ${isDark
                       ? 'border-slate-800 bg-slate-900/60 text-rose-400 hover:text-rose-300 hover:bg-rose-500/10'
                       : 'border-slate-200 bg-rose-50 text-rose-600 hover:bg-rose-100 hover:text-rose-700'
-                  }`}
+                    }`}
                   title="Delete Docket"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
                 <button
                   onClick={() => handleOpenPrintPreview(selectedConsignment)}
-                  className={`p-2 rounded-xl border transition-colors ${
-                    isDark
+                  className={`p-2 rounded-xl border transition-colors ${isDark
                       ? 'border-slate-800 bg-slate-900/60 text-slate-300 hover:text-white'
                       : 'border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200 hover:text-slate-900'
-                  }`}
+                    }`}
                   title="Print Bilty"
                 >
                   <Printer className={`w-4 h-4 ${isDark ? 'text-cyan-400' : 'text-blue-600'}`} />
                 </button>
                 <button
                   onClick={() => setIsDetailsOpen(false)}
-                  className={`p-2 rounded-xl border transition-colors ${
-                    isDark
+                  className={`p-2 rounded-xl border transition-colors ${isDark
                       ? 'border-slate-800 bg-slate-900/60 text-slate-400 hover:text-white'
                       : 'border-slate-200 bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900'
-                  }`}
+                    }`}
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -3582,11 +4204,10 @@ export default function BookingsMasterPage() {
 
             {/* Body */}
             <div className="flex-1 overflow-y-auto p-6 space-y-5">
-              
+
               {/* Live Tracking Progress Bar */}
-              <div className={`p-4 rounded-2xl border space-y-3 ${
-                isDark ? 'bg-slate-900/80 border-slate-800' : 'bg-slate-50 border-slate-200'
-              }`}>
+              <div className={`p-4 rounded-2xl border space-y-3 ${isDark ? 'bg-slate-900/80 border-slate-800' : 'bg-slate-50 border-slate-200'
+                }`}>
                 <div className="flex items-center justify-between text-xs">
                   <span className={`font-bold flex items-center gap-1.5 ${isDark ? 'text-white' : 'text-slate-900'}`}>
                     <Truck className={`w-3.5 h-3.5 ${isDark ? 'text-cyan-400' : 'text-blue-600'}`} />
@@ -3604,9 +4225,8 @@ export default function BookingsMasterPage() {
                   />
                 </div>
 
-                <div className={`flex items-center justify-between text-[10px] font-mono ${
-                  isDark ? 'text-slate-400' : 'text-slate-500'
-                }`}>
+                <div className={`flex items-center justify-between text-[10px] font-mono ${isDark ? 'text-slate-400' : 'text-slate-500'
+                  }`}>
                   <span>Origin: {selectedConsignment.origin_city}</span>
                   <span>ETA: {selectedConsignment.eta}</span>
                   <span>Dest: {selectedConsignment.destination_city}</span>
@@ -3615,23 +4235,19 @@ export default function BookingsMasterPage() {
 
               {/* Shipper & Consignee Cards */}
               <div className="grid grid-cols-2 gap-3">
-                <div className={`p-3.5 rounded-xl border space-y-1 ${
-                  isDark ? 'border-slate-800 bg-slate-900/40' : 'border-slate-200 bg-slate-50'
-                }`}>
-                  <span className={`text-[10px] font-bold uppercase tracking-wider ${
-                    isDark ? 'text-slate-400' : 'text-slate-500'
-                  }`}>Shipper (From)</span>
+                <div className={`p-3.5 rounded-xl border space-y-1 ${isDark ? 'border-slate-800 bg-slate-900/40' : 'border-slate-200 bg-slate-50'
+                  }`}>
+                  <span className={`text-[10px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'
+                    }`}>Shipper (From)</span>
                   <div className={`font-bold text-xs ${isDark ? 'text-white' : 'text-slate-900'}`}>{selectedConsignment.consignor.name}</div>
                   <div className={`text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{selectedConsignment.consignor.city}</div>
                   <div className={`text-[10px] font-semibold ${isDark ? 'text-cyan-400' : 'text-blue-600'}`}>{selectedConsignment.consignor.segment}</div>
                 </div>
 
-                <div className={`p-3.5 rounded-xl border space-y-1 ${
-                  isDark ? 'border-slate-800 bg-slate-900/40' : 'border-slate-200 bg-slate-50'
-                }`}>
-                  <span className={`text-[10px] font-bold uppercase tracking-wider ${
-                    isDark ? 'text-slate-400' : 'text-slate-500'
-                  }`}>Consignee (To)</span>
+                <div className={`p-3.5 rounded-xl border space-y-1 ${isDark ? 'border-slate-800 bg-slate-900/40' : 'border-slate-200 bg-slate-50'
+                  }`}>
+                  <span className={`text-[10px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'
+                    }`}>Consignee (To)</span>
                   <div className={`font-bold text-xs ${isDark ? 'text-white' : 'text-slate-900'}`}>{selectedConsignment.consignee.name}</div>
                   <div className={`text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{selectedConsignment.consignee.city}</div>
                   <div className={`text-[10px] font-semibold ${isDark ? 'text-cyan-400' : 'text-blue-600'}`}>{selectedConsignment.consignee.segment}</div>
@@ -3639,23 +4255,32 @@ export default function BookingsMasterPage() {
               </div>
 
               {/* Cargo & Line-haul Vehicle Info */}
-              <div className={`p-4 rounded-2xl border space-y-3 ${
-                isDark ? 'border-slate-800 bg-slate-900/50' : 'border-slate-200 bg-slate-50'
-              }`}>
+              <div className={`p-4 rounded-2xl border space-y-3 ${isDark ? 'border-slate-800 bg-slate-900/50' : 'border-slate-200 bg-slate-50'
+                }`}>
                 <div className={`text-xs font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>Line-haul Telemetry & Freight Details</div>
-                
+
                 <div className="grid grid-cols-2 gap-3 text-xs">
                   <div>
                     <span className={`text-[10px] block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Transport Mode:</span>
-                    <span className={`font-bold inline-flex items-center gap-1.5 ${
-                      selectedConsignment.transport_mode === 'AIR'
+                    <span className={`font-bold inline-flex items-center gap-1.5 ${selectedConsignment.transport_mode === 'AIR'
                         ? isDark ? 'text-purple-400' : 'text-purple-600'
                         : selectedConsignment.transport_mode === 'RAIL'
+                          ? isDark ? 'text-emerald-400' : 'text-emerald-600'
+                          : isDark ? 'text-cyan-400' : 'text-blue-600'
+                      }`}>
+                      {selectedConsignment.transport_mode === 'AIR' ? <Plane className="w-3.5 h-3.5" /> : selectedConsignment.transport_mode === 'RAIL' ? <Train className="w-3.5 h-3.5" /> : <Truck className="w-3.5 h-3.5" />}
+                      {selectedConsignment.transport_mode === 'AIR' ? 'By Air Cargo' : selectedConsignment.transport_mode === 'RAIL' ? 'By Rail Express' : 'By Road Line-haul'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className={`text-[10px] block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Delivery Type:</span>
+                    <span className={`font-bold inline-flex items-center gap-1.5 ${
+                      selectedConsignment.delivery_type === 'DOOR_DELIVERY'
                         ? isDark ? 'text-emerald-400' : 'text-emerald-600'
                         : isDark ? 'text-cyan-400' : 'text-blue-600'
                     }`}>
-                      {selectedConsignment.transport_mode === 'AIR' ? <Plane className="w-3.5 h-3.5" /> : selectedConsignment.transport_mode === 'RAIL' ? <Train className="w-3.5 h-3.5" /> : <Truck className="w-3.5 h-3.5" />}
-                      {selectedConsignment.transport_mode === 'AIR' ? 'By Air Cargo' : selectedConsignment.transport_mode === 'RAIL' ? 'By Rail Express' : 'By Road Line-haul'}
+                      {selectedConsignment.delivery_type === 'DOOR_DELIVERY' ? <Truck className="w-3.5 h-3.5" /> : <Building2 className="w-3.5 h-3.5" />}
+                      {selectedConsignment.delivery_type === 'DOOR_DELIVERY' ? 'Door Delivery' : 'Godown Delivery'}
                     </span>
                   </div>
                   <div>
@@ -3689,14 +4314,12 @@ export default function BookingsMasterPage() {
               </div>
 
               {/* Financial Breakdown */}
-              <div className={`p-4 rounded-2xl border space-y-2 text-xs ${
-                isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-slate-50 border-slate-200'
-              }`}>
+              <div className={`p-4 rounded-2xl border space-y-2 text-xs ${isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-slate-50 border-slate-200'
+                }`}>
                 <div className="flex items-center justify-between font-semibold pb-1.5 border-b border-dashed border-slate-700/50">
                   <span className={isDark ? 'text-slate-300' : 'text-slate-700'}>Freight & Charges Breakdown</span>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
-                    isDark ? 'bg-cyan-500/20 text-cyan-300' : 'bg-blue-100 text-blue-700'
-                  }`}>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${isDark ? 'bg-cyan-500/20 text-cyan-300' : 'bg-blue-100 text-blue-700'
+                    }`}>
                     {selectedConsignment.payment_mode}
                   </span>
                 </div>
@@ -3775,9 +4398,8 @@ export default function BookingsMasterPage() {
                   </div>
                 </div>
 
-                <div className={`pt-2 border-t flex items-center justify-between ${
-                  isDark ? 'border-slate-800' : 'border-slate-200'
-                }`}>
+                <div className={`pt-2 border-t flex items-center justify-between ${isDark ? 'border-slate-800' : 'border-slate-200'
+                  }`}>
                   <span className={`font-bold ${isDark ? 'text-cyan-400' : 'text-blue-600'}`}>Total Docket Freight:</span>
                   <span className={`font-mono font-black text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>
                     ₹ {Number(selectedConsignment.total_amount || 0).toLocaleString('en-IN')}
@@ -3788,14 +4410,12 @@ export default function BookingsMasterPage() {
             </div>
 
             {/* Footer */}
-            <div className={`p-4 px-6 border-t flex items-center justify-between shrink-0 ${
-              isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200'
-            }`}>
+            <div className={`p-4 px-6 border-t flex items-center justify-between shrink-0 ${isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200'
+              }`}>
               <Link
                 href={`/track?lr=${selectedConsignment.lr_number}`}
-                className={`text-xs font-bold hover:underline flex items-center gap-1 ${
-                  isDark ? 'text-cyan-400' : 'text-blue-600'
-                }`}
+                className={`text-xs font-bold hover:underline flex items-center gap-1 ${isDark ? 'text-cyan-400' : 'text-blue-600'
+                  }`}
               >
                 <span>Live Public Tracking</span>
                 <ExternalLink className="w-3.5 h-3.5" />
@@ -3824,19 +4444,16 @@ export default function BookingsMasterPage() {
             onClick={() => !isSubmittingEdit && setIsEditModalOpen(false)}
           />
 
-          <div className={`relative w-full max-w-2xl max-h-[90vh] my-auto rounded-3xl border shadow-2xl overflow-hidden flex flex-col z-10 ${
-            isDark ? 'bg-[#0B1020] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
-          }`}>
-            {/* Modal Header */}
-            <div className={`p-5 border-b flex items-center justify-between shrink-0 ${
-              isDark ? 'border-slate-800' : 'border-slate-200'
+          <div className={`relative w-full max-w-2xl max-h-[90vh] my-auto rounded-3xl border shadow-2xl overflow-hidden flex flex-col z-10 ${isDark ? 'bg-[#0B1020] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
             }`}>
+            {/* Modal Header */}
+            <div className={`p-5 border-b flex items-center justify-between shrink-0 ${isDark ? 'border-slate-800' : 'border-slate-200'
+              }`}>
               <div className="flex items-center space-x-2.5">
-                <div className={`p-2 rounded-xl border ${
-                  isDark 
-                    ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' 
+                <div className={`p-2 rounded-xl border ${isDark
+                    ? 'bg-amber-500/20 text-amber-400 border-amber-500/30'
                     : 'bg-amber-50 text-amber-600 border-amber-200'
-                }`}>
+                  }`}>
                   <Pencil className="w-4 h-4" />
                 </div>
                 <div>
@@ -3850,11 +4467,10 @@ export default function BookingsMasterPage() {
                 type="button"
                 onClick={() => setIsEditModalOpen(false)}
                 disabled={isSubmittingEdit}
-                className={`p-1.5 rounded-lg border transition-colors ${
-                  isDark 
-                    ? 'border-slate-800 text-slate-400 hover:text-white' 
+                className={`p-1.5 rounded-lg border transition-colors ${isDark
+                    ? 'border-slate-800 text-slate-400 hover:text-white'
                     : 'border-slate-200 text-slate-500 hover:text-slate-900 hover:bg-slate-100'
-                }`}
+                  }`}
               >
                 <X className="w-4 h-4" />
               </button>
@@ -3863,522 +4479,657 @@ export default function BookingsMasterPage() {
             {/* Modal Form */}
             <form onSubmit={handleEditSubmit} className="flex-1 flex flex-col overflow-hidden min-h-0">
               <div className="flex-1 overflow-y-auto p-6 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                {/* Docket Number */}
-                <div className="space-y-1">
-                  <label className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                    Docket No. (LR / Bilty) *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={editFormData.docketNumber}
-                    onChange={(e) => setEditFormData({ ...editFormData, docketNumber: e.target.value })}
-                    className={`w-full px-3 py-2 rounded-xl border text-xs font-mono focus:outline-none transition-colors ${
-                      isDark 
-                        ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400' 
-                        : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
-                    }`}
-                  />
-                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  {/* Docket Number */}
+                  <div className="space-y-1">
+                    <label className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                      Docket No. (LR / Bilty) *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editFormData.docketNumber}
+                      onChange={(e) => setEditFormData({ ...editFormData, docketNumber: e.target.value })}
+                      className={`w-full px-3 py-2 rounded-xl border text-xs font-mono focus:outline-none transition-colors ${isDark
+                          ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                          : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                        }`}
+                    />
+                  </div>
 
-                {/* Status */}
-                <div className="space-y-1">
-                  <label className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                    Consignment Status *
-                  </label>
-                  <select
-                    value={editFormData.status}
-                    onChange={(e) => setEditFormData({ ...editFormData, status: e.target.value })}
-                    className={`w-full px-3 py-2 rounded-xl border text-xs font-bold focus:outline-none transition-colors ${
-                      isDark 
-                        ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400' 
-                        : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
-                    }`}
-                  >
-                    <option value="BOOKED">Booked / Godown</option>
-                    <option value="IN_TRANSIT">In Transit</option>
-                    <option value="OUT_FOR_DELIVERY">Out for Delivery</option>
-                    <option value="DELIVERED">Delivered</option>
-                    <option value="DELAYED">Delayed</option>
-                    <option value="CANCELLED">Cancelled</option>
-                  </select>
-                </div>
-
-                {/* Consignor Name */}
-                <div className="space-y-1">
-                  <label className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                    Consignor (Shipper Name) *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={editFormData.consignorName}
-                    onChange={(e) => setEditFormData({ ...editFormData, consignorName: e.target.value })}
-                    className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${
-                      isDark 
-                        ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400' 
-                        : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
-                    }`}
-                  />
-                </div>
-
-                {/* Consignee Name */}
-                <div className="space-y-1">
-                  <label className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                    Consignee (Receiver Name) *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={editFormData.consigneeName}
-                    onChange={(e) => setEditFormData({ ...editFormData, consigneeName: e.target.value })}
-                    className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${
-                      isDark 
-                        ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400' 
-                        : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
-                    }`}
-                  />
-                </div>
-
-                {/* Origin City */}
-                <div className="space-y-1">
-                  <label className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                    Origin City *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={editFormData.originCity}
-                    onChange={(e) => setEditFormData({ ...editFormData, originCity: e.target.value })}
-                    className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${
-                      isDark 
-                        ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400' 
-                        : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
-                    }`}
-                  />
-                </div>
-
-                {/* Destination City */}
-                <div className="space-y-1">
-                  <label className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                    Destination City *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={editFormData.destinationCity}
-                    onChange={(e) => setEditFormData({ ...editFormData, destinationCity: e.target.value })}
-                    className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${
-                      isDark 
-                        ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400' 
-                        : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
-                    }`}
-                  />
-                </div>
-
-                {/* Cargo Type */}
-                <div className="space-y-1 col-span-2">
-                  <label className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                    Material / Commodity Description *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={editFormData.cargoType}
-                    onChange={(e) => setEditFormData({ ...editFormData, cargoType: e.target.value })}
-                    className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${
-                      isDark 
-                        ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400' 
-                        : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
-                    }`}
-                  />
-                </div>
-
-                {/* Packages Count */}
-                <div className="space-y-1">
-                  <label className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                    Packages Count *
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    required
-                    value={editFormData.packagesCount}
-                    onChange={(e) => setEditFormData({ ...editFormData, packagesCount: e.target.value })}
-                    className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${
-                      isDark 
-                        ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400' 
-                        : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
-                    }`}
-                  />
-                </div>
-
-                {/* Weight KG */}
-                <div className="space-y-1">
-                  <label className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                    Charged Weight (KG) *
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    required
-                    value={editFormData.weightKg}
-                    onChange={(e) => updateEditField('weightKg', e.target.value)}
-                    className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${
-                      isDark 
-                        ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400' 
-                        : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
-                    }`}
-                  />
-                </div>
-
-                {/* Rate per KG */}
-                <div className="space-y-1">
-                  <label className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                    Rate / KG (₹) *
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    required
-                    value={editFormData.ratePerKg}
-                    onChange={(e) => updateEditField('ratePerKg', e.target.value)}
-                    className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${
-                      isDark 
-                        ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400' 
-                        : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
-                    }`}
-                  />
-                </div>
-
-                {/* Additional Charges & Surcharges Section in Edit Modal */}
-                <div className={`col-span-2 p-3.5 rounded-2xl border space-y-3 ${
-                  isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200'
-                }`}>
-                  <div className="flex items-center justify-between">
-                    <span className={`text-xs font-bold flex items-center gap-1.5 ${isDark ? 'text-cyan-400' : 'text-blue-600'}`}>
-                      <IndianRupee className="w-3.5 h-3.5" />
-                      <span>Configure Docket Charges & Surcharges</span>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const newId = Date.now().toString();
-                        const nextCustom = [
-                          ...(editFormData.customCharges || []),
-                          { id: newId, name: 'Toll / Border Tax', amount: '' },
-                        ];
-                        updateEditField('customCharges', nextCustom, nextCustom);
-                      }}
-                      className={`text-xs font-bold px-2.5 py-1 rounded-lg border flex items-center gap-1 transition-all ${
-                        isDark
-                          ? 'border-cyan-500/30 bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/20'
-                          : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
-                      }`}
+                  {/* Status */}
+                  <div className="space-y-1">
+                    <label className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                      Consignment Status *
+                    </label>
+                    <select
+                      value={editFormData.status}
+                      onChange={(e) => setEditFormData({ ...editFormData, status: e.target.value })}
+                      className={`w-full px-3 py-2 rounded-xl border text-xs font-bold focus:outline-none transition-colors ${isDark
+                          ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                          : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                        }`}
                     >
-                      <Plus className="w-3 h-3" />
-                      <span>Add Other Charge</span>
-                    </button>
+                      <option value="BOOKED">Booked / Godown</option>
+                      <option value="IN_TRANSIT">In Transit</option>
+                      <option value="OUT_FOR_DELIVERY">Out for Delivery</option>
+                      <option value="DELIVERED">Delivered</option>
+                      <option value="DELAYED">Delayed</option>
+                      <option value="CANCELLED">Cancelled</option>
+                    </select>
                   </div>
 
-                  {/* Standard Logistics Charges Grid */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                    {/* Loading / Hamali */}
-                    <div className="space-y-1">
-                      <label className={`text-[11px] font-semibold block ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-                        Loading / Hamali (₹)
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={editFormData.loadingCharges}
-                        onChange={(e) => updateEditField('loadingCharges', e.target.value)}
-                        placeholder="0"
-                        className={`w-full px-2.5 py-1.5 rounded-lg border text-xs focus:outline-none ${
-                          isDark 
-                            ? 'border-slate-700 bg-slate-800 text-white focus:border-cyan-400' 
-                            : 'border-slate-300 bg-white text-slate-900 focus:border-blue-500'
+                  {/* Consignor Name */}
+                  <div className="space-y-1">
+                    <label className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                      Consignor (Shipper Name) *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editFormData.consignorName}
+                      onChange={(e) => setEditFormData({ ...editFormData, consignorName: e.target.value })}
+                      className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
+                          ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                          : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
                         }`}
-                      />
-                    </div>
-
-                    {/* Unloading */}
-                    <div className="space-y-1">
-                      <label className={`text-[11px] font-semibold block ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-                        Unloading (₹)
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={editFormData.unloadingCharges}
-                        onChange={(e) => updateEditField('unloadingCharges', e.target.value)}
-                        placeholder="0"
-                        className={`w-full px-2.5 py-1.5 rounded-lg border text-xs focus:outline-none ${
-                          isDark 
-                            ? 'border-slate-700 bg-slate-800 text-white focus:border-cyan-400' 
-                            : 'border-slate-300 bg-white text-slate-900 focus:border-blue-500'
-                        }`}
-                      />
-                    </div>
-
-                    {/* Door Delivery */}
-                    <div className="space-y-1">
-                      <label className={`text-[11px] font-semibold block ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-                        Door Delivery (₹)
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={editFormData.doorDeliveryCharges}
-                        onChange={(e) => updateEditField('doorDeliveryCharges', e.target.value)}
-                        placeholder="0"
-                        className={`w-full px-2.5 py-1.5 rounded-lg border text-xs focus:outline-none ${
-                          isDark 
-                            ? 'border-slate-700 bg-slate-800 text-white focus:border-cyan-400' 
-                            : 'border-slate-300 bg-white text-slate-900 focus:border-blue-500'
-                        }`}
-                      />
-                    </div>
-
-                    {/* Other Charges / Bilty Fee */}
-                    <div className="space-y-1">
-                      <label className={`text-[11px] font-semibold block ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-                        Bilty Fee / Misc (₹)
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={editFormData.otherCharges}
-                        onChange={(e) => updateEditField('otherCharges', e.target.value)}
-                        placeholder="0"
-                        className={`w-full px-2.5 py-1.5 rounded-lg border text-xs focus:outline-none ${
-                          isDark 
-                            ? 'border-slate-700 bg-slate-800 text-white focus:border-cyan-400' 
-                            : 'border-slate-300 bg-white text-slate-900 focus:border-blue-500'
-                        }`}
-                      />
-                    </div>
+                    />
                   </div>
 
-                  {/* Dynamic Custom Charges Added by User in Edit Modal */}
-                  {editFormData.customCharges && editFormData.customCharges.length > 0 && (
-                    <div className="space-y-2 pt-1 border-t border-slate-700/40">
-                      <span className={`text-[10px] font-bold uppercase tracking-wider block ${isDark ? 'text-cyan-400' : 'text-blue-600'}`}>
-                        Custom Charges Added ({editFormData.customCharges.length})
+                  {/* Consignee Name */}
+                  <div className="space-y-1">
+                    <label className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                      Consignee (Receiver Name) *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editFormData.consigneeName}
+                      onChange={(e) => setEditFormData({ ...editFormData, consigneeName: e.target.value })}
+                      className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
+                          ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                          : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                        }`}
+                    />
+                  </div>
+
+                  {/* Origin City */}
+                  <div className="space-y-1">
+                    <label className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                      Origin City *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editFormData.originCity}
+                      onChange={(e) => setEditFormData({ ...editFormData, originCity: e.target.value })}
+                      className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
+                          ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                          : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                        }`}
+                    />
+                  </div>
+
+                  {/* Destination City */}
+                  <div className="space-y-1">
+                    <label className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                      Destination City *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editFormData.destinationCity}
+                      onChange={(e) => setEditFormData({ ...editFormData, destinationCity: e.target.value })}
+                      className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
+                          ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                          : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                        }`}
+                    />
+                  </div>
+
+                  {/* Cargo Type */}
+                  <div className="space-y-1 col-span-2">
+                    <label className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                      Material / Commodity Description *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editFormData.cargoType}
+                      onChange={(e) => setEditFormData({ ...editFormData, cargoType: e.target.value })}
+                      className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
+                          ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                          : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                        }`}
+                    />
+                  </div>
+
+                  {/* Packages Count */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <label className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                        Packages Count *
+                      </label>
+                      {isEditingDocketPaid && (
+                        <span className="text-[10px] text-amber-500 font-bold flex items-center gap-1">
+                          <Lock className="w-3 h-3" /> Locked (PAID)
+                        </span>
+                      )}
+                    </div>
+                    <input
+                      type="number"
+                      min="1"
+                      required
+                      disabled={isEditingDocketPaid}
+                      value={editFormData.packagesCount}
+                      onChange={(e) => setEditFormData({ ...editFormData, packagesCount: e.target.value })}
+                      className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${
+                        isEditingDocketPaid
+                          ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-800'
+                          : isDark
+                          ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                          : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                      }`}
+                    />
+                  </div>
+
+                  {/* Weight KG */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <label className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                        Charged Weight (KG) *
+                      </label>
+                      {isEditingDocketPaid && (
+                        <span className="text-[10px] text-amber-500 font-bold flex items-center gap-1">
+                          <Lock className="w-3 h-3" /> Locked (PAID)
+                        </span>
+                      )}
+                    </div>
+                    <input
+                      type="number"
+                      min="1"
+                      required
+                      disabled={isEditingDocketPaid}
+                      value={editFormData.weightKg}
+                      onChange={(e) => updateEditField('weightKg', e.target.value)}
+                      className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${
+                        isEditingDocketPaid
+                          ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-800'
+                          : isDark
+                          ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                          : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                      }`}
+                    />
+                  </div>
+
+                  {/* Rate per KG */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <label className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                        Rate / KG (₹) *
+                      </label>
+                      {isEditingDocketPaid && (
+                        <span className="text-[10px] text-amber-500 font-bold flex items-center gap-1">
+                          <Lock className="w-3 h-3" /> Locked (PAID)
+                        </span>
+                      )}
+                    </div>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      required
+                      disabled={isEditingDocketPaid}
+                      value={editFormData.ratePerKg}
+                      onChange={(e) => updateEditField('ratePerKg', e.target.value)}
+                      className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${
+                        isEditingDocketPaid
+                          ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-800'
+                          : isDark
+                          ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                          : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                      }`}
+                    />
+                  </div>
+
+                  {/* Additional Charges & Surcharges Section in Edit Modal */}
+                  <div className={`col-span-2 p-3.5 rounded-2xl border space-y-3 ${isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200'
+                    }`}>
+                    <div className="flex items-center justify-between">
+                      <span className={`text-xs font-bold flex items-center gap-1.5 ${isDark ? 'text-cyan-400' : 'text-blue-600'}`}>
+                        <IndianRupee className="w-3.5 h-3.5" />
+                        <span>Configure Docket Charges & Surcharges</span>
                       </span>
-                      {editFormData.customCharges.map((item, index) => (
-                        <div
-                          key={item.id || index}
-                          className={`flex items-center gap-2 p-2 rounded-xl border ${
-                            isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
-                          }`}
+                      {!isEditingDocketPaid && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const newId = Date.now().toString();
+                            const nextCustom = [
+                              ...(editFormData.customCharges || []),
+                              { id: newId, name: 'Toll / Border Tax', amount: '' },
+                            ];
+                            updateEditField('customCharges', nextCustom, nextCustom);
+                          }}
+                          className={`text-xs font-bold px-2.5 py-1 rounded-lg border flex items-center gap-1 transition-all ${isDark
+                              ? 'border-cyan-500/30 bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/20'
+                              : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                            }`}
                         >
-                          <div className="flex-1">
-                            <input
-                              type="text"
-                              list={`edit-charge-suggestions-${index}`}
-                              value={item.name}
-                              placeholder="Charge Name (e.g. Toll / Demurrage)"
-                              onChange={(e) => {
-                                const updatedList = [...editFormData.customCharges];
-                                updatedList[index] = { ...updatedList[index], name: e.target.value };
-                                updateEditField('customCharges', updatedList, updatedList);
-                              }}
-                              className={`w-full px-2.5 py-1.5 rounded-lg border text-xs focus:outline-none ${
-                                isDark
-                                  ? 'border-slate-700 bg-slate-800 text-white focus:border-cyan-400'
-                                  : 'border-slate-300 bg-slate-50 text-slate-900 focus:border-blue-500'
-                              }`}
-                            />
-                            <datalist id={`edit-charge-suggestions-${index}`}>
-                              <option value="Toll / Border Tax" />
-                              <option value="Cartage / Pickup Charge" />
-                              <option value="FOV / Insurance Charge" />
-                              <option value="Demurrage / Detention" />
-                              <option value="Fuel Surcharge" />
-                              <option value="Handling / Labour" />
-                              <option value="Statistical / Misc Charge" />
-                            </datalist>
-                          </div>
-                          <div className="w-28 relative">
-                            <span className="absolute left-2.5 top-1.5 text-xs text-slate-400">₹</span>
-                            <input
-                              type="number"
-                              min="0"
-                              value={item.amount}
-                              placeholder="0"
-                              onChange={(e) => {
-                                const updatedList = [...editFormData.customCharges];
-                                updatedList[index] = { ...updatedList[index], amount: e.target.value };
-                                updateEditField('customCharges', updatedList, updatedList);
-                              }}
-                              className={`w-full pl-6 pr-2.5 py-1.5 rounded-lg border text-xs font-mono font-bold focus:outline-none ${
-                                isDark
-                                  ? 'border-slate-700 bg-slate-800 text-white focus:border-cyan-400'
-                                  : 'border-slate-300 bg-slate-50 text-slate-900 focus:border-blue-500'
-                              }`}
-                            />
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const updatedList = editFormData.customCharges.filter((_, i) => i !== index);
-                              updateEditField('customCharges', updatedList, updatedList);
-                            }}
-                            className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-500/10 transition-colors"
-                            title="Remove Charge"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          <Plus className="w-3 h-3" />
+                          <span>Add Other Charge</span>
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Paid Bilty Warning Notice */}
+                    {isEditingDocketPaid && (
+                      <div className="p-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center gap-2.5 text-xs">
+                        <Lock className="w-4 h-4 text-amber-500 shrink-0" />
+                        <div>
+                          <span className="font-bold">PAID Bilty (Charges Locked):</span>
+                          <p className="text-[11px] opacity-90 mt-0.5">
+                            Payment for this consignment has already been settled. Freight rates and delivery charges cannot be altered.
+                          </p>
                         </div>
+                      </div>
+                    )}
+
+                    {/* Standard Logistics Charges Grid */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                      {/* Loading / Hamali */}
+                      <div className="space-y-1">
+                        <label className={`text-[11px] font-semibold block ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                          Loading / Hamali (₹)
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          disabled={isEditingDocketPaid}
+                          value={editFormData.loadingCharges}
+                          onChange={(e) => updateEditField('loadingCharges', e.target.value)}
+                          placeholder="0"
+                          className={`w-full px-2.5 py-1.5 rounded-lg border text-xs focus:outline-none ${
+                            isEditingDocketPaid
+                              ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-800'
+                              : isDark
+                              ? 'border-slate-700 bg-slate-800 text-white focus:border-cyan-400'
+                              : 'border-slate-300 bg-white text-slate-900 focus:border-blue-500'
+                          }`}
+                        />
+                      </div>
+
+                      {/* Unloading */}
+                      <div className="space-y-1">
+                        <label className={`text-[11px] font-semibold block ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                          Unloading (₹)
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          disabled={isEditingDocketPaid}
+                          value={editFormData.unloadingCharges}
+                          onChange={(e) => updateEditField('unloadingCharges', e.target.value)}
+                          placeholder="0"
+                          className={`w-full px-2.5 py-1.5 rounded-lg border text-xs focus:outline-none ${
+                            isEditingDocketPaid
+                              ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-800'
+                              : isDark
+                              ? 'border-slate-700 bg-slate-800 text-white focus:border-cyan-400'
+                              : 'border-slate-300 bg-white text-slate-900 focus:border-blue-500'
+                          }`}
+                        />
+                      </div>
+
+                      {/* Door Delivery */}
+                      <div className="space-y-1">
+                        <label className={`text-[11px] font-semibold block ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                          Door Delivery (₹)
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          disabled={isEditingDocketPaid}
+                          value={editFormData.doorDeliveryCharges}
+                          onChange={(e) => updateEditField('doorDeliveryCharges', e.target.value)}
+                          placeholder="0"
+                          className={`w-full px-2.5 py-1.5 rounded-lg border text-xs focus:outline-none ${
+                            isEditingDocketPaid
+                              ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-800'
+                              : isDark
+                              ? 'border-slate-700 bg-slate-800 text-white focus:border-cyan-400'
+                              : 'border-slate-300 bg-white text-slate-900 focus:border-blue-500'
+                          }`}
+                        />
+                      </div>
+
+                      {/* Other Charges / Bilty Fee */}
+                      <div className="space-y-1">
+                        <label className={`text-[11px] font-semibold block ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                          Bilty Fee / Misc (₹)
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          disabled={isEditingDocketPaid}
+                          value={editFormData.otherCharges}
+                          onChange={(e) => updateEditField('otherCharges', e.target.value)}
+                          placeholder="0"
+                          className={`w-full px-2.5 py-1.5 rounded-lg border text-xs focus:outline-none ${
+                            isEditingDocketPaid
+                              ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-800'
+                              : isDark
+                              ? 'border-slate-700 bg-slate-800 text-white focus:border-cyan-400'
+                              : 'border-slate-300 bg-white text-slate-900 focus:border-blue-500'
+                          }`}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Dynamic Custom Charges Added by User in Edit Modal */}
+                    {editFormData.customCharges && editFormData.customCharges.length > 0 && (
+                      <div className="space-y-2 pt-1 border-t border-slate-700/40">
+                        <span className={`text-[10px] font-bold uppercase tracking-wider block ${isDark ? 'text-cyan-400' : 'text-blue-600'}`}>
+                          Custom Charges Added ({editFormData.customCharges.length})
+                        </span>
+                        {editFormData.customCharges.map((item, index) => (
+                          <div
+                            key={item.id || index}
+                            className={`flex items-center gap-2 p-2 rounded-xl border ${isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
+                              }`}
+                          >
+                            <div className="flex-1">
+                              <input
+                                type="text"
+                                list={`edit-charge-suggestions-${index}`}
+                                value={item.name}
+                                disabled={isEditingDocketPaid}
+                                placeholder="Charge Name (e.g. Toll / Demurrage)"
+                                onChange={(e) => {
+                                  const updatedList = [...editFormData.customCharges];
+                                  updatedList[index] = { ...updatedList[index], name: e.target.value };
+                                  updateEditField('customCharges', updatedList, updatedList);
+                                }}
+                                className={`w-full px-2.5 py-1.5 rounded-lg border text-xs focus:outline-none ${
+                                  isEditingDocketPaid
+                                    ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-800'
+                                    : isDark
+                                    ? 'border-slate-700 bg-slate-800 text-white focus:border-cyan-400'
+                                    : 'border-slate-300 bg-slate-50 text-slate-900 focus:border-blue-500'
+                                }`}
+                              />
+                              <datalist id={`edit-charge-suggestions-${index}`}>
+                                <option value="Toll / Border Tax" />
+                                <option value="Cartage / Pickup Charge" />
+                                <option value="FOV / Insurance Charge" />
+                                <option value="Demurrage / Detention" />
+                                <option value="Fuel Surcharge" />
+                                <option value="Handling / Labour" />
+                                <option value="Statistical / Misc Charge" />
+                              </datalist>
+                            </div>
+                            <div className="w-28 relative">
+                              <span className="absolute left-2.5 top-1.5 text-xs text-slate-400">₹</span>
+                              <input
+                                type="number"
+                                min="0"
+                                disabled={isEditingDocketPaid}
+                                value={item.amount}
+                                placeholder="0"
+                                onChange={(e) => {
+                                  const updatedList = [...editFormData.customCharges];
+                                  updatedList[index] = { ...updatedList[index], amount: e.target.value };
+                                  updateEditField('customCharges', updatedList, updatedList);
+                                }}
+                                className={`w-full pl-6 pr-2.5 py-1.5 rounded-lg border text-xs font-mono font-bold focus:outline-none ${
+                                  isEditingDocketPaid
+                                    ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-800'
+                                    : isDark
+                                    ? 'border-slate-700 bg-slate-800 text-white focus:border-cyan-400'
+                                    : 'border-slate-300 bg-slate-50 text-slate-900 focus:border-blue-500'
+                                }`}
+                              />
+                            </div>
+                            {!isEditingDocketPaid && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const updatedList = editFormData.customCharges.filter((_, i) => i !== index);
+                                  updateEditField('customCharges', updatedList, updatedList);
+                                }}
+                                className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-500/10 transition-colors"
+                                title="Remove Charge"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Discount & GST row in Edit Modal */}
+                    <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-700/40">
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-semibold flex items-center justify-between text-rose-400">
+                          <span>Discount (₹)</span>
+                          <span className="text-[10px] text-slate-500">Deduction</span>
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          disabled={isEditingDocketPaid}
+                          value={editFormData.discountAmount}
+                          onChange={(e) => updateEditField('discountAmount', e.target.value)}
+                          placeholder="0"
+                          className={`w-full px-2.5 py-1.5 rounded-lg border text-xs focus:outline-none ${
+                            isEditingDocketPaid
+                              ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-800'
+                              : isDark
+                              ? 'border-slate-700 bg-slate-800 text-white focus:border-cyan-400'
+                              : 'border-slate-300 bg-white text-slate-900 focus:border-blue-500'
+                          }`}
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className={`text-[11px] font-semibold block ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                          GST Rate (%)
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="28"
+                          disabled={isEditingDocketPaid}
+                          value={editFormData.taxPercent}
+                          onChange={(e) => updateEditField('taxPercent', e.target.value)}
+                          placeholder="0"
+                          className={`w-full px-2.5 py-1.5 rounded-lg border text-xs focus:outline-none ${
+                            isEditingDocketPaid
+                              ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-800'
+                              : isDark
+                              ? 'border-slate-700 bg-slate-800 text-white focus:border-cyan-400'
+                              : 'border-slate-300 bg-white text-slate-900 focus:border-blue-500'
+                          }`}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Total Freight */}
+                  <div className="space-y-1 col-span-2">
+                    <div className="flex items-center justify-between">
+                      <label className={`text-xs font-bold ${isDark ? 'text-cyan-400' : 'text-blue-600'}`}>
+                        Total Docket Freight (₹) *
+                      </label>
+                      <span className={`text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                        {isEditingDocketPaid
+                          ? 'Charges locked for PAID bilty'
+                          : 'Auto-calculated from Basic + Charges - Discount + Tax (Editable)'}
+                      </span>
+                    </div>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      required
+                      disabled={isEditingDocketPaid}
+                      value={editFormData.totalAmount}
+                      onChange={(e) => updateEditField('totalAmount', e.target.value)}
+                      className={`w-full px-3 py-2.5 rounded-xl border text-sm font-mono font-black focus:outline-none transition-colors ${
+                        isEditingDocketPaid
+                          ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-800 text-slate-500'
+                          : isDark
+                          ? 'border-slate-800 bg-slate-900/90 text-cyan-300 focus:border-cyan-400'
+                          : 'border-blue-200 bg-blue-50/50 text-blue-700 focus:border-blue-500 focus:bg-white'
+                      }`}
+                    />
+                  </div>
+
+                  {/* Payment Mode */}
+                  <div className="space-y-1 col-span-2">
+                    <div className="flex items-center justify-between">
+                      <label className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                        Payment Term *
+                      </label>
+                      {isEditingDocketPaid && (
+                        <span className="text-[10px] text-emerald-500 font-bold flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3" /> Payment Settled (PAID)
+                        </span>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      {['PAID', 'TO_PAY', 'TBB'].map((mode) => (
+                        <button
+                          key={mode}
+                          type="button"
+                          disabled={isEditingDocketPaid}
+                          onClick={() => setEditFormData({ ...editFormData, paymentMode: mode })}
+                          className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all ${
+                            isEditingDocketPaid ? 'opacity-60 cursor-not-allowed ' : ''
+                          }${editFormData.paymentMode === mode
+                              ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
+                              : isDark
+                                ? 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                                : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200 hover:text-slate-900'
+                            }`}
+                        >
+                          {mode === 'TBB' ? 'T.B.B. (Bill)' : mode}
+                        </button>
                       ))}
                     </div>
-                  )}
+                  </div>
 
-                  {/* Discount & GST row in Edit Modal */}
-                  <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-700/40">
-                    <div className="space-y-1">
-                      <label className="text-[11px] font-semibold flex items-center justify-between text-rose-400">
-                        <span>Discount (₹)</span>
-                        <span className="text-[10px] text-slate-500">Deduction</span>
+                  {/* Transport Mode */}
+                  <div className="space-y-1 col-span-2">
+                    <div className="flex items-center justify-between">
+                      <label className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                        Mode of Transport *
                       </label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={editFormData.discountAmount}
-                        onChange={(e) => updateEditField('discountAmount', e.target.value)}
-                        placeholder="0"
-                        className={`w-full px-2.5 py-1.5 rounded-lg border text-xs focus:outline-none ${
-                          isDark 
-                            ? 'border-slate-700 bg-slate-800 text-white focus:border-cyan-400' 
-                            : 'border-slate-300 bg-white text-slate-900 focus:border-blue-500'
-                        }`}
-                      />
+                      {isEditingDocketPaid && (
+                        <span className="text-[10px] text-amber-500 font-bold flex items-center gap-1">
+                          <Lock className="w-3 h-3" /> Locked (PAID)
+                        </span>
+                      )}
                     </div>
-
-                    <div className="space-y-1">
-                      <label className={`text-[11px] font-semibold block ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-                        GST Rate (%)
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        max="28"
-                        value={editFormData.taxPercent}
-                        onChange={(e) => updateEditField('taxPercent', e.target.value)}
-                        placeholder="0"
-                        className={`w-full px-2.5 py-1.5 rounded-lg border text-xs focus:outline-none ${
-                          isDark 
-                            ? 'border-slate-700 bg-slate-800 text-white focus:border-cyan-400' 
-                            : 'border-slate-300 bg-white text-slate-900 focus:border-blue-500'
-                        }`}
-                      />
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { id: 'ROAD', label: 'By Road', icon: Truck },
+                        { id: 'RAIL', label: 'By Rail', icon: Train },
+                        { id: 'AIR', label: 'By Air', icon: Plane },
+                      ].map((m) => {
+                        const IconComp = m.icon;
+                        const isSelected = (editFormData.transportMode || 'ROAD') === m.id;
+                        return (
+                          <button
+                            key={m.id}
+                            type="button"
+                            disabled={isEditingDocketPaid}
+                            onClick={() => setEditFormData({ ...editFormData, transportMode: m.id })}
+                            className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+                              isEditingDocketPaid ? 'opacity-60 cursor-not-allowed ' : ''
+                            }${isSelected
+                                ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
+                                : isDark
+                                  ? 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                                  : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200 hover:text-slate-900'
+                              }`}
+                          >
+                            <IconComp className="w-3.5 h-3.5 shrink-0" />
+                            <span>{m.label}</span>
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
-                </div>
 
-                {/* Total Freight */}
-                <div className="space-y-1 col-span-2">
-                  <div className="flex items-center justify-between">
-                    <label className={`text-xs font-bold ${isDark ? 'text-cyan-400' : 'text-blue-600'}`}>
-                      Total Docket Freight (₹) *
-                    </label>
-                    <span className={`text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                      Auto-calculated from Basic + Charges - Discount + Tax (Editable)
-                    </span>
-                  </div>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    required
-                    value={editFormData.totalAmount}
-                    onChange={(e) => updateEditField('totalAmount', e.target.value)}
-                    className={`w-full px-3 py-2.5 rounded-xl border text-sm font-mono font-black focus:outline-none transition-colors ${
-                      isDark 
-                        ? 'border-slate-800 bg-slate-900/90 text-cyan-300 focus:border-cyan-400' 
-                        : 'border-blue-200 bg-blue-50/50 text-blue-700 focus:border-blue-500 focus:bg-white'
-                    }`}
-                  />
-                </div>
-
-                {/* Payment Mode */}
-                <div className="space-y-1 col-span-2">
-                  <label className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                    Payment Term *
-                  </label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {['PAID', 'TO_PAY', 'TBB'].map((mode) => (
+                  {/* Delivery Type */}
+                  <div className="space-y-1 col-span-2">
+                    <div className="flex items-center justify-between">
+                      <label className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                        Delivery Type *
+                      </label>
+                      {isEditingDocketPaid ? (
+                        <span className="text-[10px] text-amber-500 font-bold flex items-center gap-1">
+                          <Lock className="w-3 h-3" /> Locked for PAID Bilty
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-slate-400">
+                          {editFormData.deliveryType === 'DOOR_DELIVERY' ? 'Doorstep Delivery' : 'Godown Delivery'}
+                        </span>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
                       <button
-                        key={mode}
                         type="button"
-                        onClick={() => setEditFormData({ ...editFormData, paymentMode: mode })}
-                        className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all ${
-                          editFormData.paymentMode === mode
-                            ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
-                            : isDark 
-                              ? 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white' 
-                              : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200 hover:text-slate-900'
+                        disabled={isEditingDocketPaid}
+                        onClick={() => updateEditField('deliveryType', 'GODOWN_DELIVERY')}
+                        className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all ${
+                          isEditingDocketPaid ? 'opacity-60 cursor-not-allowed ' : ''
+                        }${(editFormData.deliveryType || 'GODOWN_DELIVERY') === 'GODOWN_DELIVERY'
+                          ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
+                          : isDark
+                            ? 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                            : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200 hover:text-slate-900'
                         }`}
                       >
-                        {mode === 'TBB' ? 'T.B.B. (Bill)' : mode}
+                        <Building2 className="w-3.5 h-3.5" />
+                        <span>Godown Delivery</span>
                       </button>
-                    ))}
-                  </div>
-                </div>
 
-                {/* Transport Mode */}
-                <div className="space-y-1 col-span-2">
-                  <label className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                    Mode of Transport *
-                  </label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {[
-                      { id: 'ROAD', label: 'By Road', icon: Truck },
-                      { id: 'RAIL', label: 'By Rail', icon: Train },
-                      { id: 'AIR', label: 'By Air', icon: Plane },
-                    ].map((m) => {
-                      const IconComp = m.icon;
-                      const isSelected = (editFormData.transportMode || 'ROAD') === m.id;
-                      return (
-                        <button
-                          key={m.id}
-                          type="button"
-                          onClick={() => setEditFormData({ ...editFormData, transportMode: m.id })}
-                          className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
-                            isSelected
-                              ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
-                              : isDark 
-                                ? 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white' 
-                                : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200 hover:text-slate-900'
-                          }`}
-                        >
-                          <IconComp className="w-3.5 h-3.5 shrink-0" />
-                          <span>{m.label}</span>
-                        </button>
-                      );
-                    })}
+                      <button
+                        type="button"
+                        disabled={isEditingDocketPaid}
+                        onClick={() => updateEditField('deliveryType', 'DOOR_DELIVERY')}
+                        className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all ${
+                          isEditingDocketPaid ? 'opacity-60 cursor-not-allowed ' : ''
+                        }${editFormData.deliveryType === 'DOOR_DELIVERY'
+                          ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm'
+                          : isDark
+                            ? 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                            : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200 hover:text-slate-900'
+                        }`}
+                      >
+                        <Truck className="w-3.5 h-3.5" />
+                        <span>Door Delivery</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
 
               </div>
 
               {/* Modal Footer */}
-              <div className={`p-4 px-6 border-t flex items-center justify-end space-x-3 shrink-0 ${
-                isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200'
-              }`}>
+              <div className={`p-4 px-6 border-t flex items-center justify-end space-x-3 shrink-0 ${isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200'
+                }`}>
                 <button
                   type="button"
                   disabled={isSubmittingEdit}
                   onClick={() => setIsEditModalOpen(false)}
-                  className={`px-4 py-2 rounded-xl border text-xs font-bold transition-colors ${
-                    isDark 
-                      ? 'border-slate-800 bg-slate-900 text-slate-400 hover:text-white' 
+                  className={`px-4 py-2 rounded-xl border text-xs font-bold transition-colors ${isDark
+                      ? 'border-slate-800 bg-slate-900 text-slate-400 hover:text-white'
                       : 'border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200 hover:text-slate-900'
-                  }`}
+                    }`}
                 >
                   Cancel
                 </button>
@@ -4412,9 +5163,8 @@ export default function BookingsMasterPage() {
             onClick={() => !isSubmittingDelete && setIsDeleteModalOpen(false)}
           />
 
-          <div className={`relative w-full max-w-md my-auto rounded-3xl border shadow-2xl p-6 z-10 ${
-            isDark ? 'bg-[#0B1020] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
-          }`}>
+          <div className={`relative w-full max-w-md my-auto rounded-3xl border shadow-2xl p-6 z-10 ${isDark ? 'bg-[#0B1020] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
+            }`}>
             <div className="flex items-center space-x-3">
               <div className="w-10 h-10 rounded-xl bg-rose-500/20 text-rose-400 border border-rose-500/30 flex items-center justify-center shrink-0">
                 <Trash2 className="w-5 h-5" />
@@ -4425,11 +5175,10 @@ export default function BookingsMasterPage() {
               </div>
             </div>
 
-            <div className={`mt-4 p-3.5 rounded-xl border text-xs space-y-1 ${
-              isDark 
-                ? 'bg-rose-950/20 border-rose-500/20 text-rose-300' 
+            <div className={`mt-4 p-3.5 rounded-xl border text-xs space-y-1 ${isDark
+                ? 'bg-rose-950/20 border-rose-500/20 text-rose-300'
                 : 'bg-rose-50 border-rose-200 text-rose-800'
-            }`}>
+              }`}>
               <p className="font-bold">
                 Are you sure you want to delete Docket <span className={`font-mono underline ${isDark ? 'text-white' : 'text-slate-900 font-bold'}`}>{deletingDocket.lr_number}</span>?
               </p>
@@ -4443,11 +5192,10 @@ export default function BookingsMasterPage() {
                 type="button"
                 disabled={isSubmittingDelete}
                 onClick={() => setIsDeleteModalOpen(false)}
-                className={`px-4 py-2 rounded-xl border text-xs font-bold transition-colors ${
-                  isDark 
-                    ? 'border-slate-800 bg-slate-900 text-slate-400 hover:text-white' 
+                className={`px-4 py-2 rounded-xl border text-xs font-bold transition-colors ${isDark
+                    ? 'border-slate-800 bg-slate-900 text-slate-400 hover:text-white'
                     : 'border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200 hover:text-slate-900'
-                }`}
+                  }`}
               >
                 Cancel
               </button>
@@ -4474,191 +5222,296 @@ export default function BookingsMasterPage() {
       {/* ======================================================== */}
       {/* BILTY (LR) PRINT PREVIEW MODAL - LARGE SLIP TYPE */}
       {/* ======================================================== */}
-      {isPrintModalOpen && printConsignment && (
-        <div className="fixed inset-0 z-50 overflow-y-auto p-2 sm:p-4 bg-black/85 backdrop-blur-md flex min-h-full items-center justify-center">
+      {isPrintModalOpen && printConsignment && typeof document !== 'undefined' && createPortal(
+        <div id="bilty-modal-portal">
           {/* Print media CSS */}
-          <style dangerouslySetInnerHTML={{ __html: `
+          <style dangerouslySetInnerHTML={{
+            __html: `
             @media print {
               @page {
                 size: A4 portrait;
-                margin: 8mm 6mm;
+                margin: 6mm 6mm;
               }
-              body * {
-                visibility: hidden !important;
+
+              /* Force browser to print exact colors, stamps, and dark total bars */
+              *, *::before, *::after {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
               }
-              #bilty-slip-printable-area, #bilty-slip-printable-area * {
-                visibility: visible !important;
+
+              html, body {
+                width: 100% !important;
+                height: auto !important;
+                min-height: 0 !important;
+                overflow: visible !important;
+                background: #ffffff !important;
+                color: #000000 !important;
+                margin: 0 !important;
+                padding: 0 !important;
               }
-              #bilty-slip-printable-area {
-                position: absolute !important;
-                left: 0 !important;
-                top: 0 !important;
+
+              /* Hide the entire background web application */
+              body > *:not(#bilty-modal-portal) {
+                display: none !important;
+              }
+
+              #bilty-modal-portal {
+                display: block !important;
+                position: static !important;
                 width: 100% !important;
                 margin: 0 !important;
                 padding: 0 !important;
-                background: white !important;
-                color: black !important;
+                background: #ffffff !important;
               }
+
+              /* Remove modal backdrop fixed overlay & flex centering */
+              #bilty-modal-backdrop {
+                position: static !important;
+                inset: auto !important;
+                display: block !important;
+                width: 100% !important;
+                height: auto !important;
+                min-height: 0 !important;
+                max-height: none !important;
+                overflow: visible !important;
+                background: transparent !important;
+                backdrop-filter: none !important;
+                -webkit-backdrop-filter: none !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                border: none !important;
+                box-shadow: none !important;
+              }
+
+              /* Remove dialog max-height (92vh) and overflow clipping */
+              #bilty-modal-dialog {
+                position: static !important;
+                display: block !important;
+                width: 100% !important;
+                max-width: 100% !important;
+                height: auto !important;
+                max-height: none !important;
+                overflow: visible !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                border: none !important;
+                box-shadow: none !important;
+                border-radius: 0 !important;
+                background: transparent !important;
+              }
+
+              /* Remove body scroll container (overflow-y-auto) */
+              #bilty-modal-body {
+                position: static !important;
+                display: block !important;
+                width: 100% !important;
+                height: auto !important;
+                max-height: none !important;
+                overflow: visible !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                background: transparent !important;
+              }
+
+              /* Hide toolbar and footer info bar from print */
+              #bilty-modal-toolbar,
+              #bilty-modal-footer,
+              .no-print {
+                display: none !important;
+              }
+
+              /* Printable area starts right at top of paper */
+              #bilty-slip-printable-area {
+                display: block !important;
+                position: static !important;
+                width: 100% !important;
+                max-width: 100% !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                background: #ffffff !important;
+                color: #000000 !important;
+              }
+
+              /* Bilty Slip Sheet styling for paper */
+              .bilty-slip-sheet {
+                display: block !important;
+                position: relative !important;
+                box-shadow: none !important;
+                border: 2px solid #000000 !important;
+                border-radius: 0 !important;
+                width: 100% !important;
+                max-width: 100% !important;
+                margin: 0 0 10mm 0 !important;
+                padding: 4mm 5mm !important;
+                background: #ffffff !important;
+                color: #000000 !important;
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+                box-sizing: border-box !important;
+              }
+
+              /* Triplicate page break: each copy on its own clean single A4 sheet */
               .bilty-page-break {
                 page-break-after: always !important;
                 break-after: page !important;
-                border: none !important;
+                height: 0 !important;
                 margin: 0 !important;
                 padding: 0 !important;
-              }
-              .bilty-slip-sheet {
-                box-shadow: none !important;
-                border: 2px solid #000 !important;
-                margin: 0 0 10mm 0 !important;
-                padding: 5mm !important;
-              }
-              .no-print {
-                display: none !important;
+                border: none !important;
+                visibility: hidden !important;
               }
             }
           `}} />
 
           {/* Modal Container */}
-          <div className={`relative w-full max-w-5xl rounded-3xl border shadow-2xl overflow-hidden flex flex-col max-h-[92vh] my-auto z-10 transition-colors ${
-            isDark ? 'bg-[#0B1020] border-slate-800 text-white' : 'bg-slate-100 border-slate-300 text-slate-900'
-          }`}>
-            
-            {/* Top Toolbar (Non-printable) */}
-            <div className={`p-4 px-6 border-b flex flex-wrap items-center justify-between gap-3 shrink-0 ${
-              isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200'
-            }`}>
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 rounded-xl bg-blue-600/20 text-blue-500 border border-blue-500/30 flex items-center justify-center shrink-0">
-                  <FileText className="w-5 h-5" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-base font-bold">Consignment Note (Bilty / LR)</h3>
-                    <span className="font-mono text-xs px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 font-bold border border-blue-500/30">
-                      {printConsignment.lr_number}
-                    </span>
+          <div
+            id="bilty-modal-backdrop"
+            className="fixed inset-0 z-50 overflow-y-auto p-2 sm:p-4 bg-black/85 backdrop-blur-md flex min-h-full items-center justify-center"
+          >
+            <div
+              id="bilty-modal-dialog"
+              className={`relative w-full max-w-5xl rounded-3xl border shadow-2xl overflow-hidden flex flex-col max-h-[92vh] my-auto z-10 transition-colors ${isDark ? 'bg-[#0B1020] border-slate-800 text-white' : 'bg-slate-100 border-slate-300 text-slate-900'
+                }`}
+            >
+
+              {/* Top Toolbar (Non-printable) */}
+              <div
+                id="bilty-modal-toolbar"
+                className={`p-4 px-6 border-b flex flex-wrap items-center justify-between gap-3 shrink-0 ${isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200'
+                  }`}
+              >
+                <div className="flex items-center space-x-3">
+                  <div className="w-10 h-10 rounded-xl bg-blue-600/20 text-blue-500 border border-blue-500/30 flex items-center justify-center shrink-0">
+                    <FileText className="w-5 h-5" />
                   </div>
-                  <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                    Official 3-Part Transport Docket • {printConsignment.origin_city} ➔ {printConsignment.destination_city}
-                  </p>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-base font-bold">Consignment Note (Bilty / LR)</h3>
+                      <span className="font-mono text-xs px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 font-bold border border-blue-500/30">
+                        {printConsignment.lr_number}
+                      </span>
+                    </div>
+                    <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                      Official 3-Part Transport Docket • {printConsignment.origin_city} ➔ {printConsignment.destination_city}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Copy Selector Pills */}
+                <div className={`flex items-center p-1 rounded-xl border text-xs font-semibold ${isDark ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-200'
+                  }`}>
+                  <button
+                    type="button"
+                    onClick={() => setActivePrintCopy('ALL')}
+                    className={`px-3 py-1.5 rounded-lg transition-all ${activePrintCopy === 'ALL'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                  >
+                    Triplicate (All 3 Copies)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActivePrintCopy('CONSIGNOR')}
+                    className={`px-3 py-1.5 rounded-lg transition-all ${activePrintCopy === 'CONSIGNOR'
+                        ? 'bg-rose-600 text-white shadow-xs'
+                        : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                  >
+                    Consignor Copy
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActivePrintCopy('CONSIGNEE')}
+                    className={`px-3 py-1.5 rounded-lg transition-all ${activePrintCopy === 'CONSIGNEE'
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                  >
+                    Consignee Copy
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActivePrintCopy('DRIVER')}
+                    className={`px-3 py-1.5 rounded-lg transition-all ${activePrintCopy === 'DRIVER'
+                        ? 'bg-cyan-600 text-white shadow-xs'
+                        : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                  >
+                    Driver / Transporter
+                  </button>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex items-center space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (typeof window !== 'undefined') window.print();
+                    }}
+                    className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 flex items-center space-x-2 transition-transform active:scale-95 cursor-pointer"
+                  >
+                    <Printer className="w-4 h-4" />
+                    <span>Print Slip</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsPrintModalOpen(false)}
+                    className={`p-2 rounded-xl border transition-colors cursor-pointer ${isDark
+                        ? 'border-slate-800 bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800'
+                        : 'border-slate-200 bg-slate-100 text-slate-600 hover:text-slate-900 hover:bg-slate-200'
+                      }`}
+                    title="Close preview"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
 
-              {/* Copy Selector Pills */}
-              <div className={`flex items-center p-1 rounded-xl border text-xs font-semibold ${
-                isDark ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-200'
-              }`}>
-                <button
-                  type="button"
-                  onClick={() => setActivePrintCopy('ALL')}
-                  className={`px-3 py-1.5 rounded-lg transition-all ${
-                    activePrintCopy === 'ALL'
-                      ? 'bg-blue-600 text-white shadow-xs'
-                      : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+              {/* Modal Body / Scrollable Sheet Preview */}
+              <div
+                id="bilty-modal-body"
+                className={`flex-1 overflow-y-auto p-4 sm:p-6 ${isDark ? 'bg-slate-950/70' : 'bg-slate-200/60'
                   }`}
-                >
-                  Triplicate (All 3 Copies)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActivePrintCopy('CONSIGNOR')}
-                  className={`px-3 py-1.5 rounded-lg transition-all ${
-                    activePrintCopy === 'CONSIGNOR'
-                      ? 'bg-rose-600 text-white shadow-xs'
-                      : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  Consignor Copy
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActivePrintCopy('CONSIGNEE')}
-                  className={`px-3 py-1.5 rounded-lg transition-all ${
-                    activePrintCopy === 'CONSIGNEE'
-                      ? 'bg-emerald-600 text-white shadow-xs'
-                      : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  Consignee Copy
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActivePrintCopy('DRIVER')}
-                  className={`px-3 py-1.5 rounded-lg transition-all ${
-                    activePrintCopy === 'DRIVER'
-                      ? 'bg-cyan-600 text-white shadow-xs'
-                      : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  Driver / Transporter
-                </button>
+              >
+                <div id="bilty-slip-printable-area" className="w-full">
+                  {(activePrintCopy === 'ALL'
+                    ? ['1. CONSIGNOR COPY (FOR SENDER)', '2. CONSIGNEE COPY (FOR RECEIVER)', '3. DRIVER / TRANSPORTER COPY (FOR RECORDS)']
+                    : activePrintCopy === 'CONSIGNOR'
+                      ? ['CONSIGNOR COPY (FOR SENDER)']
+                      : activePrintCopy === 'CONSIGNEE'
+                        ? ['CONSIGNEE COPY (FOR RECEIVER)']
+                        : ['DRIVER / TRANSPORTER COPY (FOR RECORDS)']
+                  ).map((copyTitle, idx, arr) => (
+                    <div key={copyTitle}>
+                      {renderBiltySlipSheet(printConsignment, copyTitle)}
+                      {idx < arr.length - 1 && (
+                        <div className="bilty-page-break my-6 border-b-2 border-dashed border-slate-400 no-print" />
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
 
-              {/* Action Buttons */}
-              <div className="flex items-center space-x-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (typeof window !== 'undefined') window.print();
-                  }}
-                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 flex items-center space-x-2 transition-transform active:scale-95"
-                >
-                  <Printer className="w-4 h-4" />
-                  <span>Print Slip</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsPrintModalOpen(false)}
-                  className={`p-2 rounded-xl border transition-colors ${
-                    isDark
-                      ? 'border-slate-800 bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800'
-                      : 'border-slate-200 bg-slate-100 text-slate-600 hover:text-slate-900 hover:bg-slate-200'
+              {/* Bottom Footer info bar */}
+              <div
+                id="bilty-modal-footer"
+                className={`p-3 px-6 border-t flex items-center justify-between text-xs shrink-0 ${isDark ? 'bg-slate-900/60 border-slate-800 text-slate-400' : 'bg-white border-slate-200 text-slate-500'
                   }`}
-                  title="Close preview"
-                >
-                  <X className="w-4 h-4" />
-                </button>
+              >
+                <span className="flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                  <span>Compliant with Indian Carriage by Road Act 2007 & Rule 138 of CGST</span>
+                </span>
+                <span>
+                  Press <strong>Ctrl + P</strong> or click <strong>Print Slip</strong> to generate physical bilty or save as PDF.
+                </span>
               </div>
-            </div>
 
-            {/* Modal Body / Scrollable Sheet Preview */}
-            <div className={`flex-1 overflow-y-auto p-4 sm:p-6 ${
-              isDark ? 'bg-slate-950/70' : 'bg-slate-200/60'
-            }`}>
-              <div id="bilty-slip-printable-area" className="w-full">
-                {(activePrintCopy === 'ALL'
-                  ? ['1. CONSIGNOR COPY (FOR SENDER)', '2. CONSIGNEE COPY (FOR RECEIVER)', '3. DRIVER / TRANSPORTER COPY (FOR RECORDS)']
-                  : activePrintCopy === 'CONSIGNOR'
-                  ? ['CONSIGNOR COPY (FOR SENDER)']
-                  : activePrintCopy === 'CONSIGNEE'
-                  ? ['CONSIGNEE COPY (FOR RECEIVER)']
-                  : ['DRIVER / TRANSPORTER COPY (FOR RECORDS)']
-                ).map((copyTitle, idx, arr) => (
-                  <div key={copyTitle}>
-                    {renderBiltySlipSheet(printConsignment, copyTitle)}
-                    {idx < arr.length - 1 && (
-                      <div className="bilty-page-break my-6 border-b-2 border-dashed border-slate-400 no-print" />
-                    )}
-                  </div>
-                ))}
-              </div>
             </div>
-
-            {/* Bottom Footer info bar */}
-            <div className={`p-3 px-6 border-t flex items-center justify-between text-xs shrink-0 ${
-              isDark ? 'bg-slate-900/60 border-slate-800 text-slate-400' : 'bg-white border-slate-200 text-slate-500'
-            }`}>
-              <span className="flex items-center gap-1.5">
-                <ShieldCheck className="w-4 h-4 text-emerald-500" />
-                <span>Compliant with Indian Carriage by Road Act 2007 & Rule 138 of CGST</span>
-              </span>
-              <span>
-                Press <strong>Ctrl + P</strong> or click <strong>Print Slip</strong> to generate physical bilty or save as PDF.
-              </span>
-            </div>
-
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Date Range Export Modal */}

@@ -186,6 +186,7 @@ module.exports = (sequelize) => {
         'LOADED',
         'DISPATCHED',
         'IN_TRANSIT',
+        'RECEIVED_AT_HUB',
         'REACHED_DESTINATION',
         'OUT_FOR_DELIVERY',
         'DELIVERED',

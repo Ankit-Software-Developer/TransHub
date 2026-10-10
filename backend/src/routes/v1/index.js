@@ -19,6 +19,7 @@ const roleRoutes = require('./roleRoutes');
 const userRoutes = require('./userRoutes');
 const approvalRoutes = require('./approvalRoutes');
 const auditLogRoutes = require('./auditLogRoutes');
+const gpsRoutes = require('./gpsRoutes');
 
 router.use('/auth', authRoutes);
 router.use('/dashboard', dashboardRoutes);
@@ -39,5 +40,6 @@ router.use('/audit-logs', auditLogRoutes);
 router.use('/organizations', organizationRoutes);
 router.use('/tracking', trackingRoutes);
 router.use('/roles', roleRoutes);
+router.use('/gps', gpsRoutes);
 
 module.exports = router;

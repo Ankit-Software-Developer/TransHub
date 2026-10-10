@@ -10,6 +10,7 @@ export const ROUTE_PERMISSIONS = {
   '/branches': ['branch.view', 'branch.create', 'branch.manage', 'branch.delete'],
   '/fleet': ['vehicle.view', 'vehicle.create', 'vehicle.manage', 'vehicle.delete', 'driver.manage', 'vehicle.export'],
   '/users': ['role.manage', 'settings.manage', 'driver.manage', 'vehicle.manage', 'ADMIN'],
+  '/staff': ['role.manage', 'settings.manage', 'user.manage', 'ADMIN'],
   '/control-tower': ['trip.view', 'booking.view', 'dispatch.view', 'vehicle.view'],
   '/load-planning': ['dispatch.view', 'dispatch.create', 'dispatch.manage', 'booking.view'],
   '/unload-planning': ['dispatch.view', 'dispatch.manage', 'trip.view', 'trip.manage', 'booking.view'],
@@ -23,7 +24,7 @@ export const ROUTE_PERMISSIONS = {
   '/approvals': ['*'],
   '/settings': ['ADMIN'],
   '/roles': ['ADMIN'],
-  '/audit-logs': ['ADMIN'],
+  '/audit-logs': ['audit.view', 'AUDITOR', 'ADMIN'],
   '/deliveries': ['delivery.view', 'delivery.create', 'delivery.manage', 'delivery.delete', 'pod.verify', 'pod.upload'],
   '/pods': ['pod.verify', 'pod.upload', 'delivery.view'],
 };
@@ -56,6 +57,14 @@ export function usePermissions() {
     return (
       roles.includes('BRANCH_MANAGER') ||
       roles.includes('HUB_MANAGER')
+    );
+  }, [roles, user]);
+
+  const isAuditor = useMemo(() => {
+    if (!user) return false;
+    return (
+      roles.includes('AUDITOR') ||
+      roles.includes('AUDIT')
     );
   }, [roles, user]);
 
@@ -235,10 +244,13 @@ export function usePermissions() {
     // Reports permissions
     canViewReport: isAdmin || hasPermission('reports.view'),
     canCreateReport: isAdmin || hasPermission('reports.create'),
-    // Administration permissions
+    // Administration & Audit permissions
     canManageRoles: isAdmin || hasPermission('role.manage'),
     canManageUsers: isAdmin || hasPermission('role.manage') || hasPermission('settings.manage') || hasPermission('user.manage'),
     canManageSettings: isAdmin || hasPermission('settings.manage') || hasPermission('role.manage'),
+    isAuditor,
+    canViewAudit: isAdmin || isAuditor || hasPermission('audit.view'),
+    canExportAudit: isAdmin || isAuditor || hasPermission('audit.export') || hasPermission('data.export'),
     // Generic action shortcuts
     canExport: isAdmin || hasPermission('data.export') || hasPermission('reports.export') || hasPermission('booking.export') || hasPermission('customer.export') || hasPermission('vehicle.export') || hasPermission('invoice.export') || hasPermission('expense.export'),
     canEdit: isAdmin || hasPermission('booking.update') || hasPermission('consignment.update'),

@@ -42,7 +42,7 @@ export default function AuditLogsPage() {
   const router = useRouter();
   const { theme } = useTheme();
   const isDark = theme === 'dark';
-  const { isAdmin } = usePermissions();
+  const { isAdmin, canViewAudit, canExportAudit, hasRole, hasPermission } = usePermissions();
 
   // State
   const [logs, setLogs] = useState([]);
@@ -212,8 +212,9 @@ export default function AuditLogsPage() {
     return `${diffDays}d ago`;
   };
 
-  // Non-Admin Permission Gate View
-  if (!isAdmin) {
+  // Permission Gate View
+  const canAccessAudit = isAdmin || canViewAudit || hasRole('AUDITOR') || hasRole('AUDIT') || hasPermission('audit.view');
+  if (!canAccessAudit) {
     return (
       <div className={`flex min-h-screen ${isDark ? 'bg-[#06080F] text-slate-100' : 'bg-[#F4F6FB] text-slate-900'}`}>
         <Sidebar />
@@ -226,9 +227,9 @@ export default function AuditLogsPage() {
               <div className="w-16 h-16 rounded-2xl bg-rose-500/20 border border-rose-500/30 text-rose-500 flex items-center justify-center mx-auto">
                 <ShieldAlert className="w-8 h-8" />
               </div>
-              <h2 className="text-xl font-black">Restricted Administrator Area</h2>
+              <h2 className="text-xl font-black">Restricted Audit Area</h2>
               <p className="text-xs text-slate-400">
-                Audit trails and system mutation records are strictly confidential and accessible only to Transport Owners and System Administrators.
+                Audit trails and system mutation records are strictly confidential and accessible only to authorized roles (Administrators, Auditors, or roles granted Audit permission).
               </p>
               <Link
                 href="/dashboard"
@@ -267,7 +268,7 @@ export default function AuditLogsPage() {
                   }`}>
                     Activity & Audit Governance
                     <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20">
-                      Admin Confidential
+                      {isAdmin ? 'Admin Confidential' : 'Audit Clearance'}
                     </span>
                   </h1>
                   <p className={`text-xs sm:text-sm mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
@@ -279,18 +280,20 @@ export default function AuditLogsPage() {
 
             {/* Top Controls */}
             <div className="flex items-center gap-2.5">
-              <button
-                onClick={handleExportCSV}
-                className={`flex items-center space-x-2 px-3.5 py-2 rounded-xl border text-xs font-bold transition-all active:scale-95 ${
-                  isDark
-                    ? 'bg-slate-900/80 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
-                    : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-xs'
-                }`}
-                title="Export filtered audit trail to CSV"
-              >
-                <Download className="w-4 h-4 text-cyan-400" />
-                <span>Export CSV</span>
-              </button>
+              {(isAdmin || canExportAudit || hasPermission('audit.export') || hasPermission('data.export')) && (
+                <button
+                  onClick={handleExportCSV}
+                  className={`flex items-center space-x-2 px-3.5 py-2 rounded-xl border text-xs font-bold transition-all active:scale-95 ${
+                    isDark
+                      ? 'bg-slate-900/80 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
+                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-xs'
+                  }`}
+                  title="Export filtered audit trail to CSV"
+                >
+                  <Download className="w-4 h-4 text-cyan-400" />
+                  <span>Export CSV</span>
+                </button>
+              )}
 
               <button
                 onClick={fetchAuditData}

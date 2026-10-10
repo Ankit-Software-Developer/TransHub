@@ -1,6 +1,7 @@
 // src/controllers/podController.js
 const defaultModels = require('../models');
 const { successResponse, paginatedResponse, errorResponse } = require('../utils/apiResponse');
+const { saveMediaFile } = require('../utils/fileStorage');
 
 const listPods = async (req, res) => {
   try {
@@ -80,10 +81,17 @@ const uploadPod = async (req, res) => {
       return errorResponse(res, 'Consignment not found', null, 404);
     }
 
+    const rawUrl = (file_url || '').trim();
+    // Max 1.5 MB Base64 payload validation (~1.1 MB binary equivalent)
+    const MAX_DB_BASE64_LENGTH = Math.round(1.5 * 1024 * 1024 * 1.37);
+    if (rawUrl.startsWith('data:') && rawUrl.length > MAX_DB_BASE64_LENGTH) {
+      return errorResponse(res, 'POD image exceeds the 1 MB database storage limit. Please capture or compress a smaller photo.', null, 400);
+    }
+
     let pod = await Pod.findOne({ where: { consignment_id } });
     if (pod) {
       await pod.update({
-        file_url,
+        file_url: rawUrl,
         receiver_name: receiver_name || pod.receiver_name,
         status: 'POD_UPLOADED',
         uploaded_at: new Date(),
@@ -94,7 +102,7 @@ const uploadPod = async (req, res) => {
         tenant_id: req.tenant.tenantId,
         organization_id: req.tenant.organizationId,
         consignment_id,
-        file_url,
+        file_url: rawUrl,
         receiver_name: receiver_name || '',
         status: 'POD_UPLOADED',
         uploaded_by: req.user.id,

@@ -1,15 +1,19 @@
 // frontend/app/(owner)/dashboard/page.js
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import LoadingState from '../../../components/ui/LoadingState';
 import Sidebar from '../../../components/layout/Sidebar';
 import Navbar from '../../../components/layout/Navbar';
 import { useTheme } from '../../../components/ThemeProvider';
 import { useAuth } from '../../../hooks/useAuth';
+import { usePermissions } from '../../../hooks/usePermissions';
+import { useStore } from '../../../store/useStore';
 import api from '../../../services/api';
 import {
+  Building2,
+  RefreshCw,
   TrendingUp,
   TrendingDown,
   Truck,
@@ -42,6 +46,7 @@ import {
   Phone
 } from 'lucide-react';
 import Link from 'next/link';
+import BookingTrendChart from '../../../components/dashboard/BookingTrendChart';
 
 // Dynamically import the real Leaflet India Map with SSR disabled
 const IndiaFleetMap = dynamic(
@@ -118,14 +123,46 @@ export default function OwnerDashboard() {
 
   const isDark = theme === 'dark';
 
-  const fetchDashboardData = async () => {
+  const { isAdmin } = usePermissions();
+  const storeUser = useStore((state) => state.user);
+  const activeBranch = useStore((state) => state.activeBranch);
+
+  const userBranchId = user?.branchId || user?.branch_id || user?.branch?.id || storeUser?.branchId || storeUser?.branch_id || (activeBranch?.id && activeBranch.id !== 'ALL' ? activeBranch.id : null);
+
+  const [selectedBranchId, setSelectedBranchId] = useState(() => {
+    if (!isAdmin && userBranchId) return userBranchId;
+    return 'ALL';
+  });
+
+  // Auto-sync non-admin branch to login branch
+  useEffect(() => {
+    if (!isAdmin && userBranchId) {
+      setSelectedBranchId(userBranchId);
+    }
+  }, [isAdmin, userBranchId]);
+
+  // Resolve current active/login branch details for display
+  const currentBranch = useMemo(() => {
+    if (userBranchId && branches.length > 0) {
+      const match = branches.find((b) => String(b.id) === String(userBranchId));
+      if (match) return match;
+    }
+    if (user?.branch) return user.branch;
+    if (user?.branchName) return { branch_name: user.branchName, branch_code: user.branchCode, city: user?.city || user?.branchCity };
+    return null;
+  }, [userBranchId, branches, user]);
+
+  const fetchDashboardData = useCallback(async (branchIdToUse = selectedBranchId) => {
     try {
       setLoading(true);
+      const branchParam = branchIdToUse && branchIdToUse !== 'ALL' ? `?branch_id=${branchIdToUse}` : '';
+      const tripsParam = branchIdToUse && branchIdToUse !== 'ALL' ? `&branch_id=${branchIdToUse}` : '';
+
       const [dashRes, tripsRes, vehRes, branchRes, driverRes] = await Promise.allSettled([
-        api.get('/dashboard/owner'),
-        api.get('/trips?limit=25'),
+        api.get(`/dashboard/owner${branchParam}`),
+        api.get(`/trips?limit=25${tripsParam}`),
         api.get('/fleet/vehicles'),
-        api.get('/organizations/branches'),
+        api.get('/branches?all=true').catch(() => api.get('/organizations/branches')),
         api.get('/fleet/drivers')
       ]);
 
@@ -137,7 +174,9 @@ export default function OwnerDashboard() {
         setTrips(fetchedTrips);
       }
       if (branchRes.status === 'fulfilled' && branchRes.value?.data?.success) {
-        const bData = Array.isArray(branchRes.value.data.data) ? branchRes.value.data.data : [];
+        const bData = Array.isArray(branchRes.value.data.data?.branches)
+          ? branchRes.value.data.data.branches
+          : (Array.isArray(branchRes.value.data.data) ? branchRes.value.data.data : []);
         if (bData.length > 0) setBranches(bData);
       }
       if (driverRes.status === 'fulfilled' && driverRes.value?.data?.success) {
@@ -147,29 +186,17 @@ export default function OwnerDashboard() {
       if (vehRes.status === 'fulfilled' && vehRes.value?.data?.success) {
         const fetchedVehicles = Array.isArray(vehRes.value.data.data) ? vehRes.value.data.data : [];
         setVehicles(fetchedVehicles);
-
-        // Extract fallback branches if branch endpoint returned empty
-        setBranches((prev) => {
-          if (prev.length > 0) return prev;
-          const branchList = [];
-          fetchedVehicles.forEach((v) => {
-            if (v.branch && !branchList.some((b) => b.id === v.branch.id)) {
-              branchList.push(v.branch);
-            }
-          });
-          return branchList;
-        });
       }
     } catch (err) {
       console.error('Failed to load dashboard live data:', err);
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedBranchId]);
 
   useEffect(() => {
-    fetchDashboardData();
-  }, []);
+    fetchDashboardData(selectedBranchId);
+  }, [fetchDashboardData, selectedBranchId]);
 
   // Compute time of day greeting
   const currentHour = new Date().getHours();
@@ -180,7 +207,7 @@ export default function OwnerDashboard() {
   const kpisData = dashboardData?.kpis || {};
   const totalRevenue = parseFloat(kpisData.totalFreight || 0);
   const totalExpenses = parseFloat(kpisData.totalExpenses || 0);
-  const activeTripsCount = kpisData.inTransit || 0;
+  const activeTripsCount = kpisData.activeTrips !== undefined ? kpisData.activeTrips : (kpisData.inTransit || 0);
   const deliveriesCompletedCount = kpisData.delivered || 0;
   const totalBookingsCount = kpisData.bookings || 0;
   const delayedCount = kpisData.delayed || 0;
@@ -192,9 +219,11 @@ export default function OwnerDashboard() {
   const outstandingAmount = parseFloat(kpisData.outstanding || 0);
 
   // Calculate on-time percentage based on DB
-  const onTimePercentage = totalBookingsCount > 0
-    ? Math.max(0, Math.min(100, Math.round(((deliveriesCompletedCount) / (deliveriesCompletedCount + delayedCount || 1)) * 100)))
-    : 100;
+  const onTimePercentage = kpisData.onTimeDeliveryRate !== undefined ? kpisData.onTimeDeliveryRate : (
+    deliveriesCompletedCount > 0
+      ? Math.max(0, Math.min(100, Math.round(((deliveriesCompletedCount) / (deliveriesCompletedCount + delayedCount || 1)) * 100)))
+      : 100
+  );
 
   // Trend bars from DB or generate empty 7-day structure
   const bookingTrendBars = dashboardData?.bookingTrends && dashboardData.bookingTrends.length > 0
@@ -211,13 +240,17 @@ export default function OwnerDashboard() {
 
   const maxTrendVal = Math.max(...bookingTrendBars.map(b => b.value), 10);
 
+  const isBranchView = Boolean(selectedBranchId && selectedBranchId !== 'ALL');
+  const selectedBranchObj = branches.find((b) => String(b.id) === String(selectedBranchId));
+  const branchLabel = selectedBranchObj?.branch_name || selectedBranchObj?.name || 'Branch';
+
   // 6 KPI cards
   const kpis = [
     {
-      title: 'Total Revenue',
+      title: isBranchView ? 'Branch Revenue' : 'Total Revenue',
       value: `₹ ${totalRevenue.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`,
-      change: totalRevenue > 0 ? 'Live DB' : 'Fresh',
-      subtext: totalRevenue > 0 ? 'Consignment freight' : 'Awaiting 1st booking',
+      change: totalRevenue > 0 ? (isBranchView ? 'Revenue & TO-PAY' : 'Live DB') : '₹ 0',
+      subtext: isBranchView ? 'Booked + Delivery Collections' : (totalRevenue > 0 ? 'Consolidated freight' : 'Awaiting 1st booking'),
       positive: true,
       icon: IndianRupee,
       color: 'cyan',
@@ -227,7 +260,7 @@ export default function OwnerDashboard() {
       title: 'Active Trips',
       value: String(activeTripsCount),
       change: activeTripsCount > 0 ? `${activeTripsCount} on road` : '0 Active',
-      subtext: activeTripsCount > 0 ? 'In-transit fleet' : 'No trips running',
+      subtext: isBranchView ? 'Origin / Dest Trips' : (activeTripsCount > 0 ? 'In-transit fleet' : 'No trips running'),
       positive: true,
       icon: Truck,
       color: 'blue',
@@ -236,28 +269,28 @@ export default function OwnerDashboard() {
     {
       title: 'Deliveries Completed',
       value: String(deliveriesCompletedCount),
-      change: deliveriesCompletedCount > 0 ? 'Verified' : '0 Done',
-      subtext: deliveriesCompletedCount > 0 ? 'POD confirmed' : 'Awaiting delivery',
+      change: deliveriesCompletedCount > 0 ? 'Delivered' : '0 Done',
+      subtext: isBranchView ? 'Handed over at this godown' : (deliveriesCompletedCount > 0 ? 'Company-wide delivered' : 'Awaiting delivery'),
       positive: true,
       icon: PackageCheck,
       color: 'emerald',
       sparkline: [0, 0, 0, 0, deliveriesCompletedCount, deliveriesCompletedCount, deliveriesCompletedCount]
     },
     {
-      title: 'Total Bookings',
+      title: isBranchView ? 'Branch Bookings' : 'Total Bookings',
       value: String(totalBookingsCount),
-      change: totalBookingsCount > 0 ? 'Total' : '0 Created',
-      subtext: totalBookingsCount > 0 ? 'Registered bilties' : 'Ready for bookings',
+      change: totalBookingsCount > 0 ? 'Outward' : '0 Created',
+      subtext: isBranchView ? 'Bookings originated here' : (totalBookingsCount > 0 ? 'Registered bilties' : 'Ready for bookings'),
       positive: true,
       icon: FileText,
       color: 'sky',
       sparkline: bookingTrendBars.map(b => Math.max(b.value, 0))
     },
     {
-      title: 'Total Expenses',
+      title: isBranchView ? 'Branch Expenses' : 'Total Expenses',
       value: `₹ ${totalExpenses.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`,
       change: totalExpenses > 0 ? 'Recorded' : '₹ 0',
-      subtext: totalExpenses > 0 ? 'Fuel & toll logged' : 'No expenses logged',
+      subtext: isBranchView ? 'Logged by this branch' : (totalExpenses > 0 ? 'Fuel & toll logged' : 'No expenses logged'),
       positive: totalExpenses === 0,
       icon: TrendingDown,
       color: 'purple',
@@ -265,9 +298,9 @@ export default function OwnerDashboard() {
     },
     {
       title: 'On-Time Delivery',
-      value: totalBookingsCount > 0 ? `${onTimePercentage}%` : '100%',
+      value: `${onTimePercentage}%`,
       change: delayedCount === 0 ? 'Optimal' : `${delayedCount} Delayed`,
-      subtext: delayedCount === 0 ? 'Zero transit delays' : 'Requires intervention',
+      subtext: isBranchView ? 'Receiving hub delivery SLA' : (delayedCount === 0 ? 'Zero transit delays' : 'Requires intervention'),
       positive: delayedCount === 0,
       icon: Clock,
       color: 'teal',
@@ -423,19 +456,87 @@ export default function OwnerDashboard() {
 
         <main className="flex-1 p-5 sm:p-6 lg:p-8 space-y-6 max-w-[1720px] mx-auto w-full">
           
-          {/* Personalized Executive Greeting */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          {/* Personalized Executive Greeting & Branch Scope Controls */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2 border-b border-slate-200/50 dark:border-slate-800/50">
             <div>
-              <h1 className={`text-2xl sm:text-3xl font-black tracking-tight ${
-                isDark ? 'text-white' : 'text-slate-900'
-              }`}>
-                {greeting}, {ownerName}! 👋
-              </h1>
-              <p className={`text-xs sm:text-sm mt-0.5 ${
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <h1 className={`text-2xl sm:text-3xl font-black tracking-tight ${
+                  isDark ? 'text-white' : 'text-slate-900'
+                }`}>
+                  {greeting}, {ownerName}! 👋
+                </h1>
+                {/* Branch Scope Badge for non-admin or selected branch */}
+                {!isAdmin ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/30">
+                    <Building2 className="w-3.5 h-3.5" />
+                    <span>{currentBranch?.branch_name || currentBranch?.branchName || 'Branch'}: {currentBranch?.branch_code || currentBranch?.branchCode || 'Active'}</span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"></span>
+                  </span>
+                ) : selectedBranchId !== 'ALL' ? (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                    <Building2 className="w-3 h-3" />
+                    Filtered: {branches.find(b => String(b.id) === String(selectedBranchId))?.branch_name || 'Selected Branch'}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    <Building2 className="w-3 h-3" />
+                    Consolidated All Branches
+                  </span>
+                )}
+              </div>
+              <p className={`text-xs sm:text-sm mt-1 ${
                 isDark ? 'text-slate-400' : 'text-slate-500'
               }`}>
-                Live telemetry workspace for <span className="font-semibold text-cyan-400">{user?.organizationName || 'your transport business'}</span>. Data isolated & synced from database.
+                Live telemetry workspace for <span className="font-semibold text-cyan-400">{user?.organizationName || 'your transport business'}</span>.
+                {!isAdmin && (
+                  <span className="ml-1 text-slate-400 dark:text-slate-500">
+                    (Inward delivery SLA & collections scoped to your branch)
+                  </span>
+                )}
               </p>
+            </div>
+
+            {/* Scope Selector (for Admin) & Refresh Action */}
+            <div className="flex items-center gap-2.5 self-start md:self-auto flex-wrap">
+              {isAdmin && (
+                <div className="relative">
+                  <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-semibold shadow-sm transition-all ${
+                    isDark 
+                      ? 'bg-slate-900/90 border-slate-700/80 text-slate-200' 
+                      : 'bg-white border-slate-200 text-slate-800'
+                  }`}>
+                    <Building2 className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                    <select
+                      value={selectedBranchId}
+                      onChange={(e) => setSelectedBranchId(e.target.value)}
+                      className={`bg-transparent outline-none cursor-pointer pr-1 text-xs font-semibold ${
+                        isDark ? 'text-slate-200 [&>option]:bg-slate-900 [&>option]:text-white' : 'text-slate-800 [&>option]:bg-white [&>option]:text-slate-900'
+                      }`}
+                    >
+                      <option value="ALL">🏢 All Branches (Consolidated View)</option>
+                      {branches.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          📍 {b.branch_name} ({b.branch_code || b.city || 'Branch'})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              <button
+                onClick={() => fetchDashboardData(selectedBranchId)}
+                disabled={loading}
+                title="Refresh Live Metrics"
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all shadow-sm ${
+                  isDark
+                    ? 'bg-slate-900/80 border-slate-700/80 text-slate-300 hover:text-white hover:border-cyan-500/50'
+                    : 'bg-white border-slate-200 text-slate-700 hover:text-slate-900 hover:border-blue-400'
+                } disabled:opacity-50`}
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-cyan-400' : 'text-slate-400'}`} />
+                <span>{loading ? 'Syncing...' : 'Sync Live'}</span>
+              </button>
             </div>
           </div>
 
@@ -507,13 +608,138 @@ export default function OwnerDashboard() {
             })}
           </div>
 
-          {/* Center Main Cockpit: Live Trips Radar (8 cols) & Action/Alerts (4 cols) */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-            
-            {/* Left & Center: Live Trips Across India (8 Columns) */}
-            <div className={`lg:col-span-8 p-5 rounded-3xl border shadow-xl ${
-              isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200'
-            }`}>
+          {/* Action Center - Workflow Steps in Complete Width Single Horizontal Row */}
+          <div className={`p-3.5 sm:p-4 rounded-3xl border shadow-xl ${
+            isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200'
+          }`}>
+            <div className="flex items-center justify-between mb-2.5 px-1">
+              <div className="flex items-center space-x-2">
+                <Zap className="w-4 h-4 text-cyan-400" />
+                <h3 className={`text-xs sm:text-sm font-bold tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                  Action Center
+                </h3>
+                <span className={`text-[11px] hidden sm:inline ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                  • Step-by-Step Logistics Workflow
+                </span>
+              </div>
+              <span className="text-[10px] text-slate-400 font-mono">Quick Launch</span>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-3">
+              {/* Step 1: Add Customer */}
+              <Link
+                href="/customers"
+                className={`p-2.5 sm:p-3 rounded-2xl border transition-all flex items-center justify-between group ${
+                  isDark
+                    ? 'bg-emerald-950/25 border-emerald-500/20 hover:bg-emerald-900/40 hover:border-emerald-400'
+                    : 'bg-emerald-50/70 border-emerald-200 hover:bg-emerald-100 hover:border-emerald-400'
+                }`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-emerald-600/30 group-hover:scale-105 transition-transform">
+                    <UserPlus className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className={`text-xs font-bold truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                      Add Customer
+                    </div>
+                    <div className={`text-[10px] truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                      Shippers & receivers
+                    </div>
+                  </div>
+                </div>
+                <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 shrink-0 ml-1.5">
+                  STEP 1
+                </span>
+              </Link>
+
+              {/* Step 2: Create Booking */}
+              <Link
+                href="/bookings"
+                className={`p-2.5 sm:p-3 rounded-2xl border transition-all flex items-center justify-between group ${
+                  isDark
+                    ? 'bg-blue-950/25 border-blue-500/20 hover:bg-blue-900/40 hover:border-cyan-400'
+                    : 'bg-blue-50/70 border-blue-200 hover:bg-blue-100 hover:border-blue-400'
+                }`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-blue-600/30 group-hover:scale-105 transition-transform">
+                    <Plus className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className={`text-xs font-bold truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                      Create Booking
+                    </div>
+                    <div className={`text-[10px] truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                      Issue LR / Bilty
+                    </div>
+                  </div>
+                </div>
+                <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30 shrink-0 ml-1.5">
+                  STEP 2
+                </span>
+              </Link>
+
+              {/* Step 3: Trips & Movement */}
+              <Link
+                href="/trips"
+                className={`p-2.5 sm:p-3 rounded-2xl border transition-all flex items-center justify-between group ${
+                  isDark
+                    ? 'bg-purple-950/25 border-purple-500/20 hover:bg-purple-900/40 hover:border-purple-400'
+                    : 'bg-purple-50/70 border-purple-200 hover:bg-purple-100 hover:border-purple-400'
+                }`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-xl bg-purple-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-purple-600/30 group-hover:scale-105 transition-transform">
+                    <Send className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className={`text-xs font-bold truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                      Trips & Movement
+                    </div>
+                    <div className={`text-[10px] truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                      Fleet dispatch
+                    </div>
+                  </div>
+                </div>
+                <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30 shrink-0 ml-1.5">
+                  STEP 3
+                </span>
+              </Link>
+
+              {/* Step 4: Generate Report */}
+              <Link
+                href="/reports"
+                className={`p-2.5 sm:p-3 rounded-2xl border transition-all flex items-center justify-between group ${
+                  isDark
+                    ? 'bg-amber-950/25 border-amber-500/20 hover:bg-amber-900/40 hover:border-amber-400'
+                    : 'bg-amber-50/70 border-amber-200 hover:bg-amber-100 hover:border-amber-400'
+                }`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-xl bg-amber-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-amber-600/30 group-hover:scale-105 transition-transform">
+                    <FileBarChart className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className={`text-xs font-bold truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                      Generate Report
+                    </div>
+                    <div className={`text-[10px] truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                      P&L and trip audits
+                    </div>
+                  </div>
+                </div>
+                <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 shrink-0 ml-1.5">
+                  STEP 4
+                </span>
+              </Link>
+            </div>
+          </div>
+
+          {/* Fleet Telemetry & Highway Radar (Complete Width) */}
+          <div className={`p-5 rounded-3xl border shadow-xl ${
+            isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200'
+          }`}>
               
               {/* Header Bar: Clean single line with title on left and controls on right */}
               <div className={`flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-3.5 border-b ${
@@ -583,10 +809,10 @@ export default function OwnerDashboard() {
               </div>
 
               {/* Split Body: Registered Fleet List (Left) + Interactive Real GIS Leaflet Map (Right) */}
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-4 pt-4">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 pt-4">
                 
                 {/* Registered Vehicles List with Start -> Current -> Next Trace */}
-                <div className="md:col-span-5 space-y-2.5 max-h-[460px] overflow-y-auto pr-1">
+                <div className="lg:col-span-4 space-y-2.5 max-h-[460px] overflow-y-auto pr-1">
                   {allFleetVehicles.length === 0 ? (
                     <div className={`flex flex-col items-center justify-center p-8 text-center rounded-2xl border border-dashed min-h-[360px] ${
                       isDark ? 'border-slate-800 bg-slate-950/40 text-slate-400' : 'border-slate-200 bg-slate-50 text-slate-500'
@@ -714,7 +940,7 @@ export default function OwnerDashboard() {
                 </div>
 
                 {/* Real GIS India Map Powered by Leaflet */}
-                <div className="md:col-span-7">
+                <div className="lg:col-span-8">
                   <IndiaFleetMap
                     selectedTrip={selectedVehicleData}
                     allTrips={allFleetVehicles}
@@ -729,382 +955,150 @@ export default function OwnerDashboard() {
 
               </div>
 
-            </div>
-
-            {/* Right Column: Action Center (Top) & Alerts & Notifications (Bottom) */}
-            <div className="lg:col-span-4 space-y-5">
-              
-              {/* Action Center */}
-              <div className={`p-5 rounded-3xl border shadow-xl ${
-                isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200'
-              }`}>
-                <div className="flex items-center justify-between mb-3.5">
-                  <div className="flex items-center space-x-2">
-                    <Zap className="w-4 h-4 text-cyan-400" />
-                    <h3 className={`text-sm font-bold tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                      Action Center
-                    </h3>
-                  </div>
-                  <span className="text-[10px] text-slate-400 font-mono">Quick Launch</span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2.5">
-                  <Link
-                    href="/bookings"
-                    className={`p-3 rounded-2xl border transition-all text-left group ${
-                      isDark
-                        ? 'bg-blue-950/30 border-blue-500/20 hover:bg-blue-900/40 hover:border-cyan-400'
-                        : 'bg-blue-50/80 border-blue-200 hover:bg-blue-100 hover:border-blue-400'
-                    }`}
-                  >
-                    <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center mb-2 shadow-md shadow-blue-600/30 group-hover:scale-105 transition-transform">
-                      <Plus className="w-4 h-4" />
-                    </div>
-                    <div className={`text-xs font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>Create Booking</div>
-                    <div className={`text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Issue Docket (LR / Bilty)</div>
-                  </Link>
-
-                  <Link
-                    href="/trips"
-                    className={`p-3 rounded-2xl border transition-all text-left group ${
-                      isDark
-                        ? 'bg-purple-950/30 border-purple-500/20 hover:bg-purple-900/40 hover:border-purple-400'
-                        : 'bg-purple-50/80 border-purple-200 hover:bg-purple-100 hover:border-purple-400'
-                    }`}
-                  >
-                    <div className="w-8 h-8 rounded-xl bg-purple-600 text-white flex items-center justify-center mb-2 shadow-md shadow-purple-600/30 group-hover:scale-105 transition-transform">
-                      <Send className="w-4 h-4" />
-                    </div>
-                    <div className={`text-xs font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>Trips & Movement</div>
-                    <div className={`text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Fleet trips & settlements</div>
-                  </Link>
-
-                  <Link
-                    href="/customers"
-                    className={`p-3 rounded-2xl border transition-all text-left group ${
-                      isDark
-                        ? 'bg-emerald-950/30 border-emerald-500/20 hover:bg-emerald-900/40 hover:border-emerald-400'
-                        : 'bg-emerald-50/80 border-emerald-200 hover:bg-emerald-100 hover:border-emerald-400'
-                    }`}
-                  >
-                    <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center mb-2 shadow-md shadow-emerald-600/30 group-hover:scale-105 transition-transform">
-                      <UserPlus className="w-4 h-4" />
-                    </div>
-                    <div className={`text-xs font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>Add Customer</div>
-                    <div className={`text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Shippers & receivers</div>
-                  </Link>
-
-                  <Link
-                    href="/reports"
-                    className={`p-3 rounded-2xl border transition-all text-left group ${
-                      isDark
-                        ? 'bg-amber-950/30 border-amber-500/20 hover:bg-amber-900/40 hover:border-amber-400'
-                        : 'bg-amber-50/80 border-amber-200 hover:bg-amber-100 hover:border-amber-400'
-                    }`}
-                  >
-                    <div className="w-8 h-8 rounded-xl bg-amber-600 text-white flex items-center justify-center mb-2 shadow-md shadow-amber-600/30 group-hover:scale-105 transition-transform">
-                      <FileBarChart className="w-4 h-4" />
-                    </div>
-                    <div className={`text-xs font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>Generate Report</div>
-                    <div className={`text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>P&L and trip audits</div>
-                  </Link>
-                </div>
-              </div>
-
-              {/* Alerts & Notifications (Live DB Scoped) */}
-              <div className={`p-5 rounded-3xl border shadow-xl ${
-                isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200'
-              }`}>
-                <div className="flex items-center justify-between mb-3.5">
-                  <div className="flex items-center space-x-2">
-                    <AlertTriangle className="w-4 h-4 text-amber-500 dark:text-amber-400" />
-                    <h3 className={`text-sm font-bold tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                      Alerts & Notifications
-                    </h3>
-                    <span className="w-4 h-4 rounded-full bg-cyan-500/20 text-blue-600 dark:text-cyan-400 text-[9px] font-black flex items-center justify-center">
-                      {actionCenterAlerts.length}
-                    </span>
-                  </div>
-                  <span className={`text-[10px] font-mono ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Real-time</span>
-                </div>
-
-                <div className="space-y-2.5">
-                  {actionCenterAlerts.length === 0 ? (
-                    <div className={`p-4 rounded-2xl border text-center flex flex-col items-center ${
-                      isDark ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-emerald-50/80 border-emerald-200'
-                    }`}>
-                      <CheckCircle2 className="w-6 h-6 text-emerald-500 dark:text-emerald-400 mb-1" />
-                      <div className="font-bold text-xs text-emerald-700 dark:text-emerald-300">All Operations Clear</div>
-                      <div className={`text-[11px] mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-                        Zero delays, zero pending POD flags, and zero payment disputes in your tenant workspace.
-                      </div>
-                    </div>
-                  ) : (
-                    actionCenterAlerts.map((alert, aIdx) => (
-                      <div
-                        key={aIdx}
-                        className={`flex items-start gap-2.5 p-2.5 rounded-xl border ${
-                          alert.type === 'danger'
-                            ? 'bg-rose-500/10 border-rose-500/20'
-                            : 'bg-amber-500/10 border-amber-500/20'
-                        }`}
-                      >
-                        <div className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 ${
-                          alert.type === 'danger' ? 'bg-rose-500/20 text-rose-400' : 'bg-amber-500/20 text-amber-400'
-                        }`}>
-                          <AlertTriangle className="w-3.5 h-3.5" />
-                        </div>
-                        <div className="text-xs leading-tight">
-                          <div className={`font-bold ${alert.type === 'danger' ? 'text-rose-300' : 'text-amber-300'}`}>
-                            {alert.title}
-                          </div>
-                          <div className="text-[11px] text-slate-400 mt-0.5">{alert.description}</div>
-                          {alert.actionUrl && (
-                            <Link href={alert.actionUrl} className="text-[10px] text-cyan-400 hover:underline mt-1 inline-block">
-                              Resolve Issue ➔
-                            </Link>
-                          )}
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-
-            </div>
-
           </div>
 
-          {/* Bottom Operational Grid: 4 Equal Analytical & Workflow Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+          {/* Analytical & Operational Cockpit: Booking Trend (70%) + Column-wise Fleet Status & Pending Actions (30%) */}
+          <div className="grid grid-cols-1 lg:grid-cols-10 gap-5 items-stretch">
             
-            {/* Card 1: Booking Trends (Last 7 Days) */}
-            <div className={`p-5 rounded-3xl border shadow-xl flex flex-col justify-between ${
-              isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200'
-            }`}>
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center space-x-2">
-                    <Activity className="w-4 h-4 text-cyan-400" />
-                    <h3 className={`text-sm font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                      Booking Trends
-                    </h3>
-                  </div>
-                  <span className="text-[10px] text-slate-400 font-mono">Last 7 Days</span>
-                </div>
+            {/* Left: Booking Trend Chart with Line & Bar Switcher (70% Width) */}
+            <div className="lg:col-span-7 flex flex-col">
+              <BookingTrendChart
+                trends={bookingTrendBars}
+                totalBookings={totalBookingsCount}
+                isDark={isDark}
+                className="h-full"
+              />
+            </div>
 
-                <div className="flex items-baseline gap-2 mb-3">
-                  <span className={`text-xl font-black ${isDark ? 'text-white' : 'text-slate-900'}`}>{totalBookingsCount}</span>
-                  <span className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Total Bookings</span>
-                  <span className="text-xs text-blue-600 dark:text-cyan-400 font-bold">Live DB</span>
-                </div>
-
-                {/* 7-Day Bar Chart Visual from Live DB */}
-                <div className={`h-32 w-full flex items-end justify-between gap-2 pt-2 border-b ${
-                  isDark ? 'border-slate-800' : 'border-slate-200'
-                }`}>
-                  {bookingTrendBars.map((bar, i) => (
-                    <div key={i} className="flex-1 flex flex-col items-center gap-1 group">
-                      <div
-                        style={{ height: `${Math.max(8, (bar.value / maxTrendVal) * 100)}%` }}
-                        className={`w-full rounded-t-md transition-all ${
-                          bar.value > 0
-                            ? 'bg-gradient-to-t from-blue-600 to-cyan-400 shadow-md shadow-cyan-500/30'
-                            : isDark ? 'bg-slate-800/80 group-hover:bg-slate-700' : 'bg-slate-200 group-hover:bg-slate-300'
-                        }`}
-                        title={`${bar.day}: ${bar.value} bookings`}
-                      />
-                      <span className={`text-[9px] font-mono ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{bar.day.split(' ')[0]}</span>
+            {/* Right: Fleet Status & Pending Actions stacked Column-Wise (30% Width) */}
+            <div className="lg:col-span-3 flex flex-col gap-5 justify-between">
+              
+              {/* Fleet Status Card */}
+              <div className={`p-5 rounded-3xl border shadow-xl flex flex-col justify-between flex-1 ${
+                isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200'
+              }`}>
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center space-x-2">
+                      <Boxes className="w-4 h-4 text-cyan-400" />
+                      <h3 className={`text-sm font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                        Fleet Status
+                      </h3>
                     </div>
-                  ))}
+                    <Link href="/fleet" className="text-[10px] text-blue-600 dark:text-cyan-400 hover:underline font-semibold">
+                      View Fleet ➔
+                    </Link>
+                  </div>
+
+                  {/* Donut Gauge + Status Details */}
+                  <div className="flex items-center gap-4 py-1">
+                    <div className="shrink-0 flex items-center justify-center">
+                      <div className={`w-20 h-20 rounded-full border-4 border-cyan-400 flex flex-col items-center justify-center shadow-lg ${
+                        isDark ? 'shadow-cyan-500/20' : 'shadow-blue-500/10'
+                      }`}>
+                        <span className={`text-lg font-black ${isDark ? 'text-white' : 'text-slate-900'}`}>{totalVehiclesCount}</span>
+                        <span className={`text-[8px] uppercase tracking-wider font-bold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Vehicles</span>
+                      </div>
+                    </div>
+
+                    <div className="flex-1 space-y-1.5 text-xs min-w-0">
+                      <div className="flex items-center justify-between">
+                        <span className={`flex items-center gap-1.5 text-[11px] truncate ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                          <span className="truncate">On Road / Active</span>
+                        </span>
+                        <span className={`font-bold text-[11px] ml-2 shrink-0 ${isDark ? 'text-white' : 'text-slate-900'}`}>{vehiclesRunning}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className={`flex items-center gap-1.5 text-[11px] truncate ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+                          <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
+                          <span className="truncate">Available at Yard</span>
+                        </span>
+                        <span className={`font-bold text-[11px] ml-2 shrink-0 ${isDark ? 'text-white' : 'text-slate-900'}`}>{vehiclesAvailable}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className={`flex items-center gap-1.5 text-[11px] truncate ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+                          <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+                          <span className="truncate">Under Maintenance</span>
+                        </span>
+                        <span className={`font-bold text-[11px] ml-2 shrink-0 ${isDark ? 'text-white' : 'text-slate-900'}`}>{vehiclesMaintenance}</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
+
+                <Link
+                  href="/fleet"
+                  className={`w-full mt-2.5 py-1.5 rounded-xl border text-[11px] font-bold text-center block transition-colors ${
+                    isDark
+                      ? 'bg-slate-900 hover:bg-slate-800 border-slate-800 text-cyan-300'
+                      : 'bg-slate-100 hover:bg-slate-200 border-slate-200 text-blue-600'
+                  }`}
+                >
+                  {totalVehiclesCount === 0 ? 'Register Vehicles in Fleet' : 'Manage Fleet ➔'}
+                </Link>
               </div>
 
-              <div className="pt-3 text-[10px] text-blue-600 dark:text-cyan-400 flex items-center justify-between font-semibold">
-                <span>{totalBookingsCount === 0 ? 'No bookings recorded in past 7 days' : `Latest active window`}</span>
-                <Link href="/bookings" className="hover:underline">View Bilties ➔</Link>
-              </div>
-            </div>
-
-            {/* Card 2: Fleet Status from DB */}
-            <div className={`p-5 rounded-3xl border shadow-xl flex flex-col justify-between ${
-              isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200'
-            }`}>
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center space-x-2">
-                    <Boxes className="w-4 h-4 text-cyan-400" />
-                    <h3 className={`text-sm font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                      Fleet Status
-                    </h3>
-                  </div>
-                  <Link href="/fleet" className="text-[10px] text-blue-600 dark:text-cyan-400 hover:underline font-semibold">
-                    View Fleet ➔
-                  </Link>
-                </div>
-
-                {/* Donut Gauge */}
-                <div className="flex items-center justify-center my-2">
-                  <div className={`w-24 h-24 rounded-full border-4 border-cyan-400 flex flex-col items-center justify-center shadow-lg ${
-                    isDark ? 'shadow-cyan-500/20' : 'shadow-blue-500/10'
-                  }`}>
-                    <span className={`text-xl font-black ${isDark ? 'text-white' : 'text-slate-900'}`}>{totalVehiclesCount}</span>
-                    <span className={`text-[8px] uppercase tracking-wider font-bold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Vehicles</span>
-                  </div>
-                </div>
-
-                <div className="space-y-1.5 text-xs pt-2">
-                  <div className="flex items-center justify-between">
-                    <span className={`flex items-center gap-1.5 text-[11px] ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
-                      <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                      <span>On Road / Active</span>
-                    </span>
-                    <span className={`font-bold text-[11px] ${isDark ? 'text-white' : 'text-slate-900'}`}>{vehiclesRunning}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className={`flex items-center gap-1.5 text-[11px] ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
-                      <span className="w-2 h-2 rounded-full bg-blue-500" />
-                      <span>Available at Yard</span>
-                    </span>
-                    <span className={`font-bold text-[11px] ${isDark ? 'text-white' : 'text-slate-900'}`}>{vehiclesAvailable}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className={`flex items-center gap-1.5 text-[11px] ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
-                      <span className="w-2 h-2 rounded-full bg-amber-500" />
-                      <span>Under Maintenance</span>
-                    </span>
-                    <span className={`font-bold text-[11px] ${isDark ? 'text-white' : 'text-slate-900'}`}>{vehiclesMaintenance}</span>
-                  </div>
-                </div>
-              </div>
-
-              <Link
-                href="/fleet"
-                className={`w-full mt-3 py-1.5 rounded-xl border text-[11px] font-bold text-center block transition-colors ${
-                  isDark
-                    ? 'bg-slate-900 hover:bg-slate-800 border-slate-800 text-cyan-300'
-                    : 'bg-slate-100 hover:bg-slate-200 border-slate-200 text-blue-600'
-                }`}
-              >
-                {totalVehiclesCount === 0 ? 'Register Vehicles in Fleet' : 'Manage Fleet ➔'}
-              </Link>
-            </div>
-
-            {/* Card 3: Pending Actions */}
-            <div className={`p-5 rounded-3xl border shadow-xl flex flex-col justify-between ${
-              isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200'
-            }`}>
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center space-x-2">
-                    <Clock className="w-4 h-4 text-amber-500 dark:text-amber-400" />
-                    <h3 className={`text-sm font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                      Pending Actions
-                    </h3>
-                  </div>
-                  <span className={`w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center ${
-                    totalPendingActions > 0 ? 'bg-amber-500/20 text-amber-500 dark:text-amber-400' : 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400'
-                  }`}>
-                    {totalPendingActions}
-                  </span>
-                </div>
-
-                <div className="space-y-2 text-xs">
-                  <div className={`p-2 rounded-xl border flex items-center justify-between ${
-                    isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200'
-                  }`}>
-                    <span className={`text-[11px] ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Awaiting vehicle dispatch</span>
-                    <span className="px-2 py-0.5 rounded bg-blue-500/20 text-blue-600 dark:text-blue-400 font-bold text-[10px]">
-                      {awaitingDispatchCount}
-                    </span>
-                  </div>
-                  <div className={`p-2 rounded-xl border flex items-center justify-between ${
-                    isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200'
-                  }`}>
-                    <span className={`text-[11px] ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>PODs pending upload</span>
-                    <span className="px-2 py-0.5 rounded bg-purple-500/20 text-purple-600 dark:text-purple-400 font-bold text-[10px]">
-                      {pendingPodCount}
-                    </span>
-                  </div>
-                  <div className={`p-2 rounded-xl border flex items-center justify-between ${
-                    isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200'
-                  }`}>
-                    <span className={`text-[11px] ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Delayed consignments</span>
-                    <span className="px-2 py-0.5 rounded bg-rose-500/20 text-rose-600 dark:text-rose-400 font-bold text-[10px]">
-                      {delayedCount}
-                    </span>
-                  </div>
-                  <div className={`p-2 rounded-xl border flex items-center justify-between ${
-                    isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200'
-                  }`}>
-                    <span className={`text-[11px] ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Outstanding balance</span>
-                    <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-600 dark:text-amber-400 font-bold text-[10px]">
-                      ₹ {outstandingAmount.toFixed(0)}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="pt-3 text-[10px] text-blue-600 dark:text-cyan-400 text-center font-semibold">
-                {totalPendingActions === 0 ? 'All operational queues synchronized' : `${totalPendingActions} operational item(s) pending`}
-              </div>
-            </div>
-
-            {/* Card 4: Recent Consignments Activity */}
-            <div className={`p-5 rounded-3xl border shadow-xl flex flex-col justify-between ${
-              isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200'
-            }`}>
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center space-x-2">
-                    <Clock className="w-4 h-4 text-cyan-400" />
-                    <h3 className={`text-sm font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                      Recent Activity
-                    </h3>
-                  </div>
-                  <Link href="/bookings" className="text-[10px] text-blue-600 dark:text-cyan-400 hover:underline font-semibold">
-                    View All ➔
-                  </Link>
-                </div>
-
-                <div className="space-y-2.5">
-                  {(!dashboardData?.recentConsignments || dashboardData.recentConsignments.length === 0) ? (
-                    <div className={`p-4 rounded-xl border text-center ${
-                      isDark ? 'bg-slate-900/40 border-slate-800/80' : 'bg-slate-50 border-slate-200'
+              {/* Pending Actions Card */}
+              <div className={`p-5 rounded-3xl border shadow-xl flex flex-col justify-between flex-1 ${
+                isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200'
+              }`}>
+                <div>
+                  <div className="flex items-center justify-between mb-2.5">
+                    <div className="flex items-center space-x-2">
+                      <Clock className="w-4 h-4 text-amber-500 dark:text-amber-400" />
+                      <h3 className={`text-sm font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                        Pending Actions
+                      </h3>
+                    </div>
+                    <span className={`w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center ${
+                      totalPendingActions > 0 ? 'bg-amber-500/20 text-amber-500 dark:text-amber-400' : 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400'
                     }`}>
-                      <FileCheck className="w-5 h-5 text-slate-400 mx-auto mb-1.5" />
-                      <div className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>No Recent Bilties</div>
-                      <div className={`text-[10px] mt-0.5 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                        Create your first booking to start logging transactions in your tenant ledger.
-                      </div>
+                      {totalPendingActions}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-2 text-xs">
+                    <div className={`p-2 rounded-xl border flex items-center justify-between ${
+                      isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200'
+                    }`}>
+                      <span className={`text-[11px] truncate mr-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Awaiting dispatch</span>
+                      <span className="px-2 py-0.5 rounded bg-blue-500/20 text-blue-600 dark:text-blue-400 font-bold text-[10px] shrink-0">
+                        {awaitingDispatchCount}
+                      </span>
                     </div>
-                  ) : (
-                    dashboardData.recentConsignments.slice(0, 4).map((con, cIdx) => (
-                      <div key={cIdx} className="flex items-start gap-2.5">
-                        <div className="w-6 h-6 rounded-lg bg-blue-500/20 text-blue-600 dark:text-cyan-400 flex items-center justify-center shrink-0">
-                          <FileText className="w-3.5 h-3.5" />
-                        </div>
-                        <div className="text-[11px] leading-tight flex-1">
-                          <div className={`font-bold flex items-center justify-between ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                            <span>#{con.consignment_number || `LR-${con.id.slice(0, 6)}`}</span>
-                            <span className="text-[9px] text-blue-600 dark:text-cyan-400 font-mono">₹{parseFloat(con.total_amount || 0).toLocaleString('en-IN')}</span>
-                          </div>
-                          <div className={`text-[10px] truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                            {con.originBranch?.city || 'Origin'} ➔ {con.destBranch?.city || 'Dest'}
-                          </div>
-                          <div className={`text-[9px] mt-0.5 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                            Status: <span className={`font-medium ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>{con.status}</span>
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  )}
+                    <div className={`p-2 rounded-xl border flex items-center justify-between ${
+                      isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200'
+                    }`}>
+                      <span className={`text-[11px] truncate mr-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>PODs pending</span>
+                      <span className="px-2 py-0.5 rounded bg-purple-500/20 text-purple-600 dark:text-purple-400 font-bold text-[10px] shrink-0">
+                        {pendingPodCount}
+                      </span>
+                    </div>
+                    <div className={`p-2 rounded-xl border flex items-center justify-between ${
+                      isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200'
+                    }`}>
+                      <span className={`text-[11px] truncate mr-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Delayed orders</span>
+                      <span className="px-2 py-0.5 rounded bg-rose-500/20 text-rose-600 dark:text-rose-400 font-bold text-[10px] shrink-0">
+                        {delayedCount}
+                      </span>
+                    </div>
+                    <div className={`p-2 rounded-xl border flex items-center justify-between ${
+                      isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200'
+                    }`}>
+                      <span className={`text-[11px] truncate mr-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Balance due</span>
+                      <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-600 dark:text-amber-400 font-bold text-[10px] shrink-0">
+                        ₹ {outstandingAmount.toFixed(0)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-2 text-[10px] text-blue-600 dark:text-cyan-400 text-center font-semibold">
+                  {totalPendingActions === 0 ? 'All operational queues synchronized' : `${totalPendingActions} operational item(s) pending`}
                 </div>
               </div>
 
-              <div className={`pt-3 text-[10px] font-mono text-center ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                Multi-Tenant Audit Trail Active
-              </div>
             </div>
 
           </div>
