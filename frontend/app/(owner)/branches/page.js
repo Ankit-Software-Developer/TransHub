@@ -43,7 +43,7 @@ export default function BranchesPage() {
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [typeFilter, setTypeFilter] = useState('ALL'); // 'ALL' | 'HUB' | 'BRANCH'
+  const [typeFilter, setTypeFilter] = useState('ALL'); // 'ALL' | 'HEAD_OFFICE' | 'HUB' | 'BRANCH'
   const [statusFilter, setStatusFilter] = useState('ALL'); // 'ALL' | 'ACTIVE' | 'INACTIVE'
 
   // Modal States
@@ -56,11 +56,24 @@ export default function BranchesPage() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
 
+  // Helper to determine if a branch is Head Office / HQ
+  const isHeadOfficeBranch = (b) => {
+    if (!b) return false;
+    if (b.is_head_office === true || b.is_head_office === 1 || b.is_head_office === 'true') return true;
+    const code = (b.branch_code || '').trim().toUpperCase();
+    if (code === 'BHQ' || code === 'HQ' || code.endsWith('HQ')) return true;
+    const name = (b.branch_name || '').trim().toLowerCase();
+    if (name.includes('head office') || name.includes('corporate hq') || name.includes('central hq')) return true;
+    return false;
+  };
+
   // Form State
   const initialForm = {
     branch_name: '',
     branch_code: '',
+    facility_type: 'BRANCH', // 'HEAD_OFFICE' | 'HUB' | 'BRANCH'
     is_hub: false,
+    is_head_office: false,
     city: '',
     state: '',
     pincode: '',
@@ -68,6 +81,7 @@ export default function BranchesPage() {
     phone: '',
     email: '',
     is_active: true,
+    max_customer_credit_limit: 1000000,
   };
   const [formData, setFormData] = useState(initialForm);
 
@@ -117,11 +131,15 @@ export default function BranchesPage() {
     return targetWord.slice(0, 3).toUpperCase();
   };
 
-  // Helper to compute standard branch code: [CompanyPrefix] + [AreaSnippet] + [B/H Suffix]
-  const computeBranchCode = (name, city, isHub, prefix = companyPrefix) => {
+  // Helper to compute standard branch code: [CompanyPrefix] + [AreaSnippet] + [B/H/HQ Suffix]
+  const computeBranchCode = (name, city, facilityTypeOrIsHub, prefix = companyPrefix) => {
+    const activePrefix = (prefix || 'B').trim().toUpperCase();
+    if (facilityTypeOrIsHub === 'HEAD_OFFICE') {
+      return `${activePrefix}HQ`;
+    }
+    const isHub = facilityTypeOrIsHub === 'HUB' || facilityTypeOrIsHub === true;
     const snippet = extractAreaSnippet(name, city);
     if (!snippet) return '';
-    const activePrefix = (prefix || 'B').trim().toUpperCase();
     const suffix = isHub ? 'H' : 'B';
     return `${activePrefix}${snippet}${suffix}`;
   };
@@ -136,9 +154,12 @@ export default function BranchesPage() {
 
   const suggestedSnippets = useMemo(() => {
     const activePrefix = (companyPrefix || 'B').trim().toUpperCase();
+    if (formData.facility_type === 'HEAD_OFFICE') {
+      return [`${activePrefix}HQ`, 'HQ', `${activePrefix}-HQ`];
+    }
     const area = extractAreaSnippet(formData.branch_name, formData.city);
     if (!area) return [];
-    const suffix = formData.is_hub ? 'H' : 'B';
+    const suffix = formData.facility_type === 'HUB' ? 'H' : 'B';
     const base = `${activePrefix}${area}${suffix}`;
     const pin = (formData.pincode || '').slice(0, 6);
     const list = [base, `${base}-01`];
@@ -146,7 +167,7 @@ export default function BranchesPage() {
       list.push(`${base}-${pin}`);
     }
     return list;
-  }, [companyPrefix, formData.branch_name, formData.city, formData.pincode, formData.is_hub]);
+  }, [companyPrefix, formData.branch_name, formData.city, formData.pincode, formData.facility_type]);
 
   const [pincodeLoading, setPincodeLoading] = useState(false);
   const [pincodeStatus, setPincodeStatus] = useState(''); // 'success' | 'not_found' | 'error' | ''
@@ -170,7 +191,7 @@ export default function BranchesPage() {
           const nextCity = fetchedCity || prev.city;
           let nextCode = prev.branch_code;
           if (!editingBranch && !userEditedCode && !prev.branch_name && nextCity) {
-            nextCode = computeBranchCode('', nextCity, prev.is_hub);
+            nextCode = computeBranchCode('', nextCity, prev.facility_type);
           }
           return {
             ...prev,
@@ -208,12 +229,16 @@ export default function BranchesPage() {
 
   const openEditModal = (branch) => {
     if (!canEditBranch) return;
+    const isHO = isHeadOfficeBranch(branch);
+    const facilityType = isHO ? 'HEAD_OFFICE' : branch.is_hub ? 'HUB' : 'BRANCH';
     setEditingBranch(branch);
     setUserEditedCode(true);
     setFormData({
       branch_name: branch.branch_name || '',
       branch_code: branch.branch_code || '',
-      is_hub: branch.is_hub ?? false,
+      facility_type: facilityType,
+      is_hub: branch.is_hub ?? (facilityType === 'HUB' || facilityType === 'HEAD_OFFICE'),
+      is_head_office: isHO,
       city: branch.city || '',
       state: branch.state || '',
       pincode: branch.pincode || '',
@@ -221,6 +246,7 @@ export default function BranchesPage() {
       phone: branch.phone || '',
       email: branch.email || '',
       is_active: branch.is_active ?? true,
+      max_customer_credit_limit: branch.max_customer_credit_limit !== undefined && branch.max_customer_credit_limit !== null ? parseFloat(branch.max_customer_credit_limit) : 1000000,
     });
     setModalError('');
     setPincodeStatus('');
@@ -298,14 +324,20 @@ export default function BranchesPage() {
     setSubmitting(true);
     setModalError('');
     try {
+      const isHO = formData.facility_type === 'HEAD_OFFICE';
+      const payload = {
+        ...formData,
+        is_head_office: isHO,
+        is_hub: isHO ? true : formData.facility_type === 'HUB',
+      };
       if (editingBranch) {
-        const res = await api.put(`/branches/${editingBranch.id}`, formData);
+        const res = await api.put(`/branches/${editingBranch.id}`, payload);
         if (res.data?.success) {
           setIsModalOpen(false);
           fetchBranches();
         }
       } else {
-        const res = await api.post('/branches', formData);
+        const res = await api.post('/branches', payload);
         if (res.data?.success) {
           setIsModalOpen(false);
           fetchBranches();
@@ -320,6 +352,11 @@ export default function BranchesPage() {
 
   const handleDelete = async () => {
     if (!deleteTarget || !canDeleteBranch) return;
+    if (isHeadOfficeBranch(deleteTarget)) {
+      alert('The Head Office is the central transport owner headquarters and cannot be deleted.');
+      setDeleteTarget(null);
+      return;
+    }
     setDeleting(true);
     try {
       const res = await api.delete(`/branches/${deleteTarget.id}`);
@@ -337,8 +374,10 @@ export default function BranchesPage() {
   // Filtered branches
   const filteredBranches = useMemo(() => {
     return branches.filter((b) => {
-      if (typeFilter === 'HUB' && !b.is_hub) return false;
-      if (typeFilter === 'BRANCH' && b.is_hub) return false;
+      const isHO = isHeadOfficeBranch(b);
+      if (typeFilter === 'HEAD_OFFICE' && !isHO) return false;
+      if (typeFilter === 'HUB' && (!b.is_hub || isHO)) return false;
+      if (typeFilter === 'BRANCH' && (b.is_hub || isHO)) return false;
       if (statusFilter === 'ACTIVE' && !b.is_active) return false;
       if (statusFilter === 'INACTIVE' && b.is_active) return false;
 
@@ -359,8 +398,9 @@ export default function BranchesPage() {
 
   // Statistics
   const totalCount = branches.length;
-  const hubsCount = branches.filter((b) => b.is_hub).length;
-  const branchesCount = totalCount - hubsCount;
+  const headOfficeCount = branches.filter((b) => isHeadOfficeBranch(b)).length;
+  const hubsCount = branches.filter((b) => b.is_hub && !isHeadOfficeBranch(b)).length;
+  const branchesCount = branches.filter((b) => !b.is_hub && !isHeadOfficeBranch(b)).length;
   const activeCount = branches.filter((b) => b.is_active).length;
 
   if (!canViewBranch) {
@@ -446,6 +486,15 @@ export default function BranchesPage() {
               <div className="text-[10px] text-blue-500 dark:text-cyan-400 mt-1 font-semibold">Active operational network</div>
             </div>
 
+            <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#120f26]/90 border-purple-500/30' : 'bg-purple-50/50 border-purple-200 shadow-xs'}`}>
+              <div className="text-[11px] font-semibold text-purple-600 dark:text-purple-400 mb-1 flex items-center gap-1">
+                <span>🏛️</span>
+                <span>Head Office</span>
+              </div>
+              <div className="text-2xl font-black text-purple-600 dark:text-purple-300 font-mono">{headOfficeCount}</div>
+              <div className="text-[10px] text-purple-600/80 dark:text-purple-400/80 mt-1 font-semibold">Admin & Owner HQ</div>
+            </div>
+
             <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
               <div className="text-[11px] font-semibold text-slate-400 mb-1">Transshipment Hubs</div>
               <div className="text-2xl font-black text-cyan-600 dark:text-cyan-400 font-mono">{hubsCount}</div>
@@ -456,12 +505,6 @@ export default function BranchesPage() {
               <div className="text-[11px] font-semibold text-slate-400 mb-1">Booking Branches</div>
               <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400 font-mono">{branchesCount}</div>
               <div className="text-[10px] text-emerald-600 dark:text-emerald-400/80 mt-1 font-semibold">Local delivery godowns</div>
-            </div>
-
-            <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
-              <div className="text-[11px] font-semibold text-slate-400 mb-1">Active Status</div>
-              <div className="text-2xl font-black text-purple-600 dark:text-purple-400 font-mono">{activeCount} / {totalCount}</div>
-              <div className="text-[10px] text-purple-600 dark:text-purple-400/80 mt-1 font-semibold">Ready for Bilty & Trips</div>
             </div>
           </div>
 
@@ -495,7 +538,18 @@ export default function BranchesPage() {
                       : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  All Types
+                  All Types ({totalCount})
+                </button>
+                <button
+                  onClick={() => setTypeFilter('HEAD_OFFICE')}
+                  className={`px-2.5 py-1 rounded-lg transition-all flex items-center gap-1 ${
+                    typeFilter === 'HEAD_OFFICE'
+                      ? 'bg-purple-600 text-white shadow-xs'
+                      : isDark ? 'text-purple-400 hover:text-purple-300' : 'text-purple-700 hover:text-purple-900'
+                  }`}
+                >
+                  <span>🏛️</span>
+                  <span>Head Office ({headOfficeCount})</span>
                 </button>
                 <button
                   onClick={() => setTypeFilter('HUB')}
@@ -505,7 +559,7 @@ export default function BranchesPage() {
                       : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  Hubs Only
+                  Hubs ({hubsCount})
                 </button>
                 <button
                   onClick={() => setTypeFilter('BRANCH')}
@@ -515,7 +569,7 @@ export default function BranchesPage() {
                       : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  Branches Only
+                  Branches ({branchesCount})
                 </button>
               </div>
 
@@ -569,13 +623,19 @@ export default function BranchesPage() {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5">
-              {filteredBranches.map((branch) => (
+              {filteredBranches.map((branch) => {
+                const isHO = isHeadOfficeBranch(branch);
+                return (
                 <div
                   key={branch.id}
                   className={`p-5 rounded-3xl border transition-all duration-200 flex flex-col justify-between ${
-                    isDark
-                      ? 'bg-[#0B1020]/90 border-slate-800/90 hover:border-slate-700'
-                      : 'bg-white border-slate-200/90 shadow-xs hover:shadow-md hover:border-blue-200'
+                    isHO
+                      ? isDark
+                        ? 'bg-[#0f1227]/95 border-purple-500/40 shadow-lg shadow-purple-950/20 ring-1 ring-purple-500/20 hover:border-purple-500/60'
+                        : 'bg-white border-purple-300 shadow-md ring-1 ring-purple-400/20 hover:border-purple-400 hover:shadow-lg'
+                      : isDark
+                        ? 'bg-[#0B1020]/90 border-slate-800/90 hover:border-slate-700'
+                        : 'bg-white border-slate-200/90 shadow-xs hover:shadow-md hover:border-blue-200'
                   }`}
                 >
                   <div>
@@ -583,20 +643,35 @@ export default function BranchesPage() {
                     <div className="flex items-center justify-between gap-2 mb-3">
                       <div className="flex items-center space-x-2">
                         <span className={`font-mono text-xs font-black px-2.5 py-1 rounded-lg border ${
-                          branch.is_hub
+                          isHO
+                            ? isDark ? 'bg-purple-500/20 border-purple-500/40 text-purple-300 shadow-xs' : 'bg-purple-50 border-purple-300 text-purple-900'
+                            : branch.is_hub
                             ? isDark ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-300' : 'bg-cyan-50 border-cyan-200 text-cyan-800'
                             : isDark ? 'bg-blue-500/10 border-blue-500/30 text-blue-300' : 'bg-blue-50 border-blue-200 text-blue-800'
                         }`}>
                           {branch.branch_code}
                         </span>
 
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                          branch.is_hub
-                            ? isDark ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-amber-50 text-amber-800 border border-amber-200'
-                            : isDark ? 'bg-slate-800 text-slate-300 border border-slate-700' : 'bg-slate-100 text-slate-700 border border-slate-200'
-                        }`}>
-                          {branch.is_hub ? 'TRANSSHIPMENT HUB' : 'BRANCH GODOWN'}
-                        </span>
+                        {isHO ? (
+                          <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full flex items-center gap-1 shadow-xs ${
+                            isDark ? 'bg-purple-500/25 text-purple-200 border border-purple-500/50' : 'bg-purple-100 text-purple-900 border border-purple-300'
+                          }`}>
+                            <span>🏛️</span>
+                            <span>HEAD OFFICE</span>
+                          </span>
+                        ) : branch.is_hub ? (
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                            isDark ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-amber-50 text-amber-800 border border-amber-200'
+                          }`}>
+                            TRANSSHIPMENT HUB
+                          </span>
+                        ) : (
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                            isDark ? 'bg-slate-800 text-slate-300 border border-slate-700' : 'bg-slate-100 text-slate-700 border border-slate-200'
+                          }`}>
+                            BRANCH GODOWN
+                          </span>
+                        )}
                       </div>
 
                       <span className={`flex items-center space-x-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${
@@ -608,6 +683,14 @@ export default function BranchesPage() {
                         <span>{branch.is_active ? 'Active' : 'Inactive'}</span>
                       </span>
                     </div>
+
+                    {/* Head Office Admin Sub-Badge */}
+                    {isHO && (
+                      <div className="flex items-center gap-1.5 text-[10px] font-extrabold text-purple-600 dark:text-purple-400 mb-1.5 tracking-wide">
+                        <span>👑</span>
+                        <span>Admin & Transport Owner Base</span>
+                      </div>
+                    )}
 
                     {/* Branch Title & City */}
                     <h3 className={`text-base font-bold leading-snug ${isDark ? 'text-white' : 'text-slate-900'}`}>
@@ -646,6 +729,35 @@ export default function BranchesPage() {
                         </div>
                       )}
                     </div>
+
+                    {/* Branch Manager TBB Authorization Limit Badge */}
+                    <div className={`mt-3 p-2.5 rounded-2xl border flex items-center justify-between text-xs ${
+                      isHO
+                        ? isDark ? 'bg-purple-950/30 border-purple-500/30' : 'bg-purple-50/70 border-purple-200'
+                        : isDark ? 'bg-slate-900/50 border-slate-800' : 'bg-slate-50 border-slate-200'
+                    }`}>
+                      <div>
+                        <span className={`text-[10px] uppercase font-bold tracking-wider block ${
+                          isHO ? (isDark ? 'text-purple-300' : 'text-purple-700') : 'text-slate-400'
+                        }`}>
+                          {isHO ? 'HQ TBB Authorization' : 'Branch TBB Cap Limit'}
+                        </span>
+                        <span className={`font-mono font-bold ${
+                          isHO ? (isDark ? 'text-purple-300' : 'text-purple-800') : 'text-amber-500'
+                        }`}>
+                          {isHO ? 'Full HO Authority (₹50L+)' : `₹${Number(branch.max_customer_credit_limit || 1000000).toLocaleString('en-IN')}`}
+                        </span>
+                      </div>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${
+                        isHO
+                          ? isDark ? 'bg-purple-500/25 text-purple-200 border-purple-500/40' : 'bg-purple-100 text-purple-900 border-purple-300'
+                          : Number(branch.max_customer_credit_limit || 1000000) > 1000000
+                          ? isDark ? 'bg-purple-500/15 text-purple-400 border-purple-500/30' : 'bg-purple-50 text-purple-700 border-purple-200'
+                          : isDark ? 'bg-blue-500/15 text-blue-400 border-blue-500/30' : 'bg-blue-50 text-blue-700 border-blue-200'
+                      }`}>
+                        {isHO ? '🏛️ Admin Authority' : Number(branch.max_customer_credit_limit || 1000000) > 1000000 ? '⚡ Increased Cap' : 'Default ₹10L Cap'}
+                      </span>
+                    </div>
                   </div>
 
                   {/* Actions Footer */}
@@ -672,7 +784,7 @@ export default function BranchesPage() {
                           </button>
                         )}
 
-                        {canDeleteBranch && (
+                        {canDeleteBranch && !isHO && (
                           <button
                             onClick={() => setDeleteTarget(branch)}
                             className={`p-1.5 rounded-lg border text-xs font-semibold transition-all ${
@@ -685,6 +797,17 @@ export default function BranchesPage() {
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         )}
+
+                        {canDeleteBranch && isHO && (
+                          <span
+                            className={`p-1.5 rounded-lg border text-xs opacity-50 cursor-not-allowed ${
+                              isDark ? 'border-slate-800 bg-slate-900 text-slate-500' : 'border-slate-200 bg-slate-100 text-slate-400'
+                            }`}
+                            title="Primary Head Office cannot be deleted"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </span>
+                        )}
                       </div>
                     ) : (
                       <span className={`text-[10px] px-2 py-0.5 rounded border font-medium ${
@@ -695,7 +818,8 @@ export default function BranchesPage() {
                     )}
                   </div>
                 </div>
-              ))}
+              );
+              })}
             </div>
           )}
 
@@ -748,72 +872,124 @@ export default function BranchesPage() {
                       <span>Facility Classification</span>
                       <span className="text-rose-500 font-bold ml-0.5">*</span>
                     </label>
-                    <div className="grid grid-cols-2 gap-3">
-                      {/* 1. Branch Godown First */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                      {/* 1. Head Office (HQ) */}
                       <div
                         onClick={() => {
                           setFormData((prev) => {
                             let newCode = prev.branch_code || '';
                             if (!editingBranch) {
                               if (!userEditedCode) {
-                                newCode = computeBranchCode(prev.branch_name, prev.city, false);
-                              } else if (newCode.endsWith('H')) {
-                                newCode = newCode.slice(0, -1) + 'B';
+                                newCode = computeBranchCode(prev.branch_name, prev.city, 'HEAD_OFFICE');
+                              } else if (!newCode.endsWith('HQ')) {
+                                newCode = (companyPrefix || 'B') + 'HQ';
                               }
                             }
-                            return { ...prev, is_hub: false, branch_code: newCode };
+                            return {
+                              ...prev,
+                              facility_type: 'HEAD_OFFICE',
+                              is_head_office: true,
+                              is_hub: true,
+                              branch_code: newCode,
+                            };
                           });
                         }}
-                        className={`p-3 rounded-2xl border cursor-pointer transition-all flex items-center space-x-3 ${
-                          !formData.is_hub
+                        className={`p-3 rounded-2xl border cursor-pointer transition-all flex flex-col justify-between ${
+                          formData.facility_type === 'HEAD_OFFICE'
                             ? isDark 
-                              ? 'bg-cyan-950/40 border-cyan-400 shadow-md shadow-cyan-950/20' 
-                              : 'bg-blue-50 border-blue-500 shadow-xs'
-                            : isDark ? 'bg-slate-900/60 border-slate-800 opacity-60' : 'bg-slate-50 border-slate-200 opacity-70'
+                              ? 'bg-purple-950/40 border-purple-400 shadow-md shadow-purple-950/20 ring-1 ring-purple-400' 
+                              : 'bg-purple-50/80 border-purple-500 shadow-xs ring-1 ring-purple-500'
+                            : isDark ? 'bg-slate-900/60 border-slate-800 opacity-60 hover:opacity-100' : 'bg-slate-50 border-slate-200 opacity-70 hover:opacity-100'
                         }`}
                       >
-                        <Building2 className={`w-5 h-5 ${!formData.is_hub ? (isDark ? 'text-cyan-400' : 'text-blue-600') : 'text-slate-400'}`} />
-                        <div>
-                          <div className={`text-xs font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                            Branch Godown
-                          </div>
-                          <div className="text-[10px] text-slate-400">
-                            Local booking & delivery
-                          </div>
+                        <div className="flex items-center space-x-2">
+                          <span className="text-base">🏛️</span>
+                          <span className={`text-xs font-bold ${formData.facility_type === 'HEAD_OFFICE' ? (isDark ? 'text-purple-300' : 'text-purple-950') : (isDark ? 'text-white' : 'text-slate-900')}`}>
+                            Head Office (HQ)
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-slate-400 mt-1">
+                          Admin & owner headquarters
                         </div>
                       </div>
 
-                      {/* 2. Transshipment Hub Next */}
+                      {/* 2. Transshipment Hub */}
                       <div
                         onClick={() => {
                           setFormData((prev) => {
                             let newCode = prev.branch_code || '';
                             if (!editingBranch) {
                               if (!userEditedCode) {
-                                newCode = computeBranchCode(prev.branch_name, prev.city, true);
-                              } else if (newCode.endsWith('B')) {
-                                newCode = newCode.slice(0, -1) + 'H';
+                                newCode = computeBranchCode(prev.branch_name, prev.city, 'HUB');
+                              } else if (newCode.endsWith('B') || newCode.endsWith('HQ')) {
+                                newCode = newCode.replace(/(HQ|B)$/, '') + 'H';
                               }
                             }
-                            return { ...prev, is_hub: true, branch_code: newCode };
+                            return {
+                              ...prev,
+                              facility_type: 'HUB',
+                              is_head_office: false,
+                              is_hub: true,
+                              branch_code: newCode,
+                            };
                           });
                         }}
-                        className={`p-3 rounded-2xl border cursor-pointer transition-all flex items-center space-x-3 ${
-                          formData.is_hub
+                        className={`p-3 rounded-2xl border cursor-pointer transition-all flex flex-col justify-between ${
+                          formData.facility_type === 'HUB'
                             ? isDark 
-                              ? 'bg-cyan-950/40 border-cyan-400 shadow-md shadow-cyan-950/20' 
-                              : 'bg-blue-50 border-blue-500 shadow-xs'
-                            : isDark ? 'bg-slate-900/60 border-slate-800 opacity-60' : 'bg-slate-50 border-slate-200 opacity-70'
+                              ? 'bg-amber-950/40 border-amber-400 shadow-md shadow-amber-950/20 ring-1 ring-amber-400' 
+                              : 'bg-amber-50/80 border-amber-500 shadow-xs ring-1 ring-amber-500'
+                            : isDark ? 'bg-slate-900/60 border-slate-800 opacity-60 hover:opacity-100' : 'bg-slate-50 border-slate-200 opacity-70 hover:opacity-100'
                         }`}
                       >
-                        <Warehouse className={`w-5 h-5 ${formData.is_hub ? (isDark ? 'text-cyan-400' : 'text-blue-600') : 'text-slate-400'}`} />
-                        <div>
-                          <div className={`text-xs font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                        <div className="flex items-center space-x-2">
+                          <Warehouse className={`w-4 h-4 ${formData.facility_type === 'HUB' ? (isDark ? 'text-amber-400' : 'text-amber-600') : 'text-slate-400'}`} />
+                          <span className={`text-xs font-bold ${formData.facility_type === 'HUB' ? (isDark ? 'text-amber-300' : 'text-amber-950') : (isDark ? 'text-white' : 'text-slate-900')}`}>
                             Transshipment Hub
-                          </div>
-                          <div className="text-[10px] text-slate-400">
-                            Major sorting & cross-dock
-                          </div>
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-slate-400 mt-1">
+                          Cross-dock sorting hub
+                        </div>
+                      </div>
+
+                      {/* 3. Branch Godown */}
+                      <div
+                        onClick={() => {
+                          setFormData((prev) => {
+                            let newCode = prev.branch_code || '';
+                            if (!editingBranch) {
+                              if (!userEditedCode) {
+                                newCode = computeBranchCode(prev.branch_name, prev.city, 'BRANCH');
+                              } else if (newCode.endsWith('H') || newCode.endsWith('HQ')) {
+                                newCode = newCode.replace(/(HQ|H)$/, '') + 'B';
+                              }
+                            }
+                            return {
+                              ...prev,
+                              facility_type: 'BRANCH',
+                              is_head_office: false,
+                              is_hub: false,
+                              branch_code: newCode,
+                            };
+                          });
+                        }}
+                        className={`p-3 rounded-2xl border cursor-pointer transition-all flex flex-col justify-between ${
+                          formData.facility_type === 'BRANCH'
+                            ? isDark 
+                              ? 'bg-cyan-950/40 border-cyan-400 shadow-md shadow-cyan-950/20' 
+                              : 'bg-blue-50 border-blue-500 shadow-xs ring-1 ring-blue-500'
+                            : isDark ? 'bg-slate-900/60 border-slate-800 opacity-60 hover:opacity-100' : 'bg-slate-50 border-slate-200 opacity-70 hover:opacity-100'
+                        }`}
+                      >
+                        <div className="flex items-center space-x-2">
+                          <Building2 className={`w-4 h-4 ${formData.facility_type === 'BRANCH' ? (isDark ? 'text-cyan-400' : 'text-blue-600') : 'text-slate-400'}`} />
+                          <span className={`text-xs font-bold ${formData.facility_type === 'BRANCH' ? (isDark ? 'text-cyan-300' : 'text-blue-950') : (isDark ? 'text-white' : 'text-slate-900')}`}>
+                            Branch Godown
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-slate-400 mt-1">
+                          Local booking & delivery
                         </div>
                       </div>
                     </div>
@@ -841,9 +1017,9 @@ export default function BranchesPage() {
                           const newName = e.target.value;
                           setFormData((prev) => {
                             const updated = { ...prev, branch_name: newName };
-                            // If code not manually overridden, auto-compute with suffix B or H
+                            // If code not manually overridden, auto-compute with suffix B, H, or HQ
                             if (!editingBranch && !userEditedCode) {
-                              updated.branch_code = computeBranchCode(newName, prev.city, prev.is_hub);
+                              updated.branch_code = computeBranchCode(newName, prev.city, prev.facility_type);
                             }
                             return updated;
                           });
@@ -1095,6 +1271,91 @@ export default function BranchesPage() {
                         </span>
                       )}
                     </div>
+                  </div>
+
+                  {/* Branch Manager TBB Authorization Limit (Admin Configured) */}
+                  <div className={`p-3.5 rounded-2xl border space-y-2.5 ${
+                    isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200'
+                  }`}>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <label className={`text-xs font-bold flex items-center gap-1.5 ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                          <span>Branch Manager TBB Credit Limit (₹)</span>
+                          <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded border ${
+                            isAdmin
+                              ? 'bg-purple-500/15 text-purple-400 border-purple-500/30'
+                              : 'bg-slate-800 text-slate-400 border-slate-700'
+                          }`}>
+                            {isAdmin ? '🏛️ Admin Authority' : '🔒 HO Locked'}
+                          </span>
+                        </label>
+                        <p className="text-[10px] text-slate-400 mt-0.5">
+                          Branch Managers at this branch can authorize TBB customer freight contracts up to this limit.
+                        </p>
+                      </div>
+                    </div>
+
+                    {isAdmin ? (
+                      <div className="space-y-2">
+                        <div className="relative">
+                          <span className="absolute left-3.5 top-2.5 text-xs font-bold text-slate-400 pointer-events-none">₹</span>
+                          <input
+                            type="number"
+                            min="100000"
+                            step="100000"
+                            value={formData.max_customer_credit_limit || 1000000}
+                            onChange={(e) => setFormData({ ...formData, max_customer_credit_limit: parseFloat(e.target.value) || 0 })}
+                            className={`w-full pl-8 pr-3.5 py-2 rounded-xl border text-xs font-mono font-bold focus:outline-none transition-colors ${
+                              isDark
+                                ? 'border-slate-800 bg-slate-900 text-amber-400 focus:border-amber-500'
+                                : 'border-slate-300 bg-white text-slate-900 focus:border-blue-500'
+                            }`}
+                          />
+                        </div>
+                        {/* Presets */}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-[10px] text-slate-400 font-semibold">Admin Presets:</span>
+                          {[
+                            { label: '₹10 Lakh (Standard)', val: 1000000 },
+                            { label: '₹20 Lakh', val: 2000000 },
+                            { label: '₹30 Lakh', val: 3000000 },
+                            { label: '₹50 Lakh', val: 5000000 },
+                          ].map((p) => (
+                            <button
+                              key={p.val}
+                              type="button"
+                              onClick={() => setFormData({ ...formData, max_customer_credit_limit: p.val })}
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border transition-all cursor-pointer ${
+                                Number(formData.max_customer_credit_limit) === p.val
+                                  ? 'bg-amber-500/20 border-amber-500 text-amber-400'
+                                  : isDark
+                                  ? 'border-slate-700 bg-slate-800/80 text-slate-300 hover:bg-slate-700'
+                                  : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100'
+                              }`}
+                            >
+                              {p.label}
+                            </button>
+                          ))}
+                        </div>
+                        <p className="text-[10px] text-cyan-500 dark:text-cyan-400">
+                          💡 When a branch manager requests higher credit authority (e.g. for high-volume industrial hubs), Admin can increase this branch limit here.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className={`p-2.5 rounded-xl border text-xs flex items-center justify-between ${
+                        isDark ? 'bg-slate-950/80 border-slate-800 text-slate-300' : 'bg-slate-100 border-slate-200 text-slate-700'
+                      }`}>
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-slate-400">Authorized Cap:</span>
+                          <span className="font-mono font-bold text-amber-500">
+                            ₹{Number(formData.max_customer_credit_limit || 1000000).toLocaleString('en-IN')}
+                          </span>
+                        </div>
+                        <span className="text-[10px] text-slate-400 italic">
+                          Contact Head Office / Admin to request limit increase
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Active Toggle */}

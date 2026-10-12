@@ -18,7 +18,7 @@ const TERMINOLOGY_CONFIGS = {
     term: 'Bilty',
     termShort: 'Bilty',
     termLower: 'bilty',
-    plural: 'Biltys',
+    plural: 'Bilties',
     newDocLabel: '+ New Bilty',
     docNumberLabel: 'Bilty Number',
     docDateLabel: 'Bilty Date',

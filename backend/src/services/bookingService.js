@@ -88,18 +88,22 @@ const createBooking = async ({ tenantId, organizationId, branchId, userId, paylo
     const consignorName = (payload.consignor_name || payload.consignorName || payload.consignor?.name || 'Walk-in Shipper').trim();
     if (!consignorId && Customer) {
       let cust = await Customer.findOne({
-        where: { organization_id: organizationId, name: consignorName },
+        where: { organization_id: organizationId, name: consignorName, is_walkin: true },
         transaction
       });
       if (!cust) {
+        const cleanPhone = (payload.consignor_phone || payload.consignorPhone || '').replace(/\D/g, '');
+        const addr = payload.consignor_address || payload.pickup_address || null;
         cust = await Customer.create({
           tenant_id: tenantId,
           organization_id: organizationId,
-          customer_code: 'CUST-' + Math.floor(1000 + Math.random() * 9000),
+          customer_code: 'WALKIN-' + Math.floor(100000 + Math.random() * 900000),
           name: consignorName,
           customer_type: 'CONSIGNOR',
-          phone: payload.consignor_phone || payload.consignorPhone || '9876543210',
+          phone: cleanPhone || '9999999999',
+          billing_address: addr,
           city: payload.origin_city || payload.originCity || 'Delhi',
+          is_walkin: true,
         }, { transaction });
       }
       consignorId = cust.id;
@@ -110,18 +114,22 @@ const createBooking = async ({ tenantId, organizationId, branchId, userId, paylo
     const consigneeName = (payload.consignee_name || payload.consigneeName || payload.consignee?.name || 'Walk-in Receiver').trim();
     if (!consigneeId && Customer) {
       let cust = await Customer.findOne({
-        where: { organization_id: organizationId, name: consigneeName },
+        where: { organization_id: organizationId, name: consigneeName, is_walkin: true },
         transaction
       });
       if (!cust) {
+        const cleanPhone = (payload.consignee_phone || payload.consigneePhone || '').replace(/\D/g, '');
+        const addr = payload.consignee_address || payload.delivery_address || null;
         cust = await Customer.create({
           tenant_id: tenantId,
           organization_id: organizationId,
-          customer_code: 'CUST-' + Math.floor(1000 + Math.random() * 9000),
+          customer_code: 'WALKIN-' + Math.floor(100000 + Math.random() * 900000),
           name: consigneeName,
           customer_type: 'CONSIGNEE',
-          phone: payload.consignee_phone || payload.consigneePhone || '9876543210',
+          phone: cleanPhone || '9999999999',
+          billing_address: addr,
           city: payload.destination_city || payload.destinationCity || 'Mumbai',
+          is_walkin: true,
         }, { transaction });
       }
       consigneeId = cust.id;
@@ -592,43 +600,51 @@ const updateBooking = async ({ id, tenantId, organizationId, payload, models, se
     const consignorName = (payload.consignor_name || payload.consignorName || payload.consignor?.name || '').trim();
     if (consignorName && Customer) {
       let cust = await Customer.findOne({
-        where: { organization_id: organizationId, name: consignorName },
+        where: { organization_id: organizationId, name: consignorName, is_walkin: true },
         transaction,
       });
       if (!cust) {
+        const cleanPhone = (payload.consignor_phone || payload.consignorPhone || '').replace(/\D/g, '');
+        const addr = payload.consignor_address || payload.pickup_address || null;
         cust = await Customer.create({
           tenant_id: tenantId,
           organization_id: organizationId,
-          customer_code: 'CUST-' + Math.floor(1000 + Math.random() * 9000),
+          customer_code: 'WALKIN-' + Math.floor(100000 + Math.random() * 900000),
           name: consignorName,
           customer_type: 'CONSIGNOR',
-          phone: payload.consignor_phone || payload.consignorPhone || '9876543210',
+          phone: cleanPhone || '9999999999',
+          billing_address: addr,
           city: payload.origin_city || consignment.origin_city,
+          is_walkin: true,
         }, { transaction });
       }
       consignorId = cust.id;
     }
 
-    let consigneeId = consignment.consignee_id;
-    const consigneeName = (payload.consignee_name || payload.consigneeName || payload.consignee?.name || '').trim();
-    if (consigneeName && Customer) {
-      let cust = await Customer.findOne({
-        where: { organization_id: organizationId, name: consigneeName },
-        transaction,
-      });
-      if (!cust) {
-        cust = await Customer.create({
-          tenant_id: tenantId,
-          organization_id: organizationId,
-          customer_code: 'CUST-' + Math.floor(1000 + Math.random() * 9000),
-          name: consigneeName,
-          customer_type: 'CONSIGNEE',
-          phone: payload.consignee_phone || payload.consigneePhone || '9876543210',
-          city: payload.destination_city || consignment.destination_city,
-        }, { transaction });
+      let consigneeId = consignment.consignee_id;
+      const consigneeName = (payload.consignee_name || payload.consigneeName || payload.consignee?.name || '').trim();
+      if (consigneeName && Customer) {
+        let cust = await Customer.findOne({
+          where: { organization_id: organizationId, name: consigneeName, is_walkin: true },
+          transaction,
+        });
+        if (!cust) {
+          const cleanPhone = (payload.consignee_phone || payload.consigneePhone || '').replace(/\D/g, '');
+          const addr = payload.consignee_address || payload.delivery_address || null;
+          cust = await Customer.create({
+            tenant_id: tenantId,
+            organization_id: organizationId,
+            customer_code: 'WALKIN-' + Math.floor(100000 + Math.random() * 900000),
+            name: consigneeName,
+            customer_type: 'CONSIGNEE',
+            phone: cleanPhone || '9999999999',
+            billing_address: addr,
+            city: payload.destination_city || consignment.destination_city,
+            is_walkin: true,
+          }, { transaction });
+        }
+        consigneeId = cust.id;
       }
-      consigneeId = cust.id;
-    }
 
     const packagesCount = payload.packages_count !== undefined ? parseInt(payload.packages_count, 10) : consignment.packages_count;
     const actualWeight = payload.actual_weight !== undefined ? parseFloat(payload.actual_weight) : consignment.actual_weight;

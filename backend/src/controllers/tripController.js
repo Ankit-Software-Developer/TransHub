@@ -84,37 +84,44 @@ const listTrips = async (req, res) => {
 
     const andConditions = [];
 
-    if (branch_id && branch_id !== 'ALL') {
-      const { matchedBranchIds, cityKeywords } = await resolveCityAndSiblingBranches(branch_id, Branch, req.tenant.organizationId);
-      const orClauses = [
-        { origin_branch_id: { [Op.in]: matchedBranchIds } },
-        { dest_branch_id: { [Op.in]: matchedBranchIds } },
-      ];
-      if (cityKeywords.length > 0) {
-        orClauses.push(
-          { origin_city: { [Op.in]: cityKeywords } },
-          { destination_city: { [Op.in]: cityKeywords } }
-        );
-      }
-      andConditions.push({ [Op.or]: orClauses });
+    const userRoles = req.userRoles || [];
+    const isOwnerOrAdmin =
+      userRoles.includes('SUPER_ADMIN') ||
+      userRoles.includes('TRANSPORT_OWNER') ||
+      userRoles.includes('ADMIN') ||
+      Boolean(req.user?.is_owner);
+    const userBranchId = req.user?.branch_id || req.user?.branch?.id || null;
+
+    let targetBranchId = null;
+    if (!isOwnerOrAdmin && userBranchId) {
+      // Non-admin branch staff and managers strictly see only their assigned branch's trips
+      targetBranchId = userBranchId;
+    } else if (branch_id && branch_id !== 'ALL') {
+      targetBranchId = branch_id;
     }
 
-    if (origin_branch_id && origin_branch_id !== 'ALL') {
-      const { matchedBranchIds, cityKeywords } = await resolveCityAndSiblingBranches(origin_branch_id, Branch, req.tenant.organizationId);
-      const orClauses = [{ origin_branch_id: { [Op.in]: matchedBranchIds } }];
-      if (cityKeywords.length > 0) {
-        orClauses.push({ origin_city: { [Op.in]: cityKeywords } });
+    if (targetBranchId) {
+      if (origin_branch_id && origin_branch_id !== 'ALL') {
+        andConditions.push({ origin_branch_id: targetBranchId });
+      } else if (dest_branch_id && dest_branch_id !== 'ALL') {
+        andConditions.push({ dest_branch_id: targetBranchId });
+      } else {
+        // Show only trips generated in this branch (outbound) OR arriving in this branch (inbound)
+        andConditions.push({
+          [Op.or]: [
+            { origin_branch_id: targetBranchId },
+            { dest_branch_id: targetBranchId },
+          ],
+        });
       }
-      andConditions.push({ [Op.or]: orClauses });
-    }
-
-    if (dest_branch_id && dest_branch_id !== 'ALL') {
-      const { matchedBranchIds, cityKeywords } = await resolveCityAndSiblingBranches(dest_branch_id, Branch, req.tenant.organizationId);
-      const orClauses = [{ dest_branch_id: { [Op.in]: matchedBranchIds } }];
-      if (cityKeywords.length > 0) {
-        orClauses.push({ destination_city: { [Op.in]: cityKeywords } });
+    } else {
+      // Admin viewing network-wide trips across all branches
+      if (origin_branch_id && origin_branch_id !== 'ALL') {
+        andConditions.push({ origin_branch_id });
       }
-      andConditions.push({ [Op.or]: orClauses });
+      if (dest_branch_id && dest_branch_id !== 'ALL') {
+        andConditions.push({ dest_branch_id });
+      }
     }
 
     if (search && search.trim()) {
@@ -690,7 +697,12 @@ const completeTripAndUnload = async (req, res) => {
 
     for (const c of consignments) {
       const tally = tallyMap.get(c.id);
-      const isFinalDestination = Boolean(c.dest_branch_id && String(c.dest_branch_id) === String(trip.dest_branch_id));
+      const isBranchMatch = Boolean(c.dest_branch_id && String(c.dest_branch_id) === String(trip.dest_branch_id));
+      const isCityMatch = Boolean(
+        (c.destination_city && trip.destBranch?.city && c.destination_city.trim().toLowerCase() === trip.destBranch.city.trim().toLowerCase()) ||
+        (c.destination_city && trip.destination_city && c.destination_city.trim().toLowerCase() === trip.destination_city.trim().toLowerCase())
+      );
+      const isFinalDestination = isBranchMatch || (!c.dest_branch_id && isCityMatch);
       let newStatus = isFinalDestination ? 'REACHED_DESTINATION' : 'RECEIVED_AT_HUB';
       let tallyRemarks = isFinalDestination
         ? `Arrived at destination branch (${trip.destBranch?.branch_name || 'Destination'}). Gate seal: ${received_seal_number || 'N/A'} [${seal_status}]. Ready for local customer delivery.`

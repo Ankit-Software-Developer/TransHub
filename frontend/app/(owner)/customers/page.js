@@ -8,6 +8,7 @@ import Navbar from '../../../components/layout/Navbar';
 import DataTable from '../../../components/ui/DataTable';
 import { usePermissions } from '../../../hooks/usePermissions';
 import { useTheme } from '../../../components/ThemeProvider';
+import { useStore } from '../../../store/useStore';
 import {
   Users,
   Plus,
@@ -26,6 +27,11 @@ import {
   Pencil,
   Trash2,
   ChevronDown,
+  CreditCard,
+  TrendingUp,
+  Compass,
+  ShieldCheck,
+  Filter,
 } from 'lucide-react';
 
 function ServingBranchDropdown({
@@ -121,15 +127,21 @@ function ServingBranchDropdown({
           <div className="flex items-center gap-1.5 min-w-0 flex-1 mr-2 text-xs truncate">
             <Building2 className="w-3.5 h-3.5 text-blue-500 shrink-0" />
             <span className="font-bold truncate">{selectedBranch.branch_name}</span>
-            <span className="font-mono text-[10px] font-bold px-1 rounded bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 shrink-0">
-              {selectedBranch.branch_code}
-            </span>
+            {selectedBranch.is_hub && (
+              <span className="text-[9px] px-1.5 py-0.2 rounded font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 shrink-0">
+                HUB
+              </span>
+            )}
             <span className={`text-[11px] truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
               — {selectedBranch.city} {selectedBranch.pincode ? `[${selectedBranch.pincode}]` : ''}
             </span>
-            {selectedBranch.is_hub && (
-              <span className="text-[9px] px-1 rounded font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 shrink-0">
-                HUB
+            {selectedBranch.branch_code && (
+              <span className={`font-mono text-[10px] font-bold px-1.5 py-0.2 rounded shrink-0 ${
+                selectedBranch.is_hub
+                  ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30'
+                  : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+              }`}>
+                [{selectedBranch.branch_code}]
               </span>
             )}
             {bestMatch?.branch?.id === selectedBranch.id && (
@@ -209,18 +221,24 @@ function ServingBranchDropdown({
               >
                 <div className="flex items-center gap-1.5 min-w-0 flex-1 truncate">
                   <span className="text-xs font-bold truncate">{bestMatch.branch.branch_name}</span>
-                  <span className="font-mono text-[10px] font-bold px-1 rounded bg-cyan-500/20 text-cyan-400 shrink-0">
-                    {bestMatch.branch.branch_code}
-                  </span>
+                  {bestMatch.branch.is_hub && (
+                    <span className="text-[9px] px-1.5 py-0.2 rounded font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 shrink-0">
+                      HUB
+                    </span>
+                  )}
                   <span className={`text-[11px] truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                     — {bestMatch.branch.city} {bestMatch.branch.pincode ? `[${bestMatch.branch.pincode}]` : ''}
                   </span>
                   <span className="text-[9px] px-1.5 py-0.2 rounded font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 shrink-0">
                     ⭐ Recommended Match
                   </span>
-                  {bestMatch.branch.is_hub && (
-                    <span className="text-[9px] px-1 rounded font-bold bg-amber-500/20 text-amber-400 shrink-0">
-                      HUB
+                  {bestMatch.branch.branch_code && (
+                    <span className={`font-mono text-[10px] font-bold px-1.5 py-0.2 rounded shrink-0 ${
+                      bestMatch.branch.is_hub
+                        ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30'
+                        : 'bg-cyan-500/20 text-cyan-400'
+                    }`}>
+                      [{bestMatch.branch.branch_code}]
                     </span>
                   )}
                 </div>
@@ -250,15 +268,21 @@ function ServingBranchDropdown({
                   >
                     <div className="flex items-center gap-1.5 min-w-0 flex-1 truncate">
                       <span className="text-xs font-semibold truncate">{b.branch_name}</span>
-                      <span className="font-mono text-[10px] font-bold px-1 rounded bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 shrink-0">
-                        {b.branch_code}
-                      </span>
+                      {b.is_hub && (
+                        <span className="text-[9px] px-1.5 py-0.2 rounded font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 shrink-0">
+                          HUB
+                        </span>
+                      )}
                       <span className={`text-[11px] truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                         — {b.city} {b.pincode ? `[${b.pincode}]` : ''}
                       </span>
-                      {b.is_hub && (
-                        <span className="text-[9px] px-1 rounded font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/20 shrink-0">
-                          HUB
+                      {b.branch_code && (
+                        <span className={`font-mono text-[10px] font-bold px-1.5 py-0.2 rounded shrink-0 ${
+                          b.is_hub
+                            ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30'
+                            : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                        }`}>
+                          [{b.branch_code}]
                         </span>
                       )}
                     </div>
@@ -291,7 +315,11 @@ export default function CustomersPage() {
     canViewCustomer,
     canExport,
     isAdmin,
+    isBranchManager,
   } = usePermissions();
+
+  const user = useStore((state) => state.user);
+  const activeBranch = useStore((state) => state.activeBranch);
 
   const [customers, setCustomers] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -302,6 +330,9 @@ export default function CustomersPage() {
   const [sortBy, setSortBy] = useState('name');
   const [sortOrder, setSortOrder] = useState('ASC');
   const [typeFilter, setTypeFilter] = useState('ALL');
+  const [branchFilter, setBranchFilter] = useState('ALL');
+  const [billingFilter, setBillingFilter] = useState('ALL');
+  const [metaStats, setMetaStats] = useState(null);
 
   // Branches for smart logistics routing
   const [branches, setBranches] = useState([]);
@@ -313,6 +344,16 @@ export default function CustomersPage() {
   const [isLookingUpPin, setIsLookingUpPin] = useState(false);
   const [isPinAutoFilled, setIsPinAutoFilled] = useState(false);
 
+  // Resolved branch for the logged-in user
+  const userBranch = useMemo(() => {
+    if (metaStats?.user_branch) return metaStats.user_branch;
+    const branchId = user?.branch_id || user?.branch?.id;
+    if (branchId && branches.length > 0) {
+      return branches.find((b) => b.id === branchId) || user?.branch || null;
+    }
+    return user?.branch || null;
+  }, [metaStats, user, branches]);
+
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
@@ -322,6 +363,9 @@ export default function CustomersPage() {
     gstin: '',
     customer_type: 'BOTH',
     billing_address: '',
+    billing_type: 'REGULAR', // 'REGULAR' | 'TBB'
+    credit_days: 30,
+    credit_limit: '',
   });
 
   // Edit Customer States
@@ -338,6 +382,9 @@ export default function CustomersPage() {
     customer_type: 'BOTH',
     billing_address: '',
     status: 'ACTIVE',
+    billing_type: 'REGULAR',
+    credit_days: 30,
+    credit_limit: '',
   });
   const [editPhoneError, setEditPhoneError] = useState('');
   const [editPincodeError, setEditPincodeError] = useState('');
@@ -374,15 +421,23 @@ export default function CustomersPage() {
     const so = overrides.sortOrder !== undefined ? overrides.sortOrder : sortOrder;
     const sq = overrides.search !== undefined ? overrides.search : search;
     const tf = overrides.type !== undefined ? overrides.type : typeFilter;
+    const bf = overrides.branchFilter !== undefined ? overrides.branchFilter : branchFilter;
+    const blf = overrides.billingFilter !== undefined ? overrides.billingFilter : billingFilter;
 
     try {
       let url = `/customers?page=${p}&limit=${ps}&sort_by=${sb}&sort_order=${so}`;
       if (sq) url += `&search=${encodeURIComponent(sq)}`;
       if (tf && tf !== 'ALL') url += `&type=${tf}`;
+      if (bf && bf !== 'ALL') url += `&branch_id=${bf}`;
+      if (blf && blf !== 'ALL') url += `&billing_type=${blf}`;
+
       const res = await api.get(url);
       if (res.data.success) {
         setCustomers(res.data.data || []);
         setTotalCount(res.data.pagination?.total ?? (res.data.data || []).length);
+        if (res.data.pagination?.meta) {
+          setMetaStats(res.data.pagination.meta);
+        }
       }
     } catch (err) {
       console.error('Failed to load customers', err);
@@ -395,7 +450,7 @@ export default function CustomersPage() {
 
   useEffect(() => {
     fetchCustomers();
-  }, [page, pageSize, sortBy, sortOrder, typeFilter]);
+  }, [page, pageSize, sortBy, sortOrder, typeFilter, branchFilter, billingFilter]);
 
   // Debounced search
   useEffect(() => {
@@ -659,9 +714,22 @@ export default function CustomersPage() {
     }
 
     try {
-      const res = await api.post('/customers', {
+      const isTbb = formData.billing_type === 'TBB';
+      const parsedLimit = isTbb ? parseFloat(formData.credit_limit || 0) : 0;
+      const targetBranchId = formData.branch_id || bestBranchMatch?.branch?.id;
+      const selectedBranch = branches.find(b => b.id === targetBranchId);
+      const branchCap = selectedBranch?.max_customer_credit_limit ? parseFloat(selectedBranch.max_customer_credit_limit) : 1000000;
+
+      if (isTbb && !isAdmin && parsedLimit > branchCap) {
+        alert(`Branch Managers at "${selectedBranch?.branch_name || 'this branch'}" can authorize up to ₹${branchCap.toLocaleString('en-IN')}. For higher credit limits (up to ₹50 Lakhs), Head Office / Admin authorization is required. You can request Admin to increase this branch's authorization limit.`);
+        return;
+      }
+      const payload = {
         ...formData,
-      });
+        credit_days: isTbb ? parseInt(formData.credit_days || 30, 10) : 0,
+        credit_limit: parsedLimit,
+      };
+      const res = await api.post('/customers', payload);
       if (res.data.success) {
         setShowAddModal(false);
         setIsManualBranchSelected(false);
@@ -675,6 +743,9 @@ export default function CustomersPage() {
           gstin: '',
           customer_type: 'BOTH',
           billing_address: '',
+          billing_type: 'REGULAR',
+          credit_days: 30,
+          credit_limit: '',
         });
         setPhoneError('');
         setPincodeError('');
@@ -688,6 +759,7 @@ export default function CustomersPage() {
 
   // Open Edit Modal
   const handleOpenEditModal = (customer) => {
+    const isTbb = (parseInt(customer.credit_days, 10) > 0 || parseFloat(customer.credit_limit || 0) > 0);
     setEditingCustomer(customer);
     setEditFormData({
       id: customer.id,
@@ -700,6 +772,9 @@ export default function CustomersPage() {
       customer_type: customer.customer_type || 'BOTH',
       billing_address: customer.billing_address || '',
       status: customer.status || 'ACTIVE',
+      billing_type: isTbb ? 'TBB' : 'REGULAR',
+      credit_days: customer.credit_days !== undefined && customer.credit_days !== null ? customer.credit_days : 30,
+      credit_limit: customer.credit_limit ? String(customer.credit_limit) : '',
     });
     setEditPhoneError('');
     setEditPincodeError('');
@@ -803,7 +878,23 @@ export default function CustomersPage() {
 
     setIsSubmittingEdit(true);
     try {
-      const res = await api.put(`/customers/${editFormData.id}`, editFormData);
+      const isTbb = editFormData.billing_type === 'TBB';
+      const parsedLimit = isTbb ? parseFloat(editFormData.credit_limit || 0) : 0;
+      const targetBranchId = editFormData.branch_id || editBestBranchMatch?.branch?.id || editingCustomer?.branch_id;
+      const selectedBranch = branches.find(b => b.id === targetBranchId);
+      const branchCap = selectedBranch?.max_customer_credit_limit ? parseFloat(selectedBranch.max_customer_credit_limit) : 1000000;
+
+      if (isTbb && !isAdmin && parsedLimit > branchCap) {
+        alert(`Branch Managers at "${selectedBranch?.branch_name || 'this branch'}" can authorize up to ₹${branchCap.toLocaleString('en-IN')}. For higher credit limits (up to ₹50 Lakhs), Head Office / Admin authorization is required. You can request Admin to increase this branch's authorization limit.`);
+        setIsSubmittingEdit(false);
+        return;
+      }
+      const payload = {
+        ...editFormData,
+        credit_days: isTbb ? parseInt(editFormData.credit_days || 30, 10) : 0,
+        credit_limit: parsedLimit,
+      };
+      const res = await api.put(`/customers/${editFormData.id}`, payload);
       if (res.data.success) {
         setShowEditModal(false);
         setEditingCustomer(null);
@@ -839,29 +930,37 @@ export default function CustomersPage() {
         key: 'customer_code',
         header: 'Code',
         sortable: true,
-        width: 120,
-        minWidth: 100,
+        width: 95,
+        minWidth: 85,
         exportValue: (row) => row.customer_code,
         render: (val, row) => (
-          <span className="font-mono font-bold text-blue-500 hover:underline">
+          <span className="font-mono text-xs font-bold text-blue-600 dark:text-cyan-400 hover:underline">
             {row.customer_code}
           </span>
         ),
       },
       {
         key: 'name',
-        header: 'Party / Company Name',
+        header: 'Customer / Company Name',
         sortable: true,
-        width: 220,
-        minWidth: 160,
+        width: 210,
+        minWidth: 175,
         exportValue: (row) => row.name,
         render: (val, row) => (
-          <div>
-            <div className={`font-bold text-xs truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
-              {row.name}
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className={`font-bold text-xs ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                {row.name}
+              </span>
+              {row.is_near_branch && (
+                <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-emerald-500/15 text-emerald-500 dark:text-emerald-400 border border-emerald-500/30 flex items-center gap-0.5 shrink-0">
+                  <MapPin className="w-2.5 h-2.5" />
+                  <span>Near You</span>
+                </span>
+              )}
             </div>
             {row.billing_address && (
-              <div className="text-[10px] text-slate-400 truncate max-w-[200px]">
+              <div className="text-[10px] text-slate-400 truncate max-w-[190px]" title={row.billing_address}>
                 {row.billing_address}
               </div>
             )}
@@ -870,32 +969,112 @@ export default function CustomersPage() {
       },
       {
         key: 'customer_type',
-        header: 'Type',
+        header: 'Role',
         sortable: true,
-        width: 120,
-        minWidth: 90,
+        width: 85,
+        minWidth: 75,
         exportValue: (row) => row.customer_type,
         render: (val, row) => (
-          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+          <span className={`px-2 py-0.5 rounded text-[10px] font-bold inline-block text-center ${
             row.customer_type === 'CONSIGNOR'
-              ? 'bg-blue-500/15 text-blue-400 border border-blue-500/20'
+              ? 'bg-blue-500/15 text-blue-500 dark:text-blue-400 border border-blue-500/30'
               : row.customer_type === 'CONSIGNEE'
-              ? 'bg-cyan-500/15 text-cyan-400 border border-cyan-500/20'
-              : 'bg-purple-500/15 text-purple-400 border border-purple-500/20'
+              ? 'bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30'
+              : 'bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30'
           }`}>
-            {row.customer_type}
+            {row.customer_type === 'BOTH' ? 'Both' : row.customer_type === 'CONSIGNOR' ? 'Shipper' : 'Receiver'}
           </span>
         ),
+      },
+      {
+        key: 'billing_terms',
+        header: 'Billing Terms & Credit',
+        sortable: false,
+        width: 210,
+        minWidth: 195,
+        exportValue: (row) =>
+          parseFloat(row.credit_limit || 0) > 0
+            ? `TBB Contract (${row.credit_days || 30}D • Limit: ₹${Number(row.credit_limit).toLocaleString('en-IN')})`
+            : 'Normal',
+        render: (val, row) => {
+          const limit = parseFloat(row.credit_limit || 0);
+          if (limit > 0) {
+            const outstanding = parseFloat(row.outstanding_freight || row.current_balance || 0);
+            const available = Math.max(0, limit - outstanding);
+            const usedPercent = Math.min(100, Math.round((outstanding / limit) * 100));
+            const branchCap = row.branch?.max_customer_credit_limit ? parseFloat(row.branch.max_customer_credit_limit) : 1000000;
+            const isHoApproved = limit > branchCap;
+
+            return (
+              <div className="space-y-1 py-0.5 w-full">
+                {/* Row 1: TBB Badge */}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black border ${
+                    isDark
+                      ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                      : 'bg-amber-50 text-amber-800 border-amber-200'
+                  }`}>
+                    <span>⭐</span>
+                    <span>TBB ({row.credit_days || 30}D)</span>
+                  </span>
+                </div>
+
+                {/* Row 2: Credit Limit Amount (Compact without large space) */}
+                <div className="flex items-baseline gap-1 text-[11px] pt-0.5">
+                  <span className="text-slate-400 font-medium text-[10px]">Limit:</span>
+                  <span className={`font-mono font-black ${isDark ? 'text-amber-400' : 'text-slate-900'}`}>
+                    ₹{limit.toLocaleString('en-IN')}
+                  </span>
+                </div>
+
+                {/* Row 3: Available & Pending / Due Balances */}
+                <div className="flex items-center gap-2 text-[10px] text-slate-400 flex-wrap">
+                  <span>Avail: <strong className="text-emerald-500 dark:text-emerald-400 font-mono font-bold">₹{available.toLocaleString('en-IN')}</strong></span>
+                  {outstanding > 0 && (
+                    <span className="text-rose-500 dark:text-rose-400 font-mono font-semibold text-[9.5px]">
+                      (Pending: ₹{outstanding.toLocaleString('en-IN')})
+                    </span>
+                  )}
+                </div>
+
+                {/* Row 4: Subtle clean credit usage bar */}
+                <div className="w-full bg-slate-200 dark:bg-slate-800 rounded-full h-1 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${
+                      usedPercent >= 90
+                        ? 'bg-rose-500'
+                        : usedPercent >= 75
+                        ? 'bg-amber-500'
+                        : 'bg-emerald-500'
+                    }`}
+                    style={{ width: `${usedPercent}%` }}
+                  />
+                </div>
+              </div>
+            );
+          }
+
+          return (
+            <div className="py-0.5">
+              <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-bold border ${
+                isDark ? 'bg-slate-800 text-slate-300 border-slate-700' : 'bg-slate-100 text-slate-700 border-slate-200'
+              }`}>
+                <span>📦</span>
+                <span>Normal</span>
+              </span>
+            </div>
+          );
+        },
       },
       {
         key: 'city',
         header: 'Station / City',
         sortable: true,
-        width: 140,
-        minWidth: 110,
+        width: 110,
+        minWidth: 95,
         exportValue: (row) => row.city || '—',
         render: (val, row) => (
-          <span className={`text-xs font-medium ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
+          <span className={`text-xs font-semibold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
             {row.city || '—'}
           </span>
         ),
@@ -904,25 +1083,39 @@ export default function CustomersPage() {
         key: 'pincode',
         header: 'PIN Code',
         sortable: true,
-        width: 120,
-        minWidth: 100,
+        width: 95,
+        minWidth: 85,
         exportValue: (row) => row.pincode || '',
-        render: (val, row) => (
-          row.pincode ? (
-            <span className="font-mono text-xs font-bold px-2 py-0.5 rounded-md bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20">
-              {row.pincode}
-            </span>
-          ) : (
-            <span className="text-slate-400 text-xs italic">—</span>
-          )
-        ),
+        render: (val, row) => {
+          if (!row.pincode) return <span className="text-slate-400 text-xs italic">—</span>;
+          const userPin = userBranch?.pincode ? String(userBranch.pincode).trim() : '';
+          const rowPin = String(row.pincode).trim();
+          const isUserPinMatch = userPin && userPin === rowPin;
+
+          return (
+            <div className="space-y-0.5">
+              <span className={`font-mono text-xs font-bold px-2 py-0.5 rounded-md border inline-block ${
+                isUserPinMatch
+                  ? isDark ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 ring-1 ring-emerald-500/30' : 'bg-emerald-50 text-emerald-700 border-emerald-300 ring-1 ring-emerald-400/30'
+                  : isDark ? 'bg-slate-800 text-slate-300 border-slate-700' : 'bg-slate-100 text-slate-700 border-slate-200'
+              }`}>
+                {row.pincode}
+              </span>
+              {isUserPinMatch && (
+                <div className="text-[9px] font-bold text-emerald-500">
+                  ✓ Hub PIN
+                </div>
+              )}
+            </div>
+          );
+        },
       },
       {
         key: 'branch',
         header: 'Serving Branch',
         sortable: false,
-        width: 200,
-        minWidth: 160,
+        width: 165,
+        minWidth: 145,
         exportValue: (row) => {
           const match = calculateBestBranch(row.pincode, row.city, branches);
           const b = row.branch || match?.branch;
@@ -931,7 +1124,6 @@ export default function CustomersPage() {
         render: (val, row) => {
           const match = calculateBestBranch(row.pincode, row.city, branches);
           const b = row.branch || match?.branch;
-          const isNearestAuto = !row.branch && Boolean(match?.branch);
 
           if (!b) {
             return (
@@ -939,33 +1131,29 @@ export default function CustomersPage() {
             );
           }
 
+          const isHO = b.is_head_office || b.branch_code === 'BHQ' || b.branch_code === 'HQ' || /head\s*office/i.test(b.branch_name);
+
           return (
-            <div className="space-y-0.5">
+            <div className="space-y-1">
               <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-[10px] font-bold border ${
-                b.is_hub
+                isHO
                   ? isDark ? 'bg-purple-500/20 text-purple-300 border-purple-500/30' : 'bg-purple-50 text-purple-800 border-purple-200'
+                  : b.is_hub
+                  ? isDark ? 'bg-amber-500/15 text-amber-300 border-amber-500/30' : 'bg-amber-50 text-amber-800 border-amber-200'
                   : isDark ? 'bg-blue-500/15 text-blue-300 border-blue-500/30' : 'bg-blue-50 text-blue-800 border-blue-200'
               }`}>
                 <Building2 className="w-3 h-3 shrink-0" />
-                <span className="truncate">{b.branch_name}</span>
+                <span className="truncate max-w-[125px]">{b.branch_name}</span>
               </span>
 
               <div className="flex items-center gap-1.5 text-[9px]">
                 {b.branch_code && (
-                  <span className={`px-1.5 py-0.2 rounded font-mono font-bold text-[9px] border ${
-                    b.is_hub
-                      ? isDark ? 'bg-purple-500/20 text-purple-300 border-purple-500/30' : 'bg-purple-50 text-purple-800 border-purple-200'
-                      : isDark ? 'bg-blue-500/15 text-blue-300 border-blue-500/30' : 'bg-blue-50 text-blue-800 border-blue-200'
-                  }`}>
+                  <span className="px-1.5 py-0.2 rounded font-mono font-bold text-[9px] border bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700">
                     {b.branch_code}
                   </span>
                 )}
                 {b.pincode && (
-                  <span className={`font-mono text-[9px] font-semibold ${
-                    b.is_hub
-                      ? isDark ? 'text-purple-300/80' : 'text-purple-800/80'
-                      : isDark ? 'text-blue-300/80' : 'text-blue-800/80'
-                  }`}>
+                  <span className="font-mono text-[9px] text-slate-400">
                     PIN: {b.pincode}
                   </span>
                 )}
@@ -978,12 +1166,12 @@ export default function CustomersPage() {
         key: 'phone',
         header: 'Contact Phone',
         sortable: true,
-        width: 140,
+        width: 125,
         minWidth: 110,
         exportValue: (row) => row.phone,
         render: (val, row) => (
           <div className="flex items-center gap-1.5 text-xs font-mono">
-            <Phone className="w-3 h-3 text-slate-400" />
+            <Phone className="w-3 h-3 text-slate-400 shrink-0" />
             <span className={isDark ? 'text-slate-300' : 'text-slate-700'}>
               +91 {row.phone}
             </span>
@@ -994,26 +1182,35 @@ export default function CustomersPage() {
         key: 'gstin',
         header: 'GSTIN',
         sortable: false,
-        width: 160,
-        minWidth: 130,
+        width: 125,
+        minWidth: 110,
         exportValue: (row) => row.gstin || 'UNREGISTERED',
-        render: (val, row) => (
-          <span className="text-xs font-mono text-slate-400">
-            {row.gstin || 'UNREGISTERED'}
-          </span>
-        ),
+        render: (val, row) => {
+          if (!row.gstin || row.gstin.trim() === '' || row.gstin.toUpperCase() === 'UNREGISTERED') {
+            return (
+              <span className="text-[10px] font-semibold text-slate-400 bg-slate-100 dark:bg-slate-800/60 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700">
+                Unregistered
+              </span>
+            );
+          }
+          return (
+            <span className="text-xs font-mono font-semibold text-slate-700 dark:text-slate-300">
+              {row.gstin}
+            </span>
+          );
+        },
       },
       {
         key: 'status',
         header: 'Status',
         sortable: true,
-        width: 100,
-        minWidth: 80,
+        width: 80,
+        minWidth: 70,
         exportValue: (row) => row.status || 'ACTIVE',
         render: (val, row) => {
           const isActive = (row.status || 'ACTIVE') === 'ACTIVE';
           return (
-            <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+            <span className={`px-2 py-0.5 rounded text-[10px] font-bold border inline-block ${
               isActive
                 ? isDark ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-emerald-50 text-emerald-700 border-emerald-200'
                 : isDark ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' : 'bg-rose-50 text-rose-700 border-rose-200'
@@ -1030,8 +1227,8 @@ export default function CustomersPage() {
               header: 'Actions',
               sortable: false,
               align: 'right',
-              width: 100,
-              minWidth: 90,
+              width: 70,
+              minWidth: 60,
               render: (val, row) => (
                 <div className="flex items-center justify-end gap-1.5">
                   {(canEditCustomer || isAdmin) && (
@@ -1068,7 +1265,7 @@ export default function CustomersPage() {
           ]
         : []),
     ],
-    [isDark, canEditCustomer, canDeleteCustomer, isAdmin, branches]
+    [isDark, canEditCustomer, canDeleteCustomer, isAdmin, branches, userBranch]
   );
 
   return (
@@ -1080,6 +1277,7 @@ export default function CustomersPage() {
         <Navbar />
 
         <main className="flex-1 p-5 sm:p-6 lg:p-8 max-w-[1720px] mx-auto w-full space-y-6">
+          {/* Header & Main Actions */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <div className="flex items-center space-x-2.5">
@@ -1091,7 +1289,9 @@ export default function CustomersPage() {
                 </h1>
               </div>
               <p className={`text-xs sm:text-sm mt-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                Commercial clients, consignors, consignees, verified KYC records, PIN routing, and serving branches.
+                {isAdmin
+                  ? 'Commercial clients, consignors, consignees, branch-wise credit caps, and corporate TBB contracts across all hubs.'
+                  : `Managing customers in ${userBranch?.branch_name || 'your local branch'} territory (PIN: ${userBranch?.pincode || 'Local Hub'}), with revolving credit cap up to ₹${(userBranch?.max_customer_credit_limit ? userBranch.max_customer_credit_limit / 100000 : 10).toFixed(0)} Lakhs.`}
               </p>
             </div>
 
@@ -1100,6 +1300,9 @@ export default function CustomersPage() {
                 onClick={() => {
                   setShowAddModal(true);
                   setIsManualBranchSelected(false);
+                  if (userBranch?.id) {
+                    setFormData((prev) => ({ ...prev, branch_id: userBranch.id }));
+                  }
                 }}
                 className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-md shadow-blue-600/30 transition-all active:scale-95 cursor-pointer"
               >
@@ -1107,6 +1310,77 @@ export default function CustomersPage() {
                 <span>Add Commercial Client</span>
               </button>
             )}
+          </div>
+
+          {/* Top Summary Metrics: Multi-Branch & Revolving Credit Telemetry */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {/* Card 1: Total Directory Clients */}
+            <div className={`p-4 rounded-2xl border transition-all ${
+              isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-white border-slate-200'
+            }`}>
+              <div className="flex items-center justify-between text-slate-400 mb-1">
+                <span className="text-[11px] font-bold uppercase tracking-wider">Directory Clients</span>
+                <Users className="w-4 h-4 text-blue-500" />
+              </div>
+              <div className="text-2xl font-black">{metaStats?.total_customers ?? totalCount}</div>
+              <div className="text-[10px] text-slate-400 mt-1">
+                Consignors & Consignees
+              </div>
+            </div>
+
+            {/* Card 2: Corporate TBB Contract Accounts */}
+            <div className={`p-4 rounded-2xl border transition-all ${
+              isDark ? 'bg-slate-900/60 border-amber-500/20' : 'bg-amber-50/40 border-amber-200'
+            }`}>
+              <div className="flex items-center justify-between text-amber-500 mb-1">
+                <span className="text-[11px] font-bold uppercase tracking-wider">TBB Contract Accounts</span>
+                <CreditCard className="w-4 h-4 text-amber-500" />
+              </div>
+              <div className="text-2xl font-black text-amber-500">
+                {metaStats?.tbb_customers_count ?? 0}
+              </div>
+              <div className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 mt-1">
+                ₹{(metaStats?.total_credit_assigned ? metaStats.total_credit_assigned / 100000 : 0).toFixed(1)} Lakhs Revolving Cap
+              </div>
+            </div>
+
+            {/* Card 3: Normal Commercial Clients */}
+            <div className={`p-4 rounded-2xl border transition-all ${
+              isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-white border-slate-200'
+            }`}>
+              <div className="flex items-center justify-between text-slate-400 mb-1">
+                <span className="text-[11px] font-bold uppercase tracking-wider">Normal Clients</span>
+                <TrendingUp className="w-4 h-4 text-emerald-500" />
+              </div>
+              <div className="text-2xl font-black text-emerald-500">
+                {metaStats?.normal_customers_count ?? metaStats?.spot_customers_count ?? totalCount}
+              </div>
+              <div className="text-[10px] text-slate-400 mt-1">
+                Standard Cash / To-Pay (No Credit)
+              </div>
+            </div>
+
+            {/* Card 4: Branch Status / Active Scope */}
+            <div className={`p-4 rounded-2xl border transition-all ${
+              isDark ? 'bg-slate-900/60 border-purple-500/20' : 'bg-purple-50/40 border-purple-200'
+            }`}>
+              <div className="flex items-center justify-between text-purple-400 mb-1">
+                <span className="text-[11px] font-bold uppercase tracking-wider">
+                  {isAdmin ? 'Branch Network' : 'Your Assigned Hub'}
+                </span>
+                <Building2 className="w-4 h-4 text-purple-500" />
+              </div>
+              <div className="text-sm font-bold truncate">
+                {isAdmin
+                  ? `${branches.length} Operational Hubs`
+                  : userBranch?.branch_name || 'Branch Manager Hub'}
+              </div>
+              <div className="text-[10px] text-purple-500/90 font-mono mt-1 truncate">
+                {isAdmin
+                  ? 'Admin View: All Branches'
+                  : `PIN: ${userBranch?.pincode || '—'} • Cap: ₹${(userBranch?.max_customer_credit_limit ? userBranch.max_customer_credit_limit / 100000 : 10).toFixed(0)}L`}
+              </div>
+            </div>
           </div>
 
           {/* Master Customer Server-side DataTable */}
@@ -1136,76 +1410,209 @@ export default function CustomersPage() {
             emptyTitle="No Customers Found"
             emptySubtitle="No commercial clients match your search or filter parameters."
             filtersSlot={
-              <div className="flex flex-wrap items-center gap-1.5 text-xs font-bold">
-                <button
-                  type="button"
-                  onClick={() => { setTypeFilter('ALL'); setPage(1); }}
-                  className={`px-3 py-1.5 rounded-xl transition-all ${
-                    typeFilter === 'ALL'
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : isDark
-                      ? 'bg-slate-900 text-slate-400 hover:text-white'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  All Clients ({totalCount})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setTypeFilter('CONSIGNOR'); setPage(1); }}
-                  className={`px-3 py-1.5 rounded-xl transition-all ${
-                    typeFilter === 'CONSIGNOR'
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : isDark
-                      ? 'bg-slate-900 text-slate-400 hover:text-white'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  Consignors (Shippers)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setTypeFilter('CONSIGNEE'); setPage(1); }}
-                  className={`px-3 py-1.5 rounded-xl transition-all ${
-                    typeFilter === 'CONSIGNEE'
-                      ? 'bg-cyan-500 text-slate-950 font-black shadow-sm'
-                      : isDark
-                      ? 'bg-slate-900 text-slate-400 hover:text-white'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  Consignees (Receivers)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setTypeFilter('BOTH'); setPage(1); }}
-                  className={`px-3 py-1.5 rounded-xl transition-all ${
-                    typeFilter === 'BOTH'
-                      ? 'bg-purple-600 text-white shadow-sm'
-                      : isDark
-                      ? 'bg-slate-900 text-slate-400 hover:text-white'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  Dual Role (Both)
-                </button>
+              <div className="space-y-3 w-full">
+                {/* Row 1: Territory & Branch Selector (Admin & Branch Manager) */}
+                <div className="flex flex-wrap items-center justify-between gap-2.5 pt-1">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {/* If Branch Manager, display active branch territory indicator */}
+                    {!isAdmin && userBranch && (
+                      <div className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl border text-xs font-bold ${
+                        isDark
+                          ? 'bg-slate-900/90 border-slate-800 text-slate-300'
+                          : 'bg-white border-slate-200 text-slate-700 shadow-xs'
+                      }`}>
+                        <MapPin className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                        <span className="text-slate-400 font-medium">Branch Territory:</span>
+                        <span className="font-bold text-blue-600 dark:text-cyan-400">{userBranch.branch_name}</span>
+                        <span className="text-[11px] font-mono text-slate-400">[{userBranch.pincode || 'Local Hub'}]</span>
+                      </div>
+                    )}
+
+                    {/* If Admin, show Branch-wise Selector Tabs */}
+                    {isAdmin && (
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1 mr-1">
+                          <Building2 className="w-3.5 h-3.5 text-blue-500" />
+                          <span>Branch:</span>
+                        </span>
+
+                        <button
+                          type="button"
+                          onClick={() => { setBranchFilter('ALL'); setPage(1); }}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                            branchFilter === 'ALL'
+                              ? 'bg-blue-600 text-white shadow-sm'
+                              : isDark
+                              ? 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'
+                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                          }`}
+                        >
+                          All Hubs ({metaStats?.total_customers ?? totalCount})
+                        </button>
+
+                        {metaStats?.branch_stats && metaStats.branch_stats.map((bs) => (
+                          <button
+                            key={bs.branch_id}
+                            type="button"
+                            onClick={() => { setBranchFilter(bs.branch_id); setPage(1); }}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
+                              branchFilter === bs.branch_id
+                                ? 'bg-blue-600 border-blue-500 text-white shadow-sm'
+                                : isDark
+                                ? 'bg-slate-900/90 border-slate-800 text-slate-400 hover:text-slate-200'
+                                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                            }`}
+                          >
+                            <span>{bs.branch_name}</span>
+                            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                              branchFilter === bs.branch_id ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-400'
+                            }`}>
+                              {bs.customer_count}
+                            </span>
+                            {bs.total_credit_limit > 0 && (
+                              <span className="text-[9px] font-semibold text-amber-400">
+                                ₹{(bs.total_credit_limit / 100000).toFixed(0)}L
+                              </span>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Billing Mode Quick Filter */}
+                  <div className="flex items-center gap-1.5 text-xs font-bold">
+                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1 hidden sm:inline">
+                      Billing:
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => { setBillingFilter('ALL'); setPage(1); }}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        billingFilter === 'ALL'
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : isDark
+                          ? 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'
+                          : 'bg-white border border-slate-200 text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      All
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setBillingFilter('TBB'); setPage(1); }}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 border ${
+                        billingFilter === 'TBB'
+                          ? 'bg-amber-500 text-white border-amber-600 shadow-xs'
+                          : isDark
+                          ? 'bg-slate-900 border-slate-800 text-slate-400 hover:text-amber-400'
+                          : 'bg-white border-slate-200 text-slate-600 hover:text-amber-600'
+                      }`}
+                    >
+                      <span>⭐ TBB Credit</span>
+                      {metaStats?.tbb_customers_count !== undefined && (
+                        <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
+                          billingFilter === 'TBB' ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-500'
+                        }`}>
+                          {metaStats.tbb_customers_count}
+                        </span>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setBillingFilter('NORMAL'); setPage(1); }}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 border ${
+                        billingFilter === 'NORMAL' || billingFilter === 'SPOT'
+                          ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs'
+                          : isDark
+                          ? 'bg-slate-900 border-slate-800 text-slate-400 hover:text-emerald-400'
+                          : 'bg-white border-slate-200 text-slate-600 hover:text-emerald-600'
+                      }`}
+                    >
+                      <span>📦 Normal</span>
+                      {(metaStats?.normal_customers_count !== undefined || metaStats?.spot_customers_count !== undefined) && (
+                        <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
+                          billingFilter === 'NORMAL' || billingFilter === 'SPOT' ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-500'
+                        }`}>
+                          {metaStats?.normal_customers_count ?? metaStats?.spot_customers_count}
+                        </span>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Row 2: Customer Role Filters (Consignor, Consignee, Both) */}
+                <div className="flex flex-wrap items-center gap-1.5 text-xs font-bold pt-1 border-t border-slate-200 dark:border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => { setTypeFilter('ALL'); setPage(1); }}
+                    className={`px-3 py-1.5 rounded-xl transition-all ${
+                      typeFilter === 'ALL'
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : isDark
+                        ? 'bg-slate-900 text-slate-400 hover:text-white'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    All Roles ({totalCount})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setTypeFilter('CONSIGNOR'); setPage(1); }}
+                    className={`px-3 py-1.5 rounded-xl transition-all ${
+                      typeFilter === 'CONSIGNOR'
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : isDark
+                        ? 'bg-slate-900 text-slate-400 hover:text-white'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    Consignors (Shippers)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setTypeFilter('CONSIGNEE'); setPage(1); }}
+                    className={`px-3 py-1.5 rounded-xl transition-all ${
+                      typeFilter === 'CONSIGNEE'
+                        ? 'bg-cyan-500 text-slate-950 font-black shadow-sm'
+                        : isDark
+                        ? 'bg-slate-900 text-slate-400 hover:text-white'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    Consignees (Receivers)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setTypeFilter('BOTH'); setPage(1); }}
+                    className={`px-3 py-1.5 rounded-xl transition-all ${
+                      typeFilter === 'BOTH'
+                        ? 'bg-purple-600 text-white shadow-sm'
+                        : isDark
+                        ? 'bg-slate-900 text-slate-400 hover:text-white'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    Dual Role (Both)
+                  </button>
+                </div>
               </div>
             }
           />
 
           {/* Add Customer Modal with Strict Validation & Smart Branch Recommendation */}
           {showAddModal && (
-            <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 z-50 overflow-y-auto">
+            <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 z-50 overflow-hidden">
               <form
                 onSubmit={handleCreateCustomer}
-                className={`rounded-2xl max-w-xl w-full flex flex-col shadow-2xl border transition-all my-auto relative ${
+                className={`rounded-3xl max-w-2xl w-full max-h-[88vh] flex flex-col shadow-2xl border transition-all relative overflow-hidden ${
                   isDark ? 'bg-[#0B1020] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
                 }`}
               >
                 {/* Modal Title & Close (Fixed Header) */}
-                <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 dark:border-slate-800 shrink-0 rounded-t-2xl">
+                <div className="flex items-center justify-between px-6 py-3.5 border-b border-slate-200 dark:border-slate-800 shrink-0 bg-white dark:bg-[#0B1020] z-20">
                   <div className="flex items-center gap-2.5">
-                    <div className="p-1.5 rounded-lg bg-blue-600/10 border border-blue-500/20 text-blue-500">
+                    <div className="p-1.5 rounded-xl bg-blue-600/10 border border-blue-500/20 text-blue-500">
                       <Users className="w-4 h-4" />
                     </div>
                     <div>
@@ -1216,14 +1623,14 @@ export default function CustomersPage() {
                   <button
                     type="button"
                     onClick={() => setShowAddModal(false)}
-                    className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-700 dark:hover:text-white transition-colors cursor-pointer"
+                    className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-700 dark:hover:text-white transition-colors cursor-pointer"
                   >
                     <X className="w-4 h-4" />
                   </button>
                 </div>
 
-                {/* Form Fields (Compact Body) */}
-                <div className="px-5 py-3.5 space-y-3 relative z-20">
+                {/* Form Fields (Scrollable Body) */}
+                <div className="px-6 py-4 space-y-3.5 overflow-y-auto flex-1 overscroll-contain relative z-10">
                   {/* Row 1: Company / Trade Name */}
                   <div>
                     <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
@@ -1241,8 +1648,8 @@ export default function CustomersPage() {
                     />
                   </div>
 
-                  {/* Row 2: Contact Phone + Postal PIN Code */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* Row 2: Contact Phone + Postal PIN Code + Station / City (3 Columns) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     {/* Contact Phone */}
                     <div>
                       <div className="flex items-center justify-between mb-1">
@@ -1327,7 +1734,7 @@ export default function CustomersPage() {
                           type="text"
                           value={formData.pincode}
                           onChange={handlePincodeChange}
-                          placeholder="e.g. 110020, 122001"
+                          placeholder="e.g. 110020"
                           maxLength={6}
                           className={`w-full rounded-xl pl-8 pr-2.5 py-2 text-xs font-mono font-semibold border focus:outline-none focus:ring-1 transition-all ${
                             pincodeError
@@ -1347,10 +1754,7 @@ export default function CustomersPage() {
                         </p>
                       )}
                     </div>
-                  </div>
 
-                  {/* Row 3: Station / City + Commercial Role */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {/* Station / City */}
                     <div>
                       <div className="flex items-center justify-between mb-1">
@@ -1359,7 +1763,7 @@ export default function CustomersPage() {
                         </label>
                         {isPinAutoFilled && (
                           <span className="text-[9px] font-bold px-1 py-0.2 rounded bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20">
-                            ⚡ Auto-Resolved
+                            ⚡ Auto
                           </span>
                         )}
                       </div>
@@ -1368,13 +1772,16 @@ export default function CustomersPage() {
                         required
                         value={formData.city}
                         onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                        placeholder="e.g. Gurugram, Delhi, Mumbai"
+                        placeholder="e.g. Gurugram, Delhi"
                         className={`w-full rounded-xl px-3 py-2 text-xs font-semibold border focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all ${
                           isDark ? 'bg-slate-900/90 border-slate-800 text-white' : 'bg-slate-50 border-slate-300 text-slate-900'
                         }`}
                       />
                     </div>
+                  </div>
 
+                  {/* Row 3: Commercial Role + GSTIN (2 Columns) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {/* Customer Role */}
                     <div>
                       <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
@@ -1392,6 +1799,23 @@ export default function CustomersPage() {
                         <option value="CONSIGNEE">Consignee Only (Receiver)</option>
                       </select>
                     </div>
+
+                    {/* GSTIN */}
+                    <div>
+                      <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+                        GSTIN (15 Digits)
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.gstin}
+                        onChange={(e) => setFormData({ ...formData, gstin: e.target.value.toUpperCase() })}
+                        placeholder="e.g. 07AAACA1234A1Z5"
+                        maxLength={15}
+                        className={`w-full rounded-xl px-3 py-2 text-xs font-mono font-bold tracking-wide uppercase border focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all ${
+                          isDark ? 'bg-slate-900/90 border-slate-800 text-white' : 'bg-slate-50 border-slate-300 text-slate-900'
+                        }`}
+                      />
+                    </div>
                   </div>
 
                   {/* Row 4: Serving Branch Selection + Smart Proximity Match */}
@@ -1407,21 +1831,233 @@ export default function CustomersPage() {
                     isDark={isDark}
                   />
 
-                  {/* Row 5: GSTIN (Approved Credit Limit REMOVED) */}
-                  <div>
-                    <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
-                      GSTIN (15 Digits)
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.gstin}
-                      onChange={(e) => setFormData({ ...formData, gstin: e.target.value.toUpperCase() })}
-                      placeholder="e.g. 07AAACA1234A1Z5"
-                      maxLength={15}
-                      className={`w-full rounded-xl px-3 py-2 text-xs font-mono font-bold tracking-wide uppercase border focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all ${
-                        isDark ? 'bg-slate-900/90 border-slate-800 text-white' : 'bg-slate-50 border-slate-300 text-slate-900'
-                      }`}
-                    />
+                  {/* Row 5: Billing Terms & TBB Contract Agreement */}
+                  <div className={`p-3.5 rounded-2xl border space-y-3 ${
+                    isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50/80 border-slate-200'
+                  }`}>
+                    <div>
+                      <div className={`text-xs font-bold flex items-center justify-between ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                        <span className="flex items-center gap-1.5">
+                          <span>Billing & Contract Terms</span>
+                          {formData.billing_type === 'TBB' && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-500/15 text-amber-500 border border-amber-500/30">
+                              ⭐ TBB Contract Account
+                            </span>
+                          )}
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-normal">Head Office / Branch Authorized</span>
+                      </div>
+                      <p className="text-[10px] text-slate-400 mt-0.5">
+                        Specify if this customer is a Normal customer (Cash / To-Pay) or operates under a corporate TBB credit cycle.
+                      </p>
+                    </div>
+
+                    {/* Mode Selector */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setFormData(prev => ({ ...prev, billing_type: 'REGULAR', credit_days: 0, credit_limit: '' }))}
+                        className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                          formData.billing_type !== 'TBB'
+                            ? isDark ? 'bg-blue-600/20 border-blue-500 text-blue-300 shadow-xs' : 'bg-blue-50 border-blue-500 text-blue-900 shadow-xs'
+                            : isDark ? 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                        }`}
+                      >
+                        <div className="text-xs font-bold flex items-center gap-1.5">
+                          <span>📦</span>
+                          <span>Normal Customer</span>
+                        </div>
+                        <div className="text-[10px] opacity-75 mt-0.5">Standard booking (Cash/UPI) or To-Pay by receiver</div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setFormData(prev => ({ ...prev, billing_type: 'TBB', credit_days: prev.credit_days || 30 }))}
+                        className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                          formData.billing_type === 'TBB'
+                            ? isDark ? 'bg-amber-500/20 border-amber-500 text-amber-300 shadow-xs' : 'bg-amber-50 border-amber-500 text-amber-900 shadow-xs'
+                            : isDark ? 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                        }`}
+                      >
+                        <div className="text-xs font-bold flex items-center gap-1">
+                          <span>⭐ TBB Contract (Credit)</span>
+                        </div>
+                        <div className="text-[10px] opacity-75 mt-0.5">Corporate credit account with periodic GST billing</div>
+                      </button>
+                    </div>
+
+                    {/* Conditional Credit Configuration Fields when TBB is active */}
+                    {formData.billing_type === 'TBB' && (
+                      <div className={`p-3 rounded-xl border space-y-2.5 animate-in fade-in duration-200 ${
+                        isDark ? 'bg-slate-950/70 border-amber-500/30' : 'bg-amber-50/50 border-amber-200'
+                      }`}>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {/* Credit Period */}
+                          <div>
+                            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+                              Credit Period (Payment Days)
+                            </label>
+                            <select
+                              value={formData.credit_days}
+                              onChange={(e) => setFormData(prev => ({ ...prev, credit_days: parseInt(e.target.value, 10) }))}
+                              className={`w-full rounded-xl px-3 py-2 text-xs font-semibold border focus:outline-none focus:ring-1 focus:ring-amber-500 transition-all ${
+                                isDark ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'
+                              }`}
+                            >
+                              <option value={7}>7 Days (Weekly Settlement)</option>
+                              <option value={15}>15 Days (Bi-weekly Settlement)</option>
+                              <option value={30}>30 Days (Standard Monthly)</option>
+                              <option value={45}>45 Days (Extended Corporate)</option>
+                              <option value={60}>60 Days (Enterprise Contract)</option>
+                              <option value={90}>90 Days (Special Tender)</option>
+                            </select>
+                          </div>
+
+                          {/* Credit Limit */}
+                          <div>
+                            {(() => {
+                              const activeAddBranchId = formData.branch_id || bestBranchMatch?.branch?.id;
+                              const activeAddBranch = branches.find(b => b.id === activeAddBranchId);
+                              const currentAddBranchCap = activeAddBranch?.max_customer_credit_limit ? parseFloat(activeAddBranch.max_customer_credit_limit) : 1000000;
+                              const isOverCap = !isAdmin && parseFloat(formData.credit_limit || 0) > currentAddBranchCap;
+
+                              return (
+                                <>
+                                  <div className="flex items-center justify-between mb-1">
+                                    <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                                      Authorized Credit Limit (₹ Cap)
+                                    </label>
+                                    <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded border ${
+                                      isAdmin
+                                        ? 'bg-purple-500/10 text-purple-400 border-purple-500/20'
+                                        : 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                                    }`}>
+                                      {isAdmin
+                                        ? '🏛️ HO Approved: Up to ₹50 Lakhs'
+                                        : `🏢 ${activeAddBranch ? activeAddBranch.branch_name + ' Cap' : 'Branch Cap'}: Max ₹${currentAddBranchCap.toLocaleString('en-IN')}`}
+                                    </span>
+                                  </div>
+                                  <div className="relative">
+                                    <span className="absolute left-3 top-2 text-xs font-bold text-slate-400 pointer-events-none">₹</span>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      max={isAdmin ? 5000000 : currentAddBranchCap}
+                                      step="10000"
+                                      value={formData.credit_limit}
+                                      onChange={(e) => setFormData(prev => ({ ...prev, credit_limit: e.target.value }))}
+                                      placeholder={isAdmin ? "e.g. 5000000 (Max 50 Lakhs)" : `e.g. ${currentAddBranchCap} (Max ₹${currentAddBranchCap.toLocaleString('en-IN')})`}
+                                      className={`w-full rounded-xl pl-7 pr-3 py-2 text-xs font-mono font-bold border focus:outline-none focus:ring-1 transition-all ${
+                                        isOverCap
+                                          ? 'border-rose-500 text-rose-400 focus:ring-rose-500'
+                                          : isDark ? 'bg-slate-900 border-slate-700 text-white focus:ring-amber-500' : 'bg-white border-slate-300 text-slate-900 focus:ring-amber-500'
+                                      }`}
+                                    />
+                                  </div>
+
+                                  {/* Quick Presets */}
+                                  <div className="flex items-center gap-1.5 mt-1.5 flex-nowrap overflow-x-auto">
+                                    <span className="text-[10px] text-slate-400 font-semibold shrink-0">Presets:</span>
+                                    {isAdmin ? (
+                                      <>
+                                        <button
+                                          type="button"
+                                          onClick={() => setFormData(prev => ({ ...prev, credit_limit: '1000000' }))}
+                                          className={`text-[10px] font-bold px-2 py-0.5 rounded border transition-all cursor-pointer shrink-0 ${
+                                            isDark
+                                              ? 'border-slate-700 bg-slate-800/80 text-slate-200 hover:bg-slate-700'
+                                              : 'border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200'
+                                          }`}
+                                        >
+                                          ₹10 Lakh
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => setFormData(prev => ({ ...prev, credit_limit: '2500000' }))}
+                                          className={`text-[10px] font-bold px-2 py-0.5 rounded border transition-all cursor-pointer shrink-0 ${
+                                            isDark
+                                              ? 'border-slate-700 bg-slate-800/80 text-slate-200 hover:bg-slate-700'
+                                              : 'border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200'
+                                          }`}
+                                        >
+                                          ₹25 Lakh
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => setFormData(prev => ({ ...prev, credit_limit: '5000000' }))}
+                                          className={`text-[10px] font-bold px-2 py-0.5 rounded border transition-all cursor-pointer shrink-0 flex items-center gap-1 ${
+                                            isDark
+                                              ? 'border-purple-500/40 bg-purple-500/20 text-purple-300 hover:bg-purple-500/30'
+                                              : 'border-purple-300 bg-purple-100/80 text-purple-800 hover:bg-purple-200'
+                                          }`}
+                                        >
+                                          ⭐ ₹50 Lakh (HO Cap)
+                                        </button>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <button
+                                          type="button"
+                                          onClick={() => setFormData(prev => ({ ...prev, credit_limit: '200000' }))}
+                                          className={`text-[10px] font-bold px-2 py-0.5 rounded border transition-all cursor-pointer shrink-0 ${
+                                            isDark
+                                              ? 'border-slate-700 bg-slate-800/80 text-slate-200 hover:bg-slate-700'
+                                              : 'border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200'
+                                          }`}
+                                        >
+                                          ₹2 Lakh
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => setFormData(prev => ({ ...prev, credit_limit: '500000' }))}
+                                          className={`text-[10px] font-bold px-2 py-0.5 rounded border transition-all cursor-pointer shrink-0 ${
+                                            isDark
+                                              ? 'border-slate-700 bg-slate-800/80 text-slate-200 hover:bg-slate-700'
+                                              : 'border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200'
+                                          }`}
+                                        >
+                                          ₹5 Lakh
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => setFormData(prev => ({ ...prev, credit_limit: String(currentAddBranchCap) }))}
+                                          className={`text-[10px] font-bold px-2 py-0.5 rounded border transition-all cursor-pointer shrink-0 flex items-center gap-1 ${
+                                            isDark
+                                              ? 'border-blue-500/40 bg-blue-500/20 text-blue-300 hover:bg-blue-500/30'
+                                              : 'border-blue-300 bg-blue-100/80 text-blue-800 hover:bg-blue-200'
+                                          }`}
+                                        >
+                                          ⭐ ₹{(currentAddBranchCap / 100000).toFixed(0)} Lakh (Branch Cap)
+                                        </button>
+                                      </>
+                                    )}
+                                  </div>
+
+                                  {isOverCap && (
+                                    <p className="text-[10px] font-bold text-rose-400 mt-1 flex items-center gap-1">
+                                      <AlertCircle className="w-3 h-3 shrink-0" />
+                                      <span>
+                                        Branch Managers at {activeAddBranch?.branch_name || 'this branch'} can assign max ₹{currentAddBranchCap.toLocaleString('en-IN')}. Ask Admin to increase this branch limit for higher credit.
+                                      </span>
+                                    </p>
+                                  )}
+                                </>
+                              );
+                            })()}
+                          </div>
+                        </div>
+
+                        <div className={`text-[10px] leading-tight flex items-start gap-2 p-2.5 rounded-xl border ${
+                          isDark ? 'bg-slate-900/90 text-slate-300 border-slate-800' : 'bg-white/90 text-slate-600 border-amber-200'
+                        }`}>
+                          <span className="text-amber-500 font-bold shrink-0">🔄 Revolving Credit Cycle:</span>
+                          <div>
+                            <span>Customer can dispatch consignments up to this credit cap (<b>{isAdmin ? '₹50 Lakhs HO limit' : '₹10 Lakhs Branch limit'}</b>).</span>
+                            <span className="block mt-0.5 text-slate-400">Once pending freight bills are cleared, the credit restores automatically so they can dispatch another {isAdmin ? '₹50 Lakhs' : '₹10 Lakhs'} of goods.</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Row 6: Billing / Factory Address */}
@@ -1442,7 +2078,7 @@ export default function CustomersPage() {
                 </div>
 
                 {/* Footer Controls (Fixed Footer) */}
-                <div className="flex items-center justify-end gap-2.5 px-5 py-3 border-t border-slate-200 dark:border-slate-800 shrink-0 relative z-10 rounded-b-2xl">
+                <div className="flex items-center justify-end gap-2.5 px-6 py-3.5 border-t border-slate-200 dark:border-slate-800 shrink-0 bg-slate-50/80 dark:bg-slate-900/60 z-20">
                   <button
                     type="button"
                     onClick={() => setShowAddModal(false)}
@@ -1467,17 +2103,17 @@ export default function CustomersPage() {
 
           {/* Edit Customer Modal */}
           {showEditModal && editingCustomer && (
-            <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 z-50 overflow-y-auto">
+            <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 z-50 overflow-hidden">
               <form
                 onSubmit={handleUpdateCustomer}
-                className={`rounded-2xl max-w-xl w-full flex flex-col shadow-2xl border transition-all my-auto relative ${
+                className={`rounded-3xl max-w-2xl w-full max-h-[88vh] flex flex-col shadow-2xl border transition-all relative overflow-hidden ${
                   isDark ? 'bg-[#0B1020] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
                 }`}
               >
-                {/* Modal Header */}
-                <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 dark:border-slate-800 shrink-0 rounded-t-2xl">
+                {/* Modal Header (Fixed) */}
+                <div className="flex items-center justify-between px-6 py-3.5 border-b border-slate-200 dark:border-slate-800 shrink-0 bg-white dark:bg-[#0B1020] z-20">
                   <div className="flex items-center gap-2.5">
-                    <div className="p-1.5 rounded-lg bg-blue-600/10 border border-blue-500/20 text-blue-500">
+                    <div className="p-1.5 rounded-xl bg-blue-600/10 border border-blue-500/20 text-blue-500">
                       <Pencil className="w-4 h-4" />
                     </div>
                     <div>
@@ -1496,14 +2132,14 @@ export default function CustomersPage() {
                       setShowEditModal(false);
                       setEditingCustomer(null);
                     }}
-                    className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-700 dark:hover:text-white transition-colors cursor-pointer"
+                    className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-700 dark:hover:text-white transition-colors cursor-pointer"
                   >
                     <X className="w-4 h-4" />
                   </button>
                 </div>
 
-                {/* Form Fields */}
-                <div className="px-5 py-3.5 space-y-3 relative z-20">
+                {/* Form Fields (Scrollable Body) */}
+                <div className="px-6 py-4 space-y-3.5 overflow-y-auto flex-1 overscroll-contain relative z-10">
                   {/* Row 1: Company / Trade Name */}
                   <div>
                     <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
@@ -1521,8 +2157,8 @@ export default function CustomersPage() {
                     />
                   </div>
 
-                  {/* Row 2: Contact Phone + Postal PIN Code */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* Row 2: Contact Phone + Postal PIN Code + Station / City (3 Columns) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     {/* Contact Phone */}
                     <div>
                       <div className="flex items-center justify-between mb-1">
@@ -1607,7 +2243,7 @@ export default function CustomersPage() {
                           type="text"
                           value={editFormData.pincode}
                           onChange={handleEditPincodeChange}
-                          placeholder="e.g. 110020, 122001"
+                          placeholder="e.g. 110020"
                           maxLength={6}
                           className={`w-full rounded-xl pl-8 pr-2.5 py-2 text-xs font-mono font-semibold border focus:outline-none focus:ring-1 transition-all ${
                             editPincodeError
@@ -1627,10 +2263,7 @@ export default function CustomersPage() {
                         </p>
                       )}
                     </div>
-                  </div>
 
-                  {/* Row 3: Station / City + Commercial Role */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {/* Station / City */}
                     <div>
                       <div className="flex items-center justify-between mb-1">
@@ -1639,7 +2272,7 @@ export default function CustomersPage() {
                         </label>
                         {isEditPinAutoFilled && (
                           <span className="text-[9px] font-bold px-1 py-0.2 rounded bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20">
-                            ⚡ Auto-Resolved
+                            ⚡ Auto
                           </span>
                         )}
                       </div>
@@ -1648,13 +2281,16 @@ export default function CustomersPage() {
                         required
                         value={editFormData.city}
                         onChange={(e) => setEditFormData({ ...editFormData, city: e.target.value })}
-                        placeholder="e.g. Gurugram, Delhi, Mumbai"
+                        placeholder="e.g. Gurugram, Delhi"
                         className={`w-full rounded-xl px-3 py-2 text-xs font-semibold border focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all ${
                           isDark ? 'bg-slate-900/90 border-slate-800 text-white' : 'bg-slate-50 border-slate-300 text-slate-900'
                         }`}
                       />
                     </div>
+                  </div>
 
+                  {/* Row 3: Commercial Role + GSTIN + Status (3 Columns) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     {/* Customer Role */}
                     <div>
                       <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
@@ -1667,9 +2303,43 @@ export default function CustomersPage() {
                           isDark ? 'bg-slate-900/90 border-slate-800 text-white' : 'bg-slate-50 border-slate-300 text-slate-900'
                         }`}
                       >
-                        <option value="BOTH">Dual Role (Consignor & Consignee)</option>
-                        <option value="CONSIGNOR">Consignor Only (Shipper)</option>
-                        <option value="CONSIGNEE">Consignee Only (Receiver)</option>
+                        <option value="BOTH">Dual Role (Both)</option>
+                        <option value="CONSIGNOR">Consignor Only</option>
+                        <option value="CONSIGNEE">Consignee Only</option>
+                      </select>
+                    </div>
+
+                    {/* GSTIN */}
+                    <div>
+                      <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+                        GSTIN (15 Digits)
+                      </label>
+                      <input
+                        type="text"
+                        value={editFormData.gstin}
+                        onChange={(e) => setEditFormData({ ...editFormData, gstin: e.target.value.toUpperCase() })}
+                        placeholder="e.g. 07AAACA1234A1Z5"
+                        maxLength={15}
+                        className={`w-full rounded-xl px-3 py-2 text-xs font-mono font-bold tracking-wide uppercase border focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all ${
+                          isDark ? 'bg-slate-900/90 border-slate-800 text-white' : 'bg-slate-50 border-slate-300 text-slate-900'
+                        }`}
+                      />
+                    </div>
+
+                    {/* Status */}
+                    <div>
+                      <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+                        Status
+                      </label>
+                      <select
+                        value={editFormData.status}
+                        onChange={(e) => setEditFormData({ ...editFormData, status: e.target.value })}
+                        className={`w-full rounded-xl px-3 py-2 text-xs font-semibold border focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all ${
+                          isDark ? 'bg-slate-900/90 border-slate-800 text-white' : 'bg-slate-50 border-slate-300 text-slate-900'
+                        }`}
+                      >
+                        <option value="ACTIVE">ACTIVE</option>
+                        <option value="INACTIVE">INACTIVE</option>
                       </select>
                     </div>
                   </div>
@@ -1687,39 +2357,233 @@ export default function CustomersPage() {
                     isDark={isDark}
                   />
 
-                  {/* Row 5: GSTIN + Status */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* Row 5: Billing Terms & TBB Contract Agreement (Edit) */}
+                  <div className={`p-3.5 rounded-2xl border space-y-3 ${
+                    isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50/80 border-slate-200'
+                  }`}>
                     <div>
-                      <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
-                        GSTIN (15 Digits)
-                      </label>
-                      <input
-                        type="text"
-                        value={editFormData.gstin}
-                        onChange={(e) => setEditFormData({ ...editFormData, gstin: e.target.value.toUpperCase() })}
-                        placeholder="e.g. 07AAACA1234A1Z5"
-                        maxLength={15}
-                        className={`w-full rounded-xl px-3 py-2 text-xs font-mono font-bold tracking-wide uppercase border focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all ${
-                          isDark ? 'bg-slate-900/90 border-slate-800 text-white' : 'bg-slate-50 border-slate-300 text-slate-900'
-                        }`}
-                      />
+                      <div className={`text-xs font-bold flex items-center justify-between ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                        <span className="flex items-center gap-1.5">
+                          <span>Billing & Contract Terms</span>
+                          {editFormData.billing_type === 'TBB' && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-500/15 text-amber-500 border border-amber-500/30">
+                              ⭐ TBB Contract Account
+                            </span>
+                          )}
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-normal">Head Office / Branch Authorized</span>
+                      </div>
+                      <p className="text-[10px] text-slate-400 mt-0.5">
+                        Specify if this customer is a Normal customer (Cash / To-Pay) or operates under a corporate TBB credit cycle.
+                      </p>
                     </div>
 
-                    <div>
-                      <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
-                        Status
-                      </label>
-                      <select
-                        value={editFormData.status}
-                        onChange={(e) => setEditFormData({ ...editFormData, status: e.target.value })}
-                        className={`w-full rounded-xl px-3 py-2 text-xs font-semibold border focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all ${
-                          isDark ? 'bg-slate-900/90 border-slate-800 text-white' : 'bg-slate-50 border-slate-300 text-slate-900'
+                    {/* Mode Selector */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setEditFormData(prev => ({ ...prev, billing_type: 'REGULAR', credit_days: 0, credit_limit: '' }))}
+                        className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                          editFormData.billing_type !== 'TBB'
+                            ? isDark ? 'bg-blue-600/20 border-blue-500 text-blue-300 shadow-xs' : 'bg-blue-50 border-blue-500 text-blue-900 shadow-xs'
+                            : isDark ? 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
                         }`}
                       >
-                        <option value="ACTIVE">ACTIVE</option>
-                        <option value="INACTIVE">INACTIVE</option>
-                      </select>
+                        <div className="text-xs font-bold flex items-center gap-1.5">
+                          <span>📦</span>
+                          <span>Normal Customer</span>
+                        </div>
+                        <div className="text-[10px] opacity-75 mt-0.5">Standard booking (Cash/UPI) or To-Pay by receiver</div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setEditFormData(prev => ({ ...prev, billing_type: 'TBB', credit_days: prev.credit_days || 30 }))}
+                        className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                          editFormData.billing_type === 'TBB'
+                            ? isDark ? 'bg-amber-500/20 border-amber-500 text-amber-300 shadow-xs' : 'bg-amber-50 border-amber-500 text-amber-900 shadow-xs'
+                            : isDark ? 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                        }`}
+                      >
+                        <div className="text-xs font-bold flex items-center gap-1">
+                          <span>⭐ TBB Contract (Credit)</span>
+                        </div>
+                        <div className="text-[10px] opacity-75 mt-0.5">Corporate credit account with periodic GST billing</div>
+                      </button>
                     </div>
+
+                    {/* Conditional Credit Configuration Fields when TBB is active */}
+                    {editFormData.billing_type === 'TBB' && (
+                      <div className={`p-3 rounded-xl border space-y-2.5 animate-in fade-in duration-200 ${
+                        isDark ? 'bg-slate-950/70 border-amber-500/30' : 'bg-amber-50/50 border-amber-200'
+                      }`}>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {/* Credit Period */}
+                          <div>
+                            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+                              Credit Period (Payment Days)
+                            </label>
+                            <select
+                              value={editFormData.credit_days}
+                              onChange={(e) => setEditFormData(prev => ({ ...prev, credit_days: parseInt(e.target.value, 10) }))}
+                              className={`w-full rounded-xl px-3 py-2 text-xs font-semibold border focus:outline-none focus:ring-1 focus:ring-amber-500 transition-all ${
+                                isDark ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'
+                              }`}
+                            >
+                              <option value={7}>7 Days (Weekly Settlement)</option>
+                              <option value={15}>15 Days (Bi-weekly Settlement)</option>
+                              <option value={30}>30 Days (Standard Monthly)</option>
+                              <option value={45}>45 Days (Extended Corporate)</option>
+                              <option value={60}>60 Days (Enterprise Contract)</option>
+                              <option value={90}>90 Days (Special Tender)</option>
+                            </select>
+                          </div>
+
+                          {/* Credit Limit */}
+                          <div>
+                            {(() => {
+                              const activeEditBranchId = editFormData.branch_id || editBestBranchMatch?.branch?.id || editingCustomer?.branch_id;
+                              const activeEditBranch = branches.find(b => b.id === activeEditBranchId);
+                              const currentEditBranchCap = activeEditBranch?.max_customer_credit_limit ? parseFloat(activeEditBranch.max_customer_credit_limit) : 1000000;
+                              const isOverCap = !isAdmin && parseFloat(editFormData.credit_limit || 0) > currentEditBranchCap;
+
+                              return (
+                                <>
+                                  <div className="flex items-center justify-between mb-1">
+                                    <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                                      Authorized Credit Limit (₹ Cap)
+                                    </label>
+                                    <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded border ${
+                                      isAdmin
+                                        ? 'bg-purple-500/10 text-purple-400 border-purple-500/20'
+                                        : 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                                    }`}>
+                                      {isAdmin
+                                        ? '🏛️ HO Approved: Up to ₹50 Lakhs'
+                                        : `🏢 ${activeEditBranch ? activeEditBranch.branch_name + ' Cap' : 'Branch Cap'}: Max ₹${currentEditBranchCap.toLocaleString('en-IN')}`}
+                                    </span>
+                                  </div>
+                                  <div className="relative">
+                                    <span className="absolute left-3 top-2 text-xs font-bold text-slate-400 pointer-events-none">₹</span>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      max={isAdmin ? 5000000 : currentEditBranchCap}
+                                      step="10000"
+                                      value={editFormData.credit_limit}
+                                      onChange={(e) => setEditFormData(prev => ({ ...prev, credit_limit: e.target.value }))}
+                                      placeholder={isAdmin ? "e.g. 5000000 (Max 50 Lakhs)" : `e.g. ${currentEditBranchCap} (Max ₹${currentEditBranchCap.toLocaleString('en-IN')})`}
+                                      className={`w-full rounded-xl pl-7 pr-3 py-2 text-xs font-mono font-bold border focus:outline-none focus:ring-1 transition-all ${
+                                        isOverCap
+                                          ? 'border-rose-500 text-rose-400 focus:ring-rose-500'
+                                          : isDark ? 'bg-slate-900 border-slate-700 text-white focus:ring-amber-500' : 'bg-white border-slate-300 text-slate-900 focus:ring-amber-500'
+                                      }`}
+                                    />
+                                  </div>
+
+                                  {/* Quick Presets */}
+                                  <div className="flex items-center gap-1.5 mt-1.5 flex-nowrap overflow-x-auto">
+                                    <span className="text-[10px] text-slate-400 font-semibold shrink-0">Presets:</span>
+                                    {isAdmin ? (
+                                      <>
+                                        <button
+                                          type="button"
+                                          onClick={() => setEditFormData(prev => ({ ...prev, credit_limit: '1000000' }))}
+                                          className={`text-[10px] font-bold px-2 py-0.5 rounded border transition-all cursor-pointer shrink-0 ${
+                                            isDark
+                                              ? 'border-slate-700 bg-slate-800/80 text-slate-200 hover:bg-slate-700'
+                                              : 'border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200'
+                                          }`}
+                                        >
+                                          ₹10 Lakh
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => setEditFormData(prev => ({ ...prev, credit_limit: '2500000' }))}
+                                          className={`text-[10px] font-bold px-2 py-0.5 rounded border transition-all cursor-pointer shrink-0 ${
+                                            isDark
+                                              ? 'border-slate-700 bg-slate-800/80 text-slate-200 hover:bg-slate-700'
+                                              : 'border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200'
+                                          }`}
+                                        >
+                                          ₹25 Lakh
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => setEditFormData(prev => ({ ...prev, credit_limit: '5000000' }))}
+                                          className={`text-[10px] font-bold px-2 py-0.5 rounded border transition-all cursor-pointer shrink-0 flex items-center gap-1 ${
+                                            isDark
+                                              ? 'border-purple-500/40 bg-purple-500/20 text-purple-300 hover:bg-purple-500/30'
+                                              : 'border-purple-300 bg-purple-100/80 text-purple-800 hover:bg-purple-200'
+                                          }`}
+                                        >
+                                          ⭐ ₹50 Lakh (HO Cap)
+                                        </button>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <button
+                                          type="button"
+                                          onClick={() => setEditFormData(prev => ({ ...prev, credit_limit: '200000' }))}
+                                          className={`text-[10px] font-bold px-2 py-0.5 rounded border transition-all cursor-pointer shrink-0 ${
+                                            isDark
+                                              ? 'border-slate-700 bg-slate-800/80 text-slate-200 hover:bg-slate-700'
+                                              : 'border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200'
+                                          }`}
+                                        >
+                                          ₹2 Lakh
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => setEditFormData(prev => ({ ...prev, credit_limit: '500000' }))}
+                                          className={`text-[10px] font-bold px-2 py-0.5 rounded border transition-all cursor-pointer shrink-0 ${
+                                            isDark
+                                              ? 'border-slate-700 bg-slate-800/80 text-slate-200 hover:bg-slate-700'
+                                              : 'border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200'
+                                          }`}
+                                        >
+                                          ₹5 Lakh
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => setEditFormData(prev => ({ ...prev, credit_limit: String(currentEditBranchCap) }))}
+                                          className={`text-[10px] font-bold px-2 py-0.5 rounded border transition-all cursor-pointer shrink-0 flex items-center gap-1 ${
+                                            isDark
+                                              ? 'border-blue-500/40 bg-blue-500/20 text-blue-300 hover:bg-blue-500/30'
+                                              : 'border-blue-300 bg-blue-100/80 text-blue-800 hover:bg-blue-200'
+                                          }`}
+                                        >
+                                          ⭐ ₹{(currentEditBranchCap / 100000).toFixed(0)} Lakh (Branch Cap)
+                                        </button>
+                                      </>
+                                    )}
+                                  </div>
+
+                                  {isOverCap && (
+                                    <p className="text-[10px] font-bold text-rose-400 mt-1 flex items-center gap-1">
+                                      <AlertCircle className="w-3 h-3 shrink-0" />
+                                      <span>
+                                        Branch Managers at {activeEditBranch?.branch_name || 'this branch'} can assign max ₹{currentEditBranchCap.toLocaleString('en-IN')}. Ask Admin to increase this branch limit for higher credit.
+                                      </span>
+                                    </p>
+                                  )}
+                                </>
+                              );
+                            })()}
+                          </div>
+                        </div>
+
+                        <div className={`text-[10px] leading-tight flex items-start gap-2 p-2.5 rounded-xl border ${
+                          isDark ? 'bg-slate-900/90 text-slate-300 border-slate-800' : 'bg-white/90 text-slate-600 border-amber-200'
+                        }`}>
+                          <span className="text-amber-500 font-bold shrink-0">🔄 Revolving Credit Cycle:</span>
+                          <div>
+                            <span>Customer can dispatch consignments up to this credit cap (<b>{isAdmin ? '₹50 Lakhs HO limit' : '₹10 Lakhs Branch limit'}</b>).</span>
+                            <span className="block mt-0.5 text-slate-400">Once pending freight bills are cleared, the credit restores automatically so they can dispatch another {isAdmin ? '₹50 Lakhs' : '₹10 Lakhs'} of goods.</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Row 6: Billing / Factory Address */}
@@ -1739,8 +2603,8 @@ export default function CustomersPage() {
                   </div>
                 </div>
 
-                {/* Footer Controls */}
-                <div className="flex items-center justify-end gap-2.5 px-5 py-3 border-t border-slate-200 dark:border-slate-800 shrink-0 relative z-10 rounded-b-2xl">
+                {/* Footer Controls (Fixed Footer) */}
+                <div className="flex items-center justify-end gap-2.5 px-6 py-3.5 border-t border-slate-200 dark:border-slate-800 shrink-0 bg-slate-50/80 dark:bg-slate-900/60 z-20">
                   <button
                     type="button"
                     onClick={() => {

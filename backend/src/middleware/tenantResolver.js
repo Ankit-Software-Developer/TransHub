@@ -96,6 +96,9 @@ const tenantResolver = async (req, res, next) => {
           req.userPermissions = Array.from(tPerms);
           if (tenantStaff.branch) {
             req.user.branch = tenantStaff.branch;
+            req.user.branch_id = tenantStaff.branch.id;
+          } else if (tenantStaff.branch_id) {
+            req.user.branch_id = tenantStaff.branch_id;
           }
         }
       }

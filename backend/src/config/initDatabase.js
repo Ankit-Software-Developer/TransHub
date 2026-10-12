@@ -42,6 +42,27 @@ const initMasterDatabase = async () => {
       // Ignored if column already exists
     }
 
+    // Ensure max_customer_credit_limit exists in branches table (Default 10 Lakhs)
+    try {
+      await sequelize.query("ALTER TABLE branches ADD COLUMN max_customer_credit_limit DECIMAL(12, 2) DEFAULT 1000000.00;");
+    } catch (colErr) {
+      // Ignored if column already exists
+    }
+
+    // Ensure is_head_office exists in branches table
+    try {
+      await sequelize.query("ALTER TABLE branches ADD COLUMN is_head_office TINYINT(1) DEFAULT 0;");
+    } catch (colErr) {
+      // Ignored if column already exists
+    }
+
+    // Auto-mark existing Head Office branches
+    try {
+      await sequelize.query("UPDATE branches SET is_head_office = 1 WHERE (is_head_office IS NULL OR is_head_office = 0) AND (branch_code = 'BHQ' OR branch_code = 'HQ' OR branch_code LIKE '%HQ' OR LOWER(branch_name) LIKE '%head office%');");
+    } catch (colErr) {
+      // Ignored
+    }
+
     // Ensure extra staff/KYC columns are dropped from master users table
     const extraStaffColumns = [
       'staff_code',

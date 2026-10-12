@@ -48,9 +48,17 @@ module.exports = (sequelize) => {
       type: DataTypes.BOOLEAN,
       defaultValue: false,
     },
+    is_head_office: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+    },
     is_active: {
       type: DataTypes.BOOLEAN,
       defaultValue: true,
+    },
+    max_customer_credit_limit: {
+      type: DataTypes.DECIMAL(12, 2),
+      defaultValue: 1000000.00,
     },
   }, {
     tableName: 'branches',

@@ -68,11 +68,7 @@ export default function TripsPage() {
   const [savingSettleExpense, setSavingSettleExpense] = useState(false);
   const [settleExpenseError, setSettleExpenseError] = useState('');
 
-  // Login Branch & Movement Filter State
-  const loginBranchId = useMemo(() => {
-    return userBranchId || (activeBranch?.id && activeBranch.id !== 'ALL' ? activeBranch.id : (typeof activeBranch === 'string' && activeBranch !== 'ALL' ? activeBranch : null));
-  }, [userBranchId, activeBranch]);
-  const [movementTab, setMovementTab] = useState('ALL'); // 'ALL' | 'OUTBOUND' | 'INBOUND'
+  const userBranchCode = user?.branchCode || user?.branch_code || user?.branch?.branch_code || null;
 
   // Vehicle Assignment & Trip Creation State
   const [vehiclesList, setVehiclesList] = useState([]);
@@ -83,6 +79,30 @@ export default function TripsPage() {
   const [assignVehicleId, setAssignVehicleId] = useState('');
   const [assignDriverId, setAssignDriverId] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Login Branch & Movement Filter State
+  const isBranchUser = !isAdmin && Boolean(userBranchId);
+  const [selectedBranchId, setSelectedBranchId] = useState(isBranchUser ? userBranchId : 'ALL');
+  const [movementTab, setMovementTab] = useState('ALL'); // 'ALL' | 'OUTBOUND' | 'INBOUND'
+
+  // The user's actual physical login/home branch (e.g. BHQ)
+  const loginBranchId = useMemo(() => {
+    if (userBranchId) return userBranchId;
+    if (userBranchCode && branchesList.length > 0) {
+      const b = branchesList.find((item) => item.branch_code === userBranchCode);
+      if (b) return b.id;
+    }
+    if (activeBranch?.id && activeBranch.id !== 'ALL') return activeBranch.id;
+    if (branchesList.length > 0) return branchesList[0].id;
+    return null;
+  }, [userBranchId, userBranchCode, activeBranch, branchesList]);
+
+  // Resolved branch filter for querying API
+  const currentBranchId = useMemo(() => {
+    if (isBranchUser) return userBranchId;
+    if (selectedBranchId && selectedBranchId !== 'ALL') return selectedBranchId;
+    return null;
+  }, [isBranchUser, userBranchId, selectedBranchId]);
 
   // Quick Advance & Expense Disbursal Modal State
   const [advExpModalOpen, setAdvExpModalOpen] = useState(false);
@@ -140,13 +160,13 @@ export default function TripsPage() {
       if (fromDate) url += `&from_date=${fromDate}`;
       if (toDate) url += `&to_date=${toDate}`;
 
-      if (loginBranchId) {
+      if (currentBranchId) {
         if (movementTab === 'OUTBOUND') {
-          url += `&origin_branch_id=${loginBranchId}`;
+          url += `&origin_branch_id=${currentBranchId}`;
         } else if (movementTab === 'INBOUND') {
-          url += `&dest_branch_id=${loginBranchId}`;
+          url += `&dest_branch_id=${currentBranchId}`;
         } else {
-          url += `&branch_id=${loginBranchId}`;
+          url += `&branch_id=${currentBranchId}`;
         }
       }
 
@@ -192,11 +212,21 @@ export default function TripsPage() {
 
   useEffect(() => {
     fetchTrips();
-  }, [page, pageSize, sortBy, sortOrder, statusFilter, debouncedSearch, fromDate, toDate, loginBranchId, movementTab]);
+  }, [page, pageSize, sortBy, sortOrder, statusFilter, debouncedSearch, fromDate, toDate, currentBranchId, movementTab]);
 
   useEffect(() => {
     fetchMasterData();
   }, []);
+
+  useEffect(() => {
+    if (isAdmin && activeBranch) {
+      if (activeBranch.id && activeBranch.id !== 'ALL') {
+        setSelectedBranchId(activeBranch.id);
+      } else if (activeBranch === 'ALL' || activeBranch.code === 'ALL' || activeBranch.id === null) {
+        setSelectedBranchId('ALL');
+      }
+    }
+  }, [activeBranch, isAdmin]);
 
   const handleOpenRecordArrival = (trip) => {
     setArrivalTrip(trip);
@@ -652,35 +682,27 @@ export default function TripsPage() {
       render: (val, row) => {
         const effectiveBranch = loginBranchId;
         const currentBranchObj = branchesList.find((b) => b.id === effectiveBranch);
-        const currentCity = (currentBranchObj?.city || '').toLowerCase();
-        const currentName = (currentBranchObj?.branch_name || '').toLowerCase();
-        const isCurrentDelhi = currentCity.includes('delhi') || currentName.includes('delhi');
-        const isCurrentMumbai = currentCity.includes('mumbai') || currentName.includes('mumbai');
-        const isCurrentBlr = currentCity.includes('bengaluru') || currentCity.includes('bangalore') || currentName.includes('bengaluru') || currentName.includes('bangalore');
 
-        const isOutboundFromHere = Boolean(
+        // 1. Check if this trip is arriving at this branch (Inbound arrival)
+        const isInboundToHere = Boolean(
           effectiveBranch && (
-            row.origin_branch_id === effectiveBranch ||
-            (isCurrentDelhi && row.origin_city?.toLowerCase().includes('delhi')) ||
-            (isCurrentMumbai && row.origin_city?.toLowerCase().includes('mumbai')) ||
-            (isCurrentBlr && (row.origin_city?.toLowerCase().includes('bengaluru') || row.origin_city?.toLowerCase().includes('bangalore')))
+            row.dest_branch_id === effectiveBranch ||
+            row.destBranch?.id === effectiveBranch ||
+            (currentBranchObj?.branch_code && (row.destBranch?.branch_code === currentBranchObj.branch_code || row.dest_branch_code === currentBranchObj.branch_code))
           )
         );
 
-        // 1. If trip was DISPATCHED FROM this branch (Outbound dispatch from here)
-        if (isOutboundFromHere) {
-          return (
-            <span
-              className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-700 dark:text-cyan-400 bg-blue-50 dark:bg-blue-950/40 px-2.5 py-1 rounded-lg border border-blue-200 dark:border-blue-800/60 whitespace-nowrap shadow-2xs"
-              title="Dispatched from this origin hub. En route on highway."
-            >
-              <Send className="w-3 h-3 text-blue-500 dark:text-cyan-400" />
-              Dispatched
-            </span>
-          );
-        }
+        // 2. Check if this trip was dispatched from this branch (Outbound dispatch from here and not ending here)
+        const isOutboundFromHere = Boolean(
+          effectiveBranch &&
+          !isInboundToHere && (
+            row.origin_branch_id === effectiveBranch ||
+            row.originBranch?.id === effectiveBranch ||
+            (currentBranchObj?.branch_code && (row.originBranch?.branch_code === currentBranchObj.branch_code || row.origin_branch_code === currentBranchObj.branch_code))
+          )
+        );
 
-        // 2. If trip is COMPLETED
+        // 3. If trip is COMPLETED
         if (row.status === 'COMPLETED') {
           return (
             <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800 whitespace-nowrap">
@@ -690,66 +712,104 @@ export default function TripsPage() {
           );
         }
 
-        // 3. If trip is RUNNING / READY (In Transit / Arriving)
+        // 4. If trip is RUNNING / READY (In Transit / Arriving)
         if (row.status === 'RUNNING' || row.status === 'READY') {
           const hasArrived = Boolean(row.end_odometer && Number(row.end_odometer) > 0) || Boolean(row.is_arrived);
 
           if (!hasArrived) {
-            // First step: Arrival not yet recorded -> Show "Record Arrival"
+            if (isInboundToHere) {
+              // First step: Arrival not yet recorded -> Show "Arrival" button for destination branch
+              return (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleOpenRecordArrival(row);
+                  }}
+                  className="inline-flex items-center gap-1.5 text-[11px] font-bold text-indigo-700 dark:text-indigo-300 hover:text-white bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-600 dark:hover:bg-indigo-600 px-2.5 py-1 rounded-md border border-indigo-300 dark:border-indigo-800 transition-all cursor-pointer shadow-2xs whitespace-nowrap"
+                  title={`Record Physical Seal & Gate Arrival at ${row.destBranch?.branch_name || row.destBranch?.city || row.destination_city || 'Destination Hub'}`}
+                >
+                  <MapPin className="w-3.5 h-3.5 text-indigo-500" />
+                  Arrival
+                </button>
+              );
+            }
+
+            if (isOutboundFromHere) {
+              // Dispatched from this login/origin branch heading elsewhere
+              return (
+                <span
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-700 dark:text-cyan-400 bg-blue-50 dark:bg-blue-950/40 px-2.5 py-1 rounded-lg border border-blue-200 dark:border-blue-800/60 whitespace-nowrap shadow-2xs"
+                  title={`Dispatched from ${row.originBranch?.branch_name || row.origin_city || 'Origin Hub'}. En route to ${row.destBranch?.branch_name || row.destBranch?.city || row.destination_city || 'Destination'}.`}
+                >
+                  <Send className="w-3 h-3 text-blue-500 dark:text-cyan-400" />
+                  Dispatched
+                </span>
+              );
+            }
+
+            // Neither destination nor origin of this login branch (e.g. running between other branches across company)
             return (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleOpenRecordArrival(row);
-                }}
-                className="inline-flex items-center gap-1.5 text-[11px] font-bold text-indigo-700 dark:text-indigo-300 hover:text-white bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-600 dark:hover:bg-indigo-600 px-2.5 py-1 rounded-md border border-indigo-300 dark:border-indigo-800 transition-all cursor-pointer shadow-2xs whitespace-nowrap"
-                title={`Record Physical Seal & Gate Arrival at ${row.destBranch?.city || 'Destination'}`}
+              <span
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/40 px-2.5 py-1 rounded-lg border border-purple-200 dark:border-purple-800/60 whitespace-nowrap shadow-2xs"
+                title={`In transit en route to ${row.destBranch?.branch_name || row.destBranch?.city || row.destination_city || 'Destination Hub'}`}
               >
-                <MapPin className="w-3.5 h-3.5 text-indigo-500" />
-                Arrival
-              </button>
+                <Truck className="w-3.5 h-3.5 text-purple-500 dark:text-purple-400" />
+                In Transit
+              </span>
             );
           } else {
-            // Second step: Arrival recorded -> Show "Unload Cargo" or "Audit & Unload" if seal discrepancy
-            const hasBroken = row.remarks && row.remarks.includes('(BROKEN)');
-            const hasMismatch = row.remarks && row.remarks.includes('(MISMATCH)');
-            const hasDiscrepancy = hasBroken || hasMismatch;
+            // Second step: Arrival recorded
+            if (isInboundToHere) {
+              const hasBroken = row.remarks && row.remarks.includes('(BROKEN)');
+              const hasMismatch = row.remarks && row.remarks.includes('(MISMATCH)');
+              const hasDiscrepancy = hasBroken || hasMismatch;
 
-            let discReason = '';
-            if (hasDiscrepancy && row.remarks) {
-              const m = row.remarks.match(/Discrepancy:\s*([^|\n]+)/i);
-              if (m) discReason = m[1].trim();
+              let discReason = '';
+              if (hasDiscrepancy && row.remarks) {
+                const m = row.remarks.match(/Discrepancy:\s*([^|\n]+)/i);
+                if (m) discReason = m[1].trim();
+              }
+
+              return (
+                <div className="flex flex-col items-center gap-1">
+                  <Link
+                    href={`/unload-planning?trip_id=${row.id}`}
+                    onClick={(e) => e.stopPropagation()}
+                    className={`inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-md border transition-all cursor-pointer shadow-2xs whitespace-nowrap ${
+                      hasDiscrepancy
+                        ? 'text-amber-800 dark:text-amber-200 bg-amber-50 hover:bg-amber-600 hover:text-white dark:bg-amber-950/40 dark:hover:bg-amber-600 border-amber-300 dark:border-amber-700 animate-pulse'
+                        : 'text-emerald-700 dark:text-emerald-300 hover:text-white bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-600 dark:hover:bg-emerald-600 border-emerald-300 dark:border-emerald-800 animate-pulse'
+                    }`}
+                    title={hasDiscrepancy ? `Security Alert: ${discReason || 'Seal discrepancy recorded'}. Requires 100% docket tally inspection.` : 'Gate-in recorded! Proceed to cargo unload dock'}
+                  >
+                    {hasDiscrepancy ? (
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                    ) : (
+                      <PackageCheck className="w-3.5 h-3.5" />
+                    )}
+                    <span>{hasDiscrepancy ? 'Audit & Unload' : 'Unload Cargo'}</span>
+                  </Link>
+                  {hasDiscrepancy && (
+                    <span
+                      className="text-[9px] font-bold text-amber-700 dark:text-amber-300 truncate max-w-[155px]"
+                      title={discReason || (hasBroken ? 'Seal Broken' : 'Seal Mismatch')}
+                    >
+                      ⚠️ {hasBroken ? 'Broken' : 'Mismatch'}: {discReason || 'Flagged'}
+                    </span>
+                  )}
+                </div>
+              );
             }
 
             return (
-              <div className="flex flex-col items-center gap-1">
-                <Link
-                  href={`/unload-planning?trip_id=${row.id}`}
-                  onClick={(e) => e.stopPropagation()}
-                  className={`inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-md border transition-all cursor-pointer shadow-2xs whitespace-nowrap ${
-                    hasDiscrepancy
-                      ? 'text-amber-800 dark:text-amber-200 bg-amber-50 hover:bg-amber-600 hover:text-white dark:bg-amber-950/40 dark:hover:bg-amber-600 border-amber-300 dark:border-amber-700 animate-pulse'
-                      : 'text-emerald-700 dark:text-emerald-300 hover:text-white bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-600 dark:hover:bg-emerald-600 border-emerald-300 dark:border-emerald-800 animate-pulse'
-                  }`}
-                  title={hasDiscrepancy ? `Security Alert: ${discReason || 'Seal discrepancy recorded'}. Requires 100% docket tally inspection.` : 'Gate-in recorded! Proceed to cargo unload dock'}
-                >
-                  {hasDiscrepancy ? (
-                    <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                  ) : (
-                    <PackageCheck className="w-3.5 h-3.5" />
-                  )}
-                  <span>{hasDiscrepancy ? 'Audit & Unload' : 'Unload Cargo'}</span>
-                </Link>
-                {hasDiscrepancy && (
-                  <span
-                    className="text-[9px] font-bold text-amber-700 dark:text-amber-300 truncate max-w-[155px]"
-                    title={discReason || (hasBroken ? 'Seal Broken' : 'Seal Mismatch')}
-                  >
-                    ⚠️ {hasBroken ? 'Broken' : 'Mismatch'}: {discReason || 'Flagged'}
-                  </span>
-                )}
-              </div>
+              <span
+                className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2.5 py-1 rounded-md border border-amber-200 dark:border-amber-800/60 whitespace-nowrap"
+                title={`Vehicle arrived at destination hub (${row.destBranch?.branch_name || 'Destination'}). Unloading in progress.`}
+              >
+                <PackageCheck className="w-3 h-3 text-amber-500" />
+                Arrived at Dest
+              </span>
             );
           }
         }
@@ -767,20 +827,13 @@ export default function TripsPage() {
       render: (val, row) => {
         const effectiveBranch = loginBranchId;
         const currentBranchObj = branchesList.find((b) => b.id === effectiveBranch);
-        const currentCity = (currentBranchObj?.city || '').toLowerCase();
-        const currentName = (currentBranchObj?.branch_name || '').toLowerCase();
-        const isCurrentDelhi = currentCity.includes('delhi') || currentName.includes('delhi');
-        const isCurrentMumbai = currentCity.includes('mumbai') || currentName.includes('mumbai');
-        const isCurrentBlr = currentCity.includes('bengaluru') || currentCity.includes('bangalore') || currentName.includes('bengaluru') || currentName.includes('bangalore');
-
         // Only the Origin/Dispatch branch (who gave the cash advance) or Admins can settle
         const isOriginDispatchBranch = Boolean(
           !effectiveBranch ||
           isAdmin ||
           row.origin_branch_id === effectiveBranch ||
-          (isCurrentDelhi && row.origin_city?.toLowerCase().includes('delhi')) ||
-          (isCurrentMumbai && row.origin_city?.toLowerCase().includes('mumbai')) ||
-          (isCurrentBlr && (row.origin_city?.toLowerCase().includes('bengaluru') || row.origin_city?.toLowerCase().includes('bangalore')))
+          row.originBranch?.id === effectiveBranch ||
+          (currentBranchObj?.branch_code && (row.originBranch?.branch_code === currentBranchObj.branch_code || row.origin_branch_code === currentBranchObj.branch_code))
         );
 
         return (
@@ -834,7 +887,7 @@ export default function TripsPage() {
         );
       }
     }
-  ], [canEdit, canSettleTrip, canEditTrip, isAdmin, loginBranchId, branchesList]);
+  ], [canEdit, canSettleTrip, canEditTrip, isAdmin, loginBranchId, branchesList, movementTab]);
 
   const statusOptions = [
     { label: 'All Statuses', value: '' },
@@ -933,29 +986,71 @@ export default function TripsPage() {
                   ))}
                 </div>
 
-                {/* Status Filter Dropdown */}
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 whitespace-nowrap">
-                    Status:
-                  </span>
-                  <select
-                    value={statusFilter}
-                    onChange={(e) => {
-                      setStatusFilter(e.target.value);
-                      setPage(1);
-                    }}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all focus:outline-none cursor-pointer ${
-                      isDark
-                        ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
-                        : 'bg-white border-slate-200 text-slate-800 focus:border-blue-500 shadow-2xs'
-                    }`}
-                  >
-                    {statusOptions.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
+                {/* Right Controls: Branch Filter (for Admin) & Status Filter */}
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  {isAdmin && (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                        Branch:
+                      </span>
+                      <select
+                        value={selectedBranchId}
+                        onChange={(e) => {
+                          setSelectedBranchId(e.target.value);
+                          setPage(1);
+                        }}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all focus:outline-none cursor-pointer ${
+                          isDark
+                            ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
+                            : 'bg-white border-slate-200 text-slate-800 focus:border-blue-500 shadow-2xs'
+                        }`}
+                      >
+                        <option value="ALL">🌐 All Branches (Network-wide)</option>
+                        {branchesList.map((b) => (
+                          <option key={b.id} value={b.id}>
+                            {b.branch_code ? `[${b.branch_code}] ` : ''}{b.branch_name} ({b.city})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {!isAdmin && userBranchId && (
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      <span className="text-slate-400">Branch:</span>
+                      <span className="font-bold text-blue-600 dark:text-cyan-400">
+                        {(() => {
+                          const b = branchesList.find((item) => item.id === userBranchId);
+                          return b ? `${b.branch_code ? `[${b.branch_code}] ` : ''}${b.branch_name}` : 'Your Branch';
+                        })()}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Status Filter Dropdown */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                      Status:
+                    </span>
+                    <select
+                      value={statusFilter}
+                      onChange={(e) => {
+                        setStatusFilter(e.target.value);
+                        setPage(1);
+                      }}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all focus:outline-none cursor-pointer ${
+                        isDark
+                          ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
+                          : 'bg-white border-slate-200 text-slate-800 focus:border-blue-500 shadow-2xs'
+                      }`}
+                    >
+                      {statusOptions.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </div>
             }

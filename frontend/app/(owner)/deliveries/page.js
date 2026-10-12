@@ -131,11 +131,24 @@ export default function DeliveriesPage() {
   const [drsDocketSearch, setDrsDocketSearch] = useState('');
   const [drsFilterType, setDrsFilterType] = useState('ALL'); // 'ALL' | 'DOOR_DELIVERY' | 'TO_PAY'
 
-  const activeDrsDockets = drsDockets.length > 0 ? drsDockets : consignments;
+  const activeDrsDockets = useMemo(() => {
+    const list = drsDockets.length > 0 ? drsDockets : consignments;
+    const activeBranch = selectedBranchId || userBranchId;
+    return list.filter((c) => {
+      // Must be Door Delivery
+      if (c.delivery_type !== 'DOOR_DELIVERY') return false;
+      // Must be received at destination branch
+      if (!['REACHED_DESTINATION', 'READY_FOR_DELIVERY', 'DAMAGED', 'SHORT_MATERIAL', 'HOLD'].includes(c.status)) return false;
+      // Must belong to this branch
+      if (activeBranch && activeBranch !== 'ALL' && c.dest_branch_id && String(c.dest_branch_id) !== String(activeBranch)) {
+        return false;
+      }
+      return true;
+    });
+  }, [drsDockets, consignments, selectedBranchId, userBranchId]);
 
   const filteredDrsConsignments = useMemo(() => {
     return activeDrsDockets.filter((c) => {
-      if (drsFilterType === 'DOOR_DELIVERY' && c.delivery_type !== 'DOOR_DELIVERY') return false;
       if (drsFilterType === 'TO_PAY' && c.payment_type !== 'TO_PAY') return false;
       if (!drsDocketSearch.trim()) return true;
       const q = drsDocketSearch.toLowerCase().trim();
@@ -186,34 +199,43 @@ export default function DeliveriesPage() {
     };
   }, [selectedDocketsList]);
 
-  // Open DRS modal and pre-load all ready dockets up to 200
+  // Open DRS modal and pre-load all ready Door Delivery dockets of this branch up to 200
   const openDrsModal = async () => {
     setDrsDocketSearch('');
     setDrsFilterType('ALL');
+    setSelectedDocketIds(new Set()); // Keep unselected by default
     setDrsModalOpen(true);
     setDrsLoading(true);
     try {
+      const activeBranch = selectedBranchId || userBranchId;
       const params = new URLSearchParams({
         tab: 'READY',
-        branch_id: selectedBranchId,
+        branch_id: activeBranch,
+        delivery_type: 'DOOR_DELIVERY',
         limit: '200',
         page: '1',
       });
       const res = await api.get(`/deliveries/operations?${params.toString()}`);
-      if (res.data?.success && Array.isArray(res.data.data)) {
-        setDrsDockets(res.data.data);
-        if (selectedDocketIds.size === 0) {
-          setSelectedDocketIds(new Set(res.data.data.map((c) => c.id)));
-        }
-      } else {
-        setDrsDockets(consignments);
-        if (selectedDocketIds.size === 0) {
-          setSelectedDocketIds(new Set(consignments.map((c) => c.id)));
-        }
-      }
+      const rawList = Array.isArray(res.data?.data) ? res.data.data : (consignments || []);
+      const doorOnly = rawList.filter((c) => {
+        const isDoor = c.delivery_type === 'DOOR_DELIVERY';
+        const isReceived = ['REACHED_DESTINATION', 'READY_FOR_DELIVERY', 'DAMAGED', 'SHORT_MATERIAL', 'HOLD'].includes(c.status);
+        const matchesBranch = !activeBranch || activeBranch === 'ALL' || String(c.dest_branch_id) === String(activeBranch);
+        return isDoor && isReceived && matchesBranch;
+      });
+      setDrsDockets(doorOnly);
+      // Unselected by default
     } catch (e) {
       console.warn('Failed to load full DRS dockets list:', e);
-      setDrsDockets(consignments);
+      const activeBranch = selectedBranchId || userBranchId;
+      const doorOnly = consignments.filter((c) => {
+        const isDoor = c.delivery_type === 'DOOR_DELIVERY';
+        const isReceived = ['REACHED_DESTINATION', 'READY_FOR_DELIVERY', 'DAMAGED', 'SHORT_MATERIAL', 'HOLD'].includes(c.status);
+        const matchesBranch = !activeBranch || activeBranch === 'ALL' || String(c.dest_branch_id) === String(activeBranch);
+        return isDoor && isReceived && matchesBranch;
+      });
+      setDrsDockets(doorOnly);
+      // Unselected by default
     } finally {
       setDrsLoading(false);
     }
@@ -884,19 +906,19 @@ export default function DeliveriesPage() {
         header: 'Delivery Type',
         sortable: true,
         align: 'center',
-        width: 140,
-        minWidth: 120,
+        width: 155,
+        minWidth: 140,
         render: (val, row) => (
-          <div className="text-center">
+          <div className="flex justify-center items-center">
             {row.delivery_type === 'DOOR_DELIVERY' ? (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/15 text-indigo-400 border border-indigo-500/30">
-                <Truck className="w-3 h-3" />
-                DOOR DELIVERY
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-950/50 dark:text-indigo-300 dark:border-indigo-800/60 shadow-xs">
+                <Truck className="w-3.5 h-3.5 shrink-0 text-indigo-600 dark:text-indigo-400" />
+                Door Delivery
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30">
-                <Building2 className="w-3 h-3" />
-                GODOWN PICKUP
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800/60 shadow-xs">
+                <Building2 className="w-3.5 h-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                Godown Pickup
               </span>
             )}
           </div>
@@ -913,22 +935,22 @@ export default function DeliveriesPage() {
           const isToPay = row.payment_type === 'TO_PAY';
           const isPaid = row.payment_type === 'PAID';
           return (
-            <div className="text-center">
+            <div className="flex justify-center items-center">
               {isToPay ? (
                 <div className="inline-flex flex-col items-center">
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black bg-rose-500/15 text-rose-400 border border-rose-500/30">
-                    <AlertCircle className="w-3 h-3" />
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-800/60 shadow-xs">
+                    <AlertCircle className="w-3 h-3 shrink-0 text-rose-600 dark:text-rose-400" />
                     TO-PAY: ₹{Number(row.total_amount || 0).toLocaleString('en-IN')}
                   </span>
-                  <span className="text-[9px] text-amber-400 font-semibold mt-0.5">Collect at handover</span>
+                  <span className="text-[9px] text-amber-600 dark:text-amber-400 font-semibold mt-0.5 whitespace-nowrap">Collect at handover</span>
                 </div>
               ) : isPaid ? (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                  <CheckCircle2 className="w-3 h-3" />
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800/60 shadow-xs">
+                  <CheckCircle2 className="w-3 h-3 shrink-0 text-emerald-600 dark:text-emerald-400" />
                   PAID (₹{Number(row.total_amount || 0).toLocaleString('en-IN')})
                 </span>
               ) : (
-                <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/15 text-blue-400 border border-blue-500/30">
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/50 dark:text-blue-300 dark:border-blue-800/60 shadow-xs">
                   {row.payment_type || 'TBB (Credit)'}
                 </span>
               )}
@@ -941,16 +963,16 @@ export default function DeliveriesPage() {
         header: 'Cargo Status',
         sortable: true,
         align: 'center',
-        width: 140,
-        minWidth: 120,
+        width: 170,
+        minWidth: 150,
         render: (val, row) => (
-          <div className="text-center">
+          <div className="flex flex-col items-center justify-center">
             <Badge status={row.status} size="xs" />
             {row.status === 'DAMAGED' && (
-              <span className="text-[9px] text-red-400 block font-bold">Damage Noted</span>
+              <span className="text-[9px] text-red-500 dark:text-red-400 block font-bold mt-0.5 whitespace-nowrap">Damage Noted</span>
             )}
             {row.status === 'SHORT_MATERIAL' && (
-              <span className="text-[9px] text-amber-400 block font-bold">Short Material</span>
+              <span className="text-[9px] text-amber-500 dark:text-amber-400 block font-bold mt-0.5 whitespace-nowrap">Short Material</span>
             )}
           </div>
         ),
@@ -966,36 +988,20 @@ export default function DeliveriesPage() {
         render: (val, row) => {
           const isDelivered = ['DELIVERED', 'POD_UPLOADED', 'COMPLETED'].includes(row.status);
           const isOut = row.status === 'OUT_FOR_DELIVERY';
+          const isReady = activeTab === 'READY' || ['REACHED_DESTINATION', 'DAMAGED', 'SHORT_MATERIAL', 'HOLD'].includes(row.status);
 
           return (
             <div className="flex items-center justify-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-              {/* Ready in Godown Actions */}
-              {activeTab === 'READY' && (
-                <>
-                  <button
-                    onClick={() => openHandoverModal(row)}
-                    className="px-2.5 py-1 text-[11px] font-bold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg shadow-xs transition-colors flex items-center gap-1 cursor-pointer shrink-0"
-                    title="Direct Counter Handover at Godown (Customer Pickup)"
-                  >
-                    <Building2 className="w-3 h-3" />
-                    Handover
-                  </button>
-
-                  {/* Only show 'Out for Delivery' button if consignment is configured for Door Delivery */}
-                  {row.delivery_type === 'DOOR_DELIVERY' && (
-                    <button
-                      onClick={() => {
-                        setSelectedDocketIds(new Set([row.id]));
-                        setDrsModalOpen(true);
-                      }}
-                      className="px-2.5 py-1 text-[11px] font-bold bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg shadow-xs transition-colors flex items-center gap-1 cursor-pointer shrink-0"
-                      title="Send Out for Delivery via Delivery Run Sheet (DRS)"
-                    >
-                      <Truck className="w-3 h-3" />
-                      Out for Delivery
-                    </button>
-                  )}
-                </>
+              {/* Ready in Godown / Destination Actions: Counter Handover for all */}
+              {isReady && !isOut && !isDelivered && (
+                <button
+                  onClick={() => openHandoverModal(row)}
+                  className="px-3 py-1 text-[11px] font-bold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg shadow-xs transition-colors flex items-center gap-1 cursor-pointer shrink-0"
+                  title="Direct Counter Handover at Godown (Customer Pickup)"
+                >
+                  <Building2 className="w-3 h-3" />
+                  Handover
+                </button>
               )}
 
               {/* Out for Delivery Actions */}
@@ -1134,12 +1140,12 @@ export default function DeliveriesPage() {
                       ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/30'
                       : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/20'
                   }`}
-                  title="Create Delivery Run Sheet (DRS) for doorstep delivery"
+                  title="Create Delivery Run Sheet (DRS) & send Out for Delivery"
                 >
                   <Truck className="w-3.5 h-3.5" />
                   {selectedDocketIds.size > 0
-                    ? `Dispatch DRS (${selectedDocketIds.size} Selected)`
-                    : '+ Create Delivery Run Sheet (DRS)'}
+                    ? `Out for Delivery (${selectedDocketIds.size} Selected)`
+                    : '+ Out for Delivery'}
                 </button>
               )}
 
@@ -1805,14 +1811,14 @@ export default function DeliveriesPage() {
                     <div>
                       <div className="flex items-center gap-2">
                         <h3 className={`text-base font-black ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                          Create Delivery Run Sheet (DRS)
+                          Out for Delivery — Create Delivery Run Sheet (DRS)
                         </h3>
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-500 border border-indigo-500/30">
-                          Doorstep Delivery
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-400 border border-indigo-500/30">
+                          Door Delivery Only
                         </span>
                       </div>
                       <p className={`text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                        Assign ready godown consignments to local delivery vehicle for last-mile delivery
+                        Showing only Door Delivery dockets received & unloaded at this branch ({currentBranch?.branch_name || currentBranch?.city || 'Selected Branch'})
                       </p>
                     </div>
                   </div>
@@ -1826,7 +1832,10 @@ export default function DeliveriesPage() {
                     </div>
 
                     <button
-                      onClick={() => setDrsModalOpen(false)}
+                      onClick={() => {
+                        setDrsModalOpen(false);
+                        setSelectedDocketIds(new Set());
+                      }}
                       className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
                         isDark ? 'text-slate-400 hover:text-white hover:bg-slate-800' : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'
                       }`}
@@ -1905,35 +1914,24 @@ export default function DeliveriesPage() {
                           <button
                             type="button"
                             onClick={() => setDrsFilterType('ALL')}
-                            className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-colors cursor-pointer ${
+                            className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-colors cursor-pointer ${
                               drsFilterType === 'ALL'
                                 ? 'bg-indigo-600 text-white'
                                 : isDark ? 'bg-slate-900 text-slate-400 hover:text-white' : 'bg-white border border-slate-200 text-slate-600'
                             }`}
                           >
-                            All
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setDrsFilterType('DOOR_DELIVERY')}
-                            className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-colors cursor-pointer ${
-                              drsFilterType === 'DOOR_DELIVERY'
-                                ? 'bg-indigo-600 text-white'
-                                : isDark ? 'bg-slate-900 text-slate-400 hover:text-white' : 'bg-white border border-slate-200 text-slate-600'
-                            }`}
-                          >
-                            Door Delivery
+                            All Door Delivery ({activeDrsDockets.length})
                           </button>
                           <button
                             type="button"
                             onClick={() => setDrsFilterType('TO_PAY')}
-                            className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-colors cursor-pointer ${
+                            className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-colors cursor-pointer ${
                               drsFilterType === 'TO_PAY'
                                 ? 'bg-rose-600 text-white'
                                 : isDark ? 'bg-slate-900 text-slate-400 hover:text-white' : 'bg-white border border-slate-200 text-slate-600'
                             }`}
                           >
-                            TO-PAY
+                            TO-PAY Cash ({activeDrsDockets.filter((c) => c.payment_type === 'TO_PAY').length})
                           </button>
                         </div>
                       </div>
@@ -1944,13 +1942,13 @@ export default function DeliveriesPage() {
                       {drsLoading ? (
                         <div className="py-16 text-center text-slate-400 flex flex-col items-center justify-center gap-2">
                           <RefreshCw className="w-6 h-6 animate-spin text-indigo-500" />
-                          <span className="text-xs">Loading ready dockets...</span>
+                          <span className="text-xs">Loading ready Door Delivery dockets...</span>
                         </div>
                       ) : filteredDrsConsignments.length === 0 ? (
                         <div className="py-16 text-center text-slate-400 flex flex-col items-center justify-center gap-2">
-                          <Boxes className="w-8 h-8 text-slate-500 opacity-40" />
-                          <p className="text-xs font-semibold">No ready consignments match your criteria</p>
-                          <span className="text-[11px] text-slate-500">Try clearing the search or filter</span>
+                          <Truck className="w-8 h-8 text-indigo-400 opacity-40" />
+                          <p className="text-xs font-semibold">No received Door Delivery dockets found for this branch</p>
+                          <span className="text-[11px] text-slate-500">Only consignments marked for Door Delivery that have arrived and been unloaded at this branch appear here.</span>
                         </div>
                       ) : (
                         filteredDrsConsignments.map((c) => {
@@ -2345,7 +2343,10 @@ export default function DeliveriesPage() {
                     }`}>
                       <button
                         type="button"
-                        onClick={() => setDrsModalOpen(false)}
+                        onClick={() => {
+                          setDrsModalOpen(false);
+                          setSelectedDocketIds(new Set());
+                        }}
                         className={`px-4 py-2 text-xs font-bold rounded-xl transition-colors cursor-pointer ${
                           isDark ? 'text-slate-400 hover:text-white hover:bg-slate-800/60' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                         }`}
@@ -2359,7 +2360,7 @@ export default function DeliveriesPage() {
                         className="px-5 py-2.5 text-xs bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-black rounded-xl shadow-lg shadow-indigo-600/30 flex items-center gap-2 transition-all transform active:scale-95 cursor-pointer"
                       >
                         <Truck className="w-4 h-4" />
-                        {submitting ? 'Generating DRS...' : `Dispatch DRS (${selectedDocketIds.size} Dockets)`}
+                        {submitting ? 'Generating DRS...' : `Out for Delivery (${selectedDocketIds.size} Dockets)`}
                       </button>
                     </div>
                   </div>

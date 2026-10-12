@@ -152,6 +152,9 @@ const applyEssentialPatches = async (sequelize) => {
     'ALTER TABLE vehicles ADD COLUMN gps_provider_name VARCHAR(100);',
     'ALTER TABLE drivers ADD COLUMN branch_id CHAR(36);',
     'ALTER TABLE customers ADD COLUMN branch_id VARCHAR(36);',
+    'ALTER TABLE customers ADD COLUMN is_walkin TINYINT(1) DEFAULT 0;',
+    'ALTER TABLE branches ADD COLUMN is_head_office TINYINT(1) DEFAULT 0;',
+    "UPDATE branches SET is_head_office = 1 WHERE (is_head_office IS NULL OR is_head_office = 0) AND (branch_code = 'BHQ' OR branch_code = 'HQ' OR branch_code LIKE '%HQ' OR LOWER(branch_name) LIKE '%head office%');",
     `CREATE TABLE IF NOT EXISTS gps_integrations (
       id VARCHAR(36) NOT NULL PRIMARY KEY,
       tenant_id VARCHAR(36) NOT NULL,

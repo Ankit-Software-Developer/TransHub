@@ -731,8 +731,8 @@ export default function DataTable({
                     return (
                       <td
                         key={col.key}
-                        style={width ? { width: `${width}px`, maxWidth: `${width}px` } : {}}
-                        className={`py-3 px-3.5 text-xs truncate ${alignClass}`}
+                        style={width ? { width: `${width}px`, minWidth: `${col.minWidth || width}px` } : {}}
+                        className={`py-3 px-3.5 text-xs ${col.truncate ? 'truncate' : ''} ${alignClass}`}
                       >
                         {col.render ? col.render(row[col.key], row, idx) : row[col.key]}
                       </td>

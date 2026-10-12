@@ -10,11 +10,15 @@ const listBranches = async (req, res) => {
       return successResponse(res, 'Branches fetched', []);
     }
 
-    const { search, is_hub, is_active, page = 1, limit = 50, all } = req.query;
+    const { search, is_hub, is_head_office, is_active, page = 1, limit = 50, all } = req.query;
     const where = {
       tenant_id: req.tenant.tenantId,
       organization_id: req.tenant.organizationId,
     };
+
+    if (is_head_office !== undefined && is_head_office !== '') {
+      where.is_head_office = is_head_office === 'true' || is_head_office === true || is_head_office === '1';
+    }
 
     if (is_hub !== undefined && is_hub !== '') {
       where.is_hub = is_hub === 'true' || is_hub === true || is_hub === '1';
@@ -35,10 +39,16 @@ const listBranches = async (req, res) => {
       ];
     }
 
+    const branchOrder = [
+      ['is_head_office', 'DESC'],
+      ['is_hub', 'DESC'],
+      ['branch_name', 'ASC'],
+    ];
+
     if (all === 'true' || all === true) {
       const branches = await Branch.findAll({
         where,
-        order: [['is_hub', 'DESC'], ['branch_name', 'ASC']],
+        order: branchOrder,
       });
       return successResponse(res, 'All branches fetched', branches);
     }
@@ -48,7 +58,7 @@ const listBranches = async (req, res) => {
       where,
       limit: parseInt(limit, 10),
       offset: parseInt(offset, 10),
-      order: [['is_hub', 'DESC'], ['branch_name', 'ASC']],
+      order: branchOrder,
     });
 
     return paginatedResponse(res, 'Branches fetched', rows, {
@@ -98,7 +108,9 @@ const createBranch = async (req, res) => {
       state,
       pincode,
       is_hub,
+      is_head_office,
       is_active,
+      max_customer_credit_limit,
     } = req.body;
 
     if (!branch_name || !city || !state) {
@@ -129,6 +141,21 @@ const createBranch = async (req, res) => {
       return errorResponse(res, `Branch Code "${finalCode}" is already in use by "${existing.branch_name}". Please choose a unique code.`, null, 400);
     }
 
+    const userRoles = req.userRoles || [];
+    const isOwnerOrAdmin = userRoles.includes('SUPER_ADMIN') ||
+      userRoles.includes('TRANSPORT_OWNER') ||
+      userRoles.includes('ADMIN') ||
+      Boolean(req.user?.is_owner);
+
+    let parsedBranchCap = 1000000;
+    if (max_customer_credit_limit !== undefined && max_customer_credit_limit !== null && max_customer_credit_limit !== '') {
+      if (isOwnerOrAdmin) {
+        parsedBranchCap = parseFloat(max_customer_credit_limit) || 1000000;
+      }
+    }
+
+    const isHeadOfficeFlag = is_head_office === true || is_head_office === 'true' || is_head_office === 1 || finalCode === 'HQ' || finalCode === 'BHQ' || /head\s*office/i.test(branch_name);
+
     const branch = await Branch.create({
       tenant_id: req.tenant.tenantId,
       organization_id: req.tenant.organizationId,
@@ -140,11 +167,13 @@ const createBranch = async (req, res) => {
       city: city.trim(),
       state: state.trim(),
       pincode: pincode ? pincode.trim() : null,
-      is_hub: is_hub === true || is_hub === 'true' || is_hub === 1,
+      is_head_office: isHeadOfficeFlag,
+      is_hub: isHeadOfficeFlag ? true : (is_hub === true || is_hub === 'true' || is_hub === 1),
       is_active: is_active !== false && is_active !== 'false',
+      max_customer_credit_limit: parsedBranchCap,
     });
 
-    return successResponse(res, `${branch.is_hub ? 'Hub' : 'Branch'} created successfully`, branch, 201);
+    return successResponse(res, `${branch.is_head_office ? 'Head Office' : branch.is_hub ? 'Hub' : 'Branch'} created successfully`, branch, 201);
   } catch (error) {
     return errorResponse(res, error.message, null, 500);
   }
@@ -164,7 +193,9 @@ const updateBranch = async (req, res) => {
       state,
       pincode,
       is_hub,
+      is_head_office,
       is_active,
+      max_customer_credit_limit,
     } = req.body;
 
     const branch = await Branch.findOne({
@@ -193,6 +224,24 @@ const updateBranch = async (req, res) => {
       branch.branch_code = branch_code.trim().toUpperCase();
     }
 
+    const userRoles = req.userRoles || [];
+    const isOwnerOrAdmin = userRoles.includes('SUPER_ADMIN') ||
+      userRoles.includes('TRANSPORT_OWNER') ||
+      userRoles.includes('ADMIN') ||
+      Boolean(req.user?.is_owner);
+
+    if (max_customer_credit_limit !== undefined && max_customer_credit_limit !== null && max_customer_credit_limit !== '') {
+      if (!isOwnerOrAdmin) {
+        return errorResponse(
+          res,
+          'Only Transport Owner / Admin can adjust or increase a branch\'s TBB credit limit authorization cap.',
+          null,
+          403
+        );
+      }
+      branch.max_customer_credit_limit = parseFloat(max_customer_credit_limit) || 1000000;
+    }
+
     if (branch_name !== undefined) branch.branch_name = branch_name.trim();
     if (phone !== undefined) branch.phone = phone ? phone.trim() : null;
     if (email !== undefined) branch.email = email ? email.trim() : null;
@@ -200,12 +249,20 @@ const updateBranch = async (req, res) => {
     if (city !== undefined) branch.city = city.trim();
     if (state !== undefined) branch.state = state.trim();
     if (pincode !== undefined) branch.pincode = pincode ? pincode.trim() : null;
-    if (is_hub !== undefined) branch.is_hub = is_hub === true || is_hub === 'true' || is_hub === 1;
+    if (is_head_office !== undefined) {
+      branch.is_head_office = is_head_office === true || is_head_office === 'true' || is_head_office === 1;
+      if (branch.is_head_office) {
+        branch.is_hub = true;
+      }
+    }
+    if (is_hub !== undefined && !branch.is_head_office) {
+      branch.is_hub = is_hub === true || is_hub === 'true' || is_hub === 1;
+    }
     if (is_active !== undefined) branch.is_active = is_active === true || is_active === 'true' || is_active === 1;
 
     await branch.save();
 
-    return successResponse(res, `${branch.is_hub ? 'Hub' : 'Branch'} updated successfully`, branch);
+    return successResponse(res, `${branch.is_head_office ? 'Head Office' : branch.is_hub ? 'Hub' : 'Branch'} updated successfully`, branch);
   } catch (error) {
     return errorResponse(res, error.message, null, 500);
   }

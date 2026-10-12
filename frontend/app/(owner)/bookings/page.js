@@ -40,6 +40,7 @@ import {
   ShieldCheck,
   Check,
   RotateCw,
+  RotateCcw,
   ExternalLink,
   Pencil,
   Trash2,
@@ -438,21 +439,26 @@ function BranchSelectDropdown({
           } ${isOpen ? (isDark ? 'ring-2 ring-cyan-500/40 border-cyan-500' : 'ring-2 ring-blue-500/40 border-blue-500') : ''}`}
       >
         {selectedBranch ? (
-          <div className="flex items-center gap-1.5 min-w-0 flex-1 mr-2 text-xs truncate">
-            <Building2 className={`w-3.5 h-3.5 shrink-0 ${isDark ? 'text-cyan-400' : 'text-blue-600'}`} />
-            <span className="font-bold truncate">{selectedBranch.branch_name}</span>
-            {selectedBranch.branch_code && (
-              <span className={`font-mono text-[10px] font-bold px-1.5 py-0.2 rounded shrink-0 ${isDark ? 'bg-slate-800 text-cyan-300 border border-slate-700' : 'bg-slate-200 text-slate-800'
-                }`}>
-                [{selectedBranch.branch_code}]
+          <div className="flex items-center justify-between min-w-0 flex-1 mr-2 text-xs gap-2">
+            <div className="flex items-center gap-1.5 min-w-0 flex-1 truncate">
+              <Building2 className={`w-3.5 h-3.5 shrink-0 ${isDark ? 'text-cyan-400' : 'text-blue-600'}`} />
+              <span className="font-bold truncate">{selectedBranch.branch_name}</span>
+              {selectedBranch.is_hub && (
+                <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 shrink-0">
+                  HUB
+                </span>
+              )}
+              <span className={`text-[11px] truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                — {selectedBranch.city} {selectedBranch.pincode ? `[PIN: ${selectedBranch.pincode}]` : ''}
               </span>
-            )}
-            <span className={`text-[11px] truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-              — {selectedBranch.city} {selectedBranch.pincode ? `[PIN: ${selectedBranch.pincode}]` : ''}
-            </span>
-            {selectedBranch.is_hub && (
-              <span className="text-[9px] px-1.5 py-0.2 rounded font-bold bg-amber-500/15 text-amber-500 border border-amber-500/20 shrink-0">
-                HUB
+            </div>
+            {selectedBranch.branch_code && (
+              <span className={`font-mono text-[10px] font-bold px-1.5 py-0.5 rounded-md shrink-0 border ${
+                isDark
+                  ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30'
+                  : 'bg-blue-50 text-blue-700 border-blue-200'
+              }`}>
+                [{selectedBranch.branch_code}]
               </span>
             )}
           </div>
@@ -540,24 +546,30 @@ function BranchSelectDropdown({
                   >
                     <div className="flex items-center gap-1.5 min-w-0 flex-1 truncate">
                       <span className="text-xs font-bold truncate">{b.branch_name}</span>
-                      {b.branch_code && (
-                        <span className={`font-mono text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${isDark ? 'bg-slate-800 text-cyan-300 border border-slate-700' : 'bg-slate-100 text-slate-800 border border-slate-200'
-                          }`}>
-                          [{b.branch_code}]
-                        </span>
-                      )}
-                      <span className={`text-[11px] truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                        — {b.city} {b.pincode ? `[PIN: ${b.pincode}]` : ''}
-                      </span>
                       {b.is_hub && (
                         <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 shrink-0">
                           HUB
                         </span>
                       )}
+                      <span className={`text-[11px] truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                        — {b.city} {b.pincode ? `[PIN: ${b.pincode}]` : ''}
+                      </span>
                     </div>
-                    {isSelected && (
-                      <Check className={`w-3.5 h-3.5 shrink-0 ${isDark ? 'text-cyan-400' : 'text-blue-600'}`} />
-                    )}
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      {b.branch_code && (
+                        <span className={`font-mono text-[10px] font-bold px-1.5 py-0.5 rounded-md shrink-0 border ${
+                          isDark
+                            ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30'
+                            : 'bg-blue-50 text-blue-700 border-blue-200'
+                        }`}>
+                          [{b.branch_code}]
+                        </span>
+                      )}
+                      {isSelected && (
+                        <Check className={`w-3.5 h-3.5 shrink-0 ${isDark ? 'text-cyan-400' : 'text-blue-600'}`} />
+                      )}
+                    </div>
                   </div>
                 );
               })
@@ -1009,9 +1021,13 @@ export default function BookingsMasterPage() {
   const [customersList, setCustomersList] = useState([]);
   const [showConsignorDropdown, setShowConsignorDropdown] = useState(false);
   const [showConsigneeDropdown, setShowConsigneeDropdown] = useState(false);
+  const [isManualConsignor, setIsManualConsignor] = useState(false);
+  const [isManualConsignee, setIsManualConsignee] = useState(false);
   const [showAllConsignors, setShowAllConsignors] = useState(false);
   const consignorDropdownRef = useRef(null);
   const consigneeDropdownRef = useRef(null);
+  const consignorPhoneRef = useRef(null);
+  const consigneePhoneRef = useRef(null);
 
   const [docketSeriesPreview, setDocketSeriesPreview] = useState(null);
 
@@ -1020,10 +1036,12 @@ export default function BookingsMasterPage() {
     customDocketNumber: '',
     consignorName: '',
     consignorCity: '',
+    consignorAddress: '',
     consignorPhone: '',
     consignorId: '',
     consigneeName: '',
     consigneeCity: '',
+    consigneeAddress: '',
     consigneePhone: '',
     consigneeId: '',
     originBranchId: '',
@@ -1037,11 +1055,11 @@ export default function BookingsMasterPage() {
     paymentMode: 'TO_PAY',
     pickupDate: new Date().toISOString().split('T')[0],
     transportMode: 'ROAD', // 'ROAD' | 'RAIL' | 'AIR'
-    deliveryType: 'GODOWN_DELIVERY', // 'GODOWN_DELIVERY' | 'DOOR_DELIVERY'
+    deliveryType: 'DOOR_DELIVERY', // Default to DOOR_DELIVERY
     // Dynamic & Editable Charges
     loadingCharges: '450',
     unloadingCharges: '0',
-    doorDeliveryCharges: '0',
+    doorDeliveryCharges: '100',
     biltyFee: '50',
     customCharges: [], // Array of { id, name, amount }
     discountAmount: '0',
@@ -1159,7 +1177,7 @@ export default function BookingsMasterPage() {
 
   const fetchCustomers = async () => {
     try {
-      const res = await api.get('/customers?limit=200');
+      const res = await api.get('/customers?limit=1000&scope=all');
       const list = Array.isArray(res.data?.data) ? res.data.data : (res.data?.data?.rows || []);
       setCustomersList(list);
     } catch (err) {
@@ -1180,6 +1198,10 @@ export default function BookingsMasterPage() {
       fetchCustomers();
       fetchDocketSeriesPreview();
       setShowAllConsignors(false);
+      setIsManualConsignor(false);
+      setIsManualConsignee(false);
+      setShowConsignorDropdown(false);
+      setShowConsigneeDropdown(false);
     }
   }, [isDrawerOpen]);
 
@@ -1279,8 +1301,22 @@ export default function BookingsMasterPage() {
     if (!(formData.consignorName || '').trim()) {
       return false;
     }
+    // For manual / walk-in shipper, 10-digit mobile number is mandatory
+    if (!formData.consignorId) {
+      const cleanPhone = (formData.consignorPhone || '').replace(/\D/g, '');
+      if (cleanPhone.length !== 10) {
+        return false;
+      }
+    }
     if (!(formData.consigneeName || '').trim()) {
       return false;
+    }
+    // For manual / walk-in receiver, 10-digit mobile number is mandatory
+    if (!formData.consigneeId) {
+      const cleanPhone = (formData.consigneePhone || '').replace(/\D/g, '');
+      if (cleanPhone.length !== 10) {
+        return false;
+      }
     }
     if (!formData.originBranchId) {
       return false;
@@ -1304,9 +1340,19 @@ export default function BookingsMasterPage() {
     }
     if (!(formData.consignorName || '').trim()) {
       missing.push('Consignor (Shipper)');
+    } else if (!formData.consignorId) {
+      const cleanPhone = (formData.consignorPhone || '').replace(/\D/g, '');
+      if (cleanPhone.length !== 10) {
+        missing.push('Shipper Mobile (10 Digits)');
+      }
     }
     if (!(formData.consigneeName || '').trim()) {
       missing.push('Consignee (Receiver)');
+    } else if (!formData.consigneeId) {
+      const cleanPhone = (formData.consigneePhone || '').replace(/\D/g, '');
+      if (cleanPhone.length !== 10) {
+        missing.push('Receiver Mobile (10 Digits)');
+      }
     }
     if (!formData.originBranchId) {
       missing.push('Origin Hub');
@@ -1821,10 +1867,12 @@ export default function BookingsMasterPage() {
         destination_city: formData.destinationCity,
         consignor_id: formData.consignorId || undefined,
         consignor_name: formData.consignorName || 'Shipper Party',
-        consignor_phone: formData.consignorPhone || undefined,
+        consignor_phone: formData.consignorPhone ? formData.consignorPhone.replace(/\D/g, '') : undefined,
+        consignor_address: formData.consignorAddress || undefined,
         consignee_id: formData.consigneeId || undefined,
         consignee_name: formData.consigneeName || 'Consignee Party',
-        consignee_phone: formData.consigneePhone || undefined,
+        consignee_phone: formData.consigneePhone ? formData.consigneePhone.replace(/\D/g, '') : undefined,
+        consignee_address: formData.consigneeAddress || undefined,
         material_description: formData.cargoType || 'General Freight',
         packages_count: parseInt(formData.packagesCount, 10) || 10,
         actual_weight: parseFloat(formData.weightKg) || 0,
@@ -1844,8 +1892,8 @@ export default function BookingsMasterPage() {
         payment_type: formData.paymentMode || 'TO_PAY',
         transport_mode: formData.transportMode || 'ROAD',
         delivery_type: formData.deliveryType || (breakdown.doorDelivery > 0 ? 'DOOR_DELIVERY' : 'GODOWN_DELIVERY'),
-        pickup_address: formData.consignorCity || formData.originCity,
-        delivery_address: formData.consigneeCity || formData.destinationCity,
+        pickup_address: formData.consignorAddress || formData.consignorCity || formData.originCity,
+        delivery_address: formData.consigneeAddress || formData.consigneeCity || formData.destinationCity,
         booking_remarks: customRemarks ? `Additional Charges: ${customRemarks}` : undefined,
       };
 
@@ -1859,10 +1907,12 @@ export default function BookingsMasterPage() {
         customDocketNumber: '',
         consignorName: '',
         consignorCity: '',
+        consignorAddress: '',
         consignorPhone: '',
         consignorId: '',
         consigneeName: '',
         consigneeCity: '',
+        consigneeAddress: '',
         consigneePhone: '',
         consigneeId: '',
         originBranchId: formData.originBranchId,
@@ -2212,7 +2262,13 @@ export default function BookingsMasterPage() {
                 <button
                   onClick={() => {
                     setBookingStep(1);
-                    setFormData(prev => ({ ...prev, docketNumberMode: 'auto', customDocketNumber: '' }));
+                    setFormData(prev => ({
+                      ...prev,
+                      docketNumberMode: 'auto',
+                      customDocketNumber: '',
+                      deliveryType: 'DOOR_DELIVERY',
+                      doorDeliveryCharges: parseFloat(prev.doorDeliveryCharges || 0) < 100 ? '100' : prev.doorDeliveryCharges,
+                    }));
                     fetchDocketSeriesPreview();
                     setIsDrawerOpen(true);
                   }}
@@ -2412,14 +2468,14 @@ export default function BookingsMasterPage() {
           />
 
           {/* Modal Body */}
-          <div className={`relative w-full max-w-2xl max-h-[90vh] my-auto rounded-3xl shadow-2xl flex flex-col z-10 border overflow-hidden ${isDark ? 'bg-[#0A0E1A] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
+          <div className={`relative w-full max-w-4xl max-h-[92vh] my-auto rounded-3xl shadow-2xl flex flex-col z-10 border overflow-hidden ${isDark ? 'bg-[#0A0E1A] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
             }`}>
 
             {/* Modal Header */}
-            <div className={`p-5 border-b flex items-center justify-between shrink-0 ${isDark ? 'border-slate-800' : 'border-slate-200'
+            <div className={`p-4 sm:p-5 px-6 border-b flex items-center justify-between shrink-0 ${isDark ? 'border-slate-800' : 'border-slate-200'
               }`}>
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2.5">
                   <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold border ${isDark
                       ? 'bg-blue-500/20 text-cyan-400 border-blue-500/30'
                       : 'bg-blue-50 text-blue-700 border-blue-200'
@@ -2445,48 +2501,114 @@ export default function BookingsMasterPage() {
               </button>
             </div>
 
-            {/* TOP BAR: DOCKET NUMBER DISPLAY + INFO TOOLTIP ON RIGHT */}
-            <div className={`px-6 py-2.5 border-b flex items-center justify-between shrink-0 ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-blue-50/70 border-blue-100'
-              }`}>
-              <div className="flex items-center gap-2.5">
-                <FileText className={`w-4 h-4 ${isDark ? 'text-cyan-400' : 'text-blue-600'}`} />
-                <span className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                  Docket No:
-                </span>
-                <span className="font-mono text-sm font-black text-blue-600 dark:text-cyan-400 tracking-wide">
-                  {formData.docketNumberMode === 'manual'
-                    ? (formData.customDocketNumber || 'Pending Input...')
-                    : (docketSeriesPreview?.nextNumber || 'BAL000001')}
-                </span>
-                {formData.docketNumberMode === 'manual' ? (
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
-                    Manual
+            {/* TOP BAR: UNIFIED DOCKET RIBBON (Number + Auto/Manual Toggle + Series Info) */}
+            <div className={`px-6 py-2.5 border-b flex items-center justify-between gap-3 flex-wrap shrink-0 ${
+              isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-slate-50/90 border-slate-200'
+            }`}>
+              <div className="flex items-center gap-3 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <FileText className={`w-4 h-4 ${isDark ? 'text-cyan-400' : 'text-blue-600'}`} />
+                  <span className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                    Docket No:
                   </span>
-                ) : (
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                    Auto-Generated
-                  </span>
-                )}
-              </div>
-
-              {/* Info (i) icon with verification hover tooltip on right end */}
-              <div className="relative group flex items-center">
-                <div
-                  role="tooltip"
-                  tabIndex={0}
-                  className={`w-6 h-6 rounded-full flex items-center justify-center border cursor-help transition-all ${isDark
-                      ? 'bg-slate-800/80 border-slate-700 text-cyan-400 hover:border-cyan-400 hover:bg-slate-800'
-                      : 'bg-white border-blue-200 text-blue-600 hover:border-blue-400 shadow-xs hover:bg-blue-50'
-                    }`}
-                >
-                  <Info className="w-3.5 h-3.5" />
+                  {formData.docketNumberMode === 'manual' ? (
+                    <input
+                      type="text"
+                      required
+                      placeholder="ENTER DOCKET NUMBER"
+                      value={formData.customDocketNumber}
+                      onChange={(e) => setFormData(prev => ({
+                        ...prev,
+                        customDocketNumber: e.target.value.toUpperCase().replace(/\s+/g, '')
+                      }))}
+                      className={`px-2.5 py-1 rounded-lg border text-xs font-mono font-black uppercase tracking-wider focus:outline-none w-44 ${
+                        isDark
+                          ? 'bg-slate-900 border-amber-500/40 text-amber-300 placeholder-slate-600 focus:border-amber-400'
+                          : 'bg-white border-amber-300 text-amber-800 placeholder-slate-400 focus:border-amber-500'
+                      }`}
+                    />
+                  ) : (
+                    <span className="font-mono text-sm font-black text-blue-600 dark:text-cyan-400 tracking-wide">
+                      {docketSeriesPreview?.nextNumber || 'BAL000001'}
+                    </span>
+                  )}
                 </div>
 
-                {/* Tooltip on hover */}
-                <div className="absolute right-0 top-full mt-2 hidden group-hover:flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium shadow-2xl border z-50 whitespace-nowrap transition-all duration-150 pointer-events-none bg-slate-900 border-slate-700 text-slate-100 dark:bg-slate-800 dark:border-slate-700">
-                  <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span>Selected addresses are verified against GSTIN and e-Way Bill masters.</span>
-                  <div className="absolute -top-1.5 right-2 w-3 h-3 rotate-45 bg-slate-900 border-t border-l border-slate-700 dark:bg-slate-800" />
+                {/* Mode Toggle Switch */}
+                <div className={`inline-flex p-0.5 rounded-lg border ${
+                  isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-slate-200/70 border-slate-300/60'
+                }`}>
+                  <button
+                    type="button"
+                    onClick={() => setFormData(prev => ({ ...prev, docketNumberMode: 'auto', customDocketNumber: '' }))}
+                    className={`px-2.5 py-0.5 rounded-md text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                      formData.docketNumberMode === 'auto'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <Sparkles className="w-3 h-3" />
+                    <span>Auto</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFormData(prev => ({ ...prev, docketNumberMode: 'manual' }))}
+                    className={`px-2.5 py-0.5 rounded-md text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                      formData.docketNumberMode === 'manual'
+                        ? 'bg-amber-500 text-white shadow-xs'
+                        : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <Pencil className="w-3 h-3" />
+                    <span>Manual</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Right: Series info + Info Tooltip */}
+              <div className="flex items-center gap-2.5">
+                {formData.docketNumberMode === 'auto' ? (
+                  <span className={`text-[11px] font-mono px-2 py-0.5 rounded-md border ${
+                    isDark ? 'bg-slate-900 border-slate-800 text-slate-400' : 'bg-white border-slate-200 text-slate-600'
+                  }`}>
+                    Series: <b className="text-cyan-600 dark:text-cyan-400">{docketSeriesPreview?.prefix || 'BAL'}</b>
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md border bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20">
+                    Physical Stationery
+                  </span>
+                )}
+
+                {isAdmin && formData.docketNumberMode === 'auto' && (
+                  <Link
+                    href="/settings?tab=terminology"
+                    target="_blank"
+                    title="Configure Docket Series"
+                    className={`text-[10px] font-semibold flex items-center gap-1 px-1.5 py-0.5 rounded border transition-colors ${
+                      isDark
+                        ? 'border-slate-800 text-slate-400 hover:text-cyan-400'
+                        : 'border-slate-200 text-slate-600 hover:text-blue-600'
+                    }`}
+                  >
+                    <span>Config</span>
+                    <ExternalLink className="w-2.5 h-2.5" />
+                  </Link>
+                )}
+
+                <div className="relative group flex items-center">
+                  <div
+                    role="tooltip"
+                    tabIndex={0}
+                    className={`w-5 h-5 rounded-full flex items-center justify-center border cursor-help text-[11px] transition-all ${
+                      isDark ? 'border-slate-700 text-slate-400 hover:text-cyan-400' : 'border-slate-300 text-slate-500 hover:text-blue-600'
+                    }`}
+                  >
+                    <Info className="w-3 h-3" />
+                  </div>
+                  <div className="absolute right-0 top-full mt-2 hidden group-hover:flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium shadow-2xl border z-50 whitespace-nowrap pointer-events-none bg-slate-900 border-slate-700 text-slate-100">
+                    <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>Consignment numbers & addresses verified against GSTIN master.</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -2568,841 +2690,1104 @@ export default function BookingsMasterPage() {
 
             {/* Modal Form Body */}
             <form onSubmit={handleCreateBookingSubmit} className="flex-1 flex flex-col overflow-hidden min-h-0">
-              <div className="flex-1 overflow-y-auto p-6 space-y-5">
+              <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-5">
 
                 {/* STEP 1: Parties & Route Hubs */}
                 {bookingStep === 1 && (
                   <div className="space-y-4">
-                    {/* DOCKET / BILTY NUMBER ASSIGNMENT CARD */}
-                    <div className={`p-3.5 rounded-2xl border transition-all ${
-                      isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200 shadow-xs'
-                    }`}>
-                      {/* Top Row: Mode Buttons on Left, Series info or Manual badge on Right */}
-                      <div className="flex items-center justify-between gap-3 flex-wrap">
-                        <div className="flex items-center gap-2">
-                          <span className={`text-[11px] font-bold uppercase tracking-wider mr-1 ${
-                            isDark ? 'text-slate-400' : 'text-slate-500'
-                          }`}>
-                            Docket Mode:
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => setFormData(prev => ({ ...prev, docketNumberMode: 'auto', customDocketNumber: '' }))}
-                            className={`px-3.5 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all ${
-                              formData.docketNumberMode === 'auto'
-                                ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
-                                : isDark
-                                  ? 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
-                                  : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
-                            }`}
-                          >
-                            <Sparkles className="w-3.5 h-3.5" />
-                            <span>Auto</span>
-                          </button>
+                    {/* 2-Column Parties Grid: Consignor (Shipper) and Consignee (Receiver) */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
 
-                          <button
-                            type="button"
-                            onClick={() => setFormData(prev => ({ ...prev, docketNumberMode: 'manual' }))}
-                            className={`px-3.5 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all ${
-                              formData.docketNumberMode === 'manual'
-                                ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
-                                : isDark
-                                  ? 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
-                                  : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
-                            }`}
-                          >
-                            <Pencil className="w-3.5 h-3.5" />
-                            <span>Enter Manually</span>
-                          </button>
-                        </div>
-
-                        {/* Right Side: Series Preview (in Auto Mode) OR Manual Mode Status Badge */}
-                        <div className="flex items-center gap-2">
-                          {formData.docketNumberMode === 'auto' ? (
-                            <>
-                              <span className={`text-[11px] font-mono font-bold px-2.5 py-1 rounded-xl border ${
-                                isDark ? 'bg-slate-800/80 border-slate-700 text-cyan-300' : 'bg-white border-slate-200 text-slate-700 shadow-2xs'
-                              }`}>
-                                Series: {docketSeriesPreview?.prefix || 'BAL'} ({docketSeriesPreview?.nextNumber || 'Auto'})
-                              </span>
-                              {isAdmin && (
-                                <Link
-                                  href="/settings?tab=terminology"
-                                  target="_blank"
-                                  title="Configure Docket Series"
-                                  className={`p-1.5 rounded-lg border text-[11px] font-semibold flex items-center gap-1 transition-colors ${
-                                    isDark
-                                      ? 'border-slate-800 bg-slate-900 text-slate-400 hover:text-cyan-400 hover:border-slate-700'
-                                      : 'border-slate-200 bg-white text-slate-600 hover:text-blue-600 hover:border-slate-300'
-                                  }`}
-                                >
-                                  <span className="hidden md:inline">Configure</span>
-                                  <ExternalLink className="w-3 h-3" />
-                                </Link>
-                              )}
-                            </>
-                          ) : (
-                            <span className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border flex items-center gap-1.5 ${
-                              isDark ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' : 'bg-amber-50 border-amber-200 text-amber-700'
+                      {/* 1. CONSIGNOR (SHIPPER) CARD */}
+                      <div
+                        className={`p-4 rounded-2xl border transition-all relative ${
+                          !isManualConsignor && showConsignorDropdown ? 'z-50' : 'z-30'
+                        } ${
+                          formData.consignorId
+                            ? isDark
+                              ? 'bg-cyan-950/20 border-cyan-500/40 shadow-sm'
+                              : 'bg-cyan-50/50 border-cyan-300 shadow-xs'
+                            : isDark
+                            ? 'bg-slate-900/60 border-slate-800'
+                            : 'bg-slate-50/80 border-slate-200'
+                        }`}
+                        ref={consignorDropdownRef}
+                      >
+                        {/* Header */}
+                        <div className="flex items-center justify-between mb-3 pb-2.5 border-b border-slate-200/60 dark:border-slate-800/60">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
+                              isDark ? 'bg-cyan-500/20 text-cyan-400' : 'bg-cyan-100 text-cyan-700'
                             }`}>
-                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-                              <span>Manual Stationery Mode</span>
+                              <Building2 className="w-4 h-4" />
                             </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Full-width Input section when Enter Manually is selected */}
-                      {formData.docketNumberMode === 'manual' && (
-                        <div className="space-y-1.5 pt-3 border-t border-slate-200/80 dark:border-slate-800/80 mt-3 animate-in fade-in duration-150">
-                          <label className={`text-xs font-bold flex items-center gap-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                            <span>Enter Manual Docket / DWB Number</span>
-                            <span className="text-rose-500 font-bold ml-0.5">*</span>
-                          </label>
-                          <input
-                            type="text"
-                            required
-                            autoFocus
-                            value={formData.customDocketNumber}
-                            onChange={(e) => setFormData(prev => ({
-                              ...prev,
-                              customDocketNumber: e.target.value.toUpperCase().replace(/\s+/g, '')
-                            }))}
-                            placeholder="e.g. DWB123222322 or BAL823883"
-                            className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono font-bold tracking-wide uppercase focus:outline-none transition-colors ${
-                              isDark
-                                ? 'border-slate-800 bg-slate-900/90 text-white placeholder-slate-500 focus:border-cyan-400'
-                                : 'border-slate-200 bg-white text-slate-900 placeholder-slate-400 focus:border-blue-500'
-                            }`}
-                          />
-                          <span className="text-[10px] text-slate-400 block">
-                            Enter your physical pre-printed stationery or custom consignment number.
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Consignor (Shipper) - Separate Row */}
-                    <div className={`space-y-1.5 relative ${showConsignorDropdown ? 'z-50' : 'z-30'}`} ref={consignorDropdownRef}>
-                      <div className="flex items-center justify-between">
-                        <label className={`text-xs font-bold flex items-center gap-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'
-                          }`}>
-                          <span>Consignor (Shipper)</span>
-                          <span className="text-rose-500 font-bold ml-0.5">*</span>
-                          {formData.consignorId && (
-                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
-                              <UserCheck className="w-3 h-3" />
-                              Registered Customer
-                            </span>
-                          )}
-                        </label>
-                        <div className="flex items-center gap-2">
-                          {formData.consignorId ? (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setFormData(prev => ({
-                                  ...prev,
-                                  consignorName: '',
-                                  consignorId: '',
-                                  consignorPhone: '',
-                                  consignorCity: ''
-                                }));
-                                setShowConsignorDropdown(true);
-                              }}
-                              className="text-[10px] font-semibold text-rose-400 hover:text-rose-300 transition-colors"
-                            >
-                              Change / New Party
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setFormData(prev => ({
-                                  ...prev,
-                                  consignorName: '',
-                                  consignorId: '',
-                                  consignorPhone: '',
-                                  consignorCity: ''
-                                }));
-                                setShowConsignorDropdown(false);
-                              }}
-                              className={`text-[10px] font-semibold transition-colors ${isDark ? 'text-cyan-400 hover:text-cyan-300' : 'text-blue-600 hover:text-blue-700'
-                                }`}
-                            >
-                              New Party (Manual)
-                            </button>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="relative">
-                        <input
-                          type="text"
-                          required
-                          placeholder="Search or select registered customer (e.g. Reliance Retail Ltd)"
-                          value={formData.consignorName}
-                          onFocus={() => setShowConsignorDropdown(true)}
-                          onChange={(e) => {
-                            setFormData(prev => ({
-                              ...prev,
-                              consignorName: e.target.value,
-                              consignorId: '' // Detach ID on manual text editing
-                            }));
-                            setShowConsignorDropdown(true);
-                          }}
-                          className={`w-full px-3.5 py-2.5 pr-16 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
-                              ? 'border-slate-800 bg-slate-900/80 text-white placeholder-slate-500 focus:border-cyan-400'
-                              : 'border-slate-200 bg-slate-50 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:bg-white'
-                            }`}
-                        />
-
-                        <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                          {formData.consignorName && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setFormData(prev => ({
-                                  ...prev,
-                                  consignorName: '',
-                                  consignorId: '',
-                                  consignorPhone: '',
-                                  consignorCity: ''
-                                }));
-                                setShowConsignorDropdown(true);
-                              }}
-                              className="p-1 rounded-lg hover:bg-slate-500/20 text-slate-400 hover:text-slate-200 transition-colors"
-                              title="Clear input"
-                            >
-                              <X className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => setShowConsignorDropdown(prev => !prev)}
-                            className="p-1 rounded-lg hover:bg-slate-500/20 text-slate-400 hover:text-slate-200 transition-colors"
-                            title="Toggle customer list"
-                          >
-                            <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${showConsignorDropdown ? 'rotate-180 text-cyan-400' : ''}`} />
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Consignor Suggestion Dropdown */}
-                      {showConsignorDropdown && (
-                        <div className={`absolute left-0 right-0 top-full mt-1.5 z-50 rounded-2xl border shadow-2xl overflow-hidden backdrop-blur-md transition-all ${isDark
-                            ? 'bg-slate-900/95 border-slate-700/80 text-white shadow-cyan-950/20'
-                            : 'bg-white border-slate-200 text-slate-900 shadow-slate-400/20'
-                          }`}>
-                          <div className={`px-3.5 py-2 border-b flex items-center justify-between text-[11px] font-semibold ${isDark ? 'bg-slate-950/60 border-slate-800 text-slate-400' : 'bg-slate-50 border-slate-100 text-slate-600'
-                            }`}>
-                            <span className="flex items-center gap-1.5">
-                              <Users className="w-3.5 h-3.5 text-cyan-400" />
-                              {isAdmin || showAllConsignors ? (
-                                <span>Registered Customers ({filteredConsignors.length})</span>
-                              ) : (
-                                <span>
-                                  Nearest Shippers ({filteredConsignors.length})
-                                  {currentOriginBranch && (
-                                    <span className="text-[10px] text-cyan-400 font-mono font-bold ml-1">
-                                      [{currentOriginBranch.branch_code || currentOriginBranch.city}]
-                                    </span>
-                                  )}
+                            <div>
+                              <div className="flex items-center gap-1.5">
+                                <span className={`text-xs font-bold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
+                                  Consignor (Shipper)
                                 </span>
-                              )}
-                            </span>
-
-                            <div className="flex items-center gap-2.5">
-                              {!isAdmin && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setShowAllConsignors((prev) => !prev);
-                                  }}
-                                  className="text-[10px] font-bold text-amber-500 hover:text-amber-400 hover:underline cursor-pointer"
-                                >
-                                  {showAllConsignors ? '⚡ Nearest Only' : '🌐 View All'}
-                                </button>
-                              )}
-                              <Link
-                                href="/customers"
-                                target="_blank"
-                                className="text-[10px] text-cyan-500 hover:underline flex items-center gap-0.5"
-                              >
-                                + Add New in CRM
-                              </Link>
+                                <span className="text-rose-500 font-bold">*</span>
+                              </div>
                             </div>
                           </div>
 
-                          <div className="max-h-52 overflow-y-auto divide-y divide-slate-800/40">
-                            {filteredConsignors.length > 0 ? (
-                              filteredConsignors.map((c) => {
-                                const isSelected = formData.consignorId === c.id;
-                                return (
-                                  <div
-                                    key={c.id}
+                          {/* Mode Actions */}
+                          <div>
+                            {formData.consignorId ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setFormData(prev => ({
+                                    ...prev,
+                                    consignorName: '',
+                                    consignorId: '',
+                                    consignorPhone: '',
+                                    consignorAddress: '',
+                                    consignorCity: ''
+                                  }));
+                                  setIsManualConsignor(false);
+                                  setShowConsignorDropdown(true);
+                                }}
+                                className="text-[11px] font-bold text-cyan-500 hover:text-cyan-400 hover:underline flex items-center gap-1 transition-colors cursor-pointer"
+                              >
+                                <RotateCcw className="w-3 h-3" />
+                                <span>Change Shipper</span>
+                              </button>
+                            ) : isManualConsignor ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setIsManualConsignor(false);
+                                  setShowConsignorDropdown(true);
+                                }}
+                                className={`text-[11px] font-bold transition-colors flex items-center gap-1 cursor-pointer ${
+                                  isDark ? 'text-cyan-400 hover:text-cyan-300' : 'text-blue-600 hover:text-blue-700'
+                                }`}
+                              >
+                                <Search className="w-3 h-3" />
+                                <span>Select Registered</span>
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setIsManualConsignor(true);
+                                  setShowConsignorDropdown(false);
+                                }}
+                                className={`text-[11px] font-bold transition-colors flex items-center gap-1 cursor-pointer ${
+                                  isDark ? 'text-amber-400 hover:text-amber-300' : 'text-amber-600 hover:text-amber-700'
+                                }`}
+                              >
+                                <Sparkles className="w-3 h-3" />
+                                <span>+ Not Registered Shipper</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Case 1: Confirmed Registered Customer Card */}
+                        {formData.consignorId ? (
+                          <div className="space-y-2.5 animate-in fade-in duration-150">
+                            <div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h4 className="text-sm font-black text-slate-900 dark:text-white truncate">
+                                  {formData.consignorName}
+                                </h4>
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-cyan-500/15 text-cyan-500 dark:text-cyan-400 border border-cyan-500/30">
+                                  <UserCheck className="w-3 h-3" />
+                                  Verified CRM Customer
+                                </span>
+                              </div>
+
+                              <div className="flex items-center gap-3 mt-1.5 text-xs flex-wrap">
+                                {formData.consignorPhone && (
+                                  <span className="flex items-center gap-1 font-mono font-semibold text-emerald-600 dark:text-emerald-400">
+                                    <Phone className="w-3 h-3" />
+                                    {formData.consignorPhone}
+                                  </span>
+                                )}
+                                {formData.consignorCity && (
+                                  <span className="flex items-center gap-1 text-cyan-600 dark:text-cyan-400 font-medium">
+                                    <MapPin className="w-3 h-3" />
+                                    {formData.consignorCity}
+                                  </span>
+                                )}
+                              </div>
+
+                              {formData.consignorAddress && (
+                                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 line-clamp-2" title={formData.consignorAddress}>
+                                  {formData.consignorAddress}
+                                </p>
+                              )}
+                            </div>
+
+                            {/* TBB Credit Limit Status */}
+                            {(() => {
+                              const sc = (customersList || []).find(c => c.id === formData.consignorId);
+                              if (!sc || (!sc.credit_days && !parseFloat(sc.credit_limit || 0))) return null;
+                              const limit = parseFloat(sc.credit_limit || 0);
+                              const outstanding = parseFloat(sc.outstanding_freight || sc.current_balance || 0);
+                              const available = Math.max(0, limit - outstanding);
+                              const isBreached = limit > 0 && available <= 0;
+                              const scBranchCap = sc.branch_cap || (sc.branch?.max_customer_credit_limit ? parseFloat(sc.branch.max_customer_credit_limit) : 1000000);
+                              const isHoApproved = limit > scBranchCap;
+
+                              return (
+                                <div className={`p-2 rounded-xl border text-[11px] flex items-center justify-between gap-2 ${
+                                  isBreached
+                                    ? 'bg-rose-500/15 border-rose-500/40 text-rose-300'
+                                    : isDark
+                                    ? 'bg-amber-500/10 border-amber-500/25 text-amber-300'
+                                    : 'bg-amber-50 border-amber-200 text-amber-900'
+                                }`}>
+                                  <div className="flex items-center gap-1.5 min-w-0">
+                                    <span className="font-bold shrink-0">⭐ TBB Credit:</span>
+                                    <span className="truncate font-mono">Limit: ₹{limit.toLocaleString('en-IN')}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    <span className={`font-mono font-bold ${isBreached ? 'text-rose-400' : 'text-emerald-500'}`}>
+                                      {isBreached ? '⚠️ Limit Exhausted' : `Avail: ₹${available.toLocaleString('en-IN')}`}
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        ) : isManualConsignor ? (
+                          /* Case 2: Manual / Not Registered Shipper */
+                          <div className="space-y-2.5 animate-in fade-in duration-150">
+                            <div>
+                              <label className="text-[11px] font-bold block mb-1 text-slate-700 dark:text-slate-300">
+                                Shipper / Consignor Name <span className="text-rose-500">*</span>
+                              </label>
+                              <input
+                                type="text"
+                                required
+                                placeholder="Person or Company Name (Not Registered)"
+                                value={formData.consignorName}
+                                onChange={(e) => setFormData(prev => ({ ...prev, consignorName: e.target.value, consignorId: '' }))}
+                                className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${
+                                  isDark
+                                    ? 'border-slate-800 bg-slate-900/90 text-white placeholder-slate-500 focus:border-cyan-400'
+                                    : 'border-slate-300 bg-white text-slate-900 placeholder-slate-400 focus:border-blue-500'
+                                }`}
+                              />
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              <div>
+                                <label className="text-[11px] font-bold block mb-1 text-slate-700 dark:text-slate-300">
+                                  Mobile Number <span className="text-rose-500">*</span>
+                                </label>
+                                <div className="relative">
+                                  <input
+                                    ref={consignorPhoneRef}
+                                    type="tel"
+                                    maxLength={10}
+                                    required
+                                    placeholder="10-digit mobile"
+                                    value={formData.consignorPhone || ''}
+                                    onChange={(e) => {
+                                      const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+                                      setFormData(prev => ({ ...prev, consignorPhone: val }));
+                                    }}
+                                    className={`w-full px-3 py-2 pr-7 rounded-xl border text-xs font-mono font-bold focus:outline-none transition-all ${
+                                      (formData.consignorPhone || '').replace(/\D/g, '').length === 10
+                                        ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 focus:border-emerald-500'
+                                        : (formData.consignorPhone || '').length > 0
+                                        ? 'border-rose-500 bg-rose-500/10 text-rose-500 focus:border-rose-500'
+                                        : isDark
+                                        ? 'border-slate-800 bg-slate-900/90 text-white placeholder-slate-500 focus:border-cyan-400'
+                                        : 'border-slate-300 bg-white text-slate-900 placeholder-slate-400 focus:border-blue-500'
+                                    }`}
+                                  />
+                                  {(formData.consignorPhone || '').replace(/\D/g, '').length === 10 && (
+                                    <Check className="w-3.5 h-3.5 text-emerald-500 absolute right-2.5 top-1/2 -translate-y-1/2" />
+                                  )}
+                                </div>
+                              </div>
+
+                              <div>
+                                <label className="text-[11px] font-bold block mb-1 text-slate-700 dark:text-slate-300">
+                                  Pickup Address / City
+                                </label>
+                                <input
+                                  type="text"
+                                  placeholder="Premises / City"
+                                  value={formData.consignorAddress || ''}
+                                  onChange={(e) => setFormData(prev => ({ ...prev, consignorAddress: e.target.value }))}
+                                  className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${
+                                    isDark
+                                      ? 'border-slate-800 bg-slate-900/90 text-white placeholder-slate-500 focus:border-cyan-400'
+                                      : 'border-slate-300 bg-white text-slate-900 placeholder-slate-400 focus:border-blue-500'
+                                  }`}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          /* Case 3: Search Registered Shipper */
+                          <div className="relative">
+                            <div className="relative">
+                              <input
+                                type="text"
+                                placeholder="Search registered shipper by name, code, phone..."
+                                value={formData.consignorName}
+                                onFocus={() => setShowConsignorDropdown(true)}
+                                onChange={(e) => {
+                                  setFormData(prev => ({
+                                    ...prev,
+                                    consignorName: e.target.value,
+                                    consignorId: ''
+                                  }));
+                                  setShowConsignorDropdown(true);
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    setShowConsignorDropdown(false);
+                                    const trimmed = (formData.consignorName || '').trim();
+                                    if (trimmed && !formData.consignorId) {
+                                      const exactMatch = customersList.find(
+                                        (c) => (c.name || '').toLowerCase() === trimmed.toLowerCase()
+                                      );
+                                      if (exactMatch) {
+                                        const isTbb = (parseInt(exactMatch.credit_days, 10) > 0 || parseFloat(exactMatch.credit_limit || 0) > 0);
+                                        setFormData((prev) => ({
+                                          ...prev,
+                                          consignorName: exactMatch.name,
+                                          consignorId: exactMatch.id,
+                                          consignorPhone: exactMatch.phone || '',
+                                          consignorAddress: exactMatch.billing_address || exactMatch.address || '',
+                                          consignorCity: exactMatch.city || prev.consignorCity,
+                                          paymentMode: isTbb ? 'TBB' : prev.paymentMode,
+                                        }));
+                                        setIsManualConsignor(false);
+                                      } else {
+                                        setIsManualConsignor(true);
+                                        setTimeout(() => consignorPhoneRef.current?.focus(), 100);
+                                      }
+                                    }
+                                  }
+                                }}
+                                onBlur={() => {
+                                  setTimeout(() => {
+                                    setShowConsignorDropdown(false);
+                                    const trimmed = (formData.consignorName || '').trim();
+                                    if (trimmed && !formData.consignorId) {
+                                      const exactMatch = customersList.find(
+                                        (c) => (c.name || '').toLowerCase() === trimmed.toLowerCase()
+                                      );
+                                      if (exactMatch) {
+                                        const isTbb = (parseInt(exactMatch.credit_days, 10) > 0 || parseFloat(exactMatch.credit_limit || 0) > 0);
+                                        setFormData((prev) => ({
+                                          ...prev,
+                                          consignorName: exactMatch.name,
+                                          consignorId: exactMatch.id,
+                                          consignorPhone: exactMatch.phone || '',
+                                          consignorAddress: exactMatch.billing_address || exactMatch.address || '',
+                                          consignorCity: exactMatch.city || prev.consignorCity,
+                                          paymentMode: isTbb ? 'TBB' : prev.paymentMode,
+                                        }));
+                                        setIsManualConsignor(false);
+                                      } else {
+                                        setIsManualConsignor(true);
+                                      }
+                                    }
+                                  }, 150);
+                                }}
+                                className={`w-full px-3.5 py-2.5 pr-14 rounded-xl border text-xs focus:outline-none transition-colors ${
+                                  isDark
+                                    ? 'border-slate-800 bg-slate-900/80 text-white placeholder-slate-500 focus:border-cyan-400'
+                                    : 'border-slate-200 bg-white text-slate-900 placeholder-slate-400 focus:border-blue-500'
+                                }`}
+                              />
+
+                              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                                {formData.consignorName && (
+                                  <button
+                                    type="button"
                                     onClick={() => {
                                       setFormData(prev => ({
                                         ...prev,
-                                        consignorName: c.name,
-                                        consignorId: c.id,
-                                        consignorPhone: c.phone || prev.consignorPhone,
-                                        consignorCity: c.city || prev.consignorCity,
+                                        consignorName: '',
+                                        consignorId: '',
+                                        consignorPhone: '',
+                                        consignorCity: '',
+                                        consignorAddress: ''
                                       }));
+                                      setShowConsignorDropdown(true);
+                                    }}
+                                    className="p-1 rounded-lg hover:bg-slate-500/20 text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
+                                    title="Clear input"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => setShowConsignorDropdown(prev => !prev)}
+                                  className="p-1 rounded-lg hover:bg-slate-500/20 text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
+                                  title="Toggle list"
+                                >
+                                  <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${showConsignorDropdown ? 'rotate-180 text-cyan-400' : ''}`} />
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Dropdown Menu */}
+                            {showConsignorDropdown && (
+                              <div
+                                onMouseDown={(e) => e.preventDefault()}
+                                className={`absolute left-0 right-0 top-full mt-1.5 z-50 rounded-2xl border shadow-2xl overflow-hidden backdrop-blur-md transition-all ${
+                                isDark
+                                  ? 'bg-slate-900/98 border-slate-700/80 text-white shadow-cyan-950/30'
+                                  : 'bg-white border-slate-200 text-slate-900 shadow-slate-400/30'
+                              }`}>
+                                <div className={`px-3 py-2 border-b flex items-center justify-between text-[11px] font-semibold ${
+                                  isDark ? 'bg-slate-950/80 border-slate-800 text-slate-400' : 'bg-slate-50 border-slate-100 text-slate-600'
+                                }`}>
+                                  <span className="flex items-center gap-1.5 truncate">
+                                    <Users className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                                    <span>
+                                      {isAdmin || showAllConsignors ? `Registered (${filteredConsignors.length})` : `Nearest Shippers (${filteredConsignors.length})`}
+                                    </span>
+                                  </span>
+
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    {!isAdmin && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setShowAllConsignors(prev => !prev);
+                                        }}
+                                        className="text-[10px] font-bold text-amber-500 hover:text-amber-400 hover:underline cursor-pointer"
+                                      >
+                                        {showAllConsignors ? '⚡ Nearest' : '🌐 View All'}
+                                      </button>
+                                    )}
+                                    <Link
+                                      href="/customers"
+                                      target="_blank"
+                                      className="text-[10px] text-cyan-500 hover:underline flex items-center gap-0.5"
+                                    >
+                                      + CRM
+                                    </Link>
+                                  </div>
+                                </div>
+
+                                <div className="max-h-48 overflow-y-auto divide-y divide-slate-800/40">
+                                  {filteredConsignors.length > 0 ? (
+                                    filteredConsignors.map((c) => {
+                                      const isSelected = formData.consignorId === c.id;
+                                      return (
+                                        <div
+                                          key={c.id}
+                                          onClick={() => {
+                                            const isTbb = (parseInt(c.credit_days, 10) > 0 || parseFloat(c.credit_limit || 0) > 0);
+                                            setFormData(prev => ({
+                                              ...prev,
+                                              consignorName: c.name,
+                                              consignorId: c.id,
+                                              consignorPhone: c.phone || '',
+                                              consignorAddress: c.billing_address || c.address || '',
+                                              consignorCity: c.city || prev.consignorCity,
+                                              paymentMode: isTbb ? 'TBB' : prev.paymentMode,
+                                            }));
+                                            setIsManualConsignor(false);
+                                            setShowConsignorDropdown(false);
+                                          }}
+                                          className={`p-2.5 px-3 cursor-pointer transition-colors flex items-center justify-between gap-2 ${
+                                            isSelected
+                                              ? isDark ? 'bg-cyan-500/20 text-cyan-300' : 'bg-blue-50 text-blue-900 font-semibold'
+                                              : isDark
+                                              ? 'hover:bg-slate-800/80 text-slate-200'
+                                              : 'hover:bg-slate-50 text-slate-700'
+                                          }`}
+                                        >
+                                          <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                              <span className="text-xs font-bold truncate">{c.name}</span>
+                                              <span className={`text-[10px] px-1 py-0.2 rounded font-mono font-medium ${
+                                                isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-600'
+                                              }`}>
+                                                {c.customer_code || 'ID:' + c.id}
+                                              </span>
+                                              {(parseInt(c.credit_days, 10) > 0 || parseFloat(c.credit_limit || 0) > 0) && (
+                                                <span className="text-[9px] px-1.5 py-0.2 rounded font-bold bg-amber-500/15 text-amber-500 border border-amber-500/30">
+                                                  ⭐ TBB
+                                                </span>
+                                              )}
+                                            </div>
+                                            <div className={`text-[11px] flex items-center gap-2 mt-0.5 flex-wrap ${
+                                              isDark ? 'text-slate-400' : 'text-slate-500'
+                                            }`}>
+                                              {c.city && <span>📍 {c.city}</span>}
+                                              {c.phone && <span>📞 {c.phone}</span>}
+                                            </div>
+                                          </div>
+                                          {isSelected && <Check className="w-4 h-4 text-cyan-400 shrink-0" />}
+                                        </div>
+                                      );
+                                    })
+                                  ) : (
+                                    <div className="p-3 text-center text-xs text-slate-400">
+                                      No matching customers found.
+                                    </div>
+                                  )}
+                                </div>
+
+                                {formData.consignorName && (
+                                  <div
+                                    onClick={() => {
+                                      setIsManualConsignor(true);
                                       setShowConsignorDropdown(false);
                                     }}
-                                    className={`p-2.5 px-3.5 cursor-pointer transition-colors flex items-center justify-between gap-3 ${isSelected
-                                        ? isDark ? 'bg-cyan-500/20 text-cyan-300' : 'bg-blue-50 text-blue-900 font-semibold'
-                                        : isDark
-                                          ? 'hover:bg-slate-800/80 text-slate-200'
-                                          : 'hover:bg-slate-50 text-slate-700'
-                                      }`}
+                                    className={`p-2 px-3 border-t text-xs cursor-pointer flex items-center justify-between font-medium ${
+                                      isDark ? 'bg-slate-950/80 border-slate-800 text-cyan-400 hover:bg-slate-800' : 'bg-slate-50 border-slate-100 text-blue-600 hover:bg-slate-100'
+                                    }`}
                                   >
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-center gap-2">
-                                        <span className="text-xs font-bold truncate">{c.name}</span>
-                                        <span className={`text-[10px] px-1.5 py-0.2 rounded font-mono font-medium ${isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-600'
-                                          }`}>
-                                          {c.customer_code || 'ID: ' + c.id}
-                                        </span>
-                                        {c.customer_type && (
-                                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 uppercase font-semibold">
-                                            {c.customer_type}
-                                          </span>
-                                        )}
-                                      </div>
-                                      <div className={`text-[11px] flex items-center gap-2.5 mt-0.5 flex-wrap ${isDark ? 'text-slate-400' : 'text-slate-500'
-                                        }`}>
-                                        {c.city && (
-                                          <span className="flex items-center gap-1">
-                                            <MapPin className="w-3 h-3 text-cyan-400" />
-                                            {c.city}
-                                          </span>
-                                        )}
-                                        {c.pincode && (
-                                          <span className="font-mono text-[10px] font-bold text-cyan-500 dark:text-cyan-400">
-                                            PIN: {c.pincode}
-                                          </span>
-                                        )}
-                                        {c.phone && (
-                                          <span className="flex items-center gap-1">
-                                            <Phone className="w-3 h-3 text-emerald-400" />
-                                            {c.phone}
-                                          </span>
-                                        )}
-                                        {c.gstin && (
-                                          <span className="font-mono text-[10px] text-slate-400">
-                                            GST: {c.gstin}
-                                          </span>
-                                        )}
-                                      </div>
-                                    </div>
-
-                                    {isSelected && (
-                                      <Check className="w-4 h-4 text-cyan-400 shrink-0" />
-                                    )}
+                                    <span>Use &quot;{formData.consignorName}&quot; as Not Registered Shipper</span>
+                                    <ArrowRight className="w-3.5 h-3.5" />
                                   </div>
-                                );
-                              })
-                            ) : (
-                              <div className="p-4 text-center space-y-2">
-                                {!formData.consignorName ? (
-                                  <>
-                                    <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mx-auto text-slate-400">
-                                      <Users className="w-4 h-4" />
-                                    </div>
-                                    <div>
-                                      <p className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                                        {!isAdmin && !showAllConsignors
-                                          ? `No Shippers Mapped to Branch ${currentOriginBranch ? `[${currentOriginBranch.branch_code || currentOriginBranch.city}]` : ''}`
-                                          : 'No Registered Shippers Found'}
-                                      </p>
-                                      <p className={`text-[11px] mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                                        {!isAdmin && !showAllConsignors
-                                          ? 'No customers in CRM have their serving branch set to this depot.'
-                                          : 'You can type a name to create a walk-in shipper party.'}
-                                      </p>
-                                    </div>
-                                    {!isAdmin && !showAllConsignors && (
-                                      <div className="pt-1">
-                                        <button
-                                          type="button"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            setShowAllConsignors(true);
-                                          }}
-                                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-50 hover:bg-blue-100 text-blue-600 dark:bg-blue-950/40 dark:hover:bg-blue-900/60 dark:text-cyan-400 border border-blue-200 dark:border-blue-800 transition-all cursor-pointer"
-                                        >
-                                          <Globe className="w-3.5 h-3.5" />
-                                          <span>View All Customers Across Branches</span>
-                                        </button>
-                                      </div>
-                                    )}
-                                  </>
-                                ) : (
-                                  <>
-                                    <p className={`text-xs font-semibold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                                      No registered shipper matching &quot;{formData.consignorName}&quot;
-                                    </p>
-                                    <p className="text-[11px] text-slate-500">
-                                      Continue typing to issue as a <b>New / Walk-in Party</b>, or add in Customers CRM.
-                                    </p>
-                                  </>
                                 )}
                               </div>
                             )}
                           </div>
-
-                          {formData.consignorName && (
-                            <div
-                              onClick={() => setShowConsignorDropdown(false)}
-                              className={`p-2 px-3.5 border-t text-xs cursor-pointer flex items-center justify-between font-medium ${isDark ? 'bg-slate-950/80 border-slate-800 text-cyan-400 hover:bg-slate-800' : 'bg-slate-50 border-slate-100 text-blue-600 hover:bg-slate-100'
-                                }`}
-                            >
-                              <span>Use &quot;{formData.consignorName}&quot; as New Custom Party</span>
-                              <ArrowRight className="w-3.5 h-3.5" />
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Consignee (Receiver) - Separate Row */}
-                    <div className={`space-y-1.5 relative ${showConsigneeDropdown ? 'z-50' : 'z-20'}`} ref={consigneeDropdownRef}>
-                      <div className="flex items-center justify-between">
-                        <label className={`text-xs font-bold flex items-center gap-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'
-                          }`}>
-                          <span>Consignee (Receiver)</span>
-                          <span className="text-rose-500 font-bold ml-0.5">*</span>
-                          {formData.consigneeId && (
-                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
-                              <UserCheck className="w-3 h-3" />
-                              Registered Customer
-                            </span>
-                          )}
-                        </label>
-                        <div className="flex items-center gap-2">
-                          {formData.consigneeId ? (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setFormData(prev => ({
-                                  ...prev,
-                                  consigneeName: '',
-                                  consigneeId: '',
-                                  consigneePhone: '',
-                                  consigneeCity: ''
-                                }));
-                                setShowConsigneeDropdown(true);
-                              }}
-                              className="text-[10px] font-semibold text-rose-400 hover:text-rose-300 transition-colors"
-                            >
-                              Change / New Party
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setFormData(prev => ({
-                                  ...prev,
-                                  consigneeName: '',
-                                  consigneeId: '',
-                                  consigneePhone: '',
-                                  consigneeCity: ''
-                                }));
-                                setShowConsigneeDropdown(false);
-                              }}
-                              className={`text-[10px] font-semibold transition-colors ${isDark ? 'text-cyan-400 hover:text-cyan-300' : 'text-blue-600 hover:text-blue-700'
-                                }`}
-                            >
-                              New Party (Manual)
-                            </button>
-                          )}
-                        </div>
+                        )}
                       </div>
 
-                      <div className="relative">
-                        <input
-                          type="text"
-                          required
-                          placeholder="Search or select registered customer (e.g. Apollo Supply Chain Solutions)"
-                          value={formData.consigneeName}
-                          onFocus={() => setShowConsigneeDropdown(true)}
-                          onChange={(e) => {
-                            setFormData(prev => ({
-                              ...prev,
-                              consigneeName: e.target.value,
-                              consigneeId: '' // Detach ID on manual text editing
-                            }));
-                            setShowConsigneeDropdown(true);
-                          }}
-                          className={`w-full px-3.5 py-2.5 pr-16 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
-                              ? 'border-slate-800 bg-slate-900/80 text-white placeholder-slate-500 focus:border-cyan-400'
-                              : 'border-slate-200 bg-slate-50 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:bg-white'
-                            }`}
-                        />
-
-                        <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                          {formData.consigneeName && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setFormData(prev => ({
-                                  ...prev,
-                                  consigneeName: '',
-                                  consigneeId: '',
-                                  consigneePhone: '',
-                                  consigneeCity: ''
-                                }));
-                                setShowConsigneeDropdown(true);
-                              }}
-                              className="p-1 rounded-lg hover:bg-slate-500/20 text-slate-400 hover:text-slate-200 transition-colors"
-                              title="Clear input"
-                            >
-                              <X className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => setShowConsigneeDropdown(prev => !prev)}
-                            className="p-1 rounded-lg hover:bg-slate-500/20 text-slate-400 hover:text-slate-200 transition-colors"
-                            title="Toggle customer list"
-                          >
-                            <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${showConsigneeDropdown ? 'rotate-180 text-cyan-400' : ''}`} />
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Consignee Suggestion Dropdown */}
-                      {showConsigneeDropdown && (
-                        <div className={`absolute left-0 right-0 top-full mt-1.5 z-50 rounded-2xl border shadow-2xl overflow-hidden backdrop-blur-md transition-all ${isDark
-                            ? 'bg-slate-900/95 border-slate-700/80 text-white shadow-cyan-950/20'
-                            : 'bg-white border-slate-200 text-slate-900 shadow-slate-400/20'
-                          }`}>
-                          <div className={`px-3.5 py-2 border-b flex items-center justify-between text-[11px] font-semibold ${isDark ? 'bg-slate-950/60 border-slate-800 text-slate-400' : 'bg-slate-50 border-slate-100 text-slate-600'
+                      {/* 2. CONSIGNEE (RECEIVER) CARD */}
+                      <div
+                        className={`p-4 rounded-2xl border transition-all relative ${
+                          !isManualConsignee && showConsigneeDropdown ? 'z-50' : 'z-20'
+                        } ${
+                          formData.consigneeId
+                            ? isDark
+                              ? 'bg-blue-950/20 border-blue-500/40 shadow-sm'
+                              : 'bg-blue-50/50 border-blue-300 shadow-xs'
+                            : isDark
+                            ? 'bg-slate-900/60 border-slate-800'
+                            : 'bg-slate-50/80 border-slate-200'
+                        }`}
+                        ref={consigneeDropdownRef}
+                      >
+                        {/* Header */}
+                        <div className="flex items-center justify-between mb-3 pb-2.5 border-b border-slate-200/60 dark:border-slate-800/60">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
+                              isDark ? 'bg-blue-500/20 text-blue-400' : 'bg-blue-100 text-blue-700'
                             }`}>
-                            <span className="flex items-center gap-1.5">
-                              <Users className="w-3.5 h-3.5 text-cyan-400" />
-                              Registered Customers ({filteredConsignees.length})
+                              <UserCheck className="w-4 h-4" />
                             </span>
-                            <Link
-                              href="/customers"
-                              target="_blank"
-                              className="text-[10px] text-cyan-500 hover:underline flex items-center gap-0.5"
-                            >
-                              + Add New in CRM
-                            </Link>
+                            <div>
+                              <div className="flex items-center gap-1.5">
+                                <span className={`text-xs font-bold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
+                                  Consignee (Receiver)
+                                </span>
+                                <span className="text-rose-500 font-bold">*</span>
+                              </div>
+                            </div>
                           </div>
 
-                          <div className="max-h-52 overflow-y-auto divide-y divide-slate-800/40">
-                            {filteredConsignees.length > 0 ? (
-                              filteredConsignees.map((c) => {
-                                const isSelected = formData.consigneeId === c.id;
-                                return (
-                                  <div
-                                    key={c.id}
+                          {/* Mode Actions */}
+                          <div>
+                            {formData.consigneeId ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setFormData(prev => ({
+                                    ...prev,
+                                    consigneeName: '',
+                                    consigneeId: '',
+                                    consigneePhone: '',
+                                    consigneeAddress: '',
+                                    consigneeCity: ''
+                                  }));
+                                  setIsManualConsignee(false);
+                                  setShowConsigneeDropdown(true);
+                                }}
+                                className="text-[11px] font-bold text-blue-500 hover:text-blue-400 hover:underline flex items-center gap-1 transition-colors cursor-pointer"
+                              >
+                                <RotateCcw className="w-3 h-3" />
+                                <span>Change Receiver</span>
+                              </button>
+                            ) : isManualConsignee ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setIsManualConsignee(false);
+                                  setShowConsigneeDropdown(true);
+                                }}
+                                className={`text-[11px] font-bold transition-colors flex items-center gap-1 cursor-pointer ${
+                                  isDark ? 'text-cyan-400 hover:text-cyan-300' : 'text-blue-600 hover:text-blue-700'
+                                }`}
+                              >
+                                <Search className="w-3 h-3" />
+                                <span>Select Registered</span>
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setIsManualConsignee(true);
+                                  setShowConsigneeDropdown(false);
+                                }}
+                                className={`text-[11px] font-bold transition-colors flex items-center gap-1 cursor-pointer ${
+                                  isDark ? 'text-amber-400 hover:text-amber-300' : 'text-amber-600 hover:text-amber-700'
+                                }`}
+                              >
+                                <Sparkles className="w-3 h-3" />
+                                <span>+ Not Registered Receiver</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Case 1: Confirmed Registered Customer Card */}
+                        {formData.consigneeId ? (
+                          <div className="space-y-2.5 animate-in fade-in duration-150">
+                            <div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h4 className="text-sm font-black text-slate-900 dark:text-white truncate">
+                                  {formData.consigneeName}
+                                </h4>
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-500/15 text-blue-500 dark:text-blue-400 border border-blue-500/30">
+                                  <UserCheck className="w-3 h-3" />
+                                  Verified CRM Customer
+                                </span>
+                              </div>
+
+                              <div className="flex items-center gap-3 mt-1.5 text-xs flex-wrap">
+                                {formData.consigneePhone && (
+                                  <span className="flex items-center gap-1 font-mono font-semibold text-emerald-600 dark:text-emerald-400">
+                                    <Phone className="w-3 h-3" />
+                                    {formData.consigneePhone}
+                                  </span>
+                                )}
+                                {formData.consigneeCity && (
+                                  <span className="flex items-center gap-1 text-blue-600 dark:text-blue-400 font-medium">
+                                    <MapPin className="w-3 h-3" />
+                                    {formData.consigneeCity}
+                                  </span>
+                                )}
+                              </div>
+
+                              {formData.consigneeAddress && (
+                                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 line-clamp-2" title={formData.consigneeAddress}>
+                                  {formData.consigneeAddress}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        ) : isManualConsignee ? (
+                          /* Case 2: Manual / Not Registered Receiver */
+                          <div className="space-y-2.5 animate-in fade-in duration-150">
+                            <div>
+                              <label className="text-[11px] font-bold block mb-1 text-slate-700 dark:text-slate-300">
+                                Receiver / Consignee Name <span className="text-rose-500">*</span>
+                              </label>
+                              <input
+                                type="text"
+                                required
+                                placeholder="Person or Company Name (Not Registered)"
+                                value={formData.consigneeName}
+                                onChange={(e) => setFormData(prev => ({ ...prev, consigneeName: e.target.value, consigneeId: '' }))}
+                                className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${
+                                  isDark
+                                    ? 'border-slate-800 bg-slate-900/90 text-white placeholder-slate-500 focus:border-cyan-400'
+                                    : 'border-slate-300 bg-white text-slate-900 placeholder-slate-400 focus:border-blue-500'
+                                }`}
+                              />
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              <div>
+                                <label className="text-[11px] font-bold block mb-1 text-slate-700 dark:text-slate-300">
+                                  Mobile Number <span className="text-rose-500">*</span>
+                                </label>
+                                <div className="relative">
+                                  <input
+                                    ref={consigneePhoneRef}
+                                    type="tel"
+                                    maxLength={10}
+                                    required
+                                    placeholder="10-digit mobile"
+                                    value={formData.consigneePhone || ''}
+                                    onChange={(e) => {
+                                      const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+                                      setFormData(prev => ({ ...prev, consigneePhone: val }));
+                                    }}
+                                    className={`w-full px-3 py-2 pr-7 rounded-xl border text-xs font-mono font-bold focus:outline-none transition-all ${
+                                      (formData.consigneePhone || '').replace(/\D/g, '').length === 10
+                                        ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 focus:border-emerald-500'
+                                        : (formData.consigneePhone || '').length > 0
+                                        ? 'border-rose-500 bg-rose-500/10 text-rose-500 focus:border-rose-500'
+                                        : isDark
+                                        ? 'border-slate-800 bg-slate-900/90 text-white placeholder-slate-500 focus:border-cyan-400'
+                                        : 'border-slate-300 bg-white text-slate-900 placeholder-slate-400 focus:border-blue-500'
+                                    }`}
+                                  />
+                                  {(formData.consigneePhone || '').replace(/\D/g, '').length === 10 && (
+                                    <Check className="w-3.5 h-3.5 text-emerald-500 absolute right-2.5 top-1/2 -translate-y-1/2" />
+                                  )}
+                                </div>
+                              </div>
+
+                              <div>
+                                <label className="text-[11px] font-bold block mb-1 text-slate-700 dark:text-slate-300">
+                                  Delivery Destination / Address
+                                </label>
+                                <input
+                                  type="text"
+                                  placeholder="Shop / Plot / City"
+                                  value={formData.consigneeAddress || ''}
+                                  onChange={(e) => setFormData(prev => ({ ...prev, consigneeAddress: e.target.value }))}
+                                  className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${
+                                    isDark
+                                      ? 'border-slate-800 bg-slate-900/90 text-white placeholder-slate-500 focus:border-cyan-400'
+                                      : 'border-slate-300 bg-white text-slate-900 placeholder-slate-400 focus:border-blue-500'
+                                  }`}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          /* Case 3: Search Registered Receiver */
+                          <div className="relative">
+                            <div className="relative">
+                              <input
+                                type="text"
+                                placeholder="Search registered receiver by name, code, phone..."
+                                value={formData.consigneeName}
+                                onFocus={() => setShowConsigneeDropdown(true)}
+                                onChange={(e) => {
+                                  setFormData(prev => ({
+                                    ...prev,
+                                    consigneeName: e.target.value,
+                                    consigneeId: ''
+                                  }));
+                                  setShowConsigneeDropdown(true);
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    setShowConsigneeDropdown(false);
+                                    const trimmed = (formData.consigneeName || '').trim();
+                                    if (trimmed && !formData.consigneeId) {
+                                      const exactMatch = customersList.find(
+                                        (c) => (c.name || '').toLowerCase() === trimmed.toLowerCase()
+                                      );
+                                      if (exactMatch) {
+                                        setFormData((prev) => ({
+                                          ...prev,
+                                          consigneeName: exactMatch.name,
+                                          consigneeId: exactMatch.id,
+                                          consigneePhone: exactMatch.phone || '',
+                                          consigneeAddress: exactMatch.delivery_address || exactMatch.address || '',
+                                          consigneeCity: exactMatch.city || prev.consigneeCity,
+                                        }));
+                                        setIsManualConsignee(false);
+                                      } else {
+                                        setIsManualConsignee(true);
+                                        setTimeout(() => consigneePhoneRef.current?.focus(), 100);
+                                      }
+                                    }
+                                  }
+                                }}
+                                onBlur={() => {
+                                  setTimeout(() => {
+                                    setShowConsigneeDropdown(false);
+                                    const trimmed = (formData.consigneeName || '').trim();
+                                    if (trimmed && !formData.consigneeId) {
+                                      const exactMatch = customersList.find(
+                                        (c) => (c.name || '').toLowerCase() === trimmed.toLowerCase()
+                                      );
+                                      if (exactMatch) {
+                                        setFormData((prev) => ({
+                                          ...prev,
+                                          consigneeName: exactMatch.name,
+                                          consigneeId: exactMatch.id,
+                                          consigneePhone: exactMatch.phone || '',
+                                          consigneeAddress: exactMatch.delivery_address || exactMatch.address || '',
+                                          consigneeCity: exactMatch.city || prev.consigneeCity,
+                                        }));
+                                        setIsManualConsignee(false);
+                                      } else {
+                                        setIsManualConsignee(true);
+                                      }
+                                    }
+                                  }, 150);
+                                }}
+                                className={`w-full px-3.5 py-2.5 pr-14 rounded-xl border text-xs focus:outline-none transition-colors ${
+                                  isDark
+                                    ? 'border-slate-800 bg-slate-900/80 text-white placeholder-slate-500 focus:border-cyan-400'
+                                    : 'border-slate-200 bg-white text-slate-900 placeholder-slate-400 focus:border-blue-500'
+                                }`}
+                              />
+
+                              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                                {formData.consigneeName && (
+                                  <button
+                                    type="button"
                                     onClick={() => {
                                       setFormData(prev => ({
                                         ...prev,
-                                        consigneeName: c.name,
-                                        consigneeId: c.id,
-                                        consigneePhone: c.phone || prev.consigneePhone,
-                                        consigneeCity: c.city || prev.consigneeCity,
+                                        consigneeName: '',
+                                        consigneeId: '',
+                                        consigneePhone: '',
+                                        consigneeCity: '',
+                                        consigneeAddress: ''
                                       }));
+                                      setShowConsigneeDropdown(true);
+                                    }}
+                                    className="p-1 rounded-lg hover:bg-slate-500/20 text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
+                                    title="Clear input"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => setShowConsigneeDropdown(prev => !prev)}
+                                  className="p-1 rounded-lg hover:bg-slate-500/20 text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
+                                  title="Toggle list"
+                                >
+                                  <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${showConsigneeDropdown ? 'rotate-180 text-cyan-400' : ''}`} />
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Dropdown Menu */}
+                            {showConsigneeDropdown && (
+                              <div
+                                onMouseDown={(e) => e.preventDefault()}
+                                className={`absolute left-0 right-0 top-full mt-1.5 z-50 rounded-2xl border shadow-2xl overflow-hidden backdrop-blur-md transition-all ${
+                                isDark
+                                  ? 'bg-slate-900/98 border-slate-700/80 text-white shadow-blue-950/30'
+                                  : 'bg-white border-slate-200 text-slate-900 shadow-slate-400/30'
+                              }`}>
+                                <div className={`px-3 py-2 border-b flex items-center justify-between text-[11px] font-semibold ${
+                                  isDark ? 'bg-slate-950/80 border-slate-800 text-slate-400' : 'bg-slate-50 border-slate-100 text-slate-600'
+                                }`}>
+                                  <span className="flex items-center gap-1.5 truncate">
+                                    <Users className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                                    <span>Registered Receivers ({filteredConsignees.length})</span>
+                                  </span>
+
+                                  <Link
+                                    href="/customers"
+                                    target="_blank"
+                                    className="text-[10px] text-blue-500 hover:underline flex items-center gap-0.5"
+                                  >
+                                    + CRM
+                                  </Link>
+                                </div>
+
+                                <div className="max-h-48 overflow-y-auto divide-y divide-slate-800/40">
+                                  {filteredConsignees.length > 0 ? (
+                                    filteredConsignees.map((c) => {
+                                      const isSelected = formData.consigneeId === c.id;
+                                      return (
+                                        <div
+                                          key={c.id}
+                                          onClick={() => {
+                                            setFormData(prev => ({
+                                              ...prev,
+                                              consigneeName: c.name,
+                                              consigneeId: c.id,
+                                              consigneePhone: c.phone || '',
+                                              consigneeAddress: c.delivery_address || c.address || '',
+                                              consigneeCity: c.city || prev.consigneeCity,
+                                            }));
+                                            setIsManualConsignee(false);
+                                            setShowConsigneeDropdown(false);
+                                          }}
+                                          className={`p-2.5 px-3 cursor-pointer transition-colors flex items-center justify-between gap-2 ${
+                                            isSelected
+                                              ? isDark ? 'bg-blue-500/20 text-blue-300' : 'bg-blue-50 text-blue-900 font-semibold'
+                                              : isDark
+                                              ? 'hover:bg-slate-800/80 text-slate-200'
+                                              : 'hover:bg-slate-50 text-slate-700'
+                                          }`}
+                                        >
+                                          <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                              <span className="text-xs font-bold truncate">{c.name}</span>
+                                              <span className={`text-[10px] px-1 py-0.2 rounded font-mono font-medium ${
+                                                isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-600'
+                                              }`}>
+                                                {c.customer_code || 'ID:' + c.id}
+                                              </span>
+                                            </div>
+                                            <div className={`text-[11px] flex items-center gap-2 mt-0.5 flex-wrap ${
+                                              isDark ? 'text-slate-400' : 'text-slate-500'
+                                            }`}>
+                                              {c.city && <span>📍 {c.city}</span>}
+                                              {c.phone && <span>📞 {c.phone}</span>}
+                                            </div>
+                                          </div>
+                                          {isSelected && <Check className="w-4 h-4 text-blue-400 shrink-0" />}
+                                        </div>
+                                      );
+                                    })
+                                  ) : (
+                                    <div className="p-3 text-center text-xs text-slate-400">
+                                      No matching receivers found.
+                                    </div>
+                                  )}
+                                </div>
+
+                                {formData.consigneeName && (
+                                  <div
+                                    onClick={() => {
+                                      setIsManualConsignee(true);
                                       setShowConsigneeDropdown(false);
                                     }}
-                                    className={`p-2.5 px-3.5 cursor-pointer transition-colors flex items-center justify-between gap-3 ${isSelected
-                                        ? isDark ? 'bg-cyan-500/20 text-cyan-300' : 'bg-blue-50 text-blue-900 font-semibold'
-                                        : isDark
-                                          ? 'hover:bg-slate-800/80 text-slate-200'
-                                          : 'hover:bg-slate-50 text-slate-700'
-                                      }`}
+                                    className={`p-2 px-3 border-t text-xs cursor-pointer flex items-center justify-between font-medium ${
+                                      isDark ? 'bg-slate-950/80 border-slate-800 text-blue-400 hover:bg-slate-800' : 'bg-slate-50 border-slate-100 text-blue-600 hover:bg-slate-100'
+                                    }`}
                                   >
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-center gap-2">
-                                        <span className="text-xs font-bold truncate">{c.name}</span>
-                                        <span className={`text-[10px] px-1.5 py-0.2 rounded font-mono font-medium ${isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-600'
-                                          }`}>
-                                          {c.customer_code || 'ID: ' + c.id}
-                                        </span>
-                                        {c.customer_type && (
-                                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 uppercase font-semibold">
-                                            {c.customer_type}
-                                          </span>
-                                        )}
-                                      </div>
-                                      <div className={`text-[11px] flex items-center gap-3 mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'
-                                        }`}>
-                                        {c.city && (
-                                          <span className="flex items-center gap-1">
-                                            <MapPin className="w-3 h-3 text-cyan-400" />
-                                            {c.city}
-                                          </span>
-                                        )}
-                                        {c.phone && (
-                                          <span className="flex items-center gap-1">
-                                            <Phone className="w-3 h-3 text-emerald-400" />
-                                            {c.phone}
-                                          </span>
-                                        )}
-                                        {c.gstin && (
-                                          <span className="font-mono text-[10px] text-slate-400">
-                                            GST: {c.gstin}
-                                          </span>
-                                        )}
-                                      </div>
-                                    </div>
-
-                                    {isSelected && (
-                                      <Check className="w-4 h-4 text-cyan-400 shrink-0" />
-                                    )}
+                                    <span>Use &quot;{formData.consigneeName}&quot; as Not Registered Receiver</span>
+                                    <ArrowRight className="w-3.5 h-3.5" />
                                   </div>
-                                );
-                              })
-                            ) : (
-                              <div className="p-4 text-center space-y-1.5">
-                                <p className={`text-xs font-semibold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                                  {formData.consigneeName
-                                    ? `No registered receiver matching "${formData.consigneeName}"`
-                                    : 'No registered receivers found'}
-                                </p>
-                                <p className="text-[11px] text-slate-500">
-                                  Keep typing to register as a <b>New / Walk-in Party</b>, or add in Customers CRM.
-                                </p>
+                                )}
                               </div>
                             )}
                           </div>
-
-                          {formData.consigneeName && (
-                            <div
-                              onClick={() => setShowConsigneeDropdown(false)}
-                              className={`p-2 px-3.5 border-t text-xs cursor-pointer flex items-center justify-between font-medium ${isDark ? 'bg-slate-950/80 border-slate-800 text-cyan-400 hover:bg-slate-800' : 'bg-slate-50 border-slate-100 text-blue-600 hover:bg-slate-100'
-                                }`}
-                            >
-                              <span>Use &quot;{formData.consigneeName}&quot; as New Custom Party</span>
-                              <ArrowRight className="w-3.5 h-3.5" />
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Origin & Destination Grid */}
-                    <div className="grid grid-cols-2 gap-3 relative z-10">
-                      <div className="space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <label className={`text-xs font-bold flex items-center ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                          <span>Origin Hub / Branch</span>
-                          <span className="text-rose-500 font-bold ml-0.5">*</span>
-                          {isRestrictedBranchUser && (
-                            <span className="ml-1.5 text-[9px] font-bold text-cyan-500 bg-cyan-500/10 px-1.5 py-0.2 rounded border border-cyan-500/20">
-                              Assigned
-                            </span>
-                          )}
-                        </label>
-                        {!isRestrictedBranchUser && (
-                          <Link
-                            href="/branches"
-                            target="_blank"
-                            className={`text-[10px] font-semibold flex items-center gap-0.5 ${isDark ? 'text-cyan-400 hover:text-cyan-300' : 'text-blue-600 hover:text-blue-700'
-                              }`}
-                          >
-                            <span>+ Add Hub</span>
-                          </Link>
                         )}
                       </div>
-                      {isRestrictedBranchUser ? (
-                        <div className={`w-full px-3 py-2.5 rounded-xl border text-xs font-bold flex items-center justify-between shadow-xs ${isDark
-                            ? 'border-slate-800 bg-slate-900/90 text-cyan-300'
-                            : 'border-slate-200 bg-slate-100 text-blue-900'
+
+                    </div>
+
+                    {/* Corridor Route Section */}
+                    <div className={`p-4 rounded-2xl border transition-all ${
+                      isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50/80 border-slate-200'
+                    }`}>
+                      <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-200/60 dark:border-slate-800/60">
+                        <div className="flex items-center gap-2">
+                          <span className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 ${
+                            isDark ? 'bg-blue-500/20 text-cyan-400' : 'bg-blue-100 text-blue-700'
                           }`}>
-                          <span className="truncate">
-                            {branchesList.find((b) => b.id === userBranchId)?.branch_name || user?.branchName || 'Your Branch'} ({branchesList.find((b) => b.id === userBranchId)?.branch_code || 'HUB'}) - {branchesList.find((b) => b.id === userBranchId)?.city || user?.city || 'South Delhi'}
+                            <Truck className="w-3.5 h-3.5" />
                           </span>
-                          <span className="text-[10px] text-slate-400 font-normal shrink-0 ml-1">🔒 Locked</span>
+                          <span className={`text-xs font-bold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
+                            Corridor Route (Origin Hub ➔ Destination Hub)
+                          </span>
                         </div>
-                      ) : (
-                        <BranchSelectDropdown
-                          selectedBranchId={formData.originBranchId}
-                          onSelect={(branchId, city) => {
-                            setFormData((prev) => ({
-                              ...prev,
-                              originBranchId: branchId,
-                              originCity: city,
-                            }));
-                          }}
-                          branches={branchesList}
-                          placeholder="-- Select Origin Hub / Branch --"
-                          isDark={isDark}
-                        />
-                      )}
-                      {branchesList.length === 0 && !isRestrictedBranchUser && (
-                        <p className="text-[11px] text-amber-500 font-semibold mt-1">
-                          ⚠️ No branch or hub added yet. Click <Link href="/branches" target="_blank" className="underline font-bold">+ Add Hub</Link> to create one.
-                        </p>
-                      )}
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <label className={`text-xs font-bold flex items-center ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                          <span>Destination Hub / Branch</span>
-                          <span className="text-rose-500 font-bold ml-0.5">*</span>
-                        </label>
                         {!isRestrictedBranchUser && (
                           <Link
                             href="/branches"
                             target="_blank"
-                            className={`text-[10px] font-semibold flex items-center gap-0.5 ${isDark ? 'text-cyan-400 hover:text-cyan-300' : 'text-blue-600 hover:text-blue-700'
-                              }`}
+                            className={`text-[11px] font-semibold flex items-center gap-0.5 ${
+                              isDark ? 'text-cyan-400 hover:text-cyan-300' : 'text-blue-600 hover:text-blue-700'
+                            }`}
                           >
                             <span>+ Add Hub</span>
                           </Link>
                         )}
                       </div>
-                      <BranchSelectDropdown
-                        selectedBranchId={formData.destBranchId}
-                        onSelect={(branchId, city) => {
-                          setFormData((prev) => ({
-                            ...prev,
-                            destBranchId: branchId,
-                            destinationCity: city,
-                          }));
-                        }}
-                        branches={branchesList.filter((b) => b.id !== formData.originBranchId)}
-                        placeholder="-- Select Destination Hub / Branch --"
-                        isDark={isDark}
-                      />
-                      {branchesList.length === 0 && (
-                        <p className="text-[11px] text-amber-500 font-semibold mt-1">
-                          ⚠️ No branch or hub added yet. Click <Link href="/branches" target="_blank" className="underline font-bold">+ Add Hub</Link> to create one.
-                        </p>
-                      )}
-                    </div>
-                  </div>
 
-                    {/* Pickup Date & Priority */}
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-1.5">
-                        <label className={`text-xs font-bold flex items-center ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                          <span>Pickup Date</span>
-                          <span className="text-rose-500 font-bold ml-0.5">*</span>
-                        </label>
-                        <input
-                          type="date"
-                          value={formData.pickupDate}
-                          onChange={(e) => setFormData({ ...formData, pickupDate: e.target.value })}
-                          className={`w-full px-3 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
-                              ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400 [color-scheme:dark]'
-                              : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white [color-scheme:light]'
-                            }`}
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className={`text-xs font-bold flex items-center justify-between ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                          <span className="flex items-center">
-                            <span>Mode of Transport</span>
-                            <span className="text-rose-500 font-bold ml-0.5">*</span>
-                          </span>
-                          <span className="text-[10px] text-slate-400 font-normal">Select Mode</span>
-                        </label>
-                        <div className="grid grid-cols-3 gap-1.5">
-                          {[
-                            { id: 'ROAD', label: 'By Road', icon: Truck },
-                            { id: 'RAIL', label: 'By Rail', icon: Train },
-                            { id: 'AIR', label: 'By Air', icon: Plane },
-                          ].map((m) => {
-                            const IconComp = m.icon;
-                            const isSelected = (formData.transportMode || 'ROAD') === m.id;
-                            return (
-                              <button
-                                key={m.id}
-                                type="button"
-                                onClick={() => setFormData({ ...formData, transportMode: m.id })}
-                                className={`py-2 px-1.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${isSelected
-                                    ? 'bg-blue-600 text-white border-blue-500 shadow-md shadow-blue-600/30'
-                                    : isDark
-                                      ? 'bg-slate-900/80 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
-                                      : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-white hover:border-slate-300'
-                                  }`}
-                              >
-                                <IconComp className="w-3.5 h-3.5 shrink-0" />
-                                <span className="truncate">{m.label}</span>
-                              </button>
-                            );
-                          })}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                        {/* Origin Hub */}
+                        <div className="space-y-1.5">
+                          <label className={`text-xs font-bold flex items-center gap-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                            <span>Origin Hub / Branch</span>
+                            <span className="text-rose-500 font-bold">*</span>
+                            {isRestrictedBranchUser && (
+                              <span className="ml-1 text-[9px] font-bold text-cyan-500 bg-cyan-500/10 px-1.5 py-0.2 rounded border border-cyan-500/20">
+                                Assigned
+                              </span>
+                            )}
+                          </label>
+                          {isRestrictedBranchUser ? (
+                            <div className={`w-full px-3 py-2.5 rounded-xl border text-xs font-bold flex items-center justify-between shadow-xs ${
+                              isDark ? 'border-slate-800 bg-slate-900/90 text-white' : 'border-slate-200 bg-slate-100 text-slate-900'
+                            }`}>
+                              <div className="flex items-center gap-1.5 truncate flex-1 min-w-0">
+                                <Building2 className={`w-3.5 h-3.5 shrink-0 ${isDark ? 'text-cyan-400' : 'text-blue-600'}`} />
+                                <span className="truncate">
+                                  {branchesList.find((b) => b.id === userBranchId)?.branch_name || user?.branchName || 'Your Branch'}
+                                </span>
+                                <span className={`font-mono text-[10px] font-bold px-1.5 py-0.5 rounded-md shrink-0 border ${
+                                  isDark ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30' : 'bg-blue-50 text-blue-700 border-blue-200'
+                                }`}>
+                                  [{branchesList.find((b) => b.id === userBranchId)?.branch_code || 'HUB'}]
+                                </span>
+                                <span className={`text-[11px] font-normal truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                                  — {branchesList.find((b) => b.id === userBranchId)?.city || user?.city || 'Origin'}
+                                </span>
+                              </div>
+                              <span className="text-[10px] text-slate-400 font-normal shrink-0 ml-1">🔒 Locked</span>
+                            </div>
+                          ) : (
+                            <BranchSelectDropdown
+                              selectedBranchId={formData.originBranchId}
+                              onSelect={(branchId, city) => {
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  originBranchId: branchId,
+                                  originCity: city,
+                                }));
+                              }}
+                              branches={branchesList}
+                              placeholder="-- Select Origin Hub / Branch --"
+                              isDark={isDark}
+                            />
+                          )}
+                        </div>
+
+                        {/* Destination Hub */}
+                        <div className="space-y-1.5">
+                          <label className={`text-xs font-bold flex items-center gap-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                            <span>Destination Hub / Branch</span>
+                            <span className="text-rose-500 font-bold">*</span>
+                          </label>
+                          <BranchSelectDropdown
+                            selectedBranchId={formData.destBranchId}
+                            onSelect={(branchId, city) => {
+                              setFormData((prev) => ({
+                                ...prev,
+                                destBranchId: branchId,
+                                destinationCity: city,
+                              }));
+                            }}
+                            branches={branchesList.filter((b) => b.id !== formData.originBranchId)}
+                            placeholder="-- Select Destination Hub / Branch --"
+                            isDark={isDark}
+                          />
                         </div>
                       </div>
                     </div>
 
-                    {/* Delivery Type (Godown Delivery vs Door Delivery) */}
-                    <div className="space-y-1.5 pt-0.5">
-                      <div className="flex items-center justify-between">
-                        <label className={`text-xs font-bold flex items-center ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                          <span>Delivery Type</span>
-                          <span className="text-rose-500 font-bold ml-0.5">*</span>
-                        </label>
-                        <span className="text-[10px] text-slate-400 font-normal">
-                          {formData.deliveryType === 'DOOR_DELIVERY' ? 'Consignee Doorstep Delivery' : 'Hub / Godown Delivery'}
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const curDdc = parseFloat(formData.doorDeliveryCharges || 0);
-                            setFormData({
-                              ...formData,
-                              deliveryType: 'GODOWN_DELIVERY',
-                              doorDeliveryCharges: curDdc === 100 ? '0' : formData.doorDeliveryCharges,
-                            });
-                          }}
-                          className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all ${
-                            (formData.deliveryType || 'GODOWN_DELIVERY') === 'GODOWN_DELIVERY'
-                              ? 'bg-blue-600 text-white border-blue-500 shadow-md shadow-blue-600/30'
-                              : isDark
-                                ? 'bg-slate-900/80 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
-                                : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-white hover:border-slate-300'
-                          }`}
-                        >
-                          <Building2 className="w-4 h-4 shrink-0" />
-                          <div className="text-left">
-                            <span className="block leading-tight">Godown Delivery</span>
-                            <span className={`block text-[10px] font-normal ${
-                              (formData.deliveryType || 'GODOWN_DELIVERY') === 'GODOWN_DELIVERY' ? 'text-blue-100' : 'text-slate-400'
-                            }`}>Pickup from branch</span>
-                          </div>
-                        </button>
+                    {/* Dispatch Parameters: Pickup Date, Transit Mode & Delivery Type */}
+                    <div className={`p-4 rounded-2xl border transition-all ${
+                      isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50/80 border-slate-200'
+                    }`}>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {/* Pickup Date */}
+                        <div className="space-y-1.5">
+                          <label className={`text-xs font-bold flex items-center ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                            <span>Pickup Date</span>
+                            <span className="text-rose-500 font-bold ml-0.5">*</span>
+                          </label>
+                          <input
+                            type="date"
+                            value={formData.pickupDate}
+                            onChange={(e) => setFormData({ ...formData, pickupDate: e.target.value })}
+                            className={`w-full px-3 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
+                              isDark
+                                ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400 [color-scheme:dark]'
+                                : 'border-slate-200 bg-white text-slate-900 focus:border-blue-500 [color-scheme:light]'
+                            }`}
+                          />
+                        </div>
 
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const curDdc = parseFloat(formData.doorDeliveryCharges || 0);
-                            setFormData({
-                              ...formData,
-                              deliveryType: 'DOOR_DELIVERY',
-                              doorDeliveryCharges: curDdc < 100 ? '100' : formData.doorDeliveryCharges,
-                            });
-                          }}
-                          className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all ${
-                            formData.deliveryType === 'DOOR_DELIVERY'
-                              ? 'bg-emerald-600 text-white border-emerald-500 shadow-md shadow-emerald-600/30'
-                              : isDark
-                                ? 'bg-slate-900/80 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
-                                : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-white hover:border-slate-300'
-                          }`}
-                        >
-                          <Truck className="w-4 h-4 shrink-0" />
-                          <div className="text-left">
-                            <span className="block leading-tight">Door Delivery</span>
-                            <span className={`block text-[10px] font-normal ${
-                              formData.deliveryType === 'DOOR_DELIVERY' ? 'text-emerald-100' : 'text-slate-400'
-                            }`}>Direct doorstep delivery</span>
+                        {/* Mode of Transport */}
+                        <div className="space-y-1.5">
+                          <label className={`text-xs font-bold flex items-center justify-between ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                            <span>Mode of Transport <span className="text-rose-500">*</span></span>
+                            <span className="text-[10px] text-slate-400 font-normal">Select Mode</span>
+                          </label>
+                          <div className="grid grid-cols-3 gap-1.5">
+                            {[
+                              { id: 'ROAD', label: 'By Road', icon: Truck },
+                              { id: 'RAIL', label: 'By Rail', icon: Train },
+                              { id: 'AIR', label: 'By Air', icon: Plane },
+                            ].map((m) => {
+                              const IconComp = m.icon;
+                              const isSelected = (formData.transportMode || 'ROAD') === m.id;
+                              return (
+                                <button
+                                  key={m.id}
+                                  type="button"
+                                  onClick={() => setFormData({ ...formData, transportMode: m.id })}
+                                  className={`py-2 px-1.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                                    isSelected
+                                      ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
+                                      : isDark
+                                      ? 'bg-slate-900/80 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
+                                      : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
+                                  }`}
+                                >
+                                  <IconComp className="w-3.5 h-3.5 shrink-0" />
+                                  <span className="truncate">{m.label}</span>
+                                </button>
+                              );
+                            })}
                           </div>
-                        </button>
+                        </div>
+                      </div>
+
+                      {/* Delivery Type */}
+                      <div className="space-y-1.5 pt-3 mt-3 border-t border-slate-200/60 dark:border-slate-800/60">
+                        <div className="flex items-center justify-between">
+                          <label className={`text-xs font-bold flex items-center ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                            <span>Delivery Type <span className="text-rose-500">*</span></span>
+                          </label>
+                          <span className="text-[10px] text-slate-400 font-normal">
+                            {(formData.deliveryType || 'DOOR_DELIVERY') === 'DOOR_DELIVERY' ? 'Consignee Doorstep Delivery' : 'Hub / Godown Delivery'}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const curDdc = parseFloat(formData.doorDeliveryCharges || 0);
+                              setFormData({
+                                ...formData,
+                                deliveryType: 'DOOR_DELIVERY',
+                                doorDeliveryCharges: curDdc < 100 ? '100' : formData.doorDeliveryCharges,
+                              });
+                            }}
+                            className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                              (formData.deliveryType || 'DOOR_DELIVERY') === 'DOOR_DELIVERY'
+                                ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
+                                : isDark
+                                ? 'bg-slate-900/80 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
+                                : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
+                            }`}
+                          >
+                            <Truck className="w-4 h-4 shrink-0" />
+                            <div className="text-left">
+                              <span className="block leading-tight">Door Delivery</span>
+                              <span className={`block text-[10px] font-normal ${
+                                (formData.deliveryType || 'DOOR_DELIVERY') === 'DOOR_DELIVERY' ? 'text-blue-100' : 'text-slate-400'
+                              }`}>Direct doorstep delivery</span>
+                            </div>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const curDdc = parseFloat(formData.doorDeliveryCharges || 0);
+                              setFormData({
+                                ...formData,
+                                deliveryType: 'GODOWN_DELIVERY',
+                                doorDeliveryCharges: curDdc === 100 ? '0' : formData.doorDeliveryCharges,
+                              });
+                            }}
+                            className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                              formData.deliveryType === 'GODOWN_DELIVERY'
+                                ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
+                                : isDark
+                                ? 'bg-slate-900/80 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
+                                : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
+                            }`}
+                          >
+                            <Building2 className="w-4 h-4 shrink-0" />
+                            <div className="text-left">
+                              <span className="block leading-tight">Godown Delivery</span>
+                              <span className={`block text-[10px] font-normal ${
+                                formData.deliveryType === 'GODOWN_DELIVERY' ? 'text-blue-100' : 'text-slate-400'
+                              }`}>Pickup from branch</span>
+                            </div>
+                          </button>
+                        </div>
                       </div>
                     </div>
+
                   </div>
                 )}
 
@@ -3904,28 +4289,42 @@ export default function BookingsMasterPage() {
                           <span className={`text-[10px] block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Shipper:</span>
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span className={`font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{formData.consignorName || 'Apex Logistics Partner'}</span>
-                            {formData.consignorId && (
+                            {formData.consignorId ? (
                               <span className="text-[9px] px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 font-bold">
                                 Registered
                               </span>
+                            ) : (
+                              <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-500 border border-amber-500/30 font-bold">
+                                Walk-in Party
+                              </span>
                             )}
                           </div>
-                          {formData.consignorCity && (
-                            <span className="text-[10px] text-slate-400 block mt-0.5">{formData.consignorCity} {formData.consignorPhone ? `• ${formData.consignorPhone}` : ''}</span>
+                          {(formData.consignorPhone || formData.consignorAddress || formData.consignorCity) && (
+                            <span className="text-[10px] text-slate-400 block mt-0.5">
+                              {formData.consignorPhone ? `📞 ${formData.consignorPhone}` : ''}
+                              {formData.consignorAddress ? ` • 📍 ${formData.consignorAddress}` : formData.consignorCity ? ` • 📍 ${formData.consignorCity}` : ''}
+                            </span>
                           )}
                         </div>
                         <div>
                           <span className={`text-[10px] block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Receiver:</span>
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span className={`font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{formData.consigneeName || 'Universal Distributing Corp'}</span>
-                            {formData.consigneeId && (
+                            {formData.consigneeId ? (
                               <span className="text-[9px] px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 font-bold">
                                 Registered
                               </span>
+                            ) : (
+                              <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-500 border border-amber-500/30 font-bold">
+                                Walk-in Party
+                              </span>
                             )}
                           </div>
-                          {formData.consigneeCity && (
-                            <span className="text-[10px] text-slate-400 block mt-0.5">{formData.consigneeCity} {formData.consigneePhone ? `• ${formData.consigneePhone}` : ''}</span>
+                          {(formData.consigneePhone || formData.consigneeAddress || formData.consigneeCity) && (
+                            <span className="text-[10px] text-slate-400 block mt-0.5">
+                              {formData.consigneePhone ? `📞 ${formData.consigneePhone}` : ''}
+                              {formData.consigneeAddress ? ` • 📍 ${formData.consigneeAddress}` : formData.consigneeCity ? ` • 📍 ${formData.consigneeCity}` : ''}
+                            </span>
                           )}
                         </div>
                         <div>
@@ -4041,6 +4440,12 @@ export default function BookingsMasterPage() {
                 )}
 
                 <div className="flex items-center gap-3">
+                  {!isCurrentStepValid && currentMissingFields.length > 0 && (
+                    <span className="text-[11px] text-amber-500 font-medium hidden sm:inline-flex items-center gap-1">
+                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                      Pending: {currentMissingFields.join(', ')}
+                    </span>
+                  )}
 
                   {bookingStep < 3 ? (
                     <button

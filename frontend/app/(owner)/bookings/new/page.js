@@ -343,12 +343,26 @@ export default function NewBookingPage() {
                   </label>
                   <select
                     value={formData.consignor_id}
-                    onChange={(e) => handleChange('consignor_id', e.target.value)}
+                    onChange={(e) => {
+                      const selId = e.target.value;
+                      handleChange('consignor_id', selId);
+                      const matched = customers.find(c => c.id === selId);
+                      if (matched && (parseInt(matched.credit_days, 10) > 0 || parseFloat(matched.credit_limit || 0) > 0)) {
+                        handleChange('payment_type', 'TBB');
+                      }
+                    }}
                     className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none font-semibold mb-2"
                   >
-                    {customers.map((c) => (
-                      <option key={c.id} value={c.id}>{c.name} ({c.city})</option>
-                    ))}
+                    {customers.map((c) => {
+                      const isTbb = (parseInt(c.credit_days, 10) > 0 || parseFloat(c.credit_limit || 0) > 0);
+                      const cBranchCap = c.branch_cap || (c.branch?.max_customer_credit_limit ? parseFloat(c.branch.max_customer_credit_limit) : 1000000);
+                      const isHo = parseFloat(c.credit_limit || 0) > cBranchCap;
+                      return (
+                        <option key={c.id} value={c.id}>
+                          {c.name} ({c.city || 'Station'}) {isTbb ? `⭐ [TBB Limit: ₹${Number(c.credit_limit || 0).toLocaleString('en-IN')}]` : ''}
+                        </option>
+                      );
+                    })}
                   </select>
                   <textarea
                     rows={2}

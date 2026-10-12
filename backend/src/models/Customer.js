@@ -80,6 +80,11 @@ module.exports = (sequelize) => {
       type: DataTypes.ENUM('ACTIVE', 'INACTIVE', 'BLOCKED'),
       defaultValue: 'ACTIVE',
     },
+    is_walkin: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+      comment: 'True if party was a one-time walkin individual/entity created on-the-fly for a consignment',
+    },
   }, {
     tableName: 'customers',
     indexes: [

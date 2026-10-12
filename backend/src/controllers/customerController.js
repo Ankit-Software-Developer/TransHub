@@ -80,22 +80,99 @@ const findNearestBranch = (pincode, city, branchList) => {
 
 const listCustomers = async (req, res) => {
   try {
-    const { Customer, Branch } = req.tenantDb || defaultModels;
-    const { search, type, page = 1, limit = 50, sort_by, sort_order } = req.query;
+    const { Customer, Branch, Consignment } = req.tenantDb || defaultModels;
+    const {
+      search,
+      type,
+      billing_type,
+      branch_id,
+      scope,
+      page = 1,
+      limit = 50,
+      sort_by,
+      sort_order,
+    } = req.query;
+
+    const userRoles = req.userRoles || [];
+    const isOwnerOrAdmin =
+      userRoles.includes('SUPER_ADMIN') ||
+      userRoles.includes('TRANSPORT_OWNER') ||
+      userRoles.includes('ADMIN') ||
+      Boolean(req.user?.is_owner);
+    const userBranchId = req.user?.branch_id || req.user?.branch?.id || null;
+
+    // Retrieve all active branches for smart routing, branch summary, and proximity matching
+    const allBranches = Branch
+      ? await Branch.findAll({
+          where: { organization_id: req.tenant.organizationId },
+          attributes: ['id', 'branch_name', 'branch_code', 'city', 'pincode', 'is_hub', 'max_customer_credit_limit'],
+        }).catch(() => [])
+      : [];
+
+    const userBranch = userBranchId ? allBranches.find((b) => b.id === userBranchId) : null;
+
     const where = {
       tenant_id: req.tenant.tenantId,
       organization_id: req.tenant.organizationId,
+      [Op.and]: [
+        {
+          [Op.or]: [
+            { is_walkin: false },
+            { is_walkin: null },
+          ],
+        },
+        {
+          customer_code: { [Op.notLike]: 'WALKIN-%' },
+        },
+      ],
     };
 
-    if (type) where.customer_type = type;
+    if (type && type !== 'ALL') {
+      where.customer_type = type;
+    }
+
+    if (billing_type === 'TBB') {
+      where.credit_limit = { [Op.gt]: 0 };
+    } else if (billing_type === 'SPOT' || billing_type === 'NORMAL') {
+      where[Op.or] = [{ credit_limit: 0 }, { credit_limit: null }];
+    }
+
+    // Role-specific filtering: Branch Managers ONLY show their branch customers related to their branch on CRM,
+    // UNLESS querying with scope=all/global (e.g. for booking Consignee receiver selection across all branches).
+    const isGlobalScope = scope === 'all' || scope === 'global' || req.query.all === 'true' || req.query.for_booking === 'true';
+    if (!isGlobalScope && !isOwnerOrAdmin && userBranch) {
+      const pinPrefix = userBranch.pincode ? String(userBranch.pincode).trim().slice(0, 3) : '';
+      const branchCity = (userBranch.city || '').trim().toLowerCase();
+
+      const territoryConditions = [{ branch_id: userBranch.id }];
+      if (pinPrefix) {
+        territoryConditions.push({ pincode: { [Op.like]: `${pinPrefix}%` } });
+      }
+      if (branchCity) {
+        territoryConditions.push({ city: { [Op.like]: `%${branchCity}%` } });
+      }
+
+      where[Op.and] = where[Op.and] || [];
+      where[Op.and].push({ [Op.or]: territoryConditions });
+    } else if (branch_id && branch_id !== 'ALL') {
+      where.branch_id = branch_id;
+    }
+
     if (search) {
-      where[Op.or] = [
-        { name: { [Op.like]: `%${search}%` } },
-        { customer_code: { [Op.like]: `%${search}%` } },
-        { phone: { [Op.like]: `%${search}%` } },
-        { city: { [Op.like]: `%${search}%` } },
-        { pincode: { [Op.like]: `%${search}%` } },
-      ];
+      const searchCondition = {
+        [Op.or]: [
+          { name: { [Op.like]: `%${search}%` } },
+          { customer_code: { [Op.like]: `%${search}%` } },
+          { phone: { [Op.like]: `%${search}%` } },
+          { city: { [Op.like]: `%${search}%` } },
+          { pincode: { [Op.like]: `%${search}%` } },
+        ],
+      };
+      if (where[Op.and]) {
+        where[Op.and].push(searchCondition);
+      } else {
+        where[Op.and] = [searchCondition];
+      }
     }
 
     const allowedSortCols = {
@@ -118,7 +195,7 @@ const listCustomers = async (req, res) => {
       include.push({
         model: Branch,
         as: 'branch',
-        attributes: ['id', 'branch_name', 'branch_code', 'city', 'pincode', 'is_hub'],
+        attributes: ['id', 'branch_name', 'branch_code', 'city', 'pincode', 'is_hub', 'max_customer_credit_limit'],
         required: false,
       });
     }
@@ -131,30 +208,186 @@ const listCustomers = async (req, res) => {
       include,
     });
 
-    // Automatically resolve nearest branch for customers without explicit branch
-    if (Branch && rows.length > 0) {
-      const allBranches = await Branch.findAll({
-        where: { organization_id: req.tenant.organizationId },
-        attributes: ['id', 'branch_name', 'branch_code', 'city', 'pincode', 'is_hub'],
+    // Calculate unbilled TBB dockets for all customers on this page
+    const customerIds = rows.map((r) => r.id);
+    const unbilledTbbMap = {};
+
+    if (Consignment && customerIds.length > 0) {
+      const unbilledDockets = await Consignment.findAll({
+        where: {
+          tenant_id: req.tenant.tenantId,
+          organization_id: req.tenant.organizationId,
+          payment_type: { [Op.in]: ['TBB', 'CREDIT'] },
+          is_billed: false,
+          status: { [Op.ne]: 'CANCELLED' },
+          [Op.or]: [
+            { consignor_id: { [Op.in]: customerIds } },
+            { consignee_id: { [Op.in]: customerIds } },
+          ],
+        },
+        attributes: ['id', 'consignor_id', 'consignee_id', 'total_amount', 'freight_amount'],
+        raw: true,
       }).catch(() => []);
 
-      if (allBranches.length > 0) {
-        for (const row of rows) {
-          if (!row.branch && (row.pincode || row.city)) {
-            const nearest = findNearestBranch(row.pincode, row.city, allBranches);
-            if (nearest) {
-              row.setDataValue('branch', nearest);
-            }
-          }
+      for (const d of unbilledDockets) {
+        const amt = parseFloat(d.total_amount || d.freight_amount || 0);
+        if (d.consignor_id && customerIds.includes(d.consignor_id)) {
+          unbilledTbbMap[d.consignor_id] = (unbilledTbbMap[d.consignor_id] || 0) + amt;
+        } else if (d.consignee_id && customerIds.includes(d.consignee_id)) {
+          unbilledTbbMap[d.consignee_id] = (unbilledTbbMap[d.consignee_id] || 0) + amt;
         }
       }
     }
+
+    // Automatically resolve nearest branch and proximity indicators
+    for (const row of rows) {
+      if (!row.branch && (row.pincode || row.city) && allBranches.length > 0) {
+        const nearest = findNearestBranch(row.pincode, row.city, allBranches);
+        if (nearest) {
+          row.setDataValue('branch', nearest);
+        }
+      }
+
+      // Check proximity to logged-in user's branch
+      let isNearBranch = false;
+      let proximityLabel = null;
+      if (userBranch) {
+        const userPin = userBranch.pincode ? String(userBranch.pincode).trim() : '';
+        const rowPin = row.pincode ? String(row.pincode).trim() : '';
+        const userCity = (userBranch.city || '').toLowerCase();
+        const rowCity = (row.city || '').toLowerCase();
+
+        if (row.branch_id === userBranch.id || (row.branch && row.branch.id === userBranch.id)) {
+          isNearBranch = true;
+          proximityLabel = `Assigned to ${userBranch.branch_name}`;
+        } else if (userPin && rowPin && userPin === rowPin) {
+          isNearBranch = true;
+          proximityLabel = `Exact PIN Match (${rowPin})`;
+        } else if (userPin && rowPin && userPin.slice(0, 3) === rowPin.slice(0, 3)) {
+          isNearBranch = true;
+          proximityLabel = `Nearby District PIN (${rowPin})`;
+        } else if (userCity && rowCity && (userCity.includes(rowCity) || rowCity.includes(userCity))) {
+          isNearBranch = true;
+          proximityLabel = `Nearby City (${row.city})`;
+        }
+      }
+      row.setDataValue('is_near_branch', isNearBranch);
+      row.setDataValue('proximity_label', proximityLabel);
+
+      // Attach revolving credit metrics (reflecting both unbilled TBB dockets and billed ledger balance)
+      const limitVal = parseFloat(row.credit_limit || 0);
+      const billedBalance = parseFloat(row.current_balance || 0);
+      const unbilledTbb = unbilledTbbMap[row.id] || 0;
+      const totalUsed = billedBalance + unbilledTbb;
+      const available = Math.max(0, limitVal - totalUsed);
+      const branchCap = row.branch?.max_customer_credit_limit ? parseFloat(row.branch.max_customer_credit_limit) : 1000000;
+      const isHoTier = limitVal > branchCap;
+
+      row.setDataValue('outstanding_freight', totalUsed);
+      row.setDataValue('unbilled_tbb_freight', unbilledTbb);
+      row.setDataValue('billed_balance', billedBalance);
+      row.setDataValue('available_credit', available);
+      row.setDataValue('branch_cap', branchCap);
+      row.setDataValue('credit_cap_tier', limitVal > 0 ? (isHoTier ? 'HO_CAP' : 'BRANCH_CAP') : null);
+    }
+
+    // Organization-wide summary metrics for Admin and Branch Manager insight
+    const allOrgCustomers = await Customer.findAll({
+      where: {
+        tenant_id: req.tenant.tenantId,
+        organization_id: req.tenant.organizationId,
+        [Op.and]: [
+          {
+            [Op.or]: [
+              { is_walkin: false },
+              { is_walkin: null },
+            ],
+          },
+          {
+            customer_code: { [Op.notLike]: 'WALKIN-%' },
+          },
+        ],
+      },
+      attributes: ['id', 'customer_type', 'branch_id', 'pincode', 'city', 'credit_limit'],
+      raw: true,
+    }).catch(() => []);
+
+    const scopedCustomersForStats = (!isOwnerOrAdmin && userBranch)
+      ? allOrgCustomers.filter((c) => {
+          if (c.branch_id === userBranch.id) return true;
+          const pinPrefix = userBranch.pincode ? String(userBranch.pincode).trim().slice(0, 3) : '';
+          if (pinPrefix && String(c.pincode || '').startsWith(pinPrefix)) return true;
+          const branchCity = (userBranch.city || '').trim().toLowerCase();
+          if (branchCity && (c.city || '').toLowerCase().includes(branchCity)) return true;
+          return false;
+        })
+      : allOrgCustomers;
+
+    let tbbCount = 0;
+    let normalCount = 0;
+    let totalCredit = 0;
+    const branchBreakdown = {};
+
+    for (const c of scopedCustomersForStats) {
+      const cLimit = parseFloat(c.credit_limit || 0);
+      if (cLimit > 0) {
+        tbbCount++;
+        totalCredit += cLimit;
+      } else {
+        normalCount++;
+      }
+    }
+
+    for (const c of allOrgCustomers) {
+      const cLimit = parseFloat(c.credit_limit || 0);
+      const bKey = c.branch_id || 'UNASSIGNED';
+      if (!branchBreakdown[bKey]) {
+        branchBreakdown[bKey] = { count: 0, tbb_count: 0, total_credit: 0 };
+      }
+      branchBreakdown[bKey].count++;
+      if (cLimit > 0) {
+        branchBreakdown[bKey].tbb_count++;
+        branchBreakdown[bKey].total_credit += cLimit;
+      }
+    }
+
+    const branchStats = allBranches.map((b) => ({
+      branch_id: b.id,
+      branch_name: b.branch_name,
+      branch_code: b.branch_code,
+      city: b.city,
+      pincode: b.pincode,
+      is_hub: b.is_hub,
+      max_customer_credit_limit: parseFloat(b.max_customer_credit_limit || 1000000),
+      customer_count: branchBreakdown[b.id]?.count || 0,
+      tbb_customer_count: branchBreakdown[b.id]?.tbb_count || 0,
+      total_credit_limit: branchBreakdown[b.id]?.total_credit || 0,
+    }));
 
     return paginatedResponse(res, 'Customers fetched', rows, {
       total: count,
       page: parseInt(page, 10),
       limit: parseInt(limit, 10),
       pages: Math.ceil(count / limit),
+      meta: {
+        total_customers: scopedCustomersForStats.length,
+        tbb_customers_count: tbbCount,
+        normal_customers_count: normalCount,
+        spot_customers_count: normalCount,
+        total_credit_assigned: totalCredit,
+        branch_stats: branchStats,
+        user_branch: userBranch
+          ? {
+              id: userBranch.id,
+              branch_name: userBranch.branch_name,
+              branch_code: userBranch.branch_code,
+              pincode: userBranch.pincode,
+              city: userBranch.city,
+              max_customer_credit_limit: parseFloat(userBranch.max_customer_credit_limit || 1000000),
+            }
+          : null,
+        is_branch_manager: !isOwnerOrAdmin && Boolean(userBranchId),
+      },
     });
   } catch (error) {
     return errorResponse(res, error.message, null, 500);
@@ -163,7 +396,7 @@ const listCustomers = async (req, res) => {
 
 const getCustomer = async (req, res) => {
   try {
-    const { Customer, CustomerAddress, RateContract, CustomerLedger, Branch } = req.tenantDb || defaultModels;
+    const { Customer, CustomerAddress, RateContract, CustomerLedger, Branch, Consignment } = req.tenantDb || defaultModels;
     const { id } = req.params;
     const includeList = [];
     if (CustomerAddress) includeList.push({ model: CustomerAddress, as: 'addresses' });
@@ -193,6 +426,32 @@ const getCustomer = async (req, res) => {
     if (!customer) {
       return errorResponse(res, 'Customer not found', null, 404);
     }
+
+    const limitVal = parseFloat(customer.credit_limit || 0);
+    const billedBalance = parseFloat(customer.current_balance || 0);
+    let unbilledTbb = 0;
+    if (Consignment) {
+      const dockets = await Consignment.findAll({
+        where: {
+          tenant_id: req.tenant.tenantId,
+          organization_id: req.tenant.organizationId,
+          payment_type: { [Op.in]: ['TBB', 'CREDIT'] },
+          is_billed: false,
+          status: { [Op.ne]: 'CANCELLED' },
+          [Op.or]: [{ consignor_id: id }, { consignee_id: id }],
+        },
+        attributes: ['total_amount', 'freight_amount'],
+        raw: true,
+      }).catch(() => []);
+      unbilledTbb = dockets.reduce((sum, d) => sum + parseFloat(d.total_amount || d.freight_amount || 0), 0);
+    }
+    const totalUsed = billedBalance + unbilledTbb;
+    const available = Math.max(0, limitVal - totalUsed);
+
+    customer.setDataValue('outstanding_freight', totalUsed);
+    customer.setDataValue('unbilled_tbb_freight', unbilledTbb);
+    customer.setDataValue('billed_balance', billedBalance);
+    customer.setDataValue('available_credit', available);
 
     return successResponse(res, 'Customer details fetched', customer);
   } catch (error) {
@@ -232,7 +491,7 @@ const createCustomer = async (req, res) => {
     // Clean 6-digit Pincode
     const cleanPincode = (pincode || '').replace(/\D/g, '').slice(0, 6);
 
-    let finalBranchId = branch_id || null;
+    let finalBranchId = branch_id || req.user?.branch_id || null;
     if (!finalBranchId && Branch) {
       const allBranches = await Branch.findAll({
         where: { organization_id: req.tenant.organizationId },
@@ -244,6 +503,41 @@ const createCustomer = async (req, res) => {
 
     const count = await Customer.count({ where: { organization_id: req.tenant.organizationId } });
     const customerCode = `CUST-${String(count + 1).padStart(4, '0')}`;
+
+    const parsedLimit = parseFloat(credit_limit || 0);
+    const parsedDays = parseInt(credit_days || 30, 10);
+
+    const userRoles = req.userRoles || [];
+    const isOwnerOrAdmin = userRoles.includes('SUPER_ADMIN') ||
+      userRoles.includes('TRANSPORT_OWNER') ||
+      userRoles.includes('ADMIN') ||
+      Boolean(req.user?.is_owner);
+
+    // Dynamic Branch Credit Limit: Branch Managers can authorize up to their branch's configured limit (default ₹10 Lakhs). Head Office can authorize up to ₹50 Lakhs+
+    if (!isOwnerOrAdmin && parsedLimit > 0) {
+      const { Branch } = req.tenantDb || defaultModels;
+      let branchCap = 1000000;
+      let branchName = 'this branch';
+
+      if (finalBranchId && Branch) {
+        const branchRecord = await Branch.findByPk(finalBranchId);
+        if (branchRecord) {
+          branchName = branchRecord.branch_name;
+          if (branchRecord.max_customer_credit_limit) {
+            branchCap = parseFloat(branchRecord.max_customer_credit_limit);
+          }
+        }
+      }
+
+      if (parsedLimit > branchCap) {
+        return errorResponse(
+          res,
+          `Branch Managers at "${branchName}" are authorized up to ₹${branchCap.toLocaleString('en-IN')}. For higher credit limits (up to ₹50 Lakhs), Head Office / Admin authorization is required. You can request Admin to increase this branch's authorization limit.`,
+          null,
+          403
+        );
+      }
+    }
 
     const customer = await Customer.create({
       tenant_id: req.tenant.tenantId,
@@ -258,8 +552,8 @@ const createCustomer = async (req, res) => {
       gstin: gstin ? gstin.trim().toUpperCase() : null,
       customer_type: customer_type || 'BOTH',
       billing_address: (billing_address || '').trim() || null,
-      credit_limit: parseFloat(credit_limit || 0),
-      credit_days: parseInt(credit_days || 30, 10),
+      credit_limit: parsedLimit,
+      credit_days: parsedDays,
     });
 
     try {
@@ -296,6 +590,8 @@ const updateCustomer = async (req, res) => {
       customer_type,
       billing_address,
       status,
+      credit_limit,
+      credit_days,
     } = req.body;
 
     const customer = await Customer.findOne({
@@ -353,6 +649,42 @@ const updateCustomer = async (req, res) => {
     if (customer_type !== undefined) customer.customer_type = customer_type;
     if (billing_address !== undefined) customer.billing_address = (billing_address || '').trim() || null;
     if (status !== undefined) customer.status = status;
+    if (credit_limit !== undefined) {
+      const parsedLimit = parseFloat(credit_limit || 0);
+      const userRoles = req.userRoles || [];
+      const isOwnerOrAdmin = userRoles.includes('SUPER_ADMIN') ||
+        userRoles.includes('TRANSPORT_OWNER') ||
+        userRoles.includes('ADMIN') ||
+        Boolean(req.user?.is_owner);
+
+      if (!isOwnerOrAdmin && parsedLimit > 0) {
+        const { Branch } = req.tenantDb || defaultModels;
+        let branchCap = 1000000;
+        let branchName = 'this branch';
+        const targetBranchId = customer.branch_id;
+
+        if (targetBranchId && Branch) {
+          const branchRecord = await Branch.findByPk(targetBranchId);
+          if (branchRecord) {
+            branchName = branchRecord.branch_name;
+            if (branchRecord.max_customer_credit_limit) {
+              branchCap = parseFloat(branchRecord.max_customer_credit_limit);
+            }
+          }
+        }
+
+        if (parsedLimit > branchCap) {
+          return errorResponse(
+            res,
+            `Branch Managers at "${branchName}" are authorized up to ₹${branchCap.toLocaleString('en-IN')}. For higher credit limits (up to ₹50 Lakhs), Head Office / Admin authorization is required.`,
+            null,
+            403
+          );
+        }
+      }
+      customer.credit_limit = parsedLimit;
+    }
+    if (credit_days !== undefined) customer.credit_days = parseInt(credit_days || 0, 10);
 
     await customer.save();
 

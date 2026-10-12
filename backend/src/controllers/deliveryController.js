@@ -112,63 +112,9 @@ const listDeliveryOperations = async (req, res) => {
     if (!isUserAdmin && req.user?.branch_id) {
       effectiveBranchId = req.user.branch_id;
     }
-
-    // Auto-sync: If any trip is COMPLETED, ensure its loaded consignments that reached destination
-    // are transitioned to REACHED_DESTINATION or RECEIVED_AT_HUB appropriately
-    try {
-      if (Trip && TripConsignment && Consignment) {
-        const completedTrips = await Trip.findAll({
-          where: {
-            tenant_id: req.tenant.tenantId,
-            organization_id: req.tenant.organizationId,
-            status: 'COMPLETED',
-          },
-          attributes: ['id', 'dest_branch_id', 'destination_city'],
-        });
-
-        for (const trip of completedTrips) {
-          if (!trip.dest_branch_id) continue;
-          const tcs = await TripConsignment.findAll({
-            where: { trip_id: trip.id },
-            attributes: ['consignment_id'],
-            raw: true,
-          });
-
-          if (tcs && tcs.length > 0) {
-            const cIds = tcs.map((t) => t.consignment_id);
-            const tripConsignments = await Consignment.findAll({
-              where: { id: { [Op.in]: cIds } },
-              attributes: ['id', 'dest_branch_id', 'status', 'current_branch_id'],
-            });
-
-            for (const c of tripConsignments) {
-              const isFinalDestination = Boolean(c.dest_branch_id && String(c.dest_branch_id) === String(trip.dest_branch_id));
-              const inTransitStatuses = ['DISPATCHED', 'IN_TRANSIT', 'LOADED', 'BOOKED', 'READY_FOR_DISPATCH'];
-
-              const updates = {};
-              // For all consignments on a completed trip, their physical location is now trip.dest_branch_id
-              if (String(c.current_branch_id) !== String(trip.dest_branch_id)) {
-                updates.current_branch_id = trip.dest_branch_id;
-              }
-              if (!c.dest_branch_id) {
-                updates.dest_branch_id = trip.dest_branch_id;
-              }
-              if (inTransitStatuses.includes(c.status)) {
-                updates.status = isFinalDestination ? 'REACHED_DESTINATION' : 'RECEIVED_AT_HUB';
-              } else if (!isFinalDestination && c.status === 'REACHED_DESTINATION') {
-                // If it was unloaded at an intermediate hub but final destination is another branch, ensure status is RECEIVED_AT_HUB
-                updates.status = 'RECEIVED_AT_HUB';
-              }
-              if (Object.keys(updates).length > 0) {
-                await c.update(updates);
-              }
-            }
-          }
-        }
-      }
-    } catch (syncErr) {
-      console.warn('Completed trip consignment auto-sync notice:', syncErr.message);
-    }
+    // Note: Consignments arriving at branches are properly transitioned to REACHED_DESTINATION
+    // or RECEIVED_AT_HUB during trip completion / unload in tripController.completeTripAndUnload.
+    // GET listDeliveryOperations should not perform destructive background mutations across historical trips.
 
     const REACHED_STATUSES = [
       'REACHED_DESTINATION',
@@ -196,10 +142,14 @@ const listDeliveryOperations = async (req, res) => {
     // Transshipment cargo sitting at an intermediate hub (destined elsewhere) must NEVER appear on Delivery page.
     if (effectiveBranchId && effectiveBranchId !== 'ALL') {
       const destConditions = [
-        { dest_branch_id: { [Op.in]: matchedBranchIds } },
+        { dest_branch_id: effectiveBranchId },
       ];
+      if (matchedBranchIds && matchedBranchIds.length > 0) {
+        destConditions.push({ dest_branch_id: { [Op.in]: matchedBranchIds } });
+      }
       if (cityKeywords.length > 0) {
         destConditions.push({
+          dest_branch_id: null,
           destination_city: { [Op.in]: cityKeywords },
         });
       }
