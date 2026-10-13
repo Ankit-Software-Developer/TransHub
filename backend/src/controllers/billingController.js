@@ -11,7 +11,7 @@ const { roundToTwo } = require('../utils/decimalUtils');
 const listInvoices = async (req, res) => {
   try {
     const { Invoice, Customer, InvoiceItem, Consignment, Branch } = req.tenantDb || defaultModels;
-    const { status, customer_id, search, uncleared_only, page = 1, limit = 50 } = req.query;
+    const { status, customer_id, search, uncleared_only, branch_id, delivery_branch_id, page = 1, limit = 50 } = req.query;
 
     const where = {
       tenant_id: req.tenant.tenantId,
@@ -19,6 +19,22 @@ const listInvoices = async (req, res) => {
     };
 
     if (customer_id) where.customer_id = customer_id;
+
+    const isUserAdmin = Boolean(
+      ['SUPER_ADMIN', 'TRANSPORT_OWNER', 'ADMIN', 'OWNER'].includes(req.user?.role) ||
+      (req.userRoles && req.userRoles.some((r) => ['SUPER_ADMIN', 'TRANSPORT_OWNER', 'ADMIN', 'OWNER'].includes(r))) ||
+      (req.userPermissions && req.userPermissions.includes('*')) ||
+      req.tenant?.isSuperAdmin ||
+      req.user?.is_owner
+    );
+
+    // Filter invoices by branch:
+    // Non-admin branch staff are strictly scoped to invoices belonging to their branch.
+    // Admins can see all, or filter by a specific branch if passed in query params.
+    const activeBranchFilter = (!isUserAdmin && req.user?.branch_id) ? req.user.branch_id : (branch_id || delivery_branch_id);
+    if (activeBranchFilter && activeBranchFilter !== 'ALL') {
+      where.branch_id = activeBranchFilter;
+    }
 
     const todayStr = new Date().toISOString().slice(0, 10);
 
@@ -40,6 +56,38 @@ const listInvoices = async (req, res) => {
       where.balance_amount = { [Op.gt]: 0 };
     } else if (status && status !== 'ALL') {
       where.status = status;
+    }
+
+    // Self-healing: Resolve and renumber any legacy duplicate invoice numbers under this organization
+    try {
+      const allInvoices = await Invoice.findAll({
+        where: {
+          tenant_id: req.tenant.tenantId,
+          organization_id: req.tenant.organizationId,
+        },
+        order: [['created_at', 'ASC']],
+      });
+
+      const usedNumbers = new Set(allInvoices.map((i) => i.invoice_number));
+      const seenNumbers = new Set();
+
+      for (const inv of allInvoices) {
+        if (seenNumbers.has(inv.invoice_number)) {
+          let candidateNum = 2;
+          let candidate = inv.invoice_number.replace(/\/(\d+)$/, `/${String(candidateNum).padStart(6, '0')}`);
+          while (usedNumbers.has(candidate)) {
+            candidateNum++;
+            candidate = inv.invoice_number.replace(/\/(\d+)$/, `/${String(candidateNum).padStart(6, '0')}`);
+          }
+          await inv.update({ invoice_number: candidate });
+          usedNumbers.add(candidate);
+          seenNumbers.add(candidate);
+        } else {
+          seenNumbers.add(inv.invoice_number);
+        }
+      }
+    } catch (repairErr) {
+      console.warn('Auto-repair duplicate invoices check:', repairErr.message);
     }
 
     if (search) {
@@ -82,8 +130,11 @@ const listInvoices = async (req, res) => {
         itemInclude.push({
           model: Consignment,
           as: 'consignment',
-          attributes: ['id', 'lr_number', 'dest_branch_id', 'origin_city', 'destination_city'],
-          include: [{ model: Branch, as: 'destBranch', attributes: ['id', 'branch_name', 'branch_code', 'city'] }],
+          attributes: ['id', 'lr_number', 'docket_number', 'payment_type', 'origin_branch_id', 'dest_branch_id', 'origin_city', 'destination_city'],
+          include: [
+            { model: Branch, as: 'originBranch', attributes: ['id', 'branch_name', 'branch_code', 'city'] },
+            { model: Branch, as: 'destBranch', attributes: ['id', 'branch_name', 'branch_code', 'city'] },
+          ],
           required: false,
         });
       }
@@ -106,7 +157,76 @@ const listInvoices = async (req, res) => {
       distinct: true,
     });
 
-    // Decorate invoice rows with computed flags (e.g. delivery branch, isOverdue, lr_count, days_overdue)
+    // 1. Collect all LR numbers, docket numbers, and consignment IDs from all items across all invoice rows
+    const allLrNumbers = new Set();
+    const allConsignmentIds = new Set();
+    const allInvoiceIds = new Set();
+    rows.forEach((inv) => {
+      const invData = inv.toJSON ? inv.toJSON() : inv;
+      if (invData.id) allInvoiceIds.add(invData.id);
+      (invData.items || []).forEach((it) => {
+        if (it.consignment_id) allConsignmentIds.add(it.consignment_id);
+        if (it.lr_number) allLrNumbers.add(String(it.lr_number).trim());
+        if (it.consignment?.lr_number) allLrNumbers.add(String(it.consignment.lr_number).trim());
+        if (it.consignment?.docket_number) allLrNumbers.add(String(it.consignment.docket_number).trim());
+      });
+    });
+
+    const consignmentMap = new Map();
+    const invoiceConsignmentsMap = new Map();
+    if (Consignment && (allLrNumbers.size > 0 || allConsignmentIds.size > 0 || allInvoiceIds.size > 0)) {
+      const orClauses = [];
+      if (allConsignmentIds.size > 0) {
+        orClauses.push({ id: { [Op.in]: Array.from(allConsignmentIds) } });
+      }
+      if (allInvoiceIds.size > 0) {
+        orClauses.push({ invoice_id: { [Op.in]: Array.from(allInvoiceIds) } });
+      }
+      if (allLrNumbers.size > 0) {
+        const lrArray = Array.from(allLrNumbers);
+        orClauses.push({ lr_number: { [Op.in]: lrArray } });
+        orClauses.push({ docket_number: { [Op.in]: lrArray } });
+      }
+
+      try {
+        const foundConsignments = await Consignment.findAll({
+          where: {
+            tenant_id: req.tenant.tenantId,
+            [Op.or]: orClauses,
+          },
+          attributes: [
+            'id', 'lr_number', 'docket_number', 'payment_type', 'status',
+            'origin_city', 'destination_city', 'origin_branch_id', 'dest_branch_id', 'invoice_id'
+          ],
+          include: Branch ? [
+            { model: Branch, as: 'originBranch', attributes: ['id', 'branch_name', 'branch_code', 'city'] },
+            { model: Branch, as: 'destBranch', attributes: ['id', 'branch_name', 'branch_code', 'city'] },
+          ] : [],
+        });
+
+        foundConsignments.forEach((c) => {
+          const cJson = c.toJSON ? c.toJSON() : c;
+          if (cJson.id) consignmentMap.set(String(cJson.id), cJson);
+          if (cJson.lr_number) {
+            consignmentMap.set(String(cJson.lr_number).trim().toUpperCase(), cJson);
+          }
+          if (cJson.docket_number) {
+            consignmentMap.set(String(cJson.docket_number).trim().toUpperCase(), cJson);
+          }
+          if (cJson.invoice_id) {
+            const invKey = String(cJson.invoice_id);
+            if (!invoiceConsignmentsMap.has(invKey)) {
+              invoiceConsignmentsMap.set(invKey, []);
+            }
+            invoiceConsignmentsMap.get(invKey).push(cJson);
+          }
+        });
+      } catch (cErr) {
+        console.warn('Could not batch load consignments for invoices:', cErr.message);
+      }
+    }
+
+    // Decorate invoice rows with computed flags (booking branch, delivery branch, isOverdue, lr_count, days_overdue)
     const decoratedRows = rows.map((inv) => {
       const data = inv.toJSON();
       const bal = parseFloat(data.balance_amount || 0);
@@ -134,21 +254,85 @@ const listInvoices = async (req, res) => {
         daysDiff = Math.round((d2 - d1) / (1000 * 60 * 60 * 24));
       }
 
-      const firstItem = data.items && data.items[0];
-      const deliveryBranchName =
+      const invoiceLinkedConsignments = invoiceConsignmentsMap.get(String(data.id)) || [];
+      const enrichedItems = (data.items || []).map((it, idx) => {
+        const docNum = it.consignment?.docket_number || it.consignment?.lr_number || it.lr_number;
+        const matched =
+          (it.consignment_id && consignmentMap.get(String(it.consignment_id))) ||
+          (it.lr_number && consignmentMap.get(String(it.lr_number).trim().toUpperCase())) ||
+          (docNum && consignmentMap.get(String(docNum).trim().toUpperCase())) ||
+          invoiceLinkedConsignments[idx] ||
+          it.consignment;
+
+        const effectivePaymentType = matched?.payment_type || it.consignment?.payment_type || invoiceLinkedConsignments[idx]?.payment_type || null;
+
+        return {
+          ...it,
+          consignment: matched || it.consignment,
+          payment_type: effectivePaymentType,
+        };
+      });
+
+      const firstItem = enrichedItems[0];
+      const bookingBranchName =
+        firstItem?.consignment?.originBranch?.branch_name ||
         data.branch?.branch_name ||
+        firstItem?.origin_city ||
+        'Booking Branch';
+
+      const bookingBranchCode =
+        firstItem?.consignment?.originBranch?.branch_code ||
+        data.branch?.branch_code ||
+        '';
+
+      const deliveryBranchName =
         firstItem?.consignment?.destBranch?.branch_name ||
         firstItem?.destination_city ||
-        'Main Delivery Hub';
+        'Destination Delivery Hub';
+
+      const deliveryBranchCode =
+        firstItem?.consignment?.destBranch?.branch_code ||
+        '';
+
+      const itemDockets = enrichedItems
+        .map((it) => it.consignment?.docket_number || it.consignment?.lr_number || it.lr_number)
+        .filter(Boolean);
+      if (itemDockets.length === 0 && invoiceLinkedConsignments.length > 0) {
+        invoiceLinkedConsignments.forEach((c) => {
+          if (c.docket_number) itemDockets.push(c.docket_number);
+          else if (c.lr_number) itemDockets.push(c.lr_number);
+        });
+      }
+      const uniqueDockets = Array.from(new Set(itemDockets));
+
+      const itemTypes = enrichedItems
+        .map((it) => it.payment_type || it.consignment?.payment_type)
+        .filter(Boolean);
+      if (itemTypes.length === 0 && invoiceLinkedConsignments.length > 0) {
+        invoiceLinkedConsignments.forEach((c) => {
+          if (c.payment_type) itemTypes.push(c.payment_type);
+        });
+      }
+      const uniqueTypes = Array.from(new Set(itemTypes));
+      const primaryDocketType = uniqueTypes[0] || data.payment_type || 'TO_PAY';
 
       return {
         ...data,
         is_overdue: isPastDue,
         computed_status: computedStatus,
         days_diff: daysDiff,
+        booking_branch: bookingBranchName,
+        booking_branch_code: bookingBranchCode,
         delivery_branch: deliveryBranchName,
+        delivery_branch_code: deliveryBranchCode,
         customer_balance: data.customer?.current_balance || data.balance_amount,
-        lr_count: (data.items && data.items.length) || 0,
+        lr_count: (data.items && data.items.length) || uniqueDockets.length || 0,
+        docket_numbers: uniqueDockets,
+        docket_number: uniqueDockets[0] || '',
+        docket_summary: uniqueDockets.join(', '),
+        docket_type: primaryDocketType,
+        docket_types: uniqueTypes,
+        items: enrichedItems,
       };
     });
 
@@ -206,7 +390,79 @@ const getInvoiceById = async (req, res) => {
     }
 
     const data = invoice.toJSON();
+
+    // Batch lookup consignments for items if consignment association is incomplete
+    const itemCids = (data.items || []).map((it) => it.consignment_id).filter(Boolean);
+    const itemLrs = (data.items || []).map((it) => it.lr_number).filter(Boolean);
+    const singleConsignmentMap = new Map();
+    let singleInvoiceLinkedConsignments = [];
+
+    if (Consignment) {
+      try {
+        const orClauses = [
+          { invoice_id: id },
+        ];
+        if (itemCids.length > 0) orClauses.push({ id: { [Op.in]: itemCids } });
+        if (itemLrs.length > 0) {
+          orClauses.push({ lr_number: { [Op.in]: itemLrs } });
+          orClauses.push({ docket_number: { [Op.in]: itemLrs } });
+        }
+
+        const found = await Consignment.findAll({
+          where: {
+            tenant_id: req.tenant.tenantId,
+            [Op.or]: orClauses,
+          },
+          attributes: ['id', 'lr_number', 'docket_number', 'payment_type', 'status', 'origin_city', 'destination_city', 'invoice_id'],
+          include: Branch ? [{ model: Branch, as: 'destBranch', attributes: ['id', 'branch_name', 'branch_code', 'city'] }] : [],
+        });
+
+        singleInvoiceLinkedConsignments = found.filter((c) => String(c.invoice_id) === String(id));
+        found.forEach((c) => {
+          const cJson = c.toJSON ? c.toJSON() : c;
+          if (cJson.id) singleConsignmentMap.set(String(cJson.id), cJson);
+          if (cJson.lr_number) singleConsignmentMap.set(String(cJson.lr_number).trim().toUpperCase(), cJson);
+          if (cJson.docket_number) singleConsignmentMap.set(String(cJson.docket_number).trim().toUpperCase(), cJson);
+        });
+      } catch (err) {
+        console.warn('Could not load consignments for single invoice:', err.message);
+      }
+    }
+
+    const enrichedSingleItems = (data.items || []).map((it, idx) => {
+      const docNum = it.consignment?.docket_number || it.consignment?.lr_number || it.lr_number;
+      const matched =
+        (it.consignment_id && singleConsignmentMap.get(String(it.consignment_id))) ||
+        (it.lr_number && singleConsignmentMap.get(String(it.lr_number).trim().toUpperCase())) ||
+        (docNum && singleConsignmentMap.get(String(docNum).trim().toUpperCase())) ||
+        singleInvoiceLinkedConsignments[idx] ||
+        it.consignment;
+      const effType = matched?.payment_type || it.consignment?.payment_type || singleInvoiceLinkedConsignments[idx]?.payment_type || null;
+      return {
+        ...it,
+        consignment: matched || it.consignment,
+        payment_type: effType,
+      };
+    });
+
+    data.items = enrichedSingleItems;
+    const itemSingleTypes = enrichedSingleItems.map((it) => it.payment_type).filter(Boolean);
+    if (itemSingleTypes.length === 0 && singleInvoiceLinkedConsignments.length > 0) {
+      singleInvoiceLinkedConsignments.forEach((c) => {
+        if (c.payment_type) itemSingleTypes.push(c.payment_type);
+      });
+    }
+    const uniqueSingleTypes = Array.from(new Set(itemSingleTypes));
+    data.docket_type = uniqueSingleTypes[0] || 'TO_PAY';
+    data.docket_types = uniqueSingleTypes;
+
     const firstItem = data.items && data.items[0];
+    const customerObj = data.customer;
+    data.customer_name = customerObj?.name || 'Customer Account';
+    data.customer_gstin = customerObj?.gstin || 'URP';
+    data.customer = customerObj?.name || 'Customer Account';
+    data.gstin = data.gstin || customerObj?.gstin || 'URP';
+    data.customer_details = customerObj;
     data.delivery_branch =
       data.branch?.branch_name ||
       firstItem?.consignment?.destBranch?.branch_name ||
@@ -277,7 +533,7 @@ const getBillingSummary = async (req, res) => {
  */
 const getUnbilledConsignments = async (req, res) => {
   try {
-    const { Consignment, Customer, Branch } = req.tenantDb || defaultModels;
+    const { Consignment, Customer, Branch, Pod } = req.tenantDb || defaultModels;
     const {
       customer_id,
       tbb_only,
@@ -285,6 +541,7 @@ const getUnbilledConsignments = async (req, res) => {
       booking_branch_id,
       branch_id,
       delivered_only,
+      include_all_statuses,
     } = req.query;
 
     const where = {
@@ -293,13 +550,110 @@ const getUnbilledConsignments = async (req, res) => {
       is_billed: false,
     };
 
-    const activeBookingBranchId = booking_branch_id || branch_id;
-    if (activeBookingBranchId && activeBookingBranchId !== 'ALL') {
-      where.origin_branch_id = activeBookingBranchId;
+    // Check if requester has admin/owner privileges
+    const isUserAdmin = Boolean(
+      ['SUPER_ADMIN', 'TRANSPORT_OWNER', 'ADMIN', 'OWNER'].includes(req.user?.role) ||
+      (req.userRoles && req.userRoles.some((r) => ['SUPER_ADMIN', 'TRANSPORT_OWNER', 'ADMIN', 'OWNER'].includes(r))) ||
+      (req.userPermissions && req.userPermissions.includes('*')) ||
+      req.tenant?.isSuperAdmin ||
+      req.user?.is_owner
+    );
+
+    const userBranchId = req.user?.branch_id;
+    const activeBranchFilter = (!isUserAdmin && userBranchId) ? userBranchId : (booking_branch_id || branch_id);
+
+    if (activeBranchFilter && activeBranchFilter !== 'ALL') {
+      let matchedBranchIds = [activeBranchFilter];
+      let cityKeywords = [];
+      if (Branch) {
+        try {
+          const br = await Branch.findByPk(activeBranchFilter);
+          if (br) {
+            const bCity = (br.city || '').trim();
+            const bName = (br.branch_name || '').trim();
+            if (bCity) cityKeywords.push(bCity);
+            if (/delhi/i.test(bCity) || /delhi/i.test(bName)) {
+              cityKeywords.push('Delhi', 'South Delhi', 'North Delhi', 'New Delhi', 'West Delhi', 'East Delhi', 'Central Delhi', 'Okhla');
+            } else if (/bengaluru|bangalore/i.test(bCity) || /bengaluru|bangalore/i.test(bName)) {
+              cityKeywords.push('Bengaluru', 'Bangalore');
+            } else if (/mumbai/i.test(bCity) || /mumbai/i.test(bName)) {
+              cityKeywords.push('Mumbai', 'Navi Mumbai', 'Thane', 'Bhiwandi');
+            }
+            if (cityKeywords.length > 0) {
+              const siblings = await Branch.findAll({
+                where: {
+                  organization_id: req.tenant.organizationId,
+                  city: { [Op.in]: Array.from(new Set(cityKeywords)) },
+                },
+                attributes: ['id'],
+                raw: true,
+              });
+              matchedBranchIds = Array.from(new Set([activeBranchFilter, ...siblings.map((s) => s.id)]));
+            }
+          }
+        } catch (e) {
+          console.warn('Branch resolution in billing error:', e.message);
+        }
+      }
+
+      const originMatch = [
+        { origin_branch_id: { [Op.in]: matchedBranchIds } },
+        ...(cityKeywords.length > 0 ? [{ origin_city: { [Op.in]: cityKeywords } }] : []),
+      ];
+
+      const destMatch = [
+        { dest_branch_id: { [Op.in]: matchedBranchIds } },
+        ...(cityKeywords.length > 0 ? [{ destination_city: { [Op.in]: cityKeywords } }] : []),
+      ];
+
+      // Transport Billing Rules:
+      // - TO_PAY: Collected from Consignee at Delivery Branch (destination).
+      // - PAID: Collected upfront from Shipper at Booking Branch (origin).
+      // - TBB: Billed on corporate credit at Booking Branch (origin) only, NOT at Delivery Branch.
+      const branchCondition = {
+        [Op.or]: [
+          {
+            [Op.and]: [
+              { payment_type: 'TO_PAY' },
+              { [Op.or]: destMatch },
+            ],
+          },
+          {
+            [Op.and]: [
+              { payment_type: 'PAID' },
+              { [Op.or]: originMatch },
+            ],
+          },
+          {
+            [Op.and]: [
+              { payment_type: 'TBB' },
+              { [Op.or]: originMatch },
+            ],
+          },
+          {
+            [Op.and]: [
+              { payment_type: { [Op.notIn]: ['TO_PAY', 'PAID', 'TBB'] } },
+              { [Op.or]: originMatch },
+            ],
+          },
+        ],
+      };
+
+      if (where[Op.or]) {
+        where[Op.and] = [
+          { [Op.or]: where[Op.or] },
+          branchCondition,
+        ];
+        delete where[Op.or];
+      } else {
+        where[Op.or] = branchCondition[Op.or];
+      }
     }
 
-    if (delivered_only === 'true') {
-      where.status = { [Op.in]: ['DELIVERED', 'POD_UPLOADED', 'COMPLETED'] };
+    // Delivery Completion Requirement: Only show consignments where delivery has completed (POD uploaded / DELIVERED / COMPLETED).
+    // Consignments still booked, in hub, or in transit cannot be billed yet.
+    if (include_all_statuses !== 'true') {
+      where.status = { [Op.in]: ['DELIVERED', 'POD_UPLOADED', 'COMPLETED', 'POD_VERIFIED'] };
     }
 
     if (payment_type && payment_type !== 'ALL') {
@@ -309,10 +663,20 @@ const getUnbilledConsignments = async (req, res) => {
     }
 
     if (customer_id) {
-      where[Op.or] = [
-        { consignor_id: customer_id },
-        { consignee_id: customer_id },
-      ];
+      const custCond = {
+        [Op.or]: [
+          { consignor_id: customer_id },
+          { consignee_id: customer_id },
+        ],
+      };
+      if (where[Op.and]) {
+        where[Op.and].push(custCond);
+      } else if (where[Op.or]) {
+        where[Op.and] = [{ [Op.or]: where[Op.or] }, custCond];
+        delete where[Op.or];
+      } else {
+        where[Op.or] = custCond[Op.or];
+      }
     }
 
     const includes = [];
@@ -328,6 +692,15 @@ const getUnbilledConsignments = async (req, res) => {
         { model: Branch, as: 'destBranch', attributes: ['id', 'branch_name', 'branch_code', 'city'] },
         { model: Branch, as: 'originBranch', attributes: ['id', 'branch_name', 'branch_code', 'city'] }
       );
+    }
+
+    if (Pod) {
+      includes.push({
+        model: Pod,
+        as: 'pod',
+        attributes: ['id', 'file_url', 'file_type', 'receiver_name', 'status', 'uploaded_at'],
+        required: false,
+      });
     }
 
     const consignments = await Consignment.findAll({
@@ -347,8 +720,21 @@ const getUnbilledConsignments = async (req, res) => {
         'material_description',
         'packages_count',
         'charged_weight',
+        'actual_weight',
+        'rate',
+        'rate_type',
         'freight_amount',
+        'loading_charges',
+        'unloading_charges',
+        'handling_charges',
+        'hamali_charges',
+        'door_delivery_charges',
+        'fuel_surcharge',
+        'insurance_charges',
         'other_charges',
+        'tax_percent',
+        'tax_amount',
+        'discount_amount',
         'total_amount',
         'payment_type',
         'status',
@@ -416,6 +802,10 @@ const getUnbilledConsignments = async (req, res) => {
         billing_category: billingCategory,
         billing_notice: billingNotice,
         delivery_status_label: deliveryLabel,
+        pod_url: data.pod?.file_url || null,
+        pod_status: data.pod?.status || null,
+        pod_receiver: data.pod?.receiver_name || null,
+        pod_uploaded_at: data.pod?.uploaded_at || null,
       };
     });
 
@@ -548,8 +938,17 @@ const createInvoice = async (req, res) => {
       dueDateStr = d.toISOString().slice(0, 10);
     }
 
-    // Determine delivery branch from consignments
-    const deliveryBranchId = branch_id || consignments[0]?.dest_branch_id || consignments[0]?.origin_branch_id || req.branchId || null;
+    // Determine invoicing branch:
+    // - For TBB (corporate credit billed to Shipper) & PAID: Invoicing branch is the Booking Branch (origin_branch_id)
+    // - For TO_PAY: Invoicing branch is the Delivery Branch (dest_branch_id)
+    const isToPayInvoice = consignments.every((c) => c.payment_type === 'TO_PAY');
+    const invoiceBranchId =
+      branch_id ||
+      (isToPayInvoice
+        ? (consignments[0]?.dest_branch_id || consignments[0]?.origin_branch_id)
+        : (consignments[0]?.origin_branch_id || consignments[0]?.dest_branch_id)) ||
+      req.branchId ||
+      null;
 
     let initialStatus = 'GENERATED';
     if (balanceAmount === 0) {
@@ -561,13 +960,13 @@ const createInvoice = async (req, res) => {
     const invoice = await Invoice.create({
       tenant_id: req.tenant.tenantId,
       organization_id: req.tenant.organizationId,
-      branch_id: deliveryBranchId,
+      branch_id: invoiceBranchId,
       invoice_number: invoiceNumber,
       customer_id,
       invoice_date: invDateStr,
       due_date: dueDateStr,
-      subtotal_amount: subtotal,
-      taxable_amount: subtotal,
+      subtotal_amount: totalTaxable,
+      taxable_amount: totalTaxable,
       cgst_rate: cgstRate,
       cgst_amount: cgstAmount,
       sgst_rate: sgstRate,

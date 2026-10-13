@@ -943,8 +943,8 @@ export default function CustomersPage() {
         key: 'name',
         header: 'Customer / Company Name',
         sortable: true,
-        width: 210,
-        minWidth: 175,
+        width: 225,
+        minWidth: 185,
         exportValue: (row) => row.name,
         render: (val, row) => (
           <div className="space-y-0.5">
@@ -960,7 +960,7 @@ export default function CustomersPage() {
               )}
             </div>
             {row.billing_address && (
-              <div className="text-[10px] text-slate-400 truncate max-w-[190px]" title={row.billing_address}>
+              <div className="text-[10px] text-slate-400 truncate max-w-[205px]" title={row.billing_address}>
                 {row.billing_address}
               </div>
             )}
@@ -971,8 +971,8 @@ export default function CustomersPage() {
         key: 'customer_type',
         header: 'Role',
         sortable: true,
-        width: 85,
-        minWidth: 75,
+        width: 80,
+        minWidth: 70,
         exportValue: (row) => row.customer_type,
         render: (val, row) => (
           <span className={`px-2 py-0.5 rounded text-[10px] font-bold inline-block text-center ${
@@ -988,57 +988,81 @@ export default function CustomersPage() {
       },
       {
         key: 'billing_terms',
-        header: 'Billing Terms & Credit',
+        header: 'Billing Terms',
         sortable: false,
-        width: 210,
-        minWidth: 195,
+        width: 115,
+        minWidth: 100,
+        exportValue: (row) => (parseFloat(row.credit_limit || 0) > 0 ? `TBB (${row.credit_days || 30}D)` : 'Normal'),
+        render: (val, row) => {
+          const limit = parseFloat(row.credit_limit || 0);
+          if (limit > 0) {
+            return (
+              <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10.5px] font-black border ${
+                isDark
+                  ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                  : 'bg-amber-50 text-amber-800 border-amber-200'
+              }`}>
+                <span>⭐</span>
+                <span>TBB ({row.credit_days || 30}D)</span>
+              </span>
+            );
+          }
+
+          return (
+            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold border ${
+              isDark ? 'bg-slate-800 text-slate-300 border-slate-700' : 'bg-slate-100 text-slate-700 border-slate-200'
+            }`}>
+              <span>📦</span>
+              <span>Normal</span>
+            </span>
+          );
+        },
+      },
+      {
+        key: 'credit_limit',
+        header: 'Credit Limit & Balance',
+        sortable: false,
+        width: 180,
+        minWidth: 165,
         exportValue: (row) =>
           parseFloat(row.credit_limit || 0) > 0
-            ? `TBB Contract (${row.credit_days || 30}D • Limit: ₹${Number(row.credit_limit).toLocaleString('en-IN')})`
-            : 'Normal',
+            ? `Limit: ₹${Number(row.credit_limit).toLocaleString('en-IN')}`
+            : '—',
         render: (val, row) => {
           const limit = parseFloat(row.credit_limit || 0);
           if (limit > 0) {
             const outstanding = parseFloat(row.outstanding_freight || row.current_balance || 0);
             const available = Math.max(0, limit - outstanding);
             const usedPercent = Math.min(100, Math.round((outstanding / limit) * 100));
-            const branchCap = row.branch?.max_customer_credit_limit ? parseFloat(row.branch.max_customer_credit_limit) : 1000000;
-            const isHoApproved = limit > branchCap;
 
             return (
-              <div className="space-y-1 py-0.5 w-full">
-                {/* Row 1: TBB Badge */}
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black border ${
-                    isDark
-                      ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
-                      : 'bg-amber-50 text-amber-800 border-amber-200'
-                  }`}>
-                    <span>⭐</span>
-                    <span>TBB ({row.credit_days || 30}D)</span>
-                  </span>
-                </div>
-
-                {/* Row 2: Credit Limit Amount (Compact without large space) */}
-                <div className="flex items-baseline gap-1 text-[11px] pt-0.5">
-                  <span className="text-slate-400 font-medium text-[10px]">Limit:</span>
-                  <span className={`font-mono font-black ${isDark ? 'text-amber-400' : 'text-slate-900'}`}>
+              <div className="space-y-0.5 py-1 w-full text-[11px] font-mono leading-tight">
+                {/* Line 1: Total Approved Credit Limit */}
+                <div className="flex items-center gap-1">
+                  <span className="text-slate-400 font-sans text-[10px] w-14 shrink-0 font-medium">Limit:</span>
+                  <span className={`font-black ${isDark ? 'text-amber-400' : 'text-slate-900'}`}>
                     ₹{limit.toLocaleString('en-IN')}
                   </span>
                 </div>
 
-                {/* Row 3: Available & Pending / Due Balances */}
-                <div className="flex items-center gap-2 text-[10px] text-slate-400 flex-wrap">
-                  <span>Avail: <strong className="text-emerald-500 dark:text-emerald-400 font-mono font-bold">₹{available.toLocaleString('en-IN')}</strong></span>
-                  {outstanding > 0 && (
-                    <span className="text-rose-500 dark:text-rose-400 font-mono font-semibold text-[9.5px]">
-                      (Pending: ₹{outstanding.toLocaleString('en-IN')})
-                    </span>
-                  )}
+                {/* Line 2: Availed / Used Credit */}
+                <div className="flex items-center gap-1">
+                  <span className="text-slate-400 font-sans text-[10px] w-14 shrink-0 font-medium">Avail:</span>
+                  <span className={`font-bold ${outstanding > 0 ? 'text-amber-500 dark:text-amber-400' : 'text-slate-400'}`}>
+                    ₹{outstanding.toLocaleString('en-IN')}
+                  </span>
                 </div>
 
-                {/* Row 4: Subtle clean credit usage bar */}
-                <div className="w-full bg-slate-200 dark:bg-slate-800 rounded-full h-1 overflow-hidden">
+                {/* Line 3: Pending / Remaining Balance Limit */}
+                <div className="flex items-center gap-1">
+                  <span className="text-slate-400 font-sans text-[10px] w-14 shrink-0 font-medium">Pending:</span>
+                  <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                    ₹{available.toLocaleString('en-IN')}
+                  </span>
+                </div>
+
+                {/* Compact credit usage progress bar */}
+                <div className="w-full bg-slate-200 dark:bg-slate-800 rounded-full h-1 overflow-hidden mt-1">
                   <div
                     className={`h-full rounded-full transition-all ${
                       usedPercent >= 90
@@ -1047,7 +1071,7 @@ export default function CustomersPage() {
                         ? 'bg-amber-500'
                         : 'bg-emerald-500'
                     }`}
-                    style={{ width: `${usedPercent}%` }}
+                    style={{ width: `${Math.max(2, usedPercent)}%` }}
                   />
                 </div>
               </div>
@@ -1055,14 +1079,7 @@ export default function CustomersPage() {
           }
 
           return (
-            <div className="py-0.5">
-              <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-bold border ${
-                isDark ? 'bg-slate-800 text-slate-300 border-slate-700' : 'bg-slate-100 text-slate-700 border-slate-200'
-              }`}>
-                <span>📦</span>
-                <span>Normal</span>
-              </span>
-            </div>
+            <span className="text-slate-400 font-mono text-xs pl-1">—</span>
           );
         },
       },
@@ -1166,8 +1183,8 @@ export default function CustomersPage() {
         key: 'phone',
         header: 'Contact Phone',
         sortable: true,
-        width: 125,
-        minWidth: 110,
+        width: 130,
+        minWidth: 115,
         exportValue: (row) => row.phone,
         render: (val, row) => (
           <div className="flex items-center gap-1.5 text-xs font-mono">
@@ -1227,8 +1244,8 @@ export default function CustomersPage() {
               header: 'Actions',
               sortable: false,
               align: 'right',
-              width: 70,
-              minWidth: 60,
+              width: 75,
+              minWidth: 65,
               render: (val, row) => (
                 <div className="flex items-center justify-end gap-1.5">
                   {(canEditCustomer || isAdmin) && (

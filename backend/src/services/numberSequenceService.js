@@ -1,5 +1,5 @@
 // src/services/numberSequenceService.js
-const { NumberSequence, Branch, Organization, Trip } = require('../models');
+const { NumberSequence, Branch, Organization, Trip, Invoice } = require('../models');
 
 /**
  * Calculates current Indian Financial Year (e.g., April 2026 -> "26-27")
@@ -47,6 +47,7 @@ const generateNextNumber = async ({
   const BranchModel = models?.Branch || Branch;
   const OrganizationModel = models?.Organization || Organization;
   const TripModel = models?.Trip || Trip;
+  const InvoiceModel = models?.Invoice || Invoice;
   const fy = getFinancialYear();
   const currentYear = String(new Date().getFullYear());
 
@@ -57,6 +58,9 @@ const generateNextNumber = async ({
 
   const isBilty = documentType === 'BILTY';
   const isTrip = documentType === 'TRIP';
+  const isInvoice = documentType === 'INVOICE';
+  // BILTY and INVOICE numbers follow unified organization-wide series under GST
+  const isOrgWide = isBilty || isInvoice;
 
   // Bilty / Docket configuration
   const defaultPrefix = derivePrefixFromBusinessName(org?.business_name);
@@ -89,7 +93,7 @@ const generateNextNumber = async ({
           organization_id: organizationId,
           document_type: documentType,
           financial_year: fy,
-          ...(isBilty ? {} : (branchId ? { branch_id: branchId } : {})),
+          ...(isOrgWide ? {} : (branchId ? { branch_id: branchId } : {})),
         },
         lock: transaction.LOCK.UPDATE,
         transaction,
@@ -137,14 +141,32 @@ const generateNextNumber = async ({
         template: customTripTemplate,
       }, { transaction });
     } else {
+      let startingNum = 0;
+      if (isInvoice && InvoiceModel && organizationId) {
+        try {
+          const existingInvoices = await InvoiceModel.findAll({
+            where: { organization_id: organizationId },
+            attributes: ['invoice_number'],
+            transaction,
+          });
+          existingInvoices.forEach((inv) => {
+            const match = (inv.invoice_number || '').match(/\/(\d+)$/) || (inv.invoice_number || '').match(/-(\d+)$/);
+            if (match) {
+              const num = parseInt(match[1], 10);
+              if (!isNaN(num) && num > startingNum) startingNum = num;
+            }
+          });
+        } catch (_) {}
+      }
+
       sequence = await NumberSequenceModel.create({
         tenant_id: tenantId,
         organization_id: organizationId,
-        branch_id: isBilty ? null : (branchId || null),
+        branch_id: isOrgWide ? null : (branchId || null),
         document_type: documentType,
         financial_year: fy,
         prefix: isBilty ? customPrefix : `${documentType.slice(0, 3)}-`,
-        current_number: 0,
+        current_number: startingNum,
         sequence_length: isBilty ? customSeqLength : 6,
         template: isBilty ? customTemplate : '{PREFIX}{FY}/{SEQ}',
       }, { transaction });
@@ -190,13 +212,34 @@ const generateNextNumber = async ({
     }
   }
 
+  // Ensure current_number is not behind existing database invoices to prevent collisions
+  if (sequence && isInvoice && InvoiceModel && organizationId) {
+    try {
+      let maxExistingInv = 0;
+      const existingInvoices = await InvoiceModel.findAll({
+        where: { organization_id: organizationId },
+        attributes: ['invoice_number'],
+        transaction,
+      });
+      existingInvoices.forEach((inv) => {
+        const match = (inv.invoice_number || '').match(/\/(\d+)$/) || (inv.invoice_number || '').match(/-(\d+)$/);
+        if (match) {
+          const num = parseInt(match[1], 10);
+          if (!isNaN(num) && num > maxExistingInv) maxExistingInv = num;
+        }
+      });
+      if (sequence.current_number < maxExistingInv) {
+        await sequence.update({ current_number: maxExistingInv }, { transaction });
+      }
+    } catch (_) {}
+  }
+
   // Increment counter
-  const nextNum = sequence.current_number + 1;
-  await sequence.update({ current_number: nextNum }, { transaction });
+  let nextNum = sequence.current_number + 1;
 
   // Format sequence with zero padding
   const seqLength = isTrip ? (sequence.sequence_length || 3) : (sequence.sequence_length || 6);
-  const paddedSeq = String(nextNum).padStart(seqLength, '0');
+  let paddedSeq = String(nextNum).padStart(seqLength, '0');
 
   // Replace placeholders in template
   let generated = sequence.template
@@ -205,6 +248,32 @@ const generateNextNumber = async ({
     .replace('{YEAR}', currentYear)
     .replace('{SEQ}', paddedSeq)
     .replace('{PREFIX}', sequence.prefix || '');
+
+  // Absolute uniqueness guarantee for INVOICE: loop until no conflicting invoice exists
+  if (isInvoice && InvoiceModel && organizationId) {
+    try {
+      let collision = await InvoiceModel.findOne({
+        where: { organization_id: organizationId, invoice_number: generated },
+        transaction,
+      });
+      while (collision) {
+        nextNum += 1;
+        paddedSeq = String(nextNum).padStart(seqLength, '0');
+        generated = sequence.template
+          .replace('{BRANCH}', branchCode)
+          .replace('{FY}', fy)
+          .replace('{YEAR}', currentYear)
+          .replace('{SEQ}', paddedSeq)
+          .replace('{PREFIX}', sequence.prefix || '');
+        collision = await InvoiceModel.findOne({
+          where: { organization_id: organizationId, invoice_number: generated },
+          transaction,
+        });
+      }
+    } catch (_) {}
+  }
+
+  await sequence.update({ current_number: nextNum }, { transaction });
 
   return {
     formattedNumber: generated,

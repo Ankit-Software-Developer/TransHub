@@ -271,8 +271,93 @@ const updateBranchSeries = async (req, res) => {
   }
 };
 
+const updateOrganizationProfile = async (req, res) => {
+  try {
+    const {
+      businessName,
+      legalName,
+      tagline,
+      gstin,
+      pan,
+      sacCode,
+      address,
+      city,
+      state,
+      pincode,
+      phone,
+      email,
+      logoUrl,
+      bankName,
+      accountNumber,
+      ifscCode,
+      bankBranch,
+      accountHolderName,
+      upiId,
+      themeColor,
+      settings: customSettings,
+    } = req.body;
+
+    const OrganizationModel = req.tenantDb?.Organization || Organization;
+    const org = await OrganizationModel.findByPk(req.tenant.organizationId);
+    if (!org) {
+      return errorResponse(res, 'Organization not found', null, 404);
+    }
+
+    const currentSettings = org.settings || {};
+    const updatedSettings = {
+      ...currentSettings,
+      ...(customSettings || {}),
+      ...(tagline !== undefined ? { tagline: (tagline || '').trim() } : {}),
+      ...(sacCode !== undefined ? { sacCode: (sacCode || '').trim() } : {}),
+      ...(bankName !== undefined ? { bankName: (bankName || '').trim() } : {}),
+      ...(accountNumber !== undefined ? { accountNumber: (accountNumber || '').trim() } : {}),
+      ...(ifscCode !== undefined ? { ifscCode: (ifscCode || '').trim().toUpperCase() } : {}),
+      ...(bankBranch !== undefined ? { bankBranch: (bankBranch || '').trim() } : {}),
+      ...(accountHolderName !== undefined ? { accountHolderName: (accountHolderName || '').trim() } : {}),
+      ...(upiId !== undefined ? { upiId: (upiId || '').trim() } : {}),
+      ...(gstin !== undefined ? { gstin: (gstin || '').trim().toUpperCase() } : {}),
+      ...(pan !== undefined ? { pan: (pan || '').trim().toUpperCase() } : {}),
+      ...(themeColor !== undefined ? { themeColor } : {}),
+    };
+
+    const updateFields = {
+      settings: updatedSettings,
+    };
+    if (businessName !== undefined) updateFields.business_name = (businessName || '').trim();
+    if (legalName !== undefined) updateFields.legal_name = (legalName || '').trim();
+    if (gstin !== undefined) updateFields.gstin = (gstin || '').trim().toUpperCase();
+    if (pan !== undefined) updateFields.pan = (pan || '').trim().toUpperCase();
+    if (email !== undefined) updateFields.email = (email || '').trim();
+    if (phone !== undefined) updateFields.phone = (phone || '').trim();
+    if (address !== undefined) updateFields.address = (address || '').trim();
+    if (city !== undefined) updateFields.city = (city || '').trim();
+    if (state !== undefined) updateFields.state = (state || '').trim();
+    if (pincode !== undefined) updateFields.pincode = (pincode || '').trim();
+    if (logoUrl !== undefined) updateFields.logo_url = logoUrl;
+
+    await org.update(updateFields);
+
+    // Also sync to Master DB Organization if distinct
+    if (Organization && Organization !== OrganizationModel) {
+      try {
+        const masterOrg = await Organization.findByPk(req.tenant.organizationId);
+        if (masterOrg) {
+          await masterOrg.update(updateFields);
+        }
+      } catch (mErr) {
+        console.warn('Could not sync to master organization:', mErr.message);
+      }
+    }
+
+    return successResponse(res, 'Organization profile and tax/bank details updated successfully', org);
+  } catch (error) {
+    return errorResponse(res, error.message, null, 500);
+  }
+};
+
 module.exports = {
   getOrganizationProfile,
+  updateOrganizationProfile,
   updateTerminology,
   listBranches,
   getDocketSeries,

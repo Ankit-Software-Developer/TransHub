@@ -8,6 +8,8 @@ const tenantResolver = require('../../middleware/tenantResolver');
 router.use(authenticate, tenantResolver);
 
 router.get('/profile', organizationController.getOrganizationProfile);
+router.patch('/profile', organizationController.updateOrganizationProfile);
+router.put('/profile', organizationController.updateOrganizationProfile);
 router.patch('/terminology', organizationController.updateTerminology);
 router.get('/branches', organizationController.listBranches);
 router.get('/docket-series', organizationController.getDocketSeries);

@@ -55,6 +55,11 @@ import {
   Clock,
   Power,
   Search,
+  Landmark,
+  CreditCard,
+  BadgePercent,
+  QrCode,
+  Hash,
 } from 'lucide-react';
 import Link from 'next/link';
 import RolePermissionMatrix from '../../../components/roles/RolePermissionMatrix';
@@ -201,6 +206,27 @@ export default function SettingsPage() {
   const [pendingLogo, setPendingLogo] = useState(null); // { base64Data, fileName, fileSize }
   const [isRemovingLogo, setIsRemovingLogo] = useState(false);
 
+  // Bank & GST Tax Details Form State (Configurable by Admin for Customer Invoices)
+  const [bankGstForm, setBankGstForm] = useState({
+    bankName: '',
+    accountNumber: '',
+    ifscCode: '',
+    bankBranch: '',
+    accountHolderName: '',
+    upiId: '',
+    gstin: '',
+    pan: '',
+    sacCode: '9965',
+    legalName: '',
+    address: '',
+    city: '',
+    state: '',
+    pincode: '',
+    phone: '',
+    email: '',
+  });
+  const [isSavingBankGst, setIsSavingBankGst] = useState(false);
+
   // Docket Number Series State
   const [docketSeries, setDocketSeries] = useState({
     prefix: 'BAL',
@@ -270,7 +296,7 @@ export default function SettingsPage() {
 
       const params = new URLSearchParams(window.location.search);
       const tabParam = params.get('tab');
-      if (tabParam && ['branding', 'theme', 'terminology', 'roles', 'gps'].includes(tabParam)) {
+      if (tabParam && ['branding', 'bank_gst', 'theme', 'terminology', 'roles', 'gps'].includes(tabParam)) {
         setActiveTab(tabParam);
       } else if (tabParam === 'profile' || tabParam === 'security') {
         window.location.href = '/profile';
@@ -298,6 +324,24 @@ export default function SettingsPage() {
             logoUrl: org.logo_url || prev.logoUrl,
             tagline: org.settings?.tagline || prev.tagline,
           }));
+          setBankGstForm({
+            bankName: org.settings?.bankName || '',
+            accountNumber: org.settings?.accountNumber || '',
+            ifscCode: org.settings?.ifscCode || '',
+            bankBranch: org.settings?.bankBranch || '',
+            accountHolderName: org.settings?.accountHolderName || '',
+            upiId: org.settings?.upiId || '',
+            gstin: org.gstin || org.settings?.gstin || '',
+            pan: org.pan || org.settings?.pan || '',
+            sacCode: org.settings?.sacCode || '9965',
+            legalName: org.legal_name || org.settings?.legalName || '',
+            address: org.address || org.settings?.address || '',
+            city: org.city || org.settings?.city || '',
+            state: org.state || org.settings?.state || '',
+            pincode: org.pincode || org.settings?.pincode || '',
+            phone: org.phone || org.settings?.phone || '',
+            email: org.email || org.settings?.email || '',
+          });
           if (org.document_terminology) {
             setSelectedTerm(org.document_terminology);
           }
@@ -615,6 +659,45 @@ export default function SettingsPage() {
       triggerError(err.response?.data?.message || 'Failed to save branding');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  // 4b. Handle Bank Remittance & GST Tax Details Save
+  const handleSaveBankGst = async (e) => {
+    if (e) e.preventDefault();
+    setIsSavingBankGst(true);
+    setErrorMsg('');
+    try {
+      const payload = {
+        ...bankGstForm,
+        gstin: (bankGstForm.gstin || '').trim().toUpperCase(),
+        pan: (bankGstForm.pan || '').trim().toUpperCase(),
+        ifscCode: (bankGstForm.ifscCode || '').trim().toUpperCase(),
+        sacCode: (bankGstForm.sacCode || '').trim() || '9965',
+      };
+
+      const res = await api.patch('/organizations/profile', payload);
+      if (res.data?.success) {
+        setBrandingForm((prev) => ({
+          ...prev,
+          legalName: payload.legalName || prev.legalName,
+          gstin: payload.gstin || prev.gstin,
+          pan: payload.pan || prev.pan,
+          address: payload.address || prev.address,
+          city: payload.city || prev.city,
+          state: payload.state || prev.state,
+          pincode: payload.pincode || prev.pincode,
+          phone: payload.phone || prev.phone,
+          email: payload.email || prev.email,
+        }));
+        triggerSuccess('Bank remittance details & GST numbers saved successfully! All customer tax invoices will now reflect these details.');
+      } else {
+        triggerError(res.data?.message || 'Failed to save bank & GST details');
+      }
+    } catch (err) {
+      triggerError(err.response?.data?.message || 'Failed to save bank & GST details');
+    } finally {
+      setIsSavingBankGst(false);
     }
   };
 
@@ -1005,6 +1088,19 @@ export default function SettingsPage() {
 
                 <button
                   type="button"
+                  onClick={() => setActiveTab('bank_gst')}
+                  className={`flex items-center space-x-2.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                    activeTab === 'bank_gst'
+                      ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
+                      : isDark ? 'text-slate-400 hover:text-white hover:bg-slate-900' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  }`}
+                >
+                  <Landmark className="w-4 h-4 shrink-0 text-emerald-400" />
+                  <span>Bank & GST Details</span>
+                </button>
+
+                <button
+                  type="button"
                   onClick={() => setActiveTab('theme')}
                   className={`flex items-center space-x-2.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
                     activeTab === 'theme'
@@ -1354,6 +1450,605 @@ export default function SettingsPage() {
                       )}
                     </div>
                   </form>
+                </div>
+              )}
+
+              {/* TAB: BANK REMITTANCE & GST TAX DETAILS (ADMIN CONFIGURABLE) */}
+              {activeTab === 'bank_gst' && (
+                <div className="space-y-6">
+                  {/* Top Intro Banner */}
+                  <div className={`p-6 sm:p-7 rounded-3xl border shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4 ${
+                    isDark ? 'bg-[#0B1020]/90 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
+                  }`}>
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2.5">
+                        <span className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-500 dark:text-emerald-400">
+                          <Landmark className="w-5 h-5" />
+                        </span>
+                        <div>
+                          <h2 className="text-base sm:text-lg font-bold">Bank Remittance & GST Tax Credentials</h2>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            Configure your company bank accounts for NEFT / RTGS payments and official GSTIN / SAC numbers.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <Link
+                        href="/billing/invoices"
+                        target="_blank"
+                        className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold border transition-all ${
+                          isDark
+                            ? 'border-slate-700 bg-slate-900 text-cyan-400 hover:bg-slate-800'
+                            : 'border-slate-200 bg-slate-50 text-blue-600 hover:bg-slate-100'
+                        }`}
+                      >
+                        <Receipt className="w-3.5 h-3.5" />
+                        <span>Preview on Billing Page</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </Link>
+                    </div>
+                  </div>
+
+                  {/* 2-Column Grid: Left is Form, Right is Real-time Invoice Print Preview */}
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                    
+                    {/* Left Column: Form Cards (7 cols) */}
+                    <div className="lg:col-span-7 space-y-6">
+                      <form onSubmit={handleSaveBankGst} className="space-y-6">
+
+                        {/* Card 1: Bank Remittance Details */}
+                        <div className={`p-6 rounded-3xl border shadow-lg ${
+                          isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200'
+                        }`}>
+                          <div className="flex items-center justify-between pb-4 border-b border-slate-200 dark:border-slate-800 mb-5">
+                            <div className="flex items-center gap-2.5">
+                              <span className="p-2 rounded-lg bg-blue-500/10 text-blue-500">
+                                <CreditCard className="w-4 h-4" />
+                              </span>
+                              <div>
+                                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                                  Bank Details for Remittance (NEFT / RTGS)
+                                </h3>
+                                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                                  Printed directly in the customer payment instructions box
+                                </p>
+                              </div>
+                            </div>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-blue-500/10 text-blue-500 border border-blue-500/20">
+                              Payment Box
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            {/* Bank Name */}
+                            <div className="space-y-1.5 sm:col-span-2">
+                              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                                <span>Bank Name *</span>
+                                <span className="text-[10px] text-slate-400 font-normal">e.g. HDFC Bank Ltd, SBI, ICICI</span>
+                              </label>
+                              <div className="relative">
+                                <input
+                                  type="text"
+                                  required
+                                  placeholder="e.g. HDFC Bank Ltd"
+                                  value={bankGstForm.bankName}
+                                  onChange={(e) => setBankGstForm({ ...bankGstForm, bankName: e.target.value })}
+                                  className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-medium focus:outline-none transition-colors ${
+                                    isDark
+                                      ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                                      : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                                  }`}
+                                />
+                              </div>
+                            </div>
+
+                            {/* Account Number */}
+                            <div className="space-y-1.5 sm:col-span-2">
+                              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                                <span>Bank Account Number *</span>
+                                <span className="text-[10px] text-slate-400 font-normal">Current / Business A/C</span>
+                              </label>
+                              <div className="relative">
+                                <input
+                                  type="text"
+                                  required
+                                  placeholder="e.g. 50200048910245"
+                                  value={bankGstForm.accountNumber}
+                                  onChange={(e) => setBankGstForm({ ...bankGstForm, accountNumber: e.target.value })}
+                                  className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono font-bold tracking-wider focus:outline-none transition-colors ${
+                                    isDark
+                                      ? 'border-slate-800 bg-slate-900/80 text-cyan-300 focus:border-cyan-400'
+                                      : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                                  }`}
+                                />
+                              </div>
+                            </div>
+
+                            {/* IFSC Code */}
+                            <div className="space-y-1.5">
+                              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                                <span>IFSC Code *</span>
+                                <span className="text-[10px] text-slate-400 font-normal">11 characters</span>
+                              </label>
+                              <input
+                                type="text"
+                                required
+                                placeholder="e.g. HDFC0001824"
+                                value={bankGstForm.ifscCode}
+                                onChange={(e) => setBankGstForm({ ...bankGstForm, ifscCode: e.target.value.toUpperCase() })}
+                                className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono font-bold uppercase focus:outline-none transition-colors ${
+                                  isDark
+                                    ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                                    : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                                }`}
+                              />
+                            </div>
+
+                            {/* Branch Name */}
+                            <div className="space-y-1.5">
+                              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                                <span>Branch Name *</span>
+                                <span className="text-[10px] text-slate-400 font-normal">City / Area branch</span>
+                              </label>
+                              <input
+                                type="text"
+                                required
+                                placeholder="e.g. Main Branch, Pune"
+                                value={bankGstForm.bankBranch}
+                                onChange={(e) => setBankGstForm({ ...bankGstForm, bankBranch: e.target.value })}
+                                className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-medium focus:outline-none transition-colors ${
+                                  isDark
+                                    ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                                    : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                                }`}
+                              />
+                            </div>
+
+                            {/* Account Beneficiary Name */}
+                            <div className="space-y-1.5">
+                              <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                                Beneficiary / Legal Entity Name
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="e.g. Balaji Logistics Pvt Ltd"
+                                value={bankGstForm.accountHolderName}
+                                onChange={(e) => setBankGstForm({ ...bankGstForm, accountHolderName: e.target.value })}
+                                className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-medium focus:outline-none transition-colors ${
+                                  isDark
+                                    ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                                    : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                                }`}
+                              />
+                            </div>
+
+                            {/* UPI ID / QR VPA */}
+                            <div className="space-y-1.5">
+                              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                                <span>UPI ID / VPA (Optional)</span>
+                                <span className="text-[10px] text-slate-400 font-normal">For Instant QR</span>
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="e.g. balajilogistics@hdfcbank"
+                                value={bankGstForm.upiId}
+                                onChange={(e) => setBankGstForm({ ...bankGstForm, upiId: e.target.value })}
+                                className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-medium focus:outline-none transition-colors ${
+                                  isDark
+                                    ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                                    : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                                }`}
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Card 2: GST & Regulatory Tax Details */}
+                        <div className={`p-6 rounded-3xl border shadow-lg ${
+                          isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200'
+                        }`}>
+                          <div className="flex items-center justify-between pb-4 border-b border-slate-200 dark:border-slate-800 mb-5">
+                            <div className="flex items-center gap-2.5">
+                              <span className="p-2 rounded-lg bg-emerald-500/10 text-emerald-500">
+                                <Receipt className="w-4 h-4" />
+                              </span>
+                              <div>
+                                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                                  GST & GTA Regulatory Tax Registration
+                                </h3>
+                                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                                  Official Goods Transport Agency (GTA) tax compliance credentials
+                                </p>
+                              </div>
+                            </div>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
+                              GSTIN Active
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            {/* GSTIN */}
+                            <div className="space-y-1.5 sm:col-span-2">
+                              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                                <span>GSTIN (GST Identification Number) *</span>
+                                <span className="text-[10px] text-slate-400 font-normal">15 alphanumeric characters</span>
+                              </label>
+                              <input
+                                type="text"
+                                required
+                                placeholder="e.g. 27AABCT9845P1Z2"
+                                value={bankGstForm.gstin}
+                                onChange={(e) => setBankGstForm({ ...bankGstForm, gstin: e.target.value.toUpperCase() })}
+                                className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono font-bold uppercase tracking-wider focus:outline-none transition-colors ${
+                                  isDark
+                                    ? 'border-slate-800 bg-slate-900/80 text-emerald-400 focus:border-cyan-400'
+                                    : 'border-slate-200 bg-slate-50 text-emerald-700 focus:border-blue-500 focus:bg-white'
+                                }`}
+                              />
+                            </div>
+
+                            {/* PAN Number */}
+                            <div className="space-y-1.5">
+                              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                                <span>PAN (Permanent Account No.)</span>
+                                <span className="text-[10px] text-slate-400 font-normal">10 characters</span>
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="e.g. AABCT9845P"
+                                value={bankGstForm.pan}
+                                onChange={(e) => setBankGstForm({ ...bankGstForm, pan: e.target.value.toUpperCase() })}
+                                className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono font-bold uppercase focus:outline-none transition-colors ${
+                                  isDark
+                                    ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                                    : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                                }`}
+                              />
+                            </div>
+
+                            {/* SAC Code */}
+                            <div className="space-y-1.5">
+                              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                                <span>SAC Code</span>
+                                <span className="text-[10px] text-slate-400 font-normal">Road Freight Default: 9965</span>
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="9965"
+                                value={bankGstForm.sacCode}
+                                onChange={(e) => setBankGstForm({ ...bankGstForm, sacCode: e.target.value })}
+                                className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono font-bold focus:outline-none transition-colors ${
+                                  isDark
+                                    ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                                    : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                                }`}
+                              />
+                            </div>
+
+                            {/* Legal Registered Name */}
+                            <div className="space-y-1.5 sm:col-span-2">
+                              <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                                Legal Registered Entity Name
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="e.g. Balaji Logistics & Transport Co."
+                                value={bankGstForm.legalName}
+                                onChange={(e) => setBankGstForm({ ...bankGstForm, legalName: e.target.value })}
+                                className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-medium focus:outline-none transition-colors ${
+                                  isDark
+                                    ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                                    : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                                }`}
+                              />
+                            </div>
+
+                            {/* Tax Office Address */}
+                            <div className="space-y-1.5 sm:col-span-2">
+                              <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                                Registered Tax Office Address
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="e.g. Plot 45, Transport Nagar, Nigdi"
+                                value={bankGstForm.address}
+                                onChange={(e) => setBankGstForm({ ...bankGstForm, address: e.target.value })}
+                                className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-medium focus:outline-none transition-colors ${
+                                  isDark
+                                    ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                                    : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                                }`}
+                              />
+                            </div>
+
+                            {/* City */}
+                            <div className="space-y-1.5">
+                              <label className="text-xs font-bold text-slate-700 dark:text-slate-300">City</label>
+                              <input
+                                type="text"
+                                placeholder="e.g. Pune"
+                                value={bankGstForm.city}
+                                onChange={(e) => setBankGstForm({ ...bankGstForm, city: e.target.value })}
+                                className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-medium focus:outline-none transition-colors ${
+                                  isDark
+                                    ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                                    : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                                }`}
+                              />
+                            </div>
+
+                            {/* State */}
+                            <div className="space-y-1.5">
+                              <label className="text-xs font-bold text-slate-700 dark:text-slate-300">State</label>
+                              <input
+                                type="text"
+                                placeholder="e.g. Maharashtra"
+                                value={bankGstForm.state}
+                                onChange={(e) => setBankGstForm({ ...bankGstForm, state: e.target.value })}
+                                className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-medium focus:outline-none transition-colors ${
+                                  isDark
+                                    ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                                    : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                                }`}
+                              />
+                            </div>
+
+                            {/* Pincode */}
+                            <div className="space-y-1.5">
+                              <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Pincode</label>
+                              <input
+                                type="text"
+                                placeholder="e.g. 411044"
+                                value={bankGstForm.pincode}
+                                onChange={(e) => setBankGstForm({ ...bankGstForm, pincode: e.target.value })}
+                                className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono font-medium focus:outline-none transition-colors ${
+                                  isDark
+                                    ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                                    : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                                }`}
+                              />
+                            </div>
+
+                            {/* Official Phone */}
+                            <div className="space-y-1.5">
+                              <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Official Billing Phone</label>
+                              <input
+                                type="text"
+                                placeholder="e.g. +91 8168333871"
+                                value={bankGstForm.phone}
+                                onChange={(e) => setBankGstForm({ ...bankGstForm, phone: e.target.value })}
+                                className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-medium focus:outline-none transition-colors ${
+                                  isDark
+                                    ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                                    : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                                }`}
+                              />
+                            </div>
+
+                            {/* Official Email */}
+                            <div className="space-y-1.5 sm:col-span-2">
+                              <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Official Billing Email</label>
+                              <input
+                                type="email"
+                                placeholder="e.g. accounts@balajilogistic.com"
+                                value={bankGstForm.email}
+                                onChange={(e) => setBankGstForm({ ...bankGstForm, email: e.target.value })}
+                                className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-medium focus:outline-none transition-colors ${
+                                  isDark
+                                    ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                                    : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                                }`}
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Submit Action Bar */}
+                        <div className="p-4 rounded-2xl bg-slate-100 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                          <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                            Saved values update immediately on all customer Tax Invoices & PDF downloads.
+                          </div>
+
+                          {canManageSettings ? (
+                            <button
+                              type="submit"
+                              disabled={isSavingBankGst}
+                              className="flex items-center space-x-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 transition-all disabled:opacity-50 cursor-pointer"
+                            >
+                              {isSavingBankGst ? (
+                                <>
+                                  <RefreshCw className="w-4 h-4 animate-spin" />
+                                  <span>Saving Details...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Save className="w-4 h-4" />
+                                  <span>Save Bank & GST Details</span>
+                                </>
+                              )}
+                            </button>
+                          ) : (
+                            <span className="text-xs font-semibold text-slate-400 italic">View only mode</span>
+                          )}
+                        </div>
+
+                      </form>
+                    </div>
+
+                    {/* Right Column: Live Customer Tax Invoice Preview (5 cols) */}
+                    <div className="lg:col-span-5 space-y-4 lg:sticky lg:top-6">
+                      <div className="flex items-center justify-between px-1">
+                        <div className="flex items-center space-x-2">
+                          <Eye className="w-4 h-4 text-blue-500" />
+                          <span className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                            Live Invoice Print Preview
+                          </span>
+                        </div>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-500">
+                          Real-time
+                        </span>
+                      </div>
+
+                      {/* Mock Invoice Sheet matching the user's screenshot */}
+                      <div className="bg-white rounded-2xl border border-slate-300 shadow-2xl p-5 text-slate-900 font-sans text-[11px] leading-tight space-y-4 select-none">
+                        
+                        {/* Invoice Header */}
+                        <div className="flex items-start justify-between border-b pb-3 border-slate-200">
+                          <div>
+                            <div className="text-lg font-black tracking-tight text-slate-950 uppercase">
+                              {brandingForm.businessName || user?.businessName || user?.organizationName || 'Transport Agency'}
+                            </div>
+                            <div className="text-[10px] font-medium text-slate-600">
+                              {brandingForm.tagline || user?.tagline || 'Logistics & Goods Transport Agency (GTA)'}
+                            </div>
+                            <div className="text-[9px] text-slate-500 mt-1">
+                              {bankGstForm.address || brandingForm.address
+                                ? `${(bankGstForm.address || brandingForm.address)}${(bankGstForm.city || brandingForm.city) ? `, ${bankGstForm.city || brandingForm.city}` : ''}${(bankGstForm.state || brandingForm.state) ? `, ${bankGstForm.state || brandingForm.state}` : ''}${(bankGstForm.pincode || brandingForm.pincode) ? ` - ${bankGstForm.pincode || brandingForm.pincode}` : ''}`
+                                : 'Registered Operations Hub & Transport Office'}
+                            </div>
+                            <div className="text-[9px] text-slate-500">
+                              Phone: {bankGstForm.phone || brandingForm.phone || user?.phone || 'Contact Phone Unset'} • Email: {bankGstForm.email || brandingForm.email || user?.email || 'accounts@transporter.in'}
+                            </div>
+                          </div>
+
+                          <div className="text-right shrink-0">
+                            <span className="inline-block px-2.5 py-0.5 rounded bg-blue-50 text-blue-700 font-black text-[9px] border border-blue-200 tracking-wider">
+                              GST TAX INVOICE
+                            </span>
+                            <div className="text-[10px] font-bold text-slate-900 mt-1">
+                              GSTIN: <span className="font-mono text-emerald-700">{bankGstForm.gstin || brandingForm.gstin || user?.gstin || user?.organization?.gst_number || 'GST Unregistered / URP'}</span>
+                            </div>
+                            <div className="text-[9px] font-semibold text-slate-600">
+                              SAC Code: <span className="font-mono font-bold text-blue-700">{bankGstForm.sacCode || '9965'}</span> (Road Freight)
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Invoice Info Grid */}
+                        <div className="grid grid-cols-2 gap-2 text-[10px]">
+                          <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+                            <div className="text-[9px] font-bold uppercase tracking-wider text-slate-500">
+                              Billed To (Consignor / Party):
+                            </div>
+                            <div className="font-bold text-slate-900 mt-0.5">Sample Client Account</div>
+                            <div className="text-slate-600">GSTIN / UIN: <span className="font-semibold">URP</span></div>
+                            <div className="text-slate-500 text-[9px] mt-0.5">Branch: Head Office Hub</div>
+                          </div>
+
+                          <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+                            <div className="flex justify-between">
+                              <span className="text-slate-500">Invoice Number:</span>
+                              <span className="font-mono font-bold text-slate-900">INV-{new Date().getFullYear().toString().slice(-2)}-{(new Date().getFullYear() + 1).toString().slice(-2)}/000001</span>
+                            </div>
+                            <div className="flex justify-between mt-0.5">
+                              <span className="text-slate-500">Invoice Date:</span>
+                              <span className="font-medium text-slate-900">{new Date().toISOString().slice(0, 10)}</span>
+                            </div>
+                            <div className="flex justify-between mt-0.5">
+                              <span className="text-slate-500">Reverse Charge:</span>
+                              <span className="font-semibold text-slate-900">No (Forward Charge 5%)</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Sample Docket Row */}
+                        <div className="border border-slate-200 rounded-lg overflow-hidden text-[9px]">
+                          <div className="grid grid-cols-12 bg-slate-100 font-bold text-slate-700 p-1.5 border-b border-slate-200">
+                            <div className="col-span-1">#</div>
+                            <div className="col-span-3">{term || 'Docket'} Number</div>
+                            <div className="col-span-4">Origin → Delivery</div>
+                            <div className="col-span-2 text-right">Weight</div>
+                            <div className="col-span-2 text-right">Total (₹)</div>
+                          </div>
+                          <div className="grid grid-cols-12 p-1.5 text-slate-800 font-medium">
+                            <div className="col-span-1">1</div>
+                            <div className="col-span-3 font-mono font-bold text-blue-600">
+                              {docketSeries.nextNumber || `${docketSeries.prefix || 'DOC'}000001`}
+                            </div>
+                            <div className="col-span-4 text-slate-600">Origin Hub → Destination Hub</div>
+                            <div className="col-span-2 text-right">2500 Kg</div>
+                            <div className="col-span-2 text-right font-bold">₹ 47,880</div>
+                          </div>
+                        </div>
+
+                        {/* HIGHLIGHTED: The exact Bank Details Box from the Screenshot! */}
+                        <div className="grid grid-cols-12 gap-3 pt-1">
+                          
+                          {/* The Bank Details for Remittance Box */}
+                          <div className="col-span-7 p-3 rounded-xl bg-blue-50/50 border border-blue-200 shadow-xs relative">
+                            <div className="text-[10px] font-bold text-slate-900 mb-1.5 flex items-center justify-between">
+                              <span>Bank Details for Remittance (NEFT / RTGS):</span>
+                              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                            </div>
+                            <div className="space-y-0.5 text-[9.5px]">
+                              <div>
+                                <span className="text-slate-500 font-medium">Bank: </span>
+                                <span className="font-bold text-slate-900">{bankGstForm.bankName || 'Bank Name Unset'}</span>
+                              </div>
+                              <div>
+                                <span className="text-slate-500 font-medium">A/C No: </span>
+                                <span className="font-mono font-bold text-slate-900">{bankGstForm.accountNumber || 'A/C Number Unset'}</span>
+                              </div>
+                              <div>
+                                <span className="text-slate-500 font-medium">IFSC Code: </span>
+                                <span className="font-mono font-bold text-slate-900">{bankGstForm.ifscCode || 'IFSC Unset'}</span>
+                              </div>
+                              <div>
+                                <span className="text-slate-500 font-medium">Branch: </span>
+                                <span className="font-medium text-slate-900">{bankGstForm.bankBranch || 'Branch Unset'}</span>
+                              </div>
+                              {bankGstForm.accountHolderName && (
+                                <div>
+                                  <span className="text-slate-500 font-medium">Beneficiary: </span>
+                                  <span className="font-semibold text-slate-900">{bankGstForm.accountHolderName}</span>
+                                </div>
+                              )}
+                              {bankGstForm.upiId && (
+                                <div>
+                                  <span className="text-slate-500 font-medium">UPI VPA: </span>
+                                  <span className="font-mono text-blue-700">{bankGstForm.upiId}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Invoice Totals Preview */}
+                          <div className="col-span-5 text-right space-y-1 text-[9.5px]">
+                            <div className="flex justify-between">
+                              <span className="text-slate-500">Taxable Freight:</span>
+                              <span className="font-mono font-semibold text-slate-900">₹ 45,600</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-500">CGST @ 2.5%:</span>
+                              <span className="font-mono text-slate-700">₹ 1,140</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-500">SGST @ 2.5%:</span>
+                              <span className="font-mono text-slate-700">₹ 1,140</span>
+                            </div>
+                            <div className="flex justify-between pt-1 border-t border-slate-300 font-bold text-slate-950 text-[11px]">
+                              <span>Total Amount:</span>
+                              <span className="text-blue-700">₹ 47,880</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Signatory Footer */}
+                        <div className="pt-2 border-t border-slate-200 flex items-center justify-between text-[8px] text-slate-500">
+                          <div>Declaration: This invoice shows the actual price of services described.</div>
+                          <div className="text-right font-medium">
+                            <div className="text-[7.5px] italic text-slate-400">[Digitally Signed & Verified]</div>
+                            <div className="font-bold text-slate-900">For {brandingForm.businessName || user?.businessName || user?.organizationName || 'Transporter'}</div>
+                            <div>Authorized Signatory</div>
+                          </div>
+                        </div>
+
+                      </div>
+                    </div>
+
+                  </div>
                 </div>
               )}
 

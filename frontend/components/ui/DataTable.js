@@ -734,7 +734,11 @@ export default function DataTable({
                         style={width ? { width: `${width}px`, minWidth: `${col.minWidth || width}px` } : {}}
                         className={`py-3 px-3.5 text-xs ${col.truncate ? 'truncate' : ''} ${alignClass}`}
                       >
-                        {col.render ? col.render(row[col.key], row, idx) : row[col.key]}
+                        {col.render
+                          ? col.render(row[col.key], row, idx)
+                          : (typeof row[col.key] === 'object' && row[col.key] !== null
+                              ? (row[col.key].name || row[col.key].label || row[col.key].title || '')
+                              : row[col.key])}
                       </td>
                     );
                   })}

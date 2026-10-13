@@ -837,7 +837,24 @@ const updateProfile = async ({ userId, tenantId, organizationId, payload, models
     throw new Error('User not found');
   }
 
-  const { firstName, lastName, phone, businessName, tagline, themeColor, logoUrl } = payload;
+  const {
+    firstName,
+    lastName,
+    phone,
+    businessName,
+    tagline,
+    themeColor,
+    logoUrl,
+    gstin,
+    pan,
+    sacCode,
+    bankName,
+    accountNumber,
+    ifscCode,
+    bankBranch,
+    accountHolderName,
+    upiId
+  } = payload;
 
   if (firstName) masterUser.first_name = firstName.trim();
   if (lastName !== undefined) masterUser.last_name = (lastName || '').trim();
@@ -871,9 +888,20 @@ const updateProfile = async ({ userId, tenantId, organizationId, payload, models
       if (masterOrg) {
         if (businessName) masterOrg.business_name = businessName.trim();
         if (logoUrl !== undefined) masterOrg.logo_url = logoUrl;
+        if (gstin !== undefined) masterOrg.gstin = (gstin || '').trim().toUpperCase();
+        if (pan !== undefined) masterOrg.pan = (pan || '').trim().toUpperCase();
+
         const currentSettings = masterOrg.settings || {};
         if (tagline !== undefined) currentSettings.tagline = tagline;
         if (themeColor) currentSettings.themeColor = themeColor;
+        if (sacCode !== undefined) currentSettings.sacCode = sacCode;
+        if (bankName !== undefined) currentSettings.bankName = bankName;
+        if (accountNumber !== undefined) currentSettings.accountNumber = accountNumber;
+        if (ifscCode !== undefined) currentSettings.ifscCode = (ifscCode || '').trim().toUpperCase();
+        if (bankBranch !== undefined) currentSettings.bankBranch = bankBranch;
+        if (accountHolderName !== undefined) currentSettings.accountHolderName = accountHolderName;
+        if (upiId !== undefined) currentSettings.upiId = upiId;
+
         masterOrg.settings = currentSettings;
         await masterOrg.save();
         updatedOrg = masterOrg;
@@ -892,9 +920,20 @@ const updateProfile = async ({ userId, tenantId, organizationId, payload, models
         if (tenantOrg) {
           if (businessName) tenantOrg.business_name = businessName.trim();
           if (logoUrl !== undefined) tenantOrg.logo_url = logoUrl;
+          if (gstin !== undefined) tenantOrg.gstin = (gstin || '').trim().toUpperCase();
+          if (pan !== undefined) tenantOrg.pan = (pan || '').trim().toUpperCase();
+
           const currentSettings = tenantOrg.settings || {};
           if (tagline !== undefined) currentSettings.tagline = tagline;
           if (themeColor) currentSettings.themeColor = themeColor;
+          if (sacCode !== undefined) currentSettings.sacCode = sacCode;
+          if (bankName !== undefined) currentSettings.bankName = bankName;
+          if (accountNumber !== undefined) currentSettings.accountNumber = accountNumber;
+          if (ifscCode !== undefined) currentSettings.ifscCode = (ifscCode || '').trim().toUpperCase();
+          if (bankBranch !== undefined) currentSettings.bankBranch = bankBranch;
+          if (accountHolderName !== undefined) currentSettings.accountHolderName = accountHolderName;
+          if (upiId !== undefined) currentSettings.upiId = upiId;
+
           tenantOrg.settings = currentSettings;
           await tenantOrg.save();
           if (!updatedOrg) updatedOrg = tenantOrg;

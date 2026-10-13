@@ -47,6 +47,8 @@ export function usePermissions() {
       roles.includes('SUPER_ADMIN') ||
       roles.includes('TRANSPORT_OWNER') ||
       roles.includes('ADMIN') ||
+      roles.includes('OWNER') ||
+      user?.role?.toUpperCase() === 'OWNER' ||
       (Array.isArray(user.permissions) && user.permissions.includes('*')) ||
       Boolean(user?.is_owner || user?.isAdmin)
     );
