@@ -90,11 +90,56 @@ const listInvoices = async (req, res) => {
       console.warn('Auto-repair duplicate invoices check:', repairErr.message);
     }
 
-    if (search) {
-      where[Op.or] = [
-        { invoice_number: { [Op.iLike]: `%${search}%` } },
-        { remarks: { [Op.iLike]: `%${search}%` } },
+    if (search && search.trim()) {
+      const q = `%${search.trim()}%`;
+      const searchOr = [
+        { invoice_number: { [Op.like]: q } },
+        { remarks: { [Op.like]: q } },
       ];
+
+      if (Customer) {
+        try {
+          const matchingCustomers = await Customer.findAll({
+            where: {
+              tenant_id: req.tenant.tenantId,
+              [Op.or]: [
+                { name: { [Op.like]: q } },
+                { gstin: { [Op.like]: q } },
+              ],
+            },
+            attributes: ['id'],
+            raw: true,
+          });
+          const matchedCustIds = matchingCustomers.map((c) => c.id).filter(Boolean);
+          if (matchedCustIds.length > 0) {
+            searchOr.push({ customer_id: { [Op.in]: matchedCustIds } });
+          }
+        } catch (cErr) {
+          console.warn('Customer search in invoices error:', cErr.message);
+        }
+      }
+
+      if (InvoiceItem) {
+        try {
+          const matchingItems = await InvoiceItem.findAll({
+            where: {
+              [Op.or]: [
+                { lr_number: { [Op.like]: q } },
+              ],
+            },
+            attributes: ['invoice_id'],
+            raw: true,
+          });
+          const matchedInvoiceIds = matchingItems.map((it) => it.invoice_id).filter(Boolean);
+          if (matchedInvoiceIds.length > 0) {
+            searchOr.push({ id: { [Op.in]: matchedInvoiceIds } });
+          }
+        } catch (itErr) {
+          console.warn('InvoiceItem search in invoices error:', itErr.message);
+        }
+      }
+
+      where[Op.or] = searchOr;
     }
 
     const offset = (page - 1) * limit;
@@ -105,12 +150,6 @@ const listInvoices = async (req, res) => {
         model: Customer,
         as: 'customer',
         attributes: ['id', 'name', 'gstin', 'phone', 'city', 'state', 'credit_days', 'current_balance'],
-        where: search ? {
-          [Op.or]: [
-            { name: { [Op.iLike]: `%${search}%` } },
-            { gstin: { [Op.iLike]: `%${search}%` } },
-          ],
-        } : undefined,
         required: false,
       });
     }
@@ -542,6 +581,7 @@ const getUnbilledConsignments = async (req, res) => {
       branch_id,
       delivered_only,
       include_all_statuses,
+      search,
     } = req.query;
 
     const where = {
@@ -676,6 +716,55 @@ const getUnbilledConsignments = async (req, res) => {
         delete where[Op.or];
       } else {
         where[Op.or] = custCond[Op.or];
+      }
+    }
+
+    if (search && search.trim()) {
+      const q = `%${search.trim()}%`;
+      const searchCond = {
+        [Op.or]: [
+          { lr_number: { [Op.like]: q } },
+          { docket_number: { [Op.like]: q } },
+          { origin_city: { [Op.like]: q } },
+          { destination_city: { [Op.like]: q } },
+          { material_description: { [Op.like]: q } },
+          { eway_bill_no: { [Op.like]: q } },
+          { invoice_no: { [Op.like]: q } },
+        ],
+      };
+
+      if (Customer) {
+        try {
+          const matchingCustomers = await Customer.findAll({
+            where: {
+              tenant_id: req.tenant.tenantId,
+              [Op.or]: [
+                { name: { [Op.like]: q } },
+                { gstin: { [Op.like]: q } },
+              ],
+            },
+            attributes: ['id'],
+            raw: true,
+          });
+          const matchedCustIds = matchingCustomers.map((c) => c.id).filter(Boolean);
+          if (matchedCustIds.length > 0) {
+            searchCond[Op.or].push(
+              { consignor_id: { [Op.in]: matchedCustIds } },
+              { consignee_id: { [Op.in]: matchedCustIds } }
+            );
+          }
+        } catch (cErr) {
+          console.warn('Customer lookup in unbilled consignments error:', cErr.message);
+        }
+      }
+
+      if (where[Op.and]) {
+        where[Op.and].push(searchCond);
+      } else if (where[Op.or]) {
+        where[Op.and] = [{ [Op.or]: where[Op.or] }, searchCond];
+        delete where[Op.or];
+      } else {
+        where[Op.and] = [searchCond];
       }
     }
 

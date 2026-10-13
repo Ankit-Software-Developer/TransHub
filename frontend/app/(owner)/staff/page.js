@@ -7,6 +7,7 @@ import Navbar from '../../../components/layout/Navbar';
 import { useTheme } from '../../../components/ThemeProvider';
 import { usePermissions } from '../../../hooks/usePermissions';
 import api from '../../../services/api';
+import Modal from '../../../components/ui/Modal';
 import LoadingState from '../../../components/ui/LoadingState';
 import {
   Users,
@@ -857,8 +858,8 @@ export default function StaffManagementPage() {
       </div>
 
       {/* MODAL: ADD / EDIT STAFF USER */}
-      {isUserModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
+      <Modal isOpen={isUserModalOpen} onClose={() => setIsUserModalOpen(false)}>
+        {isUserModalOpen && (
           <div className={`relative w-full max-w-2xl max-h-[92vh] flex flex-col rounded-3xl border shadow-2xl overflow-hidden ${
             isDark ? 'bg-[#0B1020] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
           }`}>
@@ -1176,12 +1177,12 @@ export default function StaffManagementPage() {
               </div>
             </form>
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
 
       {/* DELETE CONFIRM MODAL */}
-      {deleteConfirm.isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
+      <Modal isOpen={deleteConfirm.isOpen} onClose={() => setDeleteConfirm({ isOpen: false, user: null })}>
+        {deleteConfirm.isOpen && (
           <div className={`w-full max-w-md p-6 rounded-3xl border shadow-2xl space-y-4 ${
             isDark ? 'bg-[#0B1020] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
           }`}>
@@ -1214,8 +1215,8 @@ export default function StaffManagementPage() {
               </button>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
 
     </div>
   );

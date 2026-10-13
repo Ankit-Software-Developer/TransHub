@@ -8,6 +8,7 @@ import LoadingState from '../../../components/ui/LoadingState';
 import { useTheme } from '../../../components/ThemeProvider';
 import { usePermissions } from '../../../hooks/usePermissions';
 import api from '../../../services/api';
+import Modal from '../../../components/ui/Modal';
 import {
   Warehouse,
   Building2,
@@ -824,13 +825,8 @@ export default function BranchesPage() {
           )}
 
           {/* Add / Edit Dialog Modal */}
-          {isModalOpen && (
-            <div className="fixed inset-0 z-50 overflow-y-auto flex min-h-full items-center justify-center p-4 sm:p-6">
-              <div 
-                className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm transition-opacity" 
-                onClick={() => !submitting && setIsModalOpen(false)} 
-              />
-
+          <Modal isOpen={isModalOpen} onClose={() => !submitting && setIsModalOpen(false)}>
+            {isModalOpen && (
               <div className={`relative w-full max-w-xl max-h-[90vh] my-auto overflow-y-auto rounded-3xl border shadow-2xl p-6 sm:p-8 z-10 transition-all ${
                 isDark ? 'bg-[#0B1020] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
               }`}>
@@ -1397,17 +1393,12 @@ export default function BranchesPage() {
                   </div>
                 </form>
               </div>
-            </div>
-          )}
+            )}
+          </Modal>
 
           {/* Delete Confirmation Modal */}
-          {deleteTarget && (
-            <div className="fixed inset-0 z-50 overflow-y-auto flex min-h-full items-center justify-center p-4">
-              <div 
-                className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm" 
-                onClick={() => !deleting && setDeleteTarget(null)} 
-              />
-
+          <Modal isOpen={Boolean(deleteTarget)} onClose={() => !deleting && setDeleteTarget(null)}>
+            {deleteTarget && (
               <div className={`relative w-full max-w-md my-auto rounded-3xl border shadow-2xl p-6 z-10 ${
                 isDark ? 'bg-[#0B1020] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
               }`}>
@@ -1441,8 +1432,8 @@ export default function BranchesPage() {
                   </button>
                 </div>
               </div>
-            </div>
-          )}
+            )}
+          </Modal>
 
         </main>
       </div>

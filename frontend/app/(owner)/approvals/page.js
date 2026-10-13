@@ -9,6 +9,7 @@ import { useTheme } from '../../../components/ThemeProvider';
 import { usePermissions } from '../../../hooks/usePermissions';
 import approvalService from '../../../services/approvalService';
 import api from '../../../services/api';
+import Modal from '../../../components/ui/Modal';
 import {
   ShieldCheck,
   CheckCircle2,
@@ -816,8 +817,8 @@ export default function ApprovalsPage() {
       </div>
 
       {/* 6. Review & Detail Modal Drawer */}
-      {selectedRequest && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+      <Modal isOpen={Boolean(selectedRequest)} onClose={() => setSelectedRequest(null)}>
+        {selectedRequest && (
           <div className={`w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl border shadow-2xl p-6 space-y-6 ${
             isDark ? 'bg-[#0E1526] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
           }`}>
@@ -983,12 +984,12 @@ export default function ApprovalsPage() {
               </div>
             )}
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
 
       {/* 7. Action Confirmation Modal (Approve, Reject, Escalate) */}
-      {actionModal.open && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+      <Modal isOpen={Boolean(actionModal.open)} onClose={() => setActionModal({ open: false, action: null, reqId: null })}>
+        {actionModal.open && (
           <div className={`w-full max-w-md rounded-3xl border shadow-2xl p-6 space-y-4 ${
             isDark ? 'bg-[#0E1526] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
           }`}>
@@ -1057,12 +1058,12 @@ export default function ApprovalsPage() {
               </button>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
 
       {/* 8. Submit New Request Modal */}
-      {createModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+      <Modal isOpen={Boolean(createModalOpen)} onClose={() => setCreateModalOpen(false)}>
+        {createModalOpen && (
           <div className={`w-full max-w-lg rounded-3xl border shadow-2xl p-6 space-y-4 ${
             isDark ? 'bg-[#0E1526] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
           }`}>
@@ -1223,8 +1224,8 @@ export default function ApprovalsPage() {
               </div>
             </form>
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
         </main>
       </div>
     </div>

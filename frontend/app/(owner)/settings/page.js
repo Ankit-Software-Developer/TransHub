@@ -9,6 +9,7 @@ import { useTheme } from '../../../components/ThemeProvider';
 import Sidebar from '../../../components/layout/Sidebar';
 import Navbar from '../../../components/layout/Navbar';
 import { usePermissions } from '../../../hooks/usePermissions';
+import Modal from '../../../components/ui/Modal';
 import {
   User,
   Lock,
@@ -3093,9 +3094,8 @@ export default function SettingsPage() {
           </div>
 
           {/* CREATE CUSTOM ROLE MODAL */}
-          {isNewRoleModalOpen && (
-            <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4 sm:p-6">
-              <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setIsNewRoleModalOpen(false)} />
+          <Modal isOpen={isNewRoleModalOpen} onClose={() => setIsNewRoleModalOpen(false)}>
+            {isNewRoleModalOpen && (
               <div className={`relative w-full max-w-md rounded-3xl shadow-2xl border p-6 z-10 space-y-4 ${
                 isDark ? 'bg-[#0B1020] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
               }`}>
@@ -3161,13 +3161,12 @@ export default function SettingsPage() {
                   </div>
                 </form>
               </div>
-            </div>
-          )}
+            )}
+          </Modal>
 
           {/* CONFIGURE GPS INTEGRATION MODAL */}
-          {isGpsModalOpen && (
-            <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4 sm:p-6">
-              <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setIsGpsModalOpen(false)} />
+          <Modal isOpen={isGpsModalOpen} onClose={() => setIsGpsModalOpen(false)}>
+            {isGpsModalOpen && (
               <div className={`relative w-full max-w-lg rounded-3xl shadow-2xl border p-6 z-10 space-y-4 ${
                 isDark ? 'bg-[#0B1020] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
               }`}>
@@ -3356,8 +3355,8 @@ export default function SettingsPage() {
                   </div>
                 </form>
               </div>
-            </div>
-          )}
+            )}
+          </Modal>
 
         </main>
       </div>

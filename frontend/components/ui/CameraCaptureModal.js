@@ -2,6 +2,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { Camera, X, RefreshCw, Check, AlertCircle, FlipHorizontal } from 'lucide-react';
 import { useTheme } from '../ThemeProvider';
 
@@ -178,12 +179,12 @@ export default function CameraCaptureModal({
     onClose();
   };
 
-  if (!isOpen) return null;
+  if (!isOpen || typeof document === 'undefined') return null;
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 z-[9999] overflow-hidden animate-in fade-in duration-150"
-      style={{ zIndex: 9999 }}
+      className="fixed inset-0 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-hidden animate-in fade-in duration-150"
+      style={{ zIndex: 99999 }}
     >
       <div className={`rounded-2xl max-w-lg w-full max-h-[90vh] flex flex-col shadow-2xl border overflow-hidden transition-all ${
         isDark ? 'bg-[#0B1020] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
@@ -369,6 +370,7 @@ export default function CameraCaptureModal({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

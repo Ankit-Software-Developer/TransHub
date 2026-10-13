@@ -505,6 +505,149 @@ export default function InvoicesMasterPage() {
     loadDatabaseRecords();
   }, []);
 
+  // Server-side dynamic query when unbilled search input changes
+  useEffect(() => {
+    if (!unbilledSearch.trim()) return;
+    const timer = setTimeout(async () => {
+      try {
+        const results = await billingService.getUnbilledConsignments({ search: unbilledSearch.trim() });
+        if (Array.isArray(results)) {
+          const mapped = results.map((c) => {
+            const cName = typeof c.customer === 'string'
+              ? c.customer
+              : (c.customer?.name || c.consignor?.name || c.consignee?.name || 'Customer Account');
+            const consigneeName = typeof c.consignee === 'string'
+              ? c.consignee
+              : (c.consignee?.name || 'Receiver');
+            const consignorName = typeof c.consignor === 'string'
+              ? c.consignor
+              : (c.consignor?.name || cName);
+            return {
+              ...c,
+              customer: cName,
+              consignor_name: consignorName,
+              consignee_name: consigneeName,
+            };
+          });
+          setUnbilledConsignments((prev) => {
+            const existingIds = new Set(mapped.map((m) => String(m.id || m.lr_number)));
+            const nonDuplicates = prev.filter((p) => !existingIds.has(String(p.id || p.lr_number)));
+            return [...mapped, ...nonDuplicates];
+          });
+        }
+      } catch (err) {
+        console.warn('Server unbilled search error:', err.message);
+      }
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [unbilledSearch]);
+
+  // Server-side dynamic query when invoice search changes
+  useEffect(() => {
+    if (!search.trim()) return;
+    const timer = setTimeout(async () => {
+      try {
+        const results = await billingService.listInvoices({ search: search.trim(), limit: 100 });
+        const rows = Array.isArray(results?.data)
+          ? results.data
+          : Array.isArray(results?.data?.rows)
+          ? results.data.rows
+          : Array.isArray(results?.data?.data)
+          ? results.data.data
+          : [];
+        if (rows.length > 0) {
+          const todayStr = new Date().toISOString().slice(0, 10);
+          const decorated = rows.map((row) => {
+            const bal = parseFloat(row.balance_amount || 0);
+            const paid = parseFloat(row.paid_amount || 0);
+            const isCancelled = row.status === 'CANCELLED';
+            const isPaid = bal === 0 && !isCancelled;
+            const isOverdue = !isCancelled && bal > 0 && row.due_date && row.due_date < todayStr;
+            const isPartial = !isCancelled && paid > 0 && bal > 0;
+            let daysDiff = 0;
+            if (row.due_date) {
+              const d1 = new Date(todayStr);
+              const d2 = new Date(row.due_date);
+              daysDiff = Math.round((d2 - d1) / (1000 * 60 * 60 * 24));
+            }
+            let displayStatus = row.computed_status || row.status;
+            let statusTone = 'amber';
+            let statusLabel = 'Unpaid';
+            if (isCancelled) {
+              displayStatus = 'CANCELLED';
+              statusTone = 'slate';
+              statusLabel = 'Cancelled';
+            } else if (isPaid) {
+              displayStatus = 'PAID';
+              statusTone = 'emerald';
+              statusLabel = 'Paid & Cleared';
+            } else if (isOverdue) {
+              displayStatus = 'OVERDUE';
+              statusTone = 'rose';
+              statusLabel = `Overdue (${Math.abs(daysDiff)}d)`;
+            } else if (isPartial) {
+              displayStatus = 'PARTIAL';
+              statusTone = 'cyan';
+              statusLabel = 'Partially Paid';
+            } else {
+              displayStatus = 'PENDING';
+              statusTone = 'amber';
+              statusLabel = daysDiff === 0 ? 'Due Today' : `Due in ${daysDiff}d`;
+            }
+            const itemDockets = (row.items || [])
+              .map((it) => it.consignment?.docket_number || it.consignment?.lr_number || it.docket_number || it.lr_number)
+              .filter(Boolean);
+            const rawDockets = row.docket_numbers && Array.isArray(row.docket_numbers) && row.docket_numbers.length > 0
+              ? row.docket_numbers
+              : itemDockets;
+            const uniqueDockets = Array.from(new Set(rawDockets));
+            return {
+              id: row.id,
+              invoice_number: row.invoice_number,
+              customer_id: row.customer_id,
+              customer: typeof row.customer === 'string' ? row.customer : (row.customer?.name || 'Customer Account'),
+              gstin: typeof row.customer === 'object' ? (row.customer?.gstin || row.gstin || 'URP') : (row.gstin || 'URP'),
+              customer_phone: typeof row.customer === 'object' ? (row.customer?.phone || row.customer_phone || '') : (row.customer_phone || ''),
+              customer_balance: parseFloat(row.customer_balance || row.customer?.current_balance || 0),
+              booking_branch: typeof row.booking_branch === 'string' ? row.booking_branch : (row.items?.[0]?.consignment?.originBranch?.branch_name || row.branch?.branch_name || 'Booking Branch'),
+              booking_branch_code: row.booking_branch_code || row.items?.[0]?.consignment?.originBranch?.branch_code || row.branch?.branch_code || '',
+              delivery_branch: typeof row.delivery_branch === 'string' ? row.delivery_branch : (row.items?.[0]?.consignment?.destBranch?.branch_name || row.items?.[0]?.destination_city || 'Destination Branch'),
+              delivery_branch_code: row.delivery_branch_code || row.items?.[0]?.consignment?.destBranch?.branch_code || '',
+              invoice_date: row.invoice_date,
+              due_date: row.due_date,
+              days_diff: daysDiff,
+              payment_terms: row.payment_terms || '30 Days Credit',
+              remarks: row.remarks || '',
+              taxable_amount: parseFloat(row.taxable_amount || 0),
+              gst_amount: parseFloat(row.total_tax_amount || 0),
+              total_amount: parseFloat(row.total_amount || 0),
+              paid_amount: paid,
+              balance_amount: bal,
+              status: displayStatus,
+              status_label: statusLabel,
+              status_tone: statusTone,
+              lr_count: row.lr_count || (row.items && row.items.length) || uniqueDockets.length || 0,
+              docket_numbers: uniqueDockets,
+              docket_number: uniqueDockets[0] || row.docket_number || (row.items?.[0]?.lr_number) || '',
+              docket_summary: uniqueDockets.join(', ') || row.docket_summary || (row.items?.[0]?.lr_number) || '',
+              docket_type: row.docket_type || 'TO_PAY',
+              docket_types: row.docket_types || [row.docket_type || 'TO_PAY'],
+              items: row.items || [],
+            };
+          });
+          setInvoices((prev) => {
+            const existingIds = new Set(decorated.map((d) => String(d.id)));
+            const nonDuplicates = prev.filter((p) => !existingIds.has(String(p.id)));
+            return [...decorated, ...nonDuplicates];
+          });
+        }
+      } catch (err) {
+        console.warn('Server invoice search error:', err.message);
+      }
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [search]);
+
   // Admin & Branch Scoping Resolution
   const isUserAdmin = Boolean(
     isAdmin ||
@@ -846,15 +989,19 @@ export default function InvoicesMasterPage() {
   // Filtered Invoices (now strictly reflecting active branch selection)
   const filteredInvoices = useMemo(() => {
     return branchScopedInvoices.filter((inv) => {
+      const q = (search || '').trim().toLowerCase();
       const match =
-        inv.invoice_number.toLowerCase().includes(search.toLowerCase()) ||
-        inv.customer.toLowerCase().includes(search.toLowerCase()) ||
-        (inv.docket_summary && inv.docket_summary.toLowerCase().includes(search.toLowerCase())) ||
-        (inv.docket_number && inv.docket_number.toLowerCase().includes(search.toLowerCase())) ||
-        (inv.docket_type && inv.docket_type.toLowerCase().includes(search.toLowerCase())) ||
-        (inv.docket_numbers && inv.docket_numbers.some((d) => d.toLowerCase().includes(search.toLowerCase()))) ||
-        inv.gstin.toLowerCase().includes(search.toLowerCase()) ||
-        (inv.delivery_branch && inv.delivery_branch.toLowerCase().includes(search.toLowerCase()));
+        !q ||
+        (inv.invoice_number && inv.invoice_number.toLowerCase().includes(q)) ||
+        (inv.customer && inv.customer.toLowerCase().includes(q)) ||
+        (inv.customer_name && inv.customer_name.toLowerCase().includes(q)) ||
+        (inv.docket_summary && inv.docket_summary.toLowerCase().includes(q)) ||
+        (inv.docket_number && inv.docket_number.toLowerCase().includes(q)) ||
+        (inv.docket_type && inv.docket_type.toLowerCase().includes(q)) ||
+        (inv.docket_numbers && inv.docket_numbers.some((d) => String(d).toLowerCase().includes(q))) ||
+        (inv.gstin && inv.gstin.toLowerCase().includes(q)) ||
+        (inv.booking_branch && inv.booking_branch.toLowerCase().includes(q)) ||
+        (inv.delivery_branch && inv.delivery_branch.toLowerCase().includes(q));
 
       const todayStr = new Date().toISOString().slice(0, 10);
       const isCancelled = inv.status === 'CANCELLED';
@@ -966,19 +1113,38 @@ export default function InvoicesMasterPage() {
         return false;
       }
 
-      const docNum = termSingular === 'Docket' ? (c.docket_number || c.lr_number || '') : (c.lr_number || c.docket_number || '');
-      const custName = c.customer || c.consignor?.name || '';
-      const receiverName = c.consignee?.name || '';
-      const orig = c.origin_city || c.booking_branch || '';
-      const dest = c.destination_city || c.delivery_branch || '';
+      const q = (unbilledSearch || '').trim().toLowerCase();
+      let match = true;
+      if (q) {
+        const docNum = String(c.docket_number || '').toLowerCase();
+        const lrNum = String(c.lr_number || '').toLowerCase();
+        const custName = String(c.customer || c.consignor?.name || c.consignor_name || '').toLowerCase();
+        const receiverName = String(c.consignee?.name || c.consignee_name || '').toLowerCase();
+        const origCity = String(c.origin_city || c.booking_branch || c.originBranch?.branch_name || '').toLowerCase();
+        const destCity = String(c.destination_city || c.delivery_branch || c.destBranch?.branch_name || '').toLowerCase();
+        const corridor = `${origCity} ${destCity}`;
+        const gstin = String(c.customer_gstin || c.consignor?.gstin || c.consignee?.gstin || '').toLowerCase();
+        const eway = String(c.eway_bill_no || '').toLowerCase();
+        const invNo = String(c.invoice_no || '').toLowerCase();
+        const payType = String(c.payment_type || '').toLowerCase();
+        const statusStr = String(c.status || '').toLowerCase();
+        const freight = String(c.freight_amount || c.total_amount || '');
 
-      const match =
-        docNum.toLowerCase().includes(unbilledSearch.toLowerCase()) ||
-        custName.toLowerCase().includes(unbilledSearch.toLowerCase()) ||
-        receiverName.toLowerCase().includes(unbilledSearch.toLowerCase()) ||
-        orig.toLowerCase().includes(unbilledSearch.toLowerCase()) ||
-        dest.toLowerCase().includes(unbilledSearch.toLowerCase()) ||
-        (c.customer_gstin && c.customer_gstin.toLowerCase().includes(unbilledSearch.toLowerCase()));
+        match =
+          docNum.includes(q) ||
+          lrNum.includes(q) ||
+          custName.includes(q) ||
+          receiverName.includes(q) ||
+          origCity.includes(q) ||
+          destCity.includes(q) ||
+          corridor.includes(q) ||
+          gstin.includes(q) ||
+          eway.includes(q) ||
+          invNo.includes(q) ||
+          payType.includes(q) ||
+          statusStr.includes(q) ||
+          freight.includes(q);
+      }
 
       if (unbilledFilter === 'TBB_READY' || unbilledFilter === 'TBB' || unbilledFilter === 'ALL_TBB') {
         return match && c.payment_type === 'TBB' && isDelivered;
@@ -997,7 +1163,7 @@ export default function InvoicesMasterPage() {
       }
       return match;
     });
-  }, [scopedUnbilledConsignments, unbilledSearch, unbilledFilter, showPendingTransit, termSingular]);
+  }, [scopedUnbilledConsignments, unbilledSearch, unbilledFilter, showPendingTransit]);
 
   // Active customer for generation modal
   const currentSelectedCustomer = useMemo(() => {
@@ -2837,6 +3003,7 @@ export default function InvoicesMasterPage() {
                   pageSizeOptions={[10, 15, 25, 50, 100]}
                   searchable={true}
                   searchPlaceholder={`Search by Invoice #, Customer, ${termSingular} #, Type (TBB, To Pay, Paid), GSTIN...`}
+                  searchQuery={search}
                   onSearchChange={setSearch}
                   filtersSlot={
                     <div className="flex flex-wrap items-center gap-1.5 text-xs font-bold">
@@ -2923,6 +3090,7 @@ export default function InvoicesMasterPage() {
                   pageSizeOptions={[10, 15, 25, 50, 100]}
                   searchable={true}
                   searchPlaceholder={`Search unbilled ${termPlural.toLowerCase()} by Docket #, Shipper, Consignee, Route, GSTIN...`}
+                  searchQuery={unbilledSearch}
                   onSearchChange={setUnbilledSearch}
                   filtersSlot={
                     <div className="flex flex-wrap items-center gap-1.5 text-xs font-bold">

@@ -122,6 +122,28 @@ export default function SuperAdminDashboardPage() {
               </div>
             </div>
           </div>
+
+          {/* Escalated Support Tickets Queue */}
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-card p-6 flex items-center justify-between">
+            <div>
+              <div className="flex items-center space-x-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-purple-500 animate-pulse" />
+                <h2 className="text-base font-bold text-slate-900">
+                  Escalated Support &amp; Technical Tickets
+                </h2>
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                Transporter Admins can escalate unresolved operational or system bugs to Super-Admin for direct intervention.
+              </p>
+            </div>
+
+            <a
+              href="/support"
+              className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-purple-600 hover:bg-purple-700 text-white shadow-md shadow-purple-500/20 transition-all"
+            >
+              <span>View Escalation Portal</span>
+            </a>
+          </div>
         </main>
       </div>
     </div>

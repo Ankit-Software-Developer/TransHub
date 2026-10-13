@@ -22,12 +22,44 @@ export default function DateRangeFilter({
   const [activePreset, setActivePreset] = useState('ALL');
   const dropdownRef = useRef(null);
 
-  // Sync internal state when external props change
+  // Sync internal state and activePreset when external props change
   useEffect(() => {
-    setTempFrom(fromDate);
-    setTempTo(toDate);
+    setTempFrom(fromDate || '');
+    setTempTo(toDate || '');
+
     if (!fromDate && !toDate) {
       setActivePreset('ALL');
+      return;
+    }
+
+    const now = new Date();
+    const today = formatDateYMD(now);
+    const y = new Date(now);
+    y.setDate(now.getDate() - 1);
+    const yStr = formatDateYMD(y);
+
+    const past7 = new Date(now);
+    past7.setDate(now.getDate() - 6);
+    const past7Str = formatDateYMD(past7);
+
+    const thisMonthStart = formatDateYMD(new Date(now.getFullYear(), now.getMonth(), 1));
+    const thisMonthEnd = formatDateYMD(now);
+
+    const lastMonthStart = formatDateYMD(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+    const lastMonthEnd = formatDateYMD(new Date(now.getFullYear(), now.getMonth(), 0));
+
+    if (fromDate === today && toDate === today) {
+      setActivePreset('TODAY');
+    } else if (fromDate === yStr && toDate === yStr) {
+      setActivePreset('YESTERDAY');
+    } else if (fromDate === past7Str && toDate === today) {
+      setActivePreset('LAST_7_DAYS');
+    } else if (fromDate === thisMonthStart && toDate === thisMonthEnd) {
+      setActivePreset('THIS_MONTH');
+    } else if (fromDate === lastMonthStart && toDate === lastMonthEnd) {
+      setActivePreset('LAST_MONTH');
+    } else {
+      setActivePreset('CUSTOM');
     }
   }, [fromDate, toDate]);
 
@@ -56,7 +88,7 @@ export default function DateRangeFilter({
     if (presetKey === 'ALL') {
       setTempFrom('');
       setTempTo('');
-      onChange({ fromDate: '', toDate: '', label: 'All Dates' });
+      if (onChange) onChange({ fromDate: '', toDate: '', label: 'All Dates' });
       setIsOpen(false);
       return;
     }
@@ -65,7 +97,7 @@ export default function DateRangeFilter({
       const today = formatDateYMD(now);
       setTempFrom(today);
       setTempTo(today);
-      onChange({ fromDate: today, toDate: today, label: 'Today' });
+      if (onChange) onChange({ fromDate: today, toDate: today, label: 'Today' });
       setIsOpen(false);
       return;
     }
@@ -76,7 +108,7 @@ export default function DateRangeFilter({
       const yStr = formatDateYMD(y);
       setTempFrom(yStr);
       setTempTo(yStr);
-      onChange({ fromDate: yStr, toDate: yStr, label: 'Yesterday' });
+      if (onChange) onChange({ fromDate: yStr, toDate: yStr, label: 'Yesterday' });
       setIsOpen(false);
       return;
     }
@@ -88,7 +120,7 @@ export default function DateRangeFilter({
       const endStr = formatDateYMD(now);
       setTempFrom(startStr);
       setTempTo(endStr);
-      onChange({ fromDate: startStr, toDate: endStr, label: 'Last 7 Days' });
+      if (onChange) onChange({ fromDate: startStr, toDate: endStr, label: 'Last 7 Days' });
       setIsOpen(false);
       return;
     }
@@ -99,7 +131,7 @@ export default function DateRangeFilter({
       const endStr = formatDateYMD(now);
       setTempFrom(startStr);
       setTempTo(endStr);
-      onChange({ fromDate: startStr, toDate: endStr, label: 'This Month' });
+      if (onChange) onChange({ fromDate: startStr, toDate: endStr, label: 'This Month' });
       setIsOpen(false);
       return;
     }
@@ -111,7 +143,7 @@ export default function DateRangeFilter({
       const endStr = formatDateYMD(end);
       setTempFrom(startStr);
       setTempTo(endStr);
-      onChange({ fromDate: startStr, toDate: endStr, label: 'Last Month' });
+      if (onChange) onChange({ fromDate: startStr, toDate: endStr, label: 'Last Month' });
       setIsOpen(false);
       return;
     }
@@ -127,11 +159,13 @@ export default function DateRangeFilter({
       return;
     }
     setActivePreset('CUSTOM');
-    onChange({
-      fromDate: tempFrom,
-      toDate: tempTo,
-      label: tempFrom && tempTo ? `${tempFrom} to ${tempTo}` : tempFrom ? `From ${tempFrom}` : `Up to ${tempTo}`,
-    });
+    if (onChange) {
+      onChange({
+        fromDate: tempFrom,
+        toDate: tempTo,
+        label: tempFrom && tempTo ? `${tempFrom} to ${tempTo}` : tempFrom ? `From ${tempFrom}` : `Up to ${tempTo}`,
+      });
+    }
     setIsOpen(false);
   };
 
@@ -141,7 +175,7 @@ export default function DateRangeFilter({
     setTempTo('');
     setActivePreset('ALL');
     if (onClear) onClear();
-    else onChange({ fromDate: '', toDate: '', label: 'All Dates' });
+    else if (onChange) onChange({ fromDate: '', toDate: '', label: 'All Dates' });
     setIsOpen(false);
   };
 
@@ -169,56 +203,58 @@ export default function DateRangeFilter({
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className={`flex items-center space-x-2 px-3 py-2 rounded-xl border text-xs font-semibold transition-all select-none ${
+        className={`w-full flex items-center justify-between space-x-2 px-3.5 py-2 rounded-2xl border text-xs font-bold transition-all select-none cursor-pointer ${
           isFiltered
             ? 'bg-blue-600 text-white border-blue-500 shadow-md shadow-blue-600/20'
             : isDark
             ? 'bg-slate-900/90 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
             : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-xs'
         }`}
-        title="Filter dockets by booking date range"
+        title="Filter by date range"
       >
-        <Calendar className={`w-3.5 h-3.5 ${isFiltered ? 'text-white' : 'text-blue-500'}`} />
-        <span className="truncate max-w-[150px]">{getDisplayLabel()}</span>
+        <div className="flex items-center space-x-2 truncate min-w-0">
+          <Calendar className={`w-4 h-4 shrink-0 ${isFiltered ? 'text-white' : 'text-blue-500'}`} />
+          <span className="truncate">{getDisplayLabel()}</span>
+        </div>
 
         {isFiltered ? (
           <span
             onClick={handleClear}
-            className="p-0.5 rounded-full hover:bg-blue-700/80 text-white transition-colors cursor-pointer"
+            className="p-0.5 rounded-full hover:bg-blue-700/80 text-white transition-colors cursor-pointer ml-1.5 shrink-0"
             title="Clear date filter"
           >
-            <X className="w-3 h-3" />
+            <X className="w-3.5 h-3.5" />
           </span>
         ) : (
-          <ChevronDown className="w-3 h-3 opacity-60" />
+          <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0 ml-1.5" />
         )}
       </button>
 
       {/* Dropdown Popover */}
       {isOpen && (
         <div
-          className={`absolute ${align === 'left' ? 'left-0' : 'right-0'} mt-1.5 w-72 sm:w-80 rounded-2xl border shadow-2xl z-40 p-3.5 space-y-3 animate-in fade-in zoom-in-95 duration-150 ${
-            isDark ? 'bg-[#0D1224] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
+          className={`absolute ${align === 'left' ? 'left-0' : 'right-0'} mt-2 w-80 rounded-3xl border shadow-2xl z-50 p-4 space-y-3.5 animate-in fade-in zoom-in-95 duration-150 ${
+            isDark ? 'bg-[#0E1528] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
           }`}
         >
           {/* Header */}
-          <div className="flex items-center justify-between pb-2 border-b border-slate-800/50">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-              Filter by Date
+          <div className="flex items-center justify-between pb-2.5 border-b border-slate-200 dark:border-slate-800">
+            <span className="text-[11px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500">
+              FILTER BY DATE
             </span>
             {isFiltered && (
               <button
                 type="button"
                 onClick={handleClear}
-                className="text-[11px] text-rose-500 hover:text-rose-400 font-semibold"
+                className="text-[11px] text-rose-500 hover:text-rose-400 font-bold cursor-pointer"
               >
                 Clear Filter
               </button>
             )}
           </div>
 
-          {/* Quick Presets Grid */}
-          <div className="grid grid-cols-3 gap-1.5">
+          {/* Quick Presets Grid (3 x 2) */}
+          <div className="grid grid-cols-3 gap-2">
             {[
               { id: 'ALL', label: 'All Time' },
               { id: 'TODAY', label: 'Today' },
@@ -227,18 +263,18 @@ export default function DateRangeFilter({
               { id: 'THIS_MONTH', label: 'This Month' },
               { id: 'LAST_MONTH', label: 'Last Month' },
             ].map((p) => {
-              const isSelected = activePreset === p.id && (!fromDate || p.id !== 'ALL');
+              const isSelected = activePreset === p.id;
               return (
                 <button
                   key={p.id}
                   type="button"
                   onClick={() => handleSelectPreset(p.id)}
-                  className={`py-1.5 px-2 rounded-lg text-[11px] font-semibold text-center transition-all ${
+                  className={`py-2 px-2.5 rounded-xl text-xs font-bold text-center transition-all cursor-pointer ${
                     isSelected
-                      ? 'bg-blue-600 text-white shadow-xs'
+                      ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
                       : isDark
-                      ? 'bg-slate-900 text-slate-300 hover:bg-slate-800 hover:text-white'
-                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                      ? 'bg-slate-900/90 text-slate-300 hover:bg-slate-800 hover:text-white border border-slate-800/80'
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200/60'
                   }`}
                 >
                   {p.label}
@@ -247,17 +283,19 @@ export default function DateRangeFilter({
             })}
           </div>
 
-          {/* Custom Date Range Picker */}
-          <div className={`p-2.5 rounded-xl border space-y-2 ${
-            isDark ? 'bg-slate-950/60 border-slate-800/80' : 'bg-slate-50 border-slate-200'
+          {/* Custom Date Range Box */}
+          <div className={`p-3 rounded-2xl border space-y-2.5 ${
+            isDark ? 'bg-slate-950/70 border-slate-800' : 'bg-slate-50/80 border-slate-200'
           }`}>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
-              Custom Date Range
+            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">
+              CUSTOM DATE RANGE
             </span>
 
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 gap-2.5">
               <div>
-                <label className="text-[10px] text-slate-400 block mb-0.5">From Date</label>
+                <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 block mb-1">
+                  From Date
+                </label>
                 <input
                   type="date"
                   value={tempFrom}
@@ -265,14 +303,16 @@ export default function DateRangeFilter({
                     setTempFrom(e.target.value);
                     setActivePreset('CUSTOM');
                   }}
-                  className={`w-full px-2 py-1.5 rounded-lg border text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 ${
+                  className={`w-full px-2.5 py-1.5 rounded-xl border text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs ${
                     isDark ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'
                   }`}
                 />
               </div>
 
               <div>
-                <label className="text-[10px] text-slate-400 block mb-0.5">To Date</label>
+                <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 block mb-1">
+                  To Date
+                </label>
                 <input
                   type="date"
                   value={tempTo}
@@ -280,18 +320,18 @@ export default function DateRangeFilter({
                     setTempTo(e.target.value);
                     setActivePreset('CUSTOM');
                   }}
-                  className={`w-full px-2 py-1.5 rounded-lg border text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 ${
+                  className={`w-full px-2.5 py-1.5 rounded-xl border text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs ${
                     isDark ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'
                   }`}
                 />
               </div>
             </div>
 
-            <div className="flex items-center justify-end space-x-2 pt-1">
+            <div className="flex items-center justify-end space-x-3 pt-1">
               <button
                 type="button"
                 onClick={() => setIsOpen(false)}
-                className={`px-2.5 py-1 rounded-lg text-xs font-medium ${
+                className={`text-xs font-bold transition-colors cursor-pointer ${
                   isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
@@ -301,7 +341,7 @@ export default function DateRangeFilter({
                 type="button"
                 onClick={handleApplyCustom}
                 disabled={!tempFrom && !tempTo}
-                className="px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-bold transition-all shadow-xs"
+                className="px-4 py-2 rounded-xl bg-blue-500 hover:bg-blue-600 disabled:opacity-40 text-white text-xs font-bold transition-all shadow-sm cursor-pointer"
               >
                 Apply Range
               </button>

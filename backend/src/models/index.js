@@ -48,6 +48,9 @@ const defineSaaSSubscription = require('./SaaSSubscription');
 const defineDailyBrief = require('./DailyBrief');
 const defineApprovalRequest = require('./ApprovalRequest');
 const defineGpsIntegration = require('./GpsIntegration');
+const defineTicket = require('./Ticket');
+const defineTicketMessage = require('./TicketMessage');
+const defineBranchCashClosure = require('./BranchCashClosure');
 
 /**
  * Initializes and associates strictly Master Database models (12 tables)
@@ -164,6 +167,9 @@ const initTenantModels = (targetSequelize) => {
     DailyBrief: defineDailyBrief(targetSequelize),
     ApprovalRequest: defineApprovalRequest(targetSequelize),
     GpsIntegration: defineGpsIntegration(targetSequelize),
+    Ticket: defineTicket(targetSequelize),
+    TicketMessage: defineTicketMessage(targetSequelize),
+    BranchCashClosure: defineBranchCashClosure(targetSequelize),
   };
 
   const {
@@ -172,7 +178,8 @@ const initTenantModels = (targetSequelize) => {
     Booking, Consignment, ConsignmentItem, ConsignmentStatusHistory, Trip, TripConsignment,
     Dispatch, DeliveryRecord, Pod, Warehouse, WarehouseMovement, Invoice, InvoiceItem,
     Payment, CustomerLedger, Expense, ExpenseCategory, DriverAdvance, TripSettlement,
-    FuelEntry, VehicleMaintenance, Claim, ApprovalRequest, GpsIntegration
+    FuelEntry, VehicleMaintenance, Claim, ApprovalRequest, GpsIntegration, Ticket, TicketMessage,
+    BranchCashClosure
   } = m;
 
   Organization.hasMany(GpsIntegration, { foreignKey: 'organization_id', as: 'gpsIntegrations' });
@@ -310,6 +317,30 @@ const initTenantModels = (targetSequelize) => {
 
   User.hasMany(ApprovalRequest, { foreignKey: 'reviewer_id', as: 'reviewedApprovals' });
   ApprovalRequest.belongsTo(User, { foreignKey: 'reviewer_id', as: 'reviewer' });
+
+  // Support Tickets & Hierarchical Escalation
+  Organization.hasMany(Ticket, { foreignKey: 'organization_id', as: 'tickets' });
+  Ticket.belongsTo(Organization, { foreignKey: 'organization_id', as: 'organization' });
+
+  Branch.hasMany(Ticket, { foreignKey: 'branch_id', as: 'tickets' });
+  Ticket.belongsTo(Branch, { foreignKey: 'branch_id', as: 'branch' });
+
+  User.hasMany(Ticket, { foreignKey: 'created_by', as: 'createdTickets' });
+  Ticket.belongsTo(User, { foreignKey: 'created_by', as: 'creator' });
+
+  Ticket.hasMany(TicketMessage, { foreignKey: 'ticket_id', as: 'messages' });
+  TicketMessage.belongsTo(Ticket, { foreignKey: 'ticket_id', as: 'ticket' });
+
+  TicketMessage.belongsTo(User, { foreignKey: 'sender_id', as: 'sender' });
+
+  // Branch Cash Daybook Closures & Remittances
+  Branch.hasMany(BranchCashClosure, { foreignKey: 'branch_id', as: 'cashClosures' });
+  BranchCashClosure.belongsTo(Branch, { foreignKey: 'branch_id', as: 'branch' });
+
+  User.hasMany(BranchCashClosure, { foreignKey: 'user_id', as: 'submittedClosures' });
+  BranchCashClosure.belongsTo(User, { foreignKey: 'user_id', as: 'submitter' });
+
+  BranchCashClosure.belongsTo(User, { foreignKey: 'verified_by', as: 'verifier' });
 
   // Audit Logs
   if (m.AuditLog) {

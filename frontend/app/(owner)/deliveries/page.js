@@ -12,6 +12,7 @@ import { useTheme } from '../../../components/ThemeProvider';
 import { usePermissions } from '../../../hooks/usePermissions';
 import { useStore } from '../../../store/useStore';
 import CameraCaptureModal from '../../../components/ui/CameraCaptureModal';
+import Modal from '../../../components/ui/Modal';
 import {
   PackageCheck,
   CheckCircle2,
@@ -1390,8 +1391,8 @@ export default function DeliveriesPage() {
           />
 
           {/* MODAL 1: GODOWN COUNTER HANDOVER (SELF-PICKUP) */}
-          {counterHandoverDocket && (
-            <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 z-50 overflow-hidden animate-in fade-in duration-150">
+          <Modal isOpen={Boolean(counterHandoverDocket)} onClose={() => setCounterHandoverDocket(null)}>
+            {counterHandoverDocket && (
               <div className={`rounded-2xl max-w-xl w-full max-h-[88vh] flex flex-col shadow-2xl border transition-all ${
                 isDark ? 'bg-[#0B1020] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
               }`}>
@@ -1791,12 +1792,18 @@ export default function DeliveriesPage() {
                   </button>
                 </div>
               </div>
-            </div>
-          )}
+            )}
+          </Modal>
 
           {/* MODAL 2: CREATE DELIVERY RUN SHEET (DRS) FOR DOORSTEP DISPATCH */}
-          {drsModalOpen && (
-            <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 z-50 overflow-hidden animate-in fade-in duration-200">
+          <Modal
+            isOpen={drsModalOpen}
+            onClose={() => {
+              setDrsModalOpen(false);
+              setSelectedDocketIds(new Set());
+            }}
+          >
+            {drsModalOpen && (
               <div className={`rounded-2xl max-w-6xl w-full h-[90vh] max-h-[860px] flex flex-col shadow-2xl border transition-all overflow-hidden ${
                 isDark ? 'bg-[#0B1020] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
               }`}>
@@ -2367,12 +2374,12 @@ export default function DeliveriesPage() {
 
                 </div>
               </div>
-            </div>
-          )}
+            )}
+          </Modal>
 
           {/* MODAL 2.5: OFFICIAL PRINTABLE DELIVERY RUN SHEET (DRS) */}
-          {createdDrsRecord && (
-            <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 z-50 overflow-hidden print:p-0 print:bg-white animate-in fade-in duration-150">
+          <Modal isOpen={Boolean(createdDrsRecord)} onClose={() => setCreatedDrsRecord(null)}>
+            {createdDrsRecord && (
               <div className="bg-white text-slate-900 rounded-2xl max-w-3xl w-full max-h-[92vh] overflow-y-auto p-6 sm:p-8 shadow-2xl border border-slate-300 print:max-h-none print:border-none print:shadow-none print:m-0 print:w-full print:overflow-visible">
                 {/* Print Header */}
                 <div className="flex justify-between items-start border-b-2 border-slate-900 pb-4 mb-4">
@@ -2515,12 +2522,12 @@ export default function DeliveriesPage() {
                   </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
+          </Modal>
 
           {/* MODAL 3: DOORSTEP DELIVERY SIGN-OFF MODAL */}
-          {doorstepDeliveryDocket && (
-            <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 z-50 overflow-hidden animate-in fade-in duration-150">
+          <Modal isOpen={Boolean(doorstepDeliveryDocket)} onClose={() => setDoorstepDeliveryDocket(null)}>
+            {doorstepDeliveryDocket && (
               <div className={`rounded-2xl max-w-md w-full max-h-[88vh] flex flex-col shadow-2xl border transition-all ${
                 isDark ? 'bg-[#0B1020] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
               }`}>
@@ -2738,12 +2745,12 @@ export default function DeliveriesPage() {
                   </button>
                 </div>
               </div>
-            </div>
-          )}
+            )}
+          </Modal>
 
           {/* MODAL 4: PRINTABLE GATE PASS / DELIVERY CHALLAN */}
-          {gatePassDocket && (
-            <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 z-50 overflow-hidden print:p-0 print:bg-white animate-in fade-in duration-150">
+          <Modal isOpen={Boolean(gatePassDocket)} onClose={() => setGatePassDocket(null)}>
+            {gatePassDocket && (
               <div className="bg-white text-slate-900 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6 sm:p-8 shadow-2xl border border-slate-300 print:max-h-none print:border-none print:shadow-none print:m-0 print:w-full print:overflow-visible">
                 {/* Print Header */}
                 <div className="flex justify-between items-start border-b-2 border-slate-900 pb-4 mb-4">
@@ -2875,12 +2882,12 @@ export default function DeliveriesPage() {
                   </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
+          </Modal>
 
           {/* MODAL 5: FULLSCREEN PROOF OF DELIVERY (POD) VIEWER */}
-          {viewingPodDocket && (
-            <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 z-50 overflow-hidden animate-in fade-in duration-150">
+          <Modal isOpen={Boolean(viewingPodDocket)} onClose={() => setViewingPodDocket(null)}>
+            {viewingPodDocket && (
               <div className={`rounded-2xl max-w-3xl w-full max-h-[92vh] flex flex-col shadow-2xl border transition-all ${
                 isDark ? 'bg-[#0B1020] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
               }`}>
@@ -2985,12 +2992,12 @@ export default function DeliveriesPage() {
                   </button>
                 </div>
               </div>
-            </div>
-          )}
+            )}
+          </Modal>
 
           {/* MODAL 6: HANDOVER SUCCESS & GATE PASS CONFIRMATION */}
-          {handoverSuccessDocket && (
-            <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 z-50 overflow-hidden animate-in fade-in duration-150">
+          <Modal isOpen={Boolean(handoverSuccessDocket)} onClose={() => setHandoverSuccessDocket(null)}>
+            {handoverSuccessDocket && (
               <div className={`rounded-2xl max-w-md w-full p-6 shadow-2xl border transition-all text-center ${
                 isDark ? 'bg-[#0B1020] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
               }`}>
@@ -3067,8 +3074,8 @@ export default function DeliveriesPage() {
                   </button>
                 </div>
               </div>
-            </div>
-          )}
+            )}
+          </Modal>
 
           {/* CAMERA CAPTURE MODAL */}
           <CameraCaptureModal

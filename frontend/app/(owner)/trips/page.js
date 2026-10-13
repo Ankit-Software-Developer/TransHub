@@ -9,6 +9,7 @@ import DataTable from '../../../components/ui/DataTable';
 import Badge from '../../../components/ui/Badge';
 import { useTheme } from '../../../components/ThemeProvider';
 import { usePermissions } from '../../../hooks/usePermissions';
+import Modal from '../../../components/ui/Modal';
 import {
   Truck,
   MapPin,
@@ -1067,8 +1068,8 @@ export default function TripsPage() {
           />
 
           {/* Trip Expense Settlement & Driver Reconciliation Center Modal */}
-          {selectedTrip && (
-            <div className="fixed inset-0 z-50 overflow-y-auto p-4 sm:p-6 flex min-h-full items-center justify-center bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-200">
+          <Modal isOpen={Boolean(selectedTrip)} onClose={() => { setSelectedTrip(null); setShowAddExpenseInSettle(false); }}>
+            {selectedTrip && (
               <div
                 className={`relative w-full max-w-2xl max-h-[92vh] my-auto flex flex-col rounded-2xl border shadow-2xl overflow-hidden transition-all ${
                   isDark ? 'bg-[#0B1020] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
@@ -1522,13 +1523,12 @@ export default function TripsPage() {
                   );
                 })()}
               </div>
-            </div>
-          )}
-
+            )}
+          </Modal>
 
           {/* Quick Assign Vehicle Modal */}
-          {isAssignVehicleOpen && tripToAssign && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-200">
+          <Modal isOpen={Boolean(isAssignVehicleOpen && tripToAssign)} onClose={() => setIsAssignVehicleOpen(false)}>
+            {isAssignVehicleOpen && tripToAssign && (
               <div
                 className={`w-full max-w-md rounded-2xl border shadow-2xl overflow-hidden transition-all ${
                   isDark ? 'bg-[#0B1020] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
@@ -1628,12 +1628,12 @@ export default function TripsPage() {
                   </div>
                 </form>
               </div>
-            </div>
-          )}
+            )}
+          </Modal>
 
           {/* Quick Disburse Driver Advance & Log Trip Expense Modal */}
-          {advExpModalOpen && advExpTrip && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-200">
+          <Modal isOpen={Boolean(advExpModalOpen && advExpTrip)} onClose={() => setAdvExpModalOpen(false)}>
+            {advExpModalOpen && advExpTrip && (
               <div
                 className={`w-full max-w-lg rounded-2xl border shadow-2xl overflow-hidden transition-all ${
                   isDark ? 'bg-[#0B1020] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
@@ -1922,24 +1922,20 @@ export default function TripsPage() {
                   </div>
                 </form>
               </div>
-            </div>
-          )}
+            )}
+          </Modal>
 
           {/* Inbound Gate-In Record Arrival Modal */}
-          {recordArrivalModalOpen && arrivalTrip && (
-            <div className="fixed inset-0 z-50 overflow-y-auto p-4 sm:p-6 flex min-h-full items-center justify-center">
-              {/* Backdrop */}
-              <div
-                className="fixed inset-0 bg-slate-950/75 backdrop-blur-xs transition-opacity"
-                onClick={() => {
-                  if (!submittingArrival) {
-                    setRecordArrivalModalOpen(false);
-                    setArrivalTrip(null);
-                  }
-                }}
-              />
-
-              {/* Modal Container */}
+          <Modal
+            isOpen={Boolean(recordArrivalModalOpen && arrivalTrip)}
+            onClose={() => {
+              if (!submittingArrival) {
+                setRecordArrivalModalOpen(false);
+                setArrivalTrip(null);
+              }
+            }}
+          >
+            {recordArrivalModalOpen && arrivalTrip && (
               <div className={`relative w-full max-w-xl max-h-[90vh] my-auto rounded-3xl shadow-2xl flex flex-col z-10 border overflow-hidden animate-in fade-in zoom-in-95 duration-200 ${
                 isDark ? 'bg-[#0B1120] border-slate-800 text-white shadow-cyan-950/40' : 'bg-white border-slate-200 text-slate-900 shadow-slate-200/80'
               }`}>
@@ -2225,8 +2221,8 @@ export default function TripsPage() {
                   </div>
                 </form>
               </div>
-            </div>
-          )}
+            )}
+          </Modal>
 
         </main>
       </div>

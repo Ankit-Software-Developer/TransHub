@@ -8,6 +8,7 @@ import { useTerminology } from '../../hooks/useTerminology';
 import { useStore } from '../../store/useStore';
 import { useTheme } from '../ThemeProvider';
 import approvalService from '../../services/approvalService';
+import supportService from '../../services/supportService';
 import {
   LayoutDashboard,
   FileText,
@@ -30,7 +31,8 @@ import {
   UserCheck,
   History,
   PackageCheck,
-  CheckCircle2
+  CheckCircle2,
+  LifeBuoy
 } from 'lucide-react';
 import { usePermissions } from '../../hooks/usePermissions';
 
@@ -42,6 +44,7 @@ export default function Sidebar() {
   const { isAdmin, canAccessRoute, canViewAudit, hasRole, hasPermission } = usePermissions();
   const [collapsed, setCollapsed] = useState(false);
   const [pendingApprovals, setPendingApprovals] = useState(0);
+  const [pendingTickets, setPendingTickets] = useState(0);
 
   const isDark = theme === 'dark';
 
@@ -49,9 +52,17 @@ export default function Sidebar() {
     let isSubscribed = true;
     const fetchCounters = async () => {
       try {
-        const counts = await approvalService.getBadgeCounts();
-        if (isSubscribed && counts) {
-          setPendingApprovals(counts.pendingAction || 0);
+        const [approvalCounts, ticketCounts] = await Promise.allSettled([
+          approvalService.getBadgeCounts(),
+          supportService.getBadgeCounts(),
+        ]);
+        if (isSubscribed) {
+          if (approvalCounts.status === 'fulfilled' && approvalCounts.value) {
+            setPendingApprovals(approvalCounts.value.pendingAction || 0);
+          }
+          if (ticketCounts.status === 'fulfilled' && ticketCounts.value) {
+            setPendingTickets(ticketCounts.value.pendingTickets || 0);
+          }
         }
       } catch (e) {
         // Silently ignore if unauthenticated or error
@@ -82,6 +93,7 @@ export default function Sidebar() {
     { label: 'Expenses', href: '/expenses', icon: Wallet },
     { label: 'Reports', href: '/reports', icon: BarChart3 },
     { label: 'Approvals', href: '/approvals', icon: ShieldCheck, badge: pendingApprovals },
+    { label: 'Support & Helpdesk', href: '/support', icon: LifeBuoy, badge: pendingTickets },
     ...((isAdmin || canViewAudit || hasRole('AUDITOR') || hasRole('AUDIT') || hasPermission('audit.view')) ? [{ label: 'Audit & Activity Logs', href: '/audit-logs', icon: History }] : []),
     { label: 'Settings', href: '/settings', icon: Settings },
   ];

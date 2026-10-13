@@ -52,8 +52,8 @@ export default function DataTable({
   sortBy = '',
   sortOrder = 'DESC',
   onSortChange,
-  searchQuery = '',
-  search = '',
+  searchQuery,
+  search,
   onSearchChange,
   searchPlaceholder = 'Search records...',
   filtersSlot = null,
@@ -85,7 +85,32 @@ export default function DataTable({
   const effectiveLoading = isLoading || loading;
   const effectiveExportFilename = exportFilename || exportFileName || 'Report_Export';
   const effectiveEmptyTitle = emptyTitle || emptyMessage || 'No Records Found';
-  const effectiveSearch = searchQuery || search || '';
+
+  // Support both controlled (searchQuery or search prop passed) and uncontrolled modes
+  const isControlledSearch = (searchQuery !== undefined && searchQuery !== null) || (search !== undefined && search !== null);
+  const [internalSearch, setInternalSearch] = useState(
+    isControlledSearch ? (searchQuery ?? search ?? '') : ''
+  );
+
+  useEffect(() => {
+    if (isControlledSearch) {
+      setInternalSearch(searchQuery ?? search ?? '');
+    }
+  }, [isControlledSearch, searchQuery, search]);
+
+  const effectiveSearch = isControlledSearch
+    ? (searchQuery ?? search ?? '')
+    : internalSearch;
+
+  const handleSearchChange = (val) => {
+    setInternalSearch(val);
+    if (onSearchChange) {
+      onSearchChange(val);
+    }
+    if (!isServerPaged) {
+      setInternalPage(1);
+    }
+  };
 
   // Internal pagination fallback if client-side
   const [internalPage, setInternalPage] = useState(1);
@@ -131,75 +156,94 @@ export default function DataTable({
     }
   };
 
-  // Client-side date filtered data if uncontrolled or not server paged with date handler
+  // Client-side date and search filtered data
   const clientFilteredData = useMemo(() => {
-    if (isServerPaged && (onDateFilterChange || onDateChange)) {
-      return data;
-    }
-    if (!effectiveFromDate && !effectiveToDate) {
-      return data;
-    }
+    let result = Array.isArray(data) ? [...data] : [];
 
-    return data.filter((row) => {
-      let val = null;
-      if (dateFilterKey && row[dateFilterKey]) {
-        val = row[dateFilterKey];
-      } else {
-        const candidateKeys = [
-          'trip_date',
-          'expense_date',
-          'invoice_date',
-          'booking_date',
-          'delivery_date',
-          'uploaded_at',
-          'date',
-          'created_at',
-          'createdAt',
-          'registration_date',
-          'updated_at',
-        ];
-        for (const k of candidateKeys) {
-          if (row[k]) {
-            val = row[k];
-            break;
-          }
-        }
-        if (!val) {
-          for (const k in row) {
-            if ((k.endsWith('_date') || k.endsWith('_at') || k === 'date') && row[k]) {
+    // 1. Date Filtering
+    if (!(isServerPaged && (onDateFilterChange || onDateChange)) && (effectiveFromDate || effectiveToDate)) {
+      result = result.filter((row) => {
+        let val = null;
+        if (dateFilterKey && row[dateFilterKey]) {
+          val = row[dateFilterKey];
+        } else {
+          const candidateKeys = [
+            'trip_date',
+            'expense_date',
+            'invoice_date',
+            'booking_date',
+            'delivery_date',
+            'uploaded_at',
+            'date',
+            'created_at',
+            'createdAt',
+            'registration_date',
+            'updated_at',
+          ];
+          for (const k of candidateKeys) {
+            if (row[k]) {
               val = row[k];
               break;
             }
           }
-        }
-      }
-
-      if (!val) return true;
-
-      let rowDateStr = '';
-      try {
-        if (typeof val === 'string') {
-          if (/^\d{4}-\d{2}-\d{2}/.test(val)) {
-            rowDateStr = val.slice(0, 10);
-          } else {
-            const parsed = new Date(val);
-            if (!isNaN(parsed.getTime())) {
-              rowDateStr = parsed.toISOString().slice(0, 10);
+          if (!val) {
+            for (const k in row) {
+              if ((k.endsWith('_date') || k.endsWith('_at') || k === 'date') && row[k]) {
+                val = row[k];
+                break;
+              }
             }
           }
-        } else if (val instanceof Date) {
-          rowDateStr = val.toISOString().slice(0, 10);
         }
-      } catch (e) {
-        return true;
-      }
 
-      if (!rowDateStr) return true;
-      if (effectiveFromDate && rowDateStr < effectiveFromDate) return false;
-      if (effectiveToDate && rowDateStr > effectiveToDate) return false;
-      return true;
-    });
-  }, [data, isServerPaged, onDateFilterChange, onDateChange, effectiveFromDate, effectiveToDate, dateFilterKey]);
+        if (!val) return true;
+
+        let rowDateStr = '';
+        try {
+          if (typeof val === 'string') {
+            if (/^\d{4}-\d{2}-\d{2}/.test(val)) {
+              rowDateStr = val.slice(0, 10);
+            } else {
+              const parsed = new Date(val);
+              if (!isNaN(parsed.getTime())) {
+                rowDateStr = parsed.toISOString().slice(0, 10);
+              }
+            }
+          } else if (val instanceof Date) {
+            rowDateStr = val.toISOString().slice(0, 10);
+          }
+        } catch (e) {
+          return true;
+        }
+
+        if (!rowDateStr) return true;
+        if (effectiveFromDate && rowDateStr < effectiveFromDate) return false;
+        if (effectiveToDate && rowDateStr > effectiveToDate) return false;
+        return true;
+      });
+    }
+
+    // 2. Client-side search fallback
+    if (!isServerPaged && effectiveSearch && effectiveSearch.trim()) {
+      const q = effectiveSearch.trim().toLowerCase();
+      result = result.filter((row) => {
+        return Object.values(row).some((val) => {
+          if (val === null || val === undefined) return false;
+          if (typeof val === 'string' || typeof val === 'number') {
+            return String(val).toLowerCase().includes(q);
+          }
+          if (typeof val === 'object') {
+            return Object.values(val).some(
+              (sub) => (typeof sub === 'string' || typeof sub === 'number') && String(sub).toLowerCase().includes(q)
+            );
+          }
+          return false;
+        });
+      });
+    }
+
+    return result;
+  }, [data, isServerPaged, onDateFilterChange, onDateChange, effectiveFromDate, effectiveToDate, dateFilterKey, effectiveSearch]);
 
   const effectiveTotalCount = totalCount !== undefined
     ? totalCount
@@ -488,13 +532,13 @@ export default function DataTable({
           
           {/* Left: Search Box */}
           <div className="flex flex-wrap items-center gap-2.5 flex-1 max-w-2xl">
-            {onSearchChange && (
+            {(searchable || onSearchChange) && (
               <div className="relative flex-1 min-w-[220px]">
                 <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3 pointer-events-none" />
                 <input
                   type="text"
                   value={effectiveSearch}
-                  onChange={(e) => onSearchChange(e.target.value)}
+                  onChange={(e) => handleSearchChange(e.target.value)}
                   placeholder={searchPlaceholder}
                   className={`w-full pl-9 pr-8 py-2 rounded-xl border text-xs focus:outline-none transition-all ${
                     isDark
@@ -504,7 +548,7 @@ export default function DataTable({
                 />
                 {effectiveSearch && (
                   <button
-                    onClick={() => onSearchChange('')}
+                    onClick={() => handleSearchChange('')}
                     className={`absolute right-3 top-2.5 ${isDark ? 'text-slate-400 hover:text-white' : 'text-slate-400 hover:text-slate-700'}`}
                   >
                     <X className="w-3.5 h-3.5" />

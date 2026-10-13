@@ -9,6 +9,7 @@ import DataTable from '../../../components/ui/DataTable';
 import { usePermissions } from '../../../hooks/usePermissions';
 import { useTheme } from '../../../components/ThemeProvider';
 import { useStore } from '../../../store/useStore';
+import Modal from '../../../components/ui/Modal';
 import {
   Users,
   Plus,
@@ -1618,8 +1619,8 @@ export default function CustomersPage() {
           />
 
           {/* Add Customer Modal with Strict Validation & Smart Branch Recommendation */}
-          {showAddModal && (
-            <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 z-50 overflow-hidden">
+          <Modal isOpen={Boolean(showAddModal)} onClose={() => setShowAddModal(false)}>
+            {showAddModal && (
               <form
                 onSubmit={handleCreateCustomer}
                 className={`rounded-3xl max-w-2xl w-full max-h-[88vh] flex flex-col shadow-2xl border transition-all relative overflow-hidden ${
@@ -2115,12 +2116,12 @@ export default function CustomersPage() {
                   </button>
                 </div>
               </form>
-            </div>
-          )}
+            )}
+          </Modal>
 
           {/* Edit Customer Modal */}
-          {showEditModal && editingCustomer && (
-            <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 z-50 overflow-hidden">
+          <Modal isOpen={Boolean(showEditModal && editingCustomer)} onClose={() => { setShowEditModal(false); setEditingCustomer(null); }}>
+            {showEditModal && editingCustomer && (
               <form
                 onSubmit={handleUpdateCustomer}
                 className={`rounded-3xl max-w-2xl w-full max-h-[88vh] flex flex-col shadow-2xl border transition-all relative overflow-hidden ${
@@ -2653,12 +2654,12 @@ export default function CustomersPage() {
                   </button>
                 </div>
               </form>
-            </div>
-          )}
+            )}
+          </Modal>
 
           {/* Delete Confirmation Modal */}
-          {deleteConfirmCustomer && (
-            <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 z-50">
+          <Modal isOpen={Boolean(deleteConfirmCustomer)} onClose={() => setDeleteConfirmCustomer(null)}>
+            {deleteConfirmCustomer && (
               <div
                 className={`rounded-2xl max-w-md w-full shadow-2xl border p-5 transition-all ${
                   isDark ? 'bg-[#0B1020] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
@@ -2710,8 +2711,8 @@ export default function CustomersPage() {
                   </button>
                 </div>
               </div>
-            </div>
-          )}
+            )}
+          </Modal>
         </main>
       </div>
     </div>

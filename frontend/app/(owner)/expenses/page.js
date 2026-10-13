@@ -8,6 +8,7 @@ import Navbar from '../../../components/layout/Navbar';
 import DataTable from '../../../components/ui/DataTable';
 import { useTheme } from '../../../components/ThemeProvider';
 import { usePermissions } from '../../../hooks/usePermissions';
+import Modal from '../../../components/ui/Modal';
 import {
   Wallet,
   Plus,
@@ -311,8 +312,8 @@ export default function ExpensesPage() {
           />
 
           {/* Add Expense Modal */}
-          {showAddModal && (
-            <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <Modal isOpen={Boolean(showAddModal)} onClose={() => setShowAddModal(false)}>
+            {showAddModal && (
               <form onSubmit={handleAddExpense} className={`rounded-2xl max-w-md w-full p-6 shadow-2xl border ${
                 isDark ? 'bg-[#0B1020] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
               }`}>
@@ -411,8 +412,8 @@ export default function ExpensesPage() {
                   </button>
                 </div>
               </form>
-            </div>
-          )}
+            )}
+          </Modal>
         </main>
       </div>
     </div>
