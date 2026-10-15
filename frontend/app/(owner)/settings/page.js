@@ -3866,6 +3866,7 @@ export default function SettingsPage() {
                 </div>
               </div>
             </div>
+          </Modal>
 
         </main>
       </div>

@@ -283,6 +283,7 @@ const initTenantModels = (targetSequelize) => {
   Organization.hasMany(Invoice, { foreignKey: 'organization_id', as: 'invoices' });
   Invoice.belongsTo(Organization, { foreignKey: 'organization_id', as: 'organization' });
   Invoice.belongsTo(Customer, { foreignKey: 'customer_id', as: 'customer' });
+  Customer.hasMany(Invoice, { foreignKey: 'customer_id', as: 'invoices' });
 
   Invoice.hasMany(InvoiceItem, { foreignKey: 'invoice_id', as: 'items' });
   InvoiceItem.belongsTo(Invoice, { foreignKey: 'invoice_id', as: 'invoice' });
