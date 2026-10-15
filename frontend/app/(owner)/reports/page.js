@@ -1,7 +1,7 @@
 // frontend/app/(owner)/reports/page.js
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Sidebar from '../../../components/layout/Sidebar';
 import Navbar from '../../../components/layout/Navbar';
 import { useTerminology } from '../../../hooks/useTerminology';
@@ -12,6 +12,7 @@ import api from '../../../services/api';
 import reportService from '../../../services/reportService';
 import branchClosureService from '../../../services/branchClosureService';
 import DateRangeFilter from '../../../components/ui/DateRangeFilter';
+import DataTable from '../../../components/ui/DataTable';
 import {
   BarChart3,
   FileSpreadsheet,
@@ -43,49 +44,122 @@ import {
   Landmark,
   Eye,
   UploadCloud,
-  X
+  X,
+  AlertTriangle,
+  ChevronDown,
 } from 'lucide-react';
 
 const REGISTERS = [
   { id: 'DOCKETS', label: 'Docket & Freight Register', icon: FileText, color: 'blue' },
   { id: 'POD', label: 'POD & Delivery Compliance', icon: FileSpreadsheet, color: 'emerald' },
-  { id: 'COLLECTIONS', label: 'Branch Cash & Daybook', icon: Wallet, color: 'amber' },
+  { id: 'COLLECTIONS', label: 'Bank Deposits & Remittance Register', icon: Landmark, color: 'amber' },
   { id: 'AGEING', label: 'Customer Outstanding & Ageing', icon: TrendingUp, color: 'rose' },
   { id: 'TRIPS', label: 'Trip & Vehicle P&L Audit', icon: Truck, color: 'purple' },
   { id: 'GST', label: 'GST Register (SAC 9965)', icon: Receipt, color: 'indigo' },
 ];
 
+const POD_STATUS_OPTIONS = [
+  { value: 'PENDING', label: 'Pending Delivery Only', desc: 'In transit & hub godowns', dotColor: 'bg-amber-500', ringColor: 'ring-amber-500/25' },
+  { value: 'OVERDUE', label: 'Critical Overdue • Priority', desc: 'Urgent priority dispatch', dotColor: 'bg-rose-500', ringColor: 'ring-rose-500/25' },
+  { value: 'DELIVERED', label: 'Delivered Only', desc: 'Consignments delivered', dotColor: 'bg-emerald-500', ringColor: 'ring-emerald-500/25' },
+  { value: 'VERIFIED', label: 'Verified PODs (Signed)', desc: 'Audited & signed proof of delivery', dotColor: 'bg-teal-500', ringColor: 'ring-teal-500/25' },
+  { value: 'UPLOADED', label: 'Audit Due (Uploaded)', desc: 'Uploaded, awaiting verification', dotColor: 'bg-cyan-500', ringColor: 'ring-cyan-500/25' },
+  { value: 'ALL', label: 'All Deliveries & PODs', desc: 'Complete register view', dotColor: 'bg-slate-400', ringColor: 'ring-slate-400/25' },
+];
+
 export default function ReportsPage() {
   const { term, plural } = useTerminology();
-  const { canExport, isAdmin, user } = usePermissions();
+  const { canExport, isAdmin, isAuditor, user } = usePermissions();
+  const canViewAuditCompliance = isAdmin || isAuditor;
   const { theme } = useTheme();
   const isDark = theme === 'dark';
   const activeBranch = useStore((state) => state.activeBranch);
 
-  const userBranchId = user?.branch_id || user?.branchId || activeBranch?.id;
+  const userBranchId = useMemo(() => {
+    if (user?.branch_id || user?.branchId || user?.branch?.id) {
+      return user.branch_id || user.branchId || user.branch?.id;
+    }
+    if (activeBranch?.id && activeBranch.id !== 'ALL') {
+      return activeBranch.id;
+    }
+    if (typeof window !== 'undefined') {
+      try {
+        const storedStr = localStorage.getItem('transporter_user');
+        if (storedStr) {
+          const parsed = JSON.parse(storedStr);
+          return parsed.branch_id || parsed.branchId || parsed.branch?.id || null;
+        }
+      } catch (e) {}
+    }
+    return null;
+  }, [user, activeBranch]);
+
   const [activeTab, setActiveTab] = useState('DOCKETS');
   const [loading, setLoading] = useState(true);
   const [branches, setBranches] = useState([]);
-  const [selectedBranch, setSelectedBranch] = useState(
-    !isAdmin && userBranchId ? userBranchId : 'ALL'
-  );
+  const [selectedBranch, setSelectedBranch] = useState('ALL');
+
+  const currentBranchName = useMemo(() => {
+    const bId = !isAdmin ? userBranchId : selectedBranch;
+    if (!bId || bId === 'ALL') return 'All Network Branches';
+    const found = branches.find((b) => String(b.id) === String(bId));
+    return found?.name || found?.branch_name || user?.branch?.name || user?.branch_name || 'My Branch';
+  }, [isAdmin, userBranchId, selectedBranch, branches, user]);
 
   useEffect(() => {
+    // Non-admin users are strictly restricted to their login branch
     if (!isAdmin && userBranchId && selectedBranch !== userBranchId) {
       setSelectedBranch(userBranchId);
     }
-  }, [isAdmin, userBranchId]);
+  }, [isAdmin, userBranchId, selectedBranch]);
 
   // Filter state
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [paymentTypeFilter, setPaymentTypeFilter] = useState('ALL');
-  const [paymentClearanceFilter, setPaymentClearanceFilter] = useState('ALL');
-  const [podStatusFilter, setPodStatusFilter] = useState('ALL');
+  const [paymentClearanceFilter, setPaymentClearanceFilter] = useState('PENDING');
+  const [podStatusFilter, setPodStatusFilter] = useState('PENDING');
   const [copied, setCopied] = useState(false);
+  const [isPodMenuOpen, setIsPodMenuOpen] = useState(false);
+  const podDropdownRef = useRef(null);
+
+  // Close POD status dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (podDropdownRef.current && !podDropdownRef.current.contains(e.target)) {
+        setIsPodMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const availablePodOptions = useMemo(() => {
+    if (canViewAuditCompliance) return POD_STATUS_OPTIONS;
+    return POD_STATUS_OPTIONS.filter((opt) => !['VERIFIED', 'UPLOADED'].includes(opt.value));
+  }, [canViewAuditCompliance]);
+
+  const activePodOption = useMemo(() => {
+    return availablePodOptions.find((opt) => opt.value === podStatusFilter) || availablePodOptions[0];
+  }, [availablePodOptions, podStatusFilter]);
+
+  // 350ms server-side debounce for all report tables
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchInput);
+      setPage(1);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
+  // Data state
+  const [dataRows, setDataRows] = useState([]);
+  const [summary, setSummary] = useState(null);
 
   // Bank Remittance Modal & Receipt Slip Viewer State
+  const [collectionSubView, setCollectionSubView] = useState('DEPOSITS');
   const [isRemitModalOpen, setIsRemitModalOpen] = useState(false);
   const [remitFormData, setRemitFormData] = useState({
     branchId: '',
@@ -102,13 +176,17 @@ export default function ReportsPage() {
   });
   const [isSubmittingRemit, setIsSubmittingRemit] = useState(false);
   const [selectedReceiptModal, setSelectedReceiptModal] = useState(null);
+  const [selectedPodModal, setSelectedPodModal] = useState(null);
+  const [selectedDepositDetails, setSelectedDepositDetails] = useState(null);
 
-  const openRemitModal = (row = null) => {
+  const openRemitModal = useCallback((row = null) => {
     const todayStr = new Date().toISOString().slice(0, 10);
     const bId = row?.branchId || (!isAdmin && userBranchId ? userBranchId : (selectedBranch !== 'ALL' ? selectedBranch : (branches[0]?.id || '')));
-    const bObj = branches.find((b) => b.id === bId);
-    const bName = row?.branchName || bObj?.name || bObj?.branch_name || 'My Branch';
-    const defaultAmount = row?.totalCollected || summary?.totalUnclosedCash || '';
+    const bObj = branches.find((b) => String(b.id) === String(bId));
+    const bName = row?.branchName || bObj?.name || bObj?.branch_name || currentBranchName || 'My Branch';
+    const defaultAmount = row?.pendingCash !== undefined
+      ? row.pendingCash
+      : (row?.totalCollected || summary?.totalPendingInBranch || summary?.totalUnclosedCash || 47880);
 
     setRemitFormData({
       branchId: bId,
@@ -124,7 +202,7 @@ export default function ReportsPage() {
       remarks: '',
     });
     setIsRemitModalOpen(true);
-  };
+  }, [isAdmin, userBranchId, selectedBranch, branches, currentBranchName, summary]);
 
   const handleRemitFileChange = (e) => {
     const file = e.target.files?.[0];
@@ -165,6 +243,7 @@ export default function ReportsPage() {
       };
       await branchClosureService.remitToBank(payload);
       setIsRemitModalOpen(false);
+      setCollectionSubView('DEPOSITS');
       await loadReportData();
       alert('Bank remittance recorded successfully! Daybook closed.');
     } catch (err) {
@@ -201,10 +280,6 @@ export default function ReportsPage() {
     return pages;
   }, [page, totalPages]);
 
-  // Data state
-  const [dataRows, setDataRows] = useState([]);
-  const [summary, setSummary] = useState(null);
-
   // Load branches
   useEffect(() => {
     const fetchBranches = async () => {
@@ -224,13 +299,17 @@ export default function ReportsPage() {
   const loadReportData = useCallback(async () => {
     setLoading(true);
     try {
+      const effectiveBranchParam = !isAdmin
+        ? (userBranchId || undefined)
+        : (selectedBranch && selectedBranch !== 'ALL' ? selectedBranch : 'ALL');
+
       const params = {
         page,
         limit,
-        branch_id: selectedBranch !== 'ALL' ? selectedBranch : undefined,
+        branch_id: effectiveBranchParam,
         date_from: dateFrom || undefined,
         date_to: dateTo || undefined,
-        search: searchQuery.trim() || undefined,
+        search: debouncedSearch.trim() || undefined,
       };
 
       let res;
@@ -243,9 +322,13 @@ export default function ReportsPage() {
       } else if (activeTab === 'TRIPS') {
         res = await reportService.getTripProfitabilityReport(params);
       } else if (activeTab === 'POD') {
-        if (podStatusFilter !== 'ALL') params.pod_status = podStatusFilter;
+        if (podStatusFilter !== 'ALL') {
+          params.pod_status = podStatusFilter;
+          params.delivery_status = podStatusFilter;
+        }
         res = await reportService.getPodComplianceReport(params);
       } else if (activeTab === 'COLLECTIONS') {
+        params.view_mode = collectionSubView;
         res = await reportService.getDailyCollectionReport(params);
       } else if (activeTab === 'GST') {
         res = await reportService.getGstTaxReport(params);
@@ -262,10 +345,12 @@ export default function ReportsPage() {
       console.error('Failed to load report data', err);
       setDataRows([]);
       setSummary(null);
+      setTotalRecords(0);
+      setTotalPages(1);
     } finally {
       setLoading(false);
     }
-  }, [activeTab, page, limit, selectedBranch, dateFrom, dateTo, searchQuery, paymentTypeFilter, paymentClearanceFilter, podStatusFilter]);
+  }, [activeTab, page, limit, selectedBranch, dateFrom, dateTo, debouncedSearch, paymentTypeFilter, paymentClearanceFilter, podStatusFilter, collectionSubView]);
 
   useEffect(() => {
     loadReportData();
@@ -274,8 +359,23 @@ export default function ReportsPage() {
   // Tab switch reset
   const handleTabChange = (tabId) => {
     setActiveTab(tabId);
+    setDataRows([]);
+    setSummary(null);
+    setTotalRecords(0);
+    setTotalPages(1);
     setPage(1);
-    setSearchQuery('');
+    setSearchInput('');
+    setDebouncedSearch('');
+    setIsPodMenuOpen(false);
+    if (tabId === 'DOCKETS') {
+      setPaymentClearanceFilter('PENDING');
+    }
+    if (tabId === 'POD') {
+      setPodStatusFilter('PENDING');
+    }
+    if (tabId === 'COLLECTIONS') {
+      setCollectionSubView('DEPOSITS');
+    }
   };
 
   // Indian Rupee Formatter
@@ -406,58 +506,104 @@ export default function ReportsPage() {
       headers = [
         'Docket Number',
         'LR Number',
-        'Booking Date',
-        'Delivery Date',
-        'Transit Days',
         'Origin Branch',
         'Destination',
         'Consignee',
-        'Status',
-        'POD Status',
-        'Physical Copy',
         'Receiver Name',
+        'Booking Date',
+        'Delivery Date',
+        'TAT & Ageing',
+        'Delivery Status',
+        'Operational Priority',
+        ...(canViewAuditCompliance ? ['POD Status', 'Physical Copy'] : []),
       ];
       rowsFormatted = dataRows.map((r) => [
         `"${r.docketNumber || ''}"`,
         `"${r.lrNumber || ''}"`,
-        `"${r.bookingDate || ''}"`,
-        `"${r.deliveryDate || ''}"`,
-        `"${r.transitDays || ''}"`,
         `"${r.originBranch || ''}"`,
         `"${r.destBranch || ''}"`,
         `"${(r.consigneeName || '').replace(/"/g, '""')}"`,
-        `"${r.shipmentStatus || ''}"`,
-        `"${r.podStatus || ''}"`,
-        r.hasPhysicalPod ? '"YES"' : '"NO"',
         `"${(r.receiverName || '').replace(/"/g, '""')}"`,
+        `"${r.bookingDate || ''}"`,
+        `"${r.deliveryDate || ''}"`,
+        `"${r.transitDays || ''}"`,
+        `"${r.shipmentStatus || ''}"`,
+        `"${r.priorityLevel || ''}"`,
+        ...(canViewAuditCompliance ? [`"${r.podStatus || ''}"`, r.hasPhysicalPod ? '"YES"' : '"NO"'] : []),
       ]);
     } else if (activeTab === 'COLLECTIONS') {
-      headers = [
-        'Date',
-        'Branch / Hub',
-        'Paid Bookings Count',
-        'Paid Cash Amount (INR)',
-        'To-Pay Deliveries Count',
-        'To-Pay Cash Amount (INR)',
-        'Total Cash Collected (INR)',
-        'Daybook Status',
-        'Bank Name',
-        'UTR / Reference',
-        'Remitted to Bank (INR)',
-      ];
-      rowsFormatted = dataRows.map((r) => [
-        `"${r.date || ''}"`,
-        `"${r.branchName || ''}"`,
-        r.paidBookingsCount || 0,
-        r.paidCashAmount || 0,
-        r.toPayDeliveriesCount || 0,
-        r.toPayCashAmount || 0,
-        r.totalCollected || 0,
-        `"${r.isClosed ? 'Remitted to Bank' : 'Unclosed Cash'}"`,
-        `"${r.bankName || ''}"`,
-        `"${r.utrNumber || ''}"`,
-        r.remittedAmount || 0,
-      ]);
+      if (collectionSubView === 'DEPOSITS') {
+        headers = [
+          'Deposit Date',
+          'Branch / Hub',
+          'Deposit Mode',
+          'Bank Name',
+          'Bank Account No',
+          'Transaction ID / UTR #',
+          'Payment Source & Customer',
+          'Covered Dockets',
+          'Deposited Amount (INR)',
+          'Remittance Status',
+          'Remarks',
+        ];
+        rowsFormatted = dataRows.map((r) => {
+          const bName = typeof r.branchName === 'object' ? r.branchName?.name || r.branchName?.branch_name : r.branchName;
+          const dockets = (r.coveredDockets && r.coveredDockets.length > 0)
+            ? r.coveredDockets
+            : (r.linkedDocket ? [r.linkedDocket] : (r.docketNumber ? [{ docketNumber: r.docketNumber }] : []));
+          const coveredDocketsStr = dockets.map((d) => d.docketNumber).join('; ');
+          const sourcePartyStr = `${r.sourceType || 'DEPOSIT'} - ${r.customerName || r.linkedDocket?.consigneeName || ''}`;
+
+          return [
+            `"${r.date || ''}"`,
+            `"${bName || ''}"`,
+            `"${r.depositMode || 'CASH_DEPOSIT'}"`,
+            `"${r.bankName || ''}"`,
+            `"${r.bankAccountNo || ''}"`,
+            `"${r.utrNumber || ''}"`,
+            `"${sourcePartyStr.replace(/"/g, '""')}"`,
+            `"${coveredDocketsStr.replace(/"/g, '""')}"`,
+            r.remittedAmount || 0,
+            `"${r.status || 'REMITTED'}"`,
+            `"${(r.remarks || '').replace(/"/g, '""')}"`,
+          ];
+        });
+      } else {
+        headers = [
+          'Date',
+          'Branch / Hub',
+          'Paid Bookings Count',
+          'Paid Cash Amount (INR)',
+          'To-Pay Deliveries Count',
+          'To-Pay Delivery Cash (INR)',
+          'Total Cash Inflow (INR)',
+          'Deposit Mode',
+          'Bank Name',
+          'Transaction ID / UTR',
+          'Deposited to Bank (INR)',
+          'Pending in Hand (INR)',
+          'Daybook Status',
+        ];
+        rowsFormatted = dataRows.map((r) => {
+          const bName = typeof r.branchName === 'object' ? r.branchName?.name || r.branchName?.branch_name : r.branchName;
+          const pending = r.pendingCash !== undefined ? r.pendingCash : Math.max(0, (r.totalCollected || 0) - (r.remittedAmount || 0));
+          return [
+            `"${r.date || ''}"`,
+            `"${bName || ''}"`,
+            r.paidBookingsCount || 0,
+            r.paidCashAmount || 0,
+            r.toPayDeliveriesCount || 0,
+            r.toPayCashAmount || 0,
+            r.totalCollected || 0,
+            `"${r.depositMode || 'N/A'}"`,
+            `"${r.bankName || ''}"`,
+            `"${r.utrNumber || ''}"`,
+            r.remittedAmount || 0,
+            pending,
+            `"${r.isClosed && pending === 0 ? 'Daybook Closed' : 'Unclosed Cash'}"`,
+          ];
+        });
+      }
     } else if (activeTab === 'GST') {
       headers = [
         'LR Number',
@@ -524,6 +670,1646 @@ export default function ReportsPage() {
   const handlePrint = () => {
     window.print();
   };
+
+  // Contextual Header Filters for active registers
+  const headerFilters = useMemo(() => (
+    <>
+      {/* Contextual Filter: Payment Type & Clearance for Dockets */}
+      {activeTab === 'DOCKETS' && (
+        <>
+          <select
+            value={paymentTypeFilter}
+            onChange={(e) => {
+              setPaymentTypeFilter(e.target.value);
+              setPage(1);
+            }}
+            className={`text-xs font-bold rounded-xl border px-3 py-2 outline-none transition-all cursor-pointer ${
+              isDark
+                ? 'bg-slate-900/90 border-slate-800 text-slate-200 focus:border-cyan-400'
+                : 'bg-white border-slate-200 text-slate-700 focus:border-blue-500 shadow-xs'
+            }`}
+          >
+            <option value="ALL">All Payment Modes</option>
+            <option value="PAID">PAID</option>
+            <option value="TO_PAY">TO-PAY</option>
+            <option value="TBB">TBB</option>
+          </select>
+
+          <select
+            value={paymentClearanceFilter}
+            onChange={(e) => {
+              setPaymentClearanceFilter(e.target.value);
+              setPage(1);
+            }}
+            className={`text-xs font-bold rounded-xl border px-3 py-2 outline-none transition-all cursor-pointer shadow-xs ${
+              isDark
+                ? 'bg-slate-900/90 border-slate-800 text-slate-200 focus:border-cyan-400'
+                : 'bg-white border-slate-200 text-slate-700 focus:border-blue-500'
+            }`}
+          >
+            <option value="PENDING">Pending (Action Due)</option>
+            <option value="CLEARED">Cleared</option>
+            <option value="ALL">All Payment Status</option>
+          </select>
+        </>
+      )}
+
+      {/* Contextual Filter: POD & Delivery Compliance Tab (Executive Custom Dropdown) */}
+      {activeTab === 'POD' && (
+        <div className="relative inline-block text-left" ref={podDropdownRef}>
+          <button
+            type="button"
+            onClick={() => setIsPodMenuOpen((prev) => !prev)}
+            className={`h-9 px-3.5 rounded-xl border text-xs font-semibold flex items-center gap-2.5 transition-all cursor-pointer shadow-xs select-none active:scale-[0.98] ${
+              isDark
+                ? 'bg-slate-900/90 border-slate-800 hover:border-slate-700 text-slate-100 hover:bg-slate-800/60'
+                : 'bg-white border-slate-200 hover:border-slate-300 text-slate-800 hover:bg-slate-50/80'
+            }`}
+          >
+            <span className={`w-2 h-2 rounded-full shrink-0 ${activePodOption.dotColor} ring-2 ${activePodOption.ringColor || 'ring-slate-400/25'}`} />
+            <span className="font-semibold tracking-tight">{activePodOption.label}</span>
+            <ChevronDown className={`w-3.5 h-3.5 text-slate-400 dark:text-slate-500 transition-transform duration-200 ${isPodMenuOpen ? 'rotate-180 text-blue-500' : ''}`} />
+          </button>
+
+          {isPodMenuOpen && (
+            <div className={`absolute right-0 top-full mt-1.5 w-72 rounded-2xl border shadow-2xl p-1.5 z-50 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150 ${
+              isDark ? 'bg-slate-900/95 border-slate-800 text-white shadow-black/40' : 'bg-white border-slate-200 text-slate-900 shadow-slate-900/10'
+            }`}>
+              <div className="px-3 py-2 text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center justify-between border-b border-slate-100 dark:border-slate-800/60 mb-1">
+                <span>Filter Delivery Status</span>
+                <span className="font-mono text-[9px] text-slate-400">POD Register</span>
+              </div>
+
+              <div className="space-y-0.5">
+                {availablePodOptions.map((opt) => {
+                  const isSelected = podStatusFilter === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => {
+                        setPodStatusFilter(opt.value);
+                        setPage(1);
+                        setIsPodMenuOpen(false);
+                      }}
+                      className={`w-full text-left px-3 py-2 rounded-xl flex items-center justify-between text-xs transition-colors cursor-pointer ${
+                        isSelected
+                          ? isDark
+                            ? 'bg-blue-950/60 text-cyan-300 font-bold'
+                            : 'bg-blue-50/90 text-blue-900 font-bold'
+                          : isDark
+                          ? 'hover:bg-slate-800/70 text-slate-200 font-medium'
+                          : 'hover:bg-slate-100/80 text-slate-700 font-medium'
+                      }`}
+                    >
+                      <div className="flex items-center space-x-2.5 min-w-0 pr-2">
+                        <span className={`w-2 h-2 rounded-full shrink-0 ${opt.dotColor}`} />
+                        <div className="truncate">
+                          <div className="truncate leading-snug">{opt.label}</div>
+                          {opt.desc && (
+                            <div className={`text-[10px] truncate leading-tight font-normal ${
+                              isSelected
+                                ? isDark ? 'text-cyan-400/80' : 'text-blue-700/80'
+                                : 'text-slate-400 dark:text-slate-500'
+                            }`}>
+                              {opt.desc}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {isSelected && (
+                        <Check className="w-4 h-4 text-blue-600 dark:text-cyan-400 shrink-0" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Branch Selector: Admin can toggle between specific branches and All Branches; Non-admin has branch context already */}
+      {isAdmin && (
+        <select
+          value={selectedBranch}
+          onChange={(e) => {
+            setSelectedBranch(e.target.value);
+            setPage(1);
+          }}
+          className={`text-xs font-bold rounded-xl border px-3 py-2 outline-none transition-all cursor-pointer ${
+            isDark
+              ? 'bg-slate-900/90 border-slate-800 text-slate-200 focus:border-cyan-400'
+              : 'bg-white border-slate-200 text-slate-700 focus:border-blue-500 shadow-xs'
+          }`}
+        >
+          <option value="ALL">All Branches (All Network Hubs)</option>
+          {branches.map((b) => (
+            <option key={b.id} value={b.id}>
+              {b.name || b.branch_name} ({b.code || b.branch_code || 'HUB'})
+            </option>
+          ))}
+        </select>
+      )}
+
+      {/* Sub-view Switcher for Bank Deposits & Daily Collections */}
+      {activeTab === 'COLLECTIONS' && (
+        <select
+          value={collectionSubView}
+          onChange={(e) => {
+            setCollectionSubView(e.target.value);
+            setPage(1);
+          }}
+          className={`text-xs font-bold rounded-xl border px-3 py-2 outline-none transition-all cursor-pointer ${
+            isDark
+              ? 'bg-slate-900/90 border-slate-800 text-slate-200 focus:border-amber-400'
+              : 'bg-white border-slate-200 text-slate-700 focus:border-amber-500 shadow-xs'
+          }`}
+        >
+          <option value="DEPOSITS">
+            Bank Deposits Register ({summary?.totalDepositsCount ?? summary?.depositTransactions?.length ?? 0})
+          </option>
+          <option value="DAILY_COLLECTIONS">
+            Daily Collection Register ({summary?.dailyCollections?.length ?? 0})
+          </option>
+        </select>
+      )}
+    </>
+  ), [activeTab, paymentTypeFilter, paymentClearanceFilter, podStatusFilter, isAdmin, selectedBranch, branches, currentBranchName, isDark, isPodMenuOpen, activePodOption, availablePodOptions, collectionSubView, summary]);
+
+  // Enterprise DataTable Column Specifications for all 6 Registers
+  const columns = useMemo(() => {
+    if (activeTab === 'DOCKETS') {
+      return [
+        {
+          key: 'lr_number',
+          header: 'LR #',
+          width: 140,
+          minWidth: 120,
+          sortable: true,
+          exportValue: (row) => row.lr_number || row.docket_number,
+          render: (val, row) => (
+            <div>
+              <span className="font-mono font-bold text-xs text-blue-600 dark:text-cyan-400 bg-blue-50/80 dark:bg-blue-950/60 border border-blue-200/70 dark:border-blue-800/60 px-2 py-0.5 rounded-md shadow-2xs whitespace-nowrap">
+                {row.lr_number || row.docket_number}
+              </span>
+              {row.docket_number && row.docket_number !== row.lr_number && (
+                <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                  DOC: {row.docket_number}
+                </div>
+              )}
+            </div>
+          ),
+        },
+        {
+          key: 'booking_date',
+          header: 'Booking Date',
+          width: 110,
+          minWidth: 95,
+          sortable: true,
+          exportValue: (row) => row.booking_date,
+          render: (val, row) => (
+            <span className="font-mono text-[11px] text-slate-600 dark:text-slate-400 whitespace-nowrap">
+              {row.booking_date}
+            </span>
+          ),
+        },
+        {
+          key: 'route',
+          header: 'Route Corridor',
+          width: 145,
+          minWidth: 125,
+          exportValue: (row) => {
+            const origin = typeof row.originBranch === 'object' ? (row.originBranch?.code || row.originBranch?.branch_code || row.originBranch?.name || row.origin_city) : (row.originBranch || row.origin_city || 'Origin');
+            const dest = typeof row.destBranch === 'object' ? (row.destBranch?.code || row.destBranch?.branch_code || row.destBranch?.name || row.destination_city) : (row.destBranch || row.destination_city || 'Dest');
+            return `${origin} -> ${dest}`;
+          },
+          render: (val, row) => {
+            const origin = typeof row.originBranch === 'object' ? (row.originBranch?.code || row.originBranch?.branch_code || row.originBranch?.name || row.origin_city) : (row.originBranch || row.origin_city || 'Origin');
+            const dest = typeof row.destBranch === 'object' ? (row.destBranch?.code || row.destBranch?.branch_code || row.destBranch?.name || row.destination_city) : (row.destBranch || row.destination_city || 'Dest');
+            return (
+              <div className="flex items-center space-x-1.5 whitespace-nowrap">
+                <span className="font-bold text-[11px] text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800/80 px-2 py-0.5 rounded-md border border-slate-200/60 dark:border-slate-700/60">
+                  {origin}
+                </span>
+                <span className="text-blue-500 font-bold text-xs">➔</span>
+                <span className="font-bold text-[11px] text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800/80 px-2 py-0.5 rounded-md border border-slate-200/60 dark:border-slate-700/60">
+                  {dest}
+                </span>
+              </div>
+            );
+          },
+        },
+        {
+          key: 'consignor',
+          header: 'Consignor (Shipper)',
+          width: 165,
+          minWidth: 140,
+          exportValue: (row) => row.consignor?.name || 'Cash Booking',
+          render: (val, row) => (
+            <div className="max-w-[155px]">
+              <div className="font-bold text-xs text-slate-900 dark:text-white truncate" title={row.consignor?.name}>
+                {row.consignor?.name || 'Cash Booking'}
+              </div>
+              <div className="text-[10px] text-slate-400 font-mono truncate">
+                {row.consignor?.gstin || row.consignor?.phone || 'Direct Counter'}
+              </div>
+            </div>
+          ),
+        },
+        {
+          key: 'consignee',
+          header: 'Consignee (Receiver)',
+          width: 165,
+          minWidth: 140,
+          exportValue: (row) => row.consignee?.name || 'Direct Delivery',
+          render: (val, row) => (
+            <div className="max-w-[155px]">
+              <div className="font-bold text-xs text-slate-900 dark:text-white truncate" title={row.consignee?.name}>
+                {row.consignee?.name || 'Direct Delivery'}
+              </div>
+              <div className="text-[10px] text-slate-400 font-mono truncate">
+                {row.consignee?.phone || row.consignee?.gstin || 'Door / Hub'}
+              </div>
+            </div>
+          ),
+        },
+        {
+          key: 'packages_count',
+          header: 'Pkgs',
+          align: 'center',
+          width: 80,
+          minWidth: 70,
+          sortable: true,
+          exportValue: (row) => row.packages_count || 1,
+          render: (val, row) => (
+            <span className="font-mono font-bold text-xs px-2.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800/80 text-slate-800 dark:text-slate-200 border border-slate-200/60 dark:border-slate-700/60">
+              {row.packages_count || 1}
+            </span>
+          ),
+        },
+        {
+          key: 'charged_weight',
+          header: 'Charged Wt',
+          align: 'right',
+          width: 115,
+          minWidth: 95,
+          sortable: true,
+          exportValue: (row) => row.charged_weight || 0,
+          render: (val, row) => (
+            <div className="text-right whitespace-nowrap">
+              <span className="font-mono font-bold text-xs text-slate-800 dark:text-slate-200">
+                {row.charged_weight || 0}
+              </span>
+              <span className="text-[10px] text-slate-400 ml-1 font-medium">kg</span>
+            </div>
+          ),
+        },
+        {
+          key: 'freight_amount',
+          header: 'Base Freight',
+          align: 'right',
+          width: 125,
+          minWidth: 105,
+          sortable: true,
+          exportValue: (row) => row.freight_amount || 0,
+          render: (val, row) => (
+            <span className="font-mono font-medium text-xs text-slate-600 dark:text-slate-400 whitespace-nowrap">
+              {formatINR(row.freight_amount)}
+            </span>
+          ),
+        },
+        {
+          key: 'total_amount',
+          header: 'Total (₹)',
+          align: 'right',
+          width: 135,
+          minWidth: 115,
+          sortable: true,
+          exportValue: (row) => row.total_amount || 0,
+          render: (val, row) => (
+            <span className="font-mono font-black text-xs text-slate-900 dark:text-white whitespace-nowrap bg-slate-100/70 dark:bg-slate-800/50 px-2 py-0.5 rounded border border-slate-200/50 dark:border-slate-700/50 inline-block">
+              {formatINR(row.total_amount)}
+            </span>
+          ),
+        },
+        {
+          key: 'payment_type',
+          header: 'Payment Mode',
+          align: 'center',
+          width: 140,
+          minWidth: 125,
+          nowrap: true,
+          exportValue: (row) => row.payment_type || 'TO_PAY',
+          render: (val, row) => {
+            const mode = row.payment_type || 'TO_PAY';
+            // Non-breaking hyphen (\u2011) strictly prevents word breaks across all browsers
+            const displayLabel = mode === 'TO_PAY' ? 'TO\u2011PAY' : mode === 'TBB' ? 'TBB' : mode;
+            return (
+              <span
+                className={`inline-flex items-center justify-center px-3 py-1 rounded-md text-[10px] font-black font-mono border tracking-wider select-none whitespace-nowrap shadow-xs ${
+                  mode === 'PAID'
+                    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-300/60'
+                    : mode === 'TO_PAY'
+                    ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border-blue-300/60'
+                    : 'bg-purple-50 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300 border-purple-300/60'
+                }`}
+              >
+                {displayLabel}
+              </span>
+            );
+          },
+        },
+        {
+          key: 'payment_status',
+          header: 'Payment Status',
+          align: 'center',
+          width: 140,
+          minWidth: 125,
+          nowrap: true,
+          exportValue: (row) => {
+            const isCleared =
+              row.payment_cleared ||
+              row.clearance_status === 'CLEARED' ||
+              row.payment_type === 'PAID' ||
+              (row.payment_type === 'TO_PAY' && ['DELIVERED', 'POD_UPLOADED', 'COMPLETED', 'POD_PENDING', 'POD_VERIFIED'].includes(row.status));
+            return isCleared ? 'Cleared' : 'Pending';
+          },
+          render: (val, row) => {
+            const isCleared =
+              row.payment_cleared ||
+              row.clearance_status === 'CLEARED' ||
+              row.payment_type === 'PAID' ||
+              (row.payment_type === 'TO_PAY' && ['DELIVERED', 'POD_UPLOADED', 'COMPLETED', 'POD_PENDING', 'POD_VERIFIED'].includes(row.status));
+
+            return isCleared ? (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wide bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300/60 shadow-xs whitespace-nowrap select-none">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 ring-2 ring-emerald-500/20" />
+                Cleared
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wide bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300/60 shadow-xs whitespace-nowrap select-none">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse ring-2 ring-amber-500/20" />
+                Pending
+              </span>
+            );
+          },
+        },
+        {
+          key: 'delivery_status',
+          header: 'Delivery Status',
+          align: 'center',
+          width: 160,
+          minWidth: 140,
+          nowrap: true,
+          exportValue: (row) => row.status || 'BOOKED',
+          render: (val, row) => {
+            const st = row.status || 'BOOKED';
+            return (
+              <span
+                className={`inline-flex items-center justify-center px-2.5 py-1 rounded-md text-[10px] font-bold border whitespace-nowrap select-none ${
+                  ['DELIVERED', 'COMPLETED'].includes(st)
+                    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border-emerald-200/60'
+                    : st === 'POD_UPLOADED'
+                    ? 'bg-teal-50 text-teal-700 dark:bg-teal-950/50 dark:text-teal-300 border-teal-200/60'
+                    : ['IN_TRANSIT', 'DISPATCHED'].includes(st)
+                    ? 'bg-cyan-50 text-cyan-700 dark:bg-cyan-950/50 dark:text-cyan-300 border-cyan-200/60'
+                    : st === 'OUT_FOR_DELIVERY'
+                    ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300 border-amber-200/60'
+                    : ['DELAYED', 'CANCELLED', 'HOLD'].includes(st)
+                    ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300 border-rose-200/60'
+                    : 'bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300 border-blue-200/60'
+                }`}
+              >
+                {st.replace(/_/g, ' ')}
+              </span>
+            );
+          },
+        },
+      ];
+    }
+
+    if (activeTab === 'AGEING') {
+      return [
+        {
+          key: 'customerName',
+          header: 'Party Name',
+          width: 180,
+          minWidth: 140,
+          sortable: true,
+          render: (val, row) => (
+            <div>
+              <div className="font-bold text-xs text-slate-900 dark:text-white">{row.customerName}</div>
+              <span className="block text-[10px] text-slate-400 font-normal">{row.phone}</span>
+            </div>
+          ),
+        },
+        {
+          key: 'gstin',
+          header: 'GSTIN',
+          width: 140,
+          minWidth: 120,
+          render: (val, row) => (
+            <span className="font-mono text-[11px] text-slate-500">{row.gstin || '-'}</span>
+          ),
+        },
+        {
+          key: 'branch',
+          header: 'Branch',
+          width: 130,
+          minWidth: 100,
+          render: (val, row) => (
+            <span className="font-medium text-xs text-slate-800 dark:text-slate-200">
+              {typeof row.branch === 'object' ? (row.branch?.name || row.branch?.branch_name || 'Head Office') : (row.branch || 'Head Office')}
+            </span>
+          ),
+        },
+        {
+          key: 'totalInvoiced',
+          header: 'Total Billed',
+          align: 'right',
+          width: 130,
+          render: (val, row) => (
+            <span className="font-mono font-medium text-xs">{formatINR(row.totalInvoiced)}</span>
+          ),
+        },
+        {
+          key: 'totalOutstanding',
+          header: 'Outstanding (₹)',
+          align: 'right',
+          width: 140,
+          render: (val, row) => (
+            <span className="font-mono font-bold text-xs text-rose-600 dark:text-rose-400">
+              {formatINR(row.totalOutstanding)}
+            </span>
+          ),
+        },
+        {
+          key: 'bucket0_30',
+          header: '0-30 Days',
+          align: 'right',
+          width: 120,
+          render: (val, row) => (
+            <span className="font-mono font-semibold text-xs text-emerald-600 dark:text-emerald-400">
+              {formatINR(row.bucket0_30)}
+            </span>
+          ),
+        },
+        {
+          key: 'bucket31_60',
+          header: '31-60 Days',
+          align: 'right',
+          width: 120,
+          render: (val, row) => (
+            <span className="font-mono font-semibold text-xs text-amber-600 dark:text-amber-400">
+              {formatINR(row.bucket31_60)}
+            </span>
+          ),
+        },
+        {
+          key: 'bucket61_90',
+          header: '61-90 Days',
+          align: 'right',
+          width: 120,
+          render: (val, row) => (
+            <span className="font-mono font-semibold text-xs text-orange-600 dark:text-orange-400">
+              {formatINR(row.bucket61_90)}
+            </span>
+          ),
+        },
+        {
+          key: 'bucket90Plus',
+          header: '90+ Days',
+          align: 'right',
+          width: 120,
+          render: (val, row) => (
+            <span className="font-mono font-bold text-xs text-rose-600 dark:text-rose-400">
+              {formatINR(row.bucket90Plus)}
+            </span>
+          ),
+        },
+        {
+          key: 'isOverdue',
+          header: 'Alert',
+          align: 'center',
+          width: 100,
+          render: (val, row) => (
+            row.isOverdue ? (
+              <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300">
+                <AlertCircle className="w-3 h-3" />
+                <span>Overdue</span>
+              </span>
+            ) : (
+              <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">
+                <CheckCircle2 className="w-3 h-3" />
+                <span>OK</span>
+              </span>
+            )
+          ),
+        },
+      ];
+    }
+
+    if (activeTab === 'TRIPS') {
+      return [
+        {
+          key: 'tripNumber',
+          header: 'Trip #',
+          width: 130,
+          render: (val, row) => (
+            <span className="font-mono font-bold text-xs text-purple-600 dark:text-purple-400">
+              {row.tripNumber}
+            </span>
+          ),
+        },
+        {
+          key: 'startDate',
+          header: 'Start Date',
+          width: 110,
+          render: (val, row) => (
+            <span className="font-mono text-[11px] text-slate-500">{row.startDate}</span>
+          ),
+        },
+        {
+          key: 'route',
+          header: 'Route',
+          width: 140,
+          render: (val, row) => (
+            <span className="font-semibold text-xs">{row.route}</span>
+          ),
+        },
+        {
+          key: 'vehicleNumber',
+          header: 'Vehicle',
+          width: 130,
+          render: (val, row) => (
+            <span className="font-bold text-xs text-slate-800 dark:text-slate-200">{row.vehicleNumber}</span>
+          ),
+        },
+        {
+          key: 'driverName',
+          header: 'Driver',
+          width: 130,
+          render: (val, row) => (
+            <span className="text-xs">{row.driverName}</span>
+          ),
+        },
+        {
+          key: 'docketCount',
+          header: 'Dockets',
+          align: 'center',
+          width: 90,
+          render: (val, row) => (
+            <span className="font-mono font-bold text-xs px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800">{row.docketCount}</span>
+          ),
+        },
+        {
+          key: 'totalRevenue',
+          header: 'Revenue (₹)',
+          align: 'right',
+          width: 130,
+          render: (val, row) => (
+            <span className="font-mono font-bold text-xs text-slate-900 dark:text-white">
+              {formatINR(row.totalRevenue)}
+            </span>
+          ),
+        },
+        {
+          key: 'totalCost',
+          header: 'Expenses (₹)',
+          align: 'right',
+          width: 130,
+          render: (val, row) => (
+            <span className="font-mono font-medium text-xs text-rose-600 dark:text-rose-400">
+              {formatINR(row.totalCost)}
+            </span>
+          ),
+        },
+        {
+          key: 'netProfit',
+          header: 'Net Profit (₹)',
+          align: 'right',
+          width: 130,
+          render: (val, row) => (
+            <span className="font-mono font-black text-xs text-emerald-600 dark:text-emerald-400">
+              {formatINR(row.netProfit)}
+            </span>
+          ),
+        },
+        {
+          key: 'marginPct',
+          header: 'Margin',
+          align: 'center',
+          width: 90,
+          render: (val, row) => (
+            <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
+              row.marginPct > 15
+                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
+                : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
+            }`}>
+              {row.marginPct}%
+            </span>
+          ),
+        },
+        {
+          key: 'isSettled',
+          header: 'Settlement',
+          align: 'center',
+          width: 110,
+          render: (val, row) => (
+            <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+              row.isSettled ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 text-slate-600'
+            }`}>
+              {row.isSettled ? 'SETTLED' : 'OPEN'}
+            </span>
+          ),
+        },
+      ];
+    }
+
+    if (activeTab === 'POD') {
+      return [
+        {
+          key: 'docketNumber',
+          header: 'Docket / LR #',
+          width: 140,
+          minWidth: 125,
+          sortable: true,
+          render: (val, row) => (
+            <span className="font-mono font-black text-xs text-blue-600 dark:text-blue-400">
+              {row.docketNumber || row.lrNumber}
+            </span>
+          ),
+        },
+        {
+          key: 'route',
+          header: 'Route / Corridor',
+          width: 190,
+          minWidth: 160,
+          render: (val, row) => (
+            <div className="text-xs whitespace-nowrap">
+              <span className="font-semibold text-slate-800 dark:text-slate-200">{row.originBranch || 'Origin'}</span>
+              <span className="mx-1.5 text-blue-500 font-bold">→</span>
+              <span className="font-semibold text-slate-800 dark:text-slate-200">{row.destBranch || 'Dest'}</span>
+            </div>
+          ),
+        },
+        {
+          key: 'consigneeName',
+          header: 'Consignee (Receiver)',
+          width: 170,
+          minWidth: 140,
+          render: (val, row) => (
+            <div className="max-w-[160px]">
+              <div className="font-bold text-xs text-slate-900 dark:text-white truncate" title={row.consigneeName}>
+                {row.consigneeName}
+              </div>
+              {row.receiverName && row.receiverName !== 'NA' && (
+                <span className="text-[10px] text-slate-400 block truncate">
+                  Received: {row.receiverName}
+                </span>
+              )}
+            </div>
+          ),
+        },
+        {
+          key: 'bookingDate',
+          header: 'Booking Date',
+          width: 115,
+          minWidth: 100,
+          sortable: true,
+          render: (val, row) => (
+            <span className="font-mono text-xs text-slate-600 dark:text-slate-400">
+              {row.bookingDate}
+            </span>
+          ),
+        },
+        {
+          key: 'deliveryDate',
+          header: 'Delivery Date',
+          width: 130,
+          minWidth: 115,
+          render: (val, row) => {
+            const isDelivered = row.isDelivered || (row.deliveryDate && row.deliveryDate !== 'Pending');
+            return isDelivered ? (
+              <span className="inline-flex items-center gap-1 font-mono text-xs text-emerald-600 dark:text-emerald-400 font-bold whitespace-nowrap">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                {row.deliveryDate}
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300/50 whitespace-nowrap">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                Pending
+              </span>
+            );
+          },
+        },
+        {
+          key: 'transitDays',
+          header: 'TAT & Ageing',
+          align: 'center',
+          width: 135,
+          minWidth: 120,
+          render: (val, row) => {
+            const days = row.daysCount !== undefined ? row.daysCount : (typeof row.transitDays === 'number' ? row.transitDays : 0);
+            const isDelivered = row.isDelivered || (row.deliveryDate && row.deliveryDate !== 'Pending');
+
+            if (isDelivered) {
+              return (
+                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[10px] font-extrabold font-mono border whitespace-nowrap ${
+                  days > 7
+                    ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border-amber-300/60'
+                    : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-300/60'
+                }`}>
+                  {days} Day{days === 1 ? '' : 's'} {days > 7 ? '(Late)' : '(On-Time)'}
+                </span>
+              );
+            }
+
+            return (
+              <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[10px] font-extrabold font-mono border whitespace-nowrap ${
+                days > 7
+                  ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border-rose-300/60'
+                  : days >= 5
+                  ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border-amber-300/60'
+                  : 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border-blue-300/60'
+              }`}>
+                <Clock className="w-3 h-3 shrink-0" />
+                {days} Day{days === 1 ? '' : 's'} Pending
+              </span>
+            );
+          },
+        },
+        {
+          key: 'shipmentStatus',
+          header: 'Delivery Status',
+          align: 'center',
+          width: 150,
+          minWidth: 130,
+          render: (val, row) => {
+            const raw = row.shipmentStatus || 'BOOKED';
+            const st = raw.replace(/_/g, ' ');
+            return (
+              <span
+                className={`inline-flex items-center justify-center px-2.5 py-1 rounded-md text-[10px] font-bold border whitespace-nowrap ${
+                  ['DELIVERED', 'COMPLETED'].includes(raw)
+                    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border-emerald-200/60'
+                    : raw === 'POD_UPLOADED'
+                    ? 'bg-teal-50 text-teal-700 dark:bg-teal-950/50 dark:text-teal-300 border-teal-200/60'
+                    : ['IN_TRANSIT', 'DISPATCHED'].includes(raw)
+                    ? 'bg-cyan-50 text-cyan-700 dark:bg-cyan-950/50 dark:text-cyan-300 border-cyan-200/60'
+                    : raw === 'OUT_FOR_DELIVERY'
+                    ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300 border-amber-200/60'
+                    : raw === 'RECEIVED_AT_HUB'
+                    ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300 border-blue-200/60'
+                    : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                }`}
+              >
+                {st}
+              </span>
+            );
+          },
+        },
+        {
+          key: 'priorityLevel',
+          header: 'Operational Priority',
+          align: 'center',
+          width: 170,
+          minWidth: 155,
+          render: (val, row) => {
+            const days = row.daysCount !== undefined ? row.daysCount : 0;
+            const isDelivered = row.isDelivered || (row.deliveryDate && row.deliveryDate !== 'Pending');
+
+            if (isDelivered) {
+              return (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700 whitespace-nowrap">
+                  <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                  <span>Delivered ({days}d)</span>
+                </span>
+              );
+            }
+
+            if (days > 7 || row.isOverdue || row.priorityLevel === 'CRITICAL_LATE') {
+              return (
+                <div className="flex flex-col items-center gap-0.5">
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-rose-600 text-white shadow-xs animate-bounce whitespace-nowrap">
+                    <AlertTriangle className="w-3 h-3" />
+                    Priority Delivery
+                  </span>
+                  <span className="text-[9px] font-bold text-rose-600 dark:text-rose-400 whitespace-nowrap">
+                    Late • {days} Days Elapsed
+                  </span>
+                </div>
+              );
+            }
+
+            if (days >= 5) {
+              return (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300/60 whitespace-nowrap">
+                  <Clock className="w-3 h-3 text-amber-500" />
+                  Due Soon ({days}d)
+                </span>
+              );
+            }
+
+            return (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200 dark:border-blue-800 whitespace-nowrap">
+                <Truck className="w-3 h-3 text-blue-500" />
+                Active ({days}d)
+              </span>
+            );
+          },
+        },
+        ...(canViewAuditCompliance ? [
+          {
+            key: 'podStatus',
+            header: 'POD Status',
+            align: 'center',
+            width: 140,
+            minWidth: 125,
+            render: (val, row) => (
+              <span
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold whitespace-nowrap border ${
+                  row.podStatus === 'VERIFIED'
+                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-300/40'
+                    : row.podStatus === 'UPLOADED' || row.podStatus === 'POD_UPLOADED'
+                    ? 'bg-cyan-100 text-cyan-800 dark:bg-cyan-950/60 dark:text-cyan-300 border-cyan-300/40'
+                    : 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border-rose-300/40'
+                }`}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full ${
+                  row.podStatus === 'VERIFIED' ? 'bg-emerald-500' : (row.podStatus === 'UPLOADED' || row.podStatus === 'POD_UPLOADED') ? 'bg-cyan-500' : 'bg-rose-500'
+                }`} />
+                {row.podStatus === 'VERIFIED' ? 'Verified & Signed' : (row.podStatus === 'UPLOADED' || row.podStatus === 'POD_UPLOADED') ? 'Audit Pending' : 'Upload Pending'}
+              </span>
+            ),
+          },
+          {
+            key: 'hasPhysicalPod',
+            header: 'Physical Copy',
+            align: 'center',
+            width: 120,
+            minWidth: 110,
+            render: (val, row) => (
+              row.hasPhysicalPod ? (
+                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
+                  <Check className="w-3.5 h-3.5 text-emerald-500" />
+                  <span>Received</span>
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-400 whitespace-nowrap">
+                  <Clock className="w-3 h-3 text-slate-400" />
+                  <span>Pending</span>
+                </span>
+              )
+            ),
+          },
+        ] : []),
+        {
+          key: 'actions',
+          header: 'POD Slip',
+          align: 'center',
+          width: 95,
+          minWidth: 85,
+          render: (val, row) => (
+            row.podUrl ? (
+              <button
+                type="button"
+                onClick={() => setSelectedPodModal(row)}
+                className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-900/40 dark:text-blue-400 transition-all cursor-pointer shadow-2xs hover:scale-105"
+                title="View proof of delivery slip in modal"
+              >
+                <Eye className="w-3.5 h-3.5" />
+                <span>View</span>
+              </button>
+            ) : (
+              <span className="text-[10px] text-slate-400">No Slip</span>
+            )
+          ),
+        },
+      ];
+    }
+
+    if (activeTab === 'COLLECTIONS') {
+      if (collectionSubView === 'DEPOSITS') {
+        return [
+          {
+            key: 'date',
+            header: 'Deposit Date & Time',
+            width: 190,
+            minWidth: 165,
+            sortable: true,
+            render: (val, row) => (
+              <div className="space-y-1">
+                {/* 1. First Invoice Number if present */}
+                {row.invoiceNumber && (
+                  <div>
+                    <span
+                      className="inline-flex items-center gap-1 font-mono text-[11px] font-extrabold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/70 px-2 py-0.5 rounded-md border border-indigo-200/80 dark:border-indigo-800/80 shadow-2xs"
+                      title={`Billed under Invoice #${row.invoiceNumber}`}
+                    >
+                      <FileText className="w-3 h-3 text-indigo-500 shrink-0" />
+                      <span>#{row.invoiceNumber}</span>
+                    </span>
+                  </div>
+                )}
+
+                {/* 2. Date */}
+                <div className="font-mono font-bold text-xs text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  <span>{row.invoiceDate || row.date}</span>
+                </div>
+
+                {/* 3. Time */}
+                {row.createdAt && (
+                  <div className="text-[10.5px] text-slate-400 font-mono flex items-center gap-1">
+                    <Clock className="w-3 h-3 text-slate-400 shrink-0" />
+                    <span className="lowercase">{new Date(row.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }).toLowerCase()}</span>
+                  </div>
+                )}
+              </div>
+            ),
+          },
+          {
+            key: 'branchName',
+            header: 'Branch Hub',
+            width: 170,
+            minWidth: 150,
+            render: (val, row) => (
+              <div className="flex items-center gap-1.5 text-xs font-bold text-blue-600 dark:text-blue-400">
+                <Building2 className="w-3.5 h-3.5 shrink-0 opacity-80" />
+                <span className="truncate max-w-[150px]">
+                  {typeof row.branchName === 'object' ? (row.branchName?.name || row.branchName?.branch_name || 'Branch') : (row.branchName || 'Branch')}
+                </span>
+              </div>
+            ),
+          },
+          {
+            key: 'depositMode',
+            header: 'Deposit Mode',
+            width: 160,
+            minWidth: 140,
+            render: (val, row) => {
+              const isOnline = ['UPI', 'NEFT', 'RTGS'].includes(row.depositMode);
+              const isCdm = row.depositMode === 'CDM';
+              const isCheque = row.depositMode === 'CHEQUE';
+              return (
+                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wide border ${
+                  isOnline
+                    ? 'bg-purple-50 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300 border-purple-200/60'
+                    : isCdm
+                    ? 'bg-cyan-50 text-cyan-700 dark:bg-cyan-950/60 dark:text-cyan-300 border-cyan-200/60'
+                    : isCheque
+                    ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border-indigo-200/60'
+                    : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-200/60'
+                }`}>
+                  {row.depositMode === 'CASH_DEPOSIT' ? 'Cash Counter' : row.depositMode === 'CDM' ? 'CDM Cash' : row.depositMode === 'UPI' ? 'UPI Transfer' : row.depositMode === 'NEFT' ? 'NEFT / RTGS' : (row.depositMode || 'Bank Deposit')}
+                </span>
+              );
+            },
+          },
+          {
+            key: 'bankName',
+            header: 'Bank Name & Account',
+            width: 180,
+            minWidth: 160,
+            render: (val, row) => (
+              <div>
+                <div className="font-bold text-xs text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <Landmark className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                  <span className="truncate max-w-[150px]" title={row.bankName}>{row.bankName || 'Company Bank'}</span>
+                </div>
+                <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                  {row.bankAccountNo ? `A/C: ••••${String(row.bankAccountNo).slice(-4)}` : 'Main Commercial Account'}
+                </div>
+              </div>
+            ),
+          },
+          {
+            key: 'utrNumber',
+            header: 'Transaction ID / UTR',
+            width: 180,
+            minWidth: 160,
+            render: (val, row) => (
+              <div>
+                <div className="flex items-center gap-1 flex-wrap">
+                  <span className="font-mono font-bold text-xs text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800/80 px-2 py-0.5 rounded-md border border-slate-200/60 dark:border-slate-700/60">
+                    {row.utrNumber || 'COUNTER_CASH'}
+                  </span>
+                  {row.isDuplicateUtr && (
+                    <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300/60" title="Same UTR and amount recorded twice">
+                      2x
+                    </span>
+                  )}
+                </div>
+                <div className="text-[10px] text-slate-400 mt-0.5">Ref / Challan #</div>
+              </div>
+            ),
+          },
+          {
+            key: 'sourceParty',
+            header: 'Source & Party Details',
+            width: 200,
+            minWidth: 170,
+            render: (val, row) => {
+              const docket = row.linkedDocket;
+              const isTbb = row.sourceType === 'TBB_INVOICE_PAYMENT';
+              const isToPay = row.sourceType === 'TO_PAY_DELIVERY' || docket?.paymentType === 'TO_PAY';
+              const isDirectUpi = row.sourceType === 'DIRECT_UPI_DELIVERY';
+
+              return (
+                <div className="space-y-1">
+                  <div className="flex items-center flex-wrap gap-1">
+                    {isToPay ? (
+                      <span className="text-[9.5px] px-2 py-0.5 rounded-full font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30">
+                        To-Pay Delivery
+                      </span>
+                    ) : isTbb ? (
+                      <span className="text-[9.5px] px-2 py-0.5 rounded-full font-bold bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border border-indigo-500/30">
+                        TBB Invoice
+                      </span>
+                    ) : isDirectUpi ? (
+                      <span className="text-[9.5px] px-2 py-0.5 rounded-full font-bold bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/30">
+                        Direct UPI
+                      </span>
+                    ) : (
+                      <span className="text-[9.5px] px-2 py-0.5 rounded-full font-bold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-300/40">
+                        Branch Cash Drawer
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Customer / Consignee Name */}
+                  {row.customerName || docket?.consigneeName ? (
+                    <div className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate max-w-[190px]" title={row.customerName || docket?.consigneeName}>
+                      {row.customerName || docket?.consigneeName}
+                    </div>
+                  ) : null}
+
+                  {row.isPartialPayment && (
+                    <span className="inline-block text-[9.5px] px-2 py-0.5 rounded-full font-bold bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/30" title={`Pending balance: ${formatINR(row.invoiceBalance)}`}>
+                      Partial ({Math.round(((row.remittedAmount || 0) / (row.invoiceTotal || 1)) * 100)}% Paid • Bal: {formatINR(row.invoiceBalance)})
+                    </span>
+                  )}
+
+                  {/* Route */}
+                  {docket?.originCity ? (
+                    <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate max-w-[190px]" title={`${docket.originCity} → ${docket.destCity}`}>
+                      {docket.originCity} → {docket.destCity}
+                    </div>
+                  ) : null}
+
+                  {row.isDuplicateUtr && (
+                    <div className="inline-flex items-center gap-1 text-[9px] font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/60 px-1.5 py-0.5 rounded border border-rose-300/60">
+                      <AlertTriangle className="w-2.5 h-2.5 shrink-0 text-rose-500" />
+                      <span>Duplicate UTR (Recorded 2x)</span>
+                    </div>
+                  )}
+                </div>
+              );
+            },
+          },
+          {
+            key: 'coveredDockets',
+            header: 'Covered Dockets',
+            width: 200,
+            minWidth: 180,
+            render: (val, row) => {
+              const dockets = (row.coveredDockets && row.coveredDockets.length > 0)
+                ? row.coveredDockets
+                : (row.linkedDocket
+                    ? [row.linkedDocket]
+                    : (row.docketNumber ? [{ docketNumber: row.docketNumber }] : [])
+                  );
+              const count = dockets.length;
+
+              if (count === 0) {
+                return (
+                  <span className="text-[11px] text-slate-400 font-mono italic">
+                    Counter Cash
+                  </span>
+                );
+              }
+
+              if (count === 1) {
+                const single = dockets[0];
+                const paidAmt = single.coveredAmount !== undefined ? single.coveredAmount : single.totalAmount;
+                return (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedDepositDetails(row)}
+                    className="w-full flex items-center justify-between gap-1.5 px-2 py-1 rounded-md bg-slate-50/90 dark:bg-slate-900/80 hover:bg-blue-50 dark:hover:bg-blue-950/60 border border-slate-200/80 dark:border-slate-800 text-[11px] font-mono transition-all cursor-pointer group shadow-2xs"
+                    title="Click to view full docket and transaction details"
+                  >
+                    <div className="flex items-center gap-1 font-semibold text-slate-800 dark:text-slate-200 group-hover:text-blue-600 dark:group-hover:text-cyan-400 truncate">
+                      <Truck className="w-3 h-3 text-blue-500 shrink-0" />
+                      <span>{single.docketNumber}</span>
+                    </div>
+                    {paidAmt !== undefined && paidAmt !== null && (
+                      <span className="font-bold text-emerald-600 dark:text-emerald-400 shrink-0">
+                        {formatINR(paidAmt)}
+                      </span>
+                    )}
+                  </button>
+                );
+              }
+
+              return (
+                <div className="space-y-1">
+                  {/* Compact Header */}
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="inline-flex items-center gap-1 text-[9.5px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-blue-100/90 dark:bg-blue-950/70 text-blue-700 dark:text-cyan-300 border border-blue-200/60 dark:border-blue-800/60">
+                      <Truck className="w-2.5 h-2.5 text-blue-500 shrink-0" />
+                      <span>{count} Dockets</span>
+                    </span>
+                    {row.isPartialPayment ? (
+                      <span className="text-[9px] px-1.5 py-0.2 rounded font-bold bg-purple-100 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300">
+                        {Math.round(((row.remittedAmount || 0) / (row.invoiceTotal || 1)) * 100)}% Paid
+                      </span>
+                    ) : count > 2 ? (
+                      <span className="text-[9px] text-slate-400 font-medium italic">
+                        Scroll ▾
+                      </span>
+                    ) : null}
+                  </div>
+
+                  {/* Clean list: displays exactly 2 dockets; remaining show on scroll */}
+                  <div className={`rounded-md border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900/60 divide-y divide-slate-100 dark:divide-slate-800/70 overflow-hidden ${
+                    count > 2
+                      ? 'max-h-[58px] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700'
+                      : ''
+                  }`}>
+                    {dockets.map((d, idx) => {
+                      const isFull = d.coveragePct !== undefined ? d.coveragePct >= 100 : !row.isPartialPayment;
+                      const isPartial = d.coveragePct !== undefined ? (d.coveragePct > 0 && d.coveragePct < 100) : false;
+                      const paidAmt = d.coveredAmount !== undefined ? d.coveredAmount : d.totalAmount;
+
+                      return (
+                        <div
+                          key={idx}
+                          onClick={() => setSelectedDepositDetails(row)}
+                          className="w-full flex items-center justify-between gap-1 px-2 py-1 hover:bg-blue-50/70 dark:hover:bg-blue-950/50 transition-colors text-left cursor-pointer group text-[11px] font-mono leading-none"
+                          title={`Click to view docket ${d.docketNumber || 'LR'} breakdown`}
+                        >
+                          {/* Left: Index + Truck Icon + Docket No */}
+                          <div className="flex items-center gap-1 min-w-0">
+                            <span className="text-slate-400 text-[10px] w-3.5 shrink-0">{idx + 1}.</span>
+                            <Truck className="w-3 h-3 text-slate-400 group-hover:text-blue-500 shrink-0" />
+                            <span className="font-semibold text-slate-800 dark:text-slate-200 group-hover:text-blue-600 dark:group-hover:text-cyan-400 truncate">
+                              {d.docketNumber}
+                            </span>
+                          </div>
+
+                          {/* Right: Paid Amount + PAID / DUE Status Badge */}
+                          <div className="flex items-center gap-1 shrink-0 ml-1">
+                            <span className={`font-bold ${
+                              isFull
+                                ? 'text-emerald-600 dark:text-emerald-400'
+                                : isPartial
+                                ? 'text-amber-600 dark:text-amber-400'
+                                : 'text-slate-400 dark:text-slate-500'
+                            }`}>
+                              {formatINR(paidAmt)}
+                            </span>
+                            {row.isPartialPayment && (
+                              <span className={`text-[8.5px] font-black uppercase px-1 py-0.2 rounded shrink-0 ${
+                                isFull
+                                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                                  : isPartial
+                                  ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+                                  : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+                              }`}>
+                                {isFull ? 'PAID' : isPartial ? 'PART' : 'DUE'}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            },
+          },
+          {
+            key: 'remittedAmount',
+            header: 'Deposited Amount',
+            align: 'right',
+            width: 160,
+            minWidth: 140,
+            sortable: true,
+            render: (val, row) => (
+              <div className="text-right">
+                <span className="font-mono font-black text-sm text-emerald-600 dark:text-emerald-400 block">
+                  {formatINR(row.remittedAmount)}
+                </span>
+                <span className="text-[10px] text-slate-400 font-medium">Bank Deposited</span>
+              </div>
+            ),
+          },
+          {
+            key: 'action',
+            header: 'Bank Slip & Details',
+            align: 'center',
+            width: 160,
+            minWidth: 140,
+            render: (val, row) => (
+              <div className="flex items-center justify-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setSelectedDepositDetails(row)}
+                  className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-cyan-50 text-cyan-700 hover:bg-cyan-100 dark:bg-cyan-950/50 dark:text-cyan-300 border border-cyan-200/60 dark:border-cyan-800/60 transition-all cursor-pointer shadow-2xs"
+                  title="View covered docket & transaction details"
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  <span>Breakdown</span>
+                </button>
+                {row.receiptSlipUrl && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedReceiptModal({
+                      slipUrl: row.receiptSlipUrl,
+                      bankName: row.bankName,
+                      utrNumber: row.utrNumber,
+                      amount: row.remittedAmount,
+                      date: row.date,
+                      branchName: typeof row.branchName === 'object' ? (row.branchName?.name || row.branchName?.branch_name) : row.branchName,
+                      sourceType: row.sourceType,
+                      depositMode: row.depositMode,
+                      isDigital: Boolean(row.receiptSlipUrl?.startsWith('AUTO_VERIFIED')),
+                    })}
+                    className="inline-flex items-center space-x-1 px-2 py-1 rounded-lg text-xs font-semibold bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400 border border-blue-200/60 dark:border-blue-800/60 transition-all cursor-pointer shadow-2xs"
+                    title={row.receiptSlipUrl?.startsWith('AUTO_VERIFIED') ? "View electronic payment remittance receipt" : "View bank deposit receipt slip"}
+                  >
+                    <span>{row.receiptSlipUrl?.startsWith('AUTO_VERIFIED') ? 'E-Receipt' : 'Slip'}</span>
+                  </button>
+                )}
+              </div>
+            ),
+          },
+          {
+            key: 'status',
+            header: 'Remittance Status',
+            align: 'center',
+            width: 140,
+            minWidth: 130,
+            render: (val, row) => (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300/40 whitespace-nowrap">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                <span>Daybook Closed</span>
+              </span>
+            ),
+          },
+          {
+            key: 'remarks',
+            header: 'Remarks / Notes',
+            width: 160,
+            minWidth: 140,
+            render: (val, row) => (
+              <span className="text-xs text-slate-600 dark:text-slate-400 truncate max-w-[150px] block" title={row.remarks || 'Standard Daybook Deposit'}>
+                {row.remarks || 'Standard Daybook Deposit'}
+              </span>
+            ),
+          },
+        ];
+      }
+
+      return [
+        {
+          key: 'date',
+          header: 'Date & Branch Hub',
+          width: 170,
+          minWidth: 150,
+          sortable: true,
+          render: (val, row) => (
+            <div>
+              <div className="font-mono font-bold text-xs text-slate-900 dark:text-white">
+                {row.date}
+              </div>
+              <div className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 dark:text-blue-400 mt-0.5">
+                <Building2 className="w-3 h-3 shrink-0 opacity-70" />
+                <span className="truncate max-w-[130px]">
+                  {typeof row.branchName === 'object' ? (row.branchName?.name || row.branchName?.branch_name || 'Branch') : (row.branchName || 'Branch')}
+                </span>
+              </div>
+            </div>
+          ),
+        },
+        {
+          key: 'paidCashAmount',
+          header: 'Booking Cash (Paid)',
+          align: 'right',
+          width: 150,
+          minWidth: 135,
+          render: (val, row) => (
+            <div className="text-right">
+              <span className="font-mono font-bold text-xs text-slate-900 dark:text-white block">
+                {formatINR(row.paidCashAmount)}
+              </span>
+              <span className="text-[10px] text-slate-400 font-medium">
+                {row.paidBookingsCount || 0} Paid Docket{row.paidBookingsCount === 1 ? '' : 's'}
+              </span>
+            </div>
+          ),
+        },
+        {
+          key: 'toPayCashAmount',
+          header: 'Delivery Cash (To-Pay)',
+          align: 'right',
+          width: 150,
+          minWidth: 135,
+          render: (val, row) => (
+            <div className="text-right">
+              <span className="font-mono font-bold text-xs text-blue-600 dark:text-blue-400 block">
+                {formatINR(row.toPayCashAmount)}
+              </span>
+              <span className="text-[10px] text-slate-400 font-medium">
+                {row.toPayDeliveriesCount || 0} Deliver{row.toPayDeliveriesCount === 1 ? 'y' : 'ies'}
+              </span>
+            </div>
+          ),
+        },
+        {
+          key: 'totalCollected',
+          header: 'Total Cash Inflow',
+          align: 'right',
+          width: 145,
+          minWidth: 130,
+          sortable: true,
+          render: (val, row) => (
+            <div className="text-right">
+              <span className="font-mono font-black text-xs text-slate-900 dark:text-white block">
+                {formatINR(row.totalCollected)}
+              </span>
+              <span className="text-[10px] text-slate-400">Gross Collected</span>
+            </div>
+          ),
+        },
+        {
+          key: 'bankRemittance',
+          header: 'Bank Transaction & Mode',
+          width: 190,
+          minWidth: 170,
+          render: (val, row) => {
+            const hasRemitted = row.isClosed || (row.remittedAmount && row.remittedAmount > 0);
+            const isOnline = ['UPI', 'NEFT', 'RTGS'].includes(row.depositMode);
+            return hasRemitted ? (
+              <div>
+                <div className="flex items-center gap-1.5 mb-1">
+                  <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider ${
+                    isOnline
+                      ? 'bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300'
+                      : 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300'
+                  }`}>
+                    {row.depositMode === 'CASH_DEPOSIT' ? 'Cash Deposit' : row.depositMode === 'CDM' ? 'CDM Cash' : isOnline ? 'Online Transfer' : (row.depositMode || 'Deposit')}
+                  </span>
+                </div>
+                <div className="text-[11px] font-bold text-slate-900 dark:text-slate-100 truncate max-w-[170px]" title={row.bankName || 'Bank'}>
+                  {row.bankName || 'Company Bank'}
+                </div>
+                {row.utrNumber ? (
+                  <div className="font-mono text-[10px] text-slate-500 dark:text-slate-400 truncate max-w-[170px]" title={`UTR: ${row.utrNumber}`}>
+                    UTR: {row.utrNumber}
+                  </div>
+                ) : (
+                  <div className="text-[10px] text-slate-400">Cash Deposit</div>
+                )}
+              </div>
+            ) : (row.pendingCash || 0) > 0 ? (
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300/40">
+                Pending Bank Deposit
+              </span>
+            ) : (
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                Nil Balance • Cleared
+              </span>
+            );
+          },
+        },
+        {
+          key: 'remittedAmount',
+          header: 'Deposited to Bank',
+          align: 'right',
+          width: 145,
+          minWidth: 130,
+          render: (val, row) => (
+            <div className="text-right">
+              <span className={`font-mono font-bold text-xs block ${
+                (row.remittedAmount || 0) > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'
+              }`}>
+                {formatINR(row.remittedAmount || 0)}
+              </span>
+              <span className="text-[10px] text-slate-400 font-medium">
+                {(row.remittedAmount || 0) > 0 ? 'Bank Remitted' : 'Awaiting Remit'}
+              </span>
+            </div>
+          ),
+        },
+        {
+          key: 'pendingCash',
+          header: 'Pending in Hand',
+          align: 'right',
+          width: 145,
+          minWidth: 130,
+          render: (val, row) => {
+            const pending = row.pendingCash !== undefined ? row.pendingCash : Math.max(0, (row.totalCollected || 0) - (row.remittedAmount || 0));
+            return (
+              <div className="text-right">
+                <span className={`font-mono font-black text-xs block ${
+                  pending > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'
+                }`}>
+                  {formatINR(pending)}
+                </span>
+                <span className={`text-[10px] font-semibold ${
+                  pending > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-400'
+                }`}>
+                  {pending > 0 ? 'In Branch Drawer' : 'Nil Balance • Cleared'}
+                </span>
+              </div>
+            );
+          },
+        },
+        {
+          key: 'daybookStatus',
+          header: 'Daybook Status',
+          align: 'center',
+          width: 135,
+          minWidth: 125,
+          render: (val, row) => {
+            const pending = row.pendingCash !== undefined ? row.pendingCash : Math.max(0, (row.totalCollected || 0) - (row.remittedAmount || 0));
+            const isFullyClosed = row.isClosed || pending === 0;
+            return (
+              <span
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold whitespace-nowrap border ${
+                  isFullyClosed
+                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-300/40'
+                    : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border-amber-300/40'
+                }`}
+              >
+                {isFullyClosed ? (
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                    <span>Daybook Closed</span>
+                  </>
+                ) : (
+                  <>
+                    <Clock className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
+                    <span>Unclosed Cash</span>
+                  </>
+                )}
+              </span>
+            );
+          },
+        },
+        {
+          key: 'action',
+          header: 'Action / Slip',
+          align: 'center',
+          width: 125,
+          minWidth: 110,
+          render: (val, row) => (
+            row.isClosed && row.receiptSlipUrl ? (
+              <button
+                type="button"
+                onClick={() => setSelectedReceiptModal({
+                  slipUrl: row.receiptSlipUrl,
+                  bankName: row.bankName,
+                  utrNumber: row.utrNumber,
+                  amount: row.remittedAmount || row.totalCollected,
+                  date: row.date,
+                  branchName: typeof row.branchName === 'object' ? (row.branchName?.name || row.branchName?.branch_name) : row.branchName,
+                })}
+                className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400 border border-blue-200/60 dark:border-blue-800/60 transition-all cursor-pointer shadow-2xs"
+                title="View bank deposit slip"
+              >
+                <Eye className="w-3.5 h-3.5" />
+                <span>View Slip</span>
+              </button>
+            ) : !row.isClosed || ((row.pendingCash || 0) > 0) ? (
+              <button
+                type="button"
+                onClick={() => openRemitModal(row)}
+                className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-500 text-white hover:bg-amber-600 shadow-xs transition-all cursor-pointer active:scale-95"
+                title="Record bank deposit to close daybook"
+              >
+                <Landmark className="w-3.5 h-3.5" />
+                <span>Deposit</span>
+              </button>
+            ) : (
+              <span className="text-[10px] text-slate-400 font-bold">Closed</span>
+            )
+          ),
+        },
+      ];
+    }
+
+    if (activeTab === 'GST') {
+      return [
+        {
+          key: 'lrNumber',
+          header: 'LR #',
+          width: 120,
+          render: (val, row) => (
+            <span className="font-mono font-bold text-xs text-indigo-600 dark:text-indigo-400">{row.lrNumber}</span>
+          ),
+        },
+        {
+          key: 'bookingDate',
+          header: 'Date',
+          width: 100,
+          render: (val, row) => <span className="font-mono text-[11px] text-slate-500">{row.bookingDate}</span>,
+        },
+        {
+          key: 'branch',
+          header: 'Branch',
+          width: 120,
+          render: (val, row) => (
+            <span className="text-xs">
+              {typeof row.branch === 'object' ? (row.branch?.name || row.branch?.branch_name || 'Head Office') : (row.branch || 'Head Office')}
+            </span>
+          ),
+        },
+        {
+          key: 'consignorName',
+          header: 'Consignor',
+          width: 150,
+          render: (val, row) => (
+            <div className="max-w-[140px] truncate" title={row.consignorName}>
+              <div className="font-bold text-xs text-slate-900 dark:text-white truncate">{row.consignorName}</div>
+              <span className="block font-mono text-[10px] text-slate-400">{row.consignorGst}</span>
+            </div>
+          ),
+        },
+        {
+          key: 'consigneeName',
+          header: 'Consignee',
+          width: 150,
+          render: (val, row) => (
+            <div className="max-w-[140px] truncate" title={row.consigneeName}>
+              <div className="font-bold text-xs text-slate-900 dark:text-white truncate">{row.consigneeName}</div>
+              <span className="block font-mono text-[10px] text-slate-400">{row.consigneeGst}</span>
+            </div>
+          ),
+        },
+        {
+          key: 'taxableValue',
+          header: 'Taxable (₹)',
+          align: 'right',
+          width: 120,
+          render: (val, row) => (
+            <span className="font-mono font-bold text-xs text-slate-900 dark:text-white">
+              {formatINR(row.taxableValue)}
+            </span>
+          ),
+        },
+        {
+          key: 'taxType',
+          header: 'Tax Type',
+          align: 'center',
+          width: 110,
+          render: (val, row) => (
+            <span className="inline-block px-2.5 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+              {row.taxType}
+            </span>
+          ),
+        },
+        {
+          key: 'cgst',
+          header: 'CGST (₹)',
+          align: 'right',
+          width: 100,
+          render: (val, row) => <span className="font-mono text-xs text-slate-500">{formatINR(row.cgst)}</span>,
+        },
+        {
+          key: 'sgst',
+          header: 'SGST (₹)',
+          align: 'right',
+          width: 100,
+          render: (val, row) => <span className="font-mono text-xs text-slate-500">{formatINR(row.sgst)}</span>,
+        },
+        {
+          key: 'igst',
+          header: 'IGST (₹)',
+          align: 'right',
+          width: 100,
+          render: (val, row) => <span className="font-mono text-xs text-slate-500">{formatINR(row.igst)}</span>,
+        },
+        {
+          key: 'totalInvoiceValue',
+          header: 'Total Invoice (₹)',
+          align: 'right',
+          width: 130,
+          render: (val, row) => (
+            <span className="font-mono font-bold text-xs text-indigo-600 dark:text-indigo-400">
+              {formatINR(row.totalInvoiceValue)}
+            </span>
+          ),
+        },
+      ];
+    }
+    return [];
+  }, [activeTab, isDark, canViewAuditCompliance, collectionSubView]);
 
   return (
     <div className={`flex min-h-screen ${isDark ? 'bg-[#090D18]' : 'bg-[#F6F8FB]'}`}>
@@ -626,13 +2412,17 @@ export default function ReportsPage() {
 
           {/* Summary Metric Ribbon */}
           {summary && (
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
               {activeTab === 'DOCKETS' && (
                 <>
                   <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'}`}>
                     <span className="text-[10px] font-bold uppercase text-slate-400">Total Dockets</span>
                     <p className="text-xl font-black text-blue-500 mt-1">{summary.totalBookings || 0}</p>
-                    <span className="text-[11px] text-slate-400">{summary.totalPackages || 0} Packages</span>
+                    <span className="text-[11px] text-slate-400">
+                      {summary.isFiltered && summary.filteredBookings !== undefined && summary.filteredBookings !== summary.totalBookings
+                        ? `${summary.filteredBookings} of ${summary.totalBookings} Selected • ${summary.totalPackages || 0} Pkgs`
+                        : `${summary.totalPackages || 0} Packages`}
+                    </span>
                   </div>
                   <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'}`}>
                     <span className="text-[10px] font-bold uppercase text-slate-400">Charged Weight</span>
@@ -642,32 +2432,37 @@ export default function ReportsPage() {
                     <span className="text-[11px] text-slate-400">{summary.totalActualWeight || 0} kg actual</span>
                   </div>
                   <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'}`}>
-                    <span className="text-[10px] font-bold uppercase text-slate-400">Base Freight</span>
-                    <p className="text-xl font-black text-slate-800 dark:text-slate-100 mt-1">
-                      {formatINR(summary.totalBaseFreight)}
-                    </p>
-                    <span className="text-[11px] text-slate-400">+{formatINR(summary.totalOtherCharges)} charges</span>
-                  </div>
-                  <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'}`}>
                     <span className="text-[10px] font-bold uppercase text-slate-400">Total Revenue</span>
-                    <p className="text-xl font-black text-emerald-500 mt-1">
+                    <p className="text-xl font-black text-blue-600 dark:text-blue-400 mt-1">
                       {formatINR(summary.totalRevenue)}
                     </p>
-                    <span className="text-[11px] text-slate-400">GST: {formatINR(summary.totalTaxAmount)}</span>
+                    <span className="text-[11px] text-slate-400">
+                      {summary.isFiltered && summary.filteredRevenue !== undefined && summary.filteredRevenue !== summary.totalRevenue
+                        ? `Selected: ${formatINR(summary.filteredRevenue)} • GST: ${formatINR(summary.totalTaxAmount)}`
+                        : `GST: ${formatINR(summary.totalTaxAmount)}`}
+                    </span>
                   </div>
-                  <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'} col-span-2 md:col-span-1`}>
-                    <span className="text-[10px] font-bold uppercase text-slate-400">Payment Breakdown</span>
-                    <div className="flex flex-wrap items-center gap-1.5 mt-1.5 text-xs font-bold">
-                      <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 text-[10px]">
-                        {summary.breakdown?.cleared || 0} Cleared
-                      </span>
-                      <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 text-[10px]">
-                        {summary.breakdown?.pending || 0} Pending
-                      </span>
-                    </div>
-                    <div className="text-[10px] text-slate-400 mt-1">
-                      {summary.breakdown?.paid || 0} Paid • {summary.breakdown?.toPay || 0} To-Pay • {summary.breakdown?.tbb || 0} TBB
-                    </div>
+                  <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'}`}>
+                    <span className="text-[10px] font-bold uppercase text-emerald-500">Total Cleared Revenue</span>
+                    <p className="text-xl font-black text-emerald-500 mt-1">
+                      {formatINR(summary.totalClearedRevenue !== undefined ? summary.totalClearedRevenue : (summary.breakdown?.clearedRevenue ?? summary.totalRevenue ?? 0))}
+                    </p>
+                    <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">
+                      {summary.breakdown?.cleared || 0} Dockets Cleared
+                    </span>
+                  </div>
+                  <div className={`p-4 rounded-2xl border ${
+                    (summary.totalPendingRevenue || summary.breakdown?.pendingRevenue || 0) > 0
+                      ? 'bg-amber-500/10 border-amber-500/30'
+                      : (isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200')
+                  } col-span-2 md:col-span-1`}>
+                    <span className="text-[10px] font-bold uppercase text-amber-500">Total Pending Revenue</span>
+                    <p className="text-xl font-black text-amber-500 mt-1">
+                      {formatINR(summary.totalPendingRevenue !== undefined ? summary.totalPendingRevenue : (summary.breakdown?.pendingRevenue || 0))}
+                    </p>
+                    <span className="text-[11px] text-amber-600 dark:text-amber-400 font-semibold">
+                      {summary.breakdown?.pending || 0} Dockets Pending
+                    </span>
                   </div>
                 </>
               )}
@@ -736,64 +2531,175 @@ export default function ReportsPage() {
                 <>
                   <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'}`}>
                     <span className="text-[10px] font-bold uppercase text-slate-400">Delivered Units</span>
-                    <p className="text-xl font-black text-blue-500 mt-1">{summary.totalDelivered || 0}</p>
-                    <span className="text-[11px] text-slate-400">of {summary.totalConsignments || 0} Bookings</span>
+                    <p className="text-xl font-black text-emerald-500 mt-1">{summary.totalDelivered || 0}</p>
+                    <span className="text-[11px] text-slate-400">
+                      of {summary.totalConsignments || 0} Bookings ({summary.totalConsignments ? Math.round(((summary.totalDelivered || 0) / summary.totalConsignments) * 100) : 0}% Closed)
+                    </span>
                   </div>
                   <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'}`}>
-                    <span className="text-[10px] font-bold uppercase text-slate-400">PODs Verified</span>
-                    <p className="text-xl font-black text-emerald-500 mt-1">{summary.podVerifiedCount || 0}</p>
-                    <span className="text-[11px] text-emerald-600 dark:text-emerald-400">Audited &amp; Signed</span>
+                    <span className="text-[10px] font-bold uppercase text-slate-400">Pending Delivery</span>
+                    <p className="text-xl font-black text-blue-500 mt-1">
+                      {summary.totalPending !== undefined ? summary.totalPending : Math.max(0, (summary.totalConsignments || 0) - (summary.totalDelivered || 0))}
+                    </p>
+                    <span className="text-[11px] text-blue-600 dark:text-blue-400">In Transit &amp; Godown Hubs</span>
                   </div>
-                  <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'}`}>
-                    <span className="text-[10px] font-bold uppercase text-slate-400">Uploaded (Audit Due)</span>
-                    <p className="text-xl font-black text-amber-500 mt-1">{summary.podUploadedCount || 0}</p>
-                    <span className="text-[11px] text-amber-600 dark:text-amber-400">Awaiting Approval</span>
+                  <div className={`p-4 rounded-2xl border transition-all ${
+                    (summary.pendingOverdueCount || 0) > 0
+                      ? 'bg-rose-500/10 border-rose-500/30'
+                      : isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'
+                  }`}>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold uppercase text-rose-500">Critical Overdue</span>
+                      {(summary.pendingOverdueCount || 0) > 0 && (
+                        <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-black uppercase tracking-wider bg-rose-600 text-white animate-pulse">
+                          Priority
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xl font-black text-rose-600 dark:text-rose-400 mt-1">{summary.pendingOverdueCount || 0}</p>
+                    <span className="text-[11px] font-semibold text-rose-500">
+                      {(summary.pendingOverdueCount || 0) > 0 ? 'Urgent Priority Delivery Required' : 'Zero Overdue Backlog'}
+                    </span>
                   </div>
-                  <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'}`}>
-                    <span className="text-[10px] font-bold uppercase text-slate-400">Pending Upload</span>
-                    <p className="text-xl font-black text-rose-500 mt-1">{summary.podPendingCount || 0}</p>
-                    <span className="text-[11px] text-rose-600 dark:text-rose-400">POD Backlog</span>
-                  </div>
+                  {canViewAuditCompliance ? (
+                    <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'}`}>
+                      <span className="text-[10px] font-bold uppercase text-slate-400">PODs Verified &amp; Signed</span>
+                      <p className="text-xl font-black text-teal-500 mt-1">{summary.podVerifiedCount || 0}</p>
+                      <span className="text-[11px] text-teal-600 dark:text-teal-400">
+                        Audited ({summary.podUploadedCount || 0} Pending Audit)
+                      </span>
+                    </div>
+                  ) : (
+                    <div className={`p-4 rounded-2xl border transition-all ${
+                      (summary.podPendingCount || 0) > 0
+                        ? 'bg-amber-500/10 border-amber-500/30'
+                        : isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'
+                    }`}>
+                      <span className={`text-[10px] font-bold uppercase ${
+                        (summary.podPendingCount || 0) > 0 ? 'text-amber-500' : 'text-slate-400'
+                      }`}>
+                        POD Slips Uploaded
+                      </span>
+                      <p className="text-xl font-black text-teal-500 mt-1">
+                        {(summary.podUploadedCount || 0) + (summary.podVerifiedCount || 0)}
+                      </p>
+                      <span className={`text-[11px] font-semibold ${
+                        (summary.podPendingCount || 0) > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-400'
+                      }`}>
+                        {(summary.podPendingCount || 0) > 0
+                          ? `${summary.podPendingCount} Delivered • Upload Due`
+                          : 'All Delivered Slips Uploaded'}
+                      </span>
+                    </div>
+                  )}
                   <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'} col-span-2 md:col-span-1`}>
-                    <span className="text-[10px] font-bold uppercase text-slate-400">SLA Compliance Rate</span>
+                    <span className="text-[10px] font-bold uppercase text-slate-400">
+                      {canViewAuditCompliance ? 'SLA Turnaround Rate' : 'POD Collection Rate'}
+                    </span>
                     <p className="text-xl font-black text-cyan-500 mt-1">{summary.complianceRatePct || 100}%</p>
-                    <span className="text-[11px] text-slate-400">POD Turnaround</span>
+                    <span className="text-[11px] text-slate-400">
+                      {canViewAuditCompliance ? 'Standard SLA Compliance' : 'Delivered Slips Uploaded'}
+                    </span>
                   </div>
                 </>
               )}
 
               {activeTab === 'COLLECTIONS' && (
                 <>
+                  {/* 1. Total Branch Revenue */}
                   <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'}`}>
-                    <span className="text-[10px] font-bold uppercase text-slate-400">Total Gross Collected</span>
-                    <p className="text-xl font-black text-amber-500 mt-1">{formatINR(summary.totalCashCollected || summary.totalCashInHand)}</p>
-                    <span className="text-[11px] text-slate-400">Paid + To-Pay cash</span>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold uppercase text-slate-400">Total Branch Revenue</span>
+                      {(summary?.totalTbbAmount || 0) > 0 && (
+                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" title={`Includes ₹${formatINR(summary?.totalTbbAmount)} TBB Booked`}>
+                          Incl. TBB
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xl font-black text-slate-900 dark:text-white mt-1">
+                      {formatINR(summary?.totalBranchRevenue ?? summary?.totalRevenue)}
+                    </p>
+                    <span className="text-[11px] text-slate-400">All Dockets (Paid + To-Pay Booked &amp; Delivered)</span>
                   </div>
-                  <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'}`}>
-                    <span className="text-[10px] font-bold uppercase text-slate-400">Paid Bookings Cash</span>
-                    <p className="text-xl font-black text-emerald-500 mt-1">{formatINR(summary.totalPaidCollected)}</p>
-                    <span className="text-[11px] text-slate-400">Origin counter</span>
-                  </div>
-                  <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'}`}>
-                    <span className="text-[10px] font-bold uppercase text-slate-400">To-Pay Delivery Cash</span>
-                    <p className="text-xl font-black text-blue-500 mt-1">{formatINR(summary.totalToPayCollected)}</p>
-                    <span className="text-[11px] text-slate-400">Destination delivery</span>
-                  </div>
-                  <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'}`}>
-                    <span className="text-[10px] font-bold uppercase text-slate-400">Remitted to Bank</span>
-                    <p className="text-xl font-black text-emerald-600 dark:text-emerald-400 mt-1">{formatINR(summary.totalRemittedToBank || 0)}</p>
-                    <span className="text-[11px] text-slate-400">With Bank Slips</span>
-                  </div>
+
+                  {/* 2. Pending in Branch */}
                   <div className={`p-4 rounded-2xl border ${
-                    (summary.totalUnclosedCash || 0) > 0
+                    (summary?.totalPendingInBranch ?? summary?.totalUnclosedCash ?? 0) > 0
+                      ? 'bg-amber-500/10 border-amber-500/30'
+                      : (isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200')
+                  }`}>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold uppercase text-amber-500">Pending in Branch</span>
+                      {(summary?.totalPendingInBranch ?? summary?.totalUnclosedCash ?? 0) > 0 ? (
+                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
+                          {summary?.totalDeliveredDocketsCount ? `${summary.totalDeliveredDocketsCount} Delivered` : 'Awaiting Deposit'}
+                        </span>
+                      ) : (
+                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+                          All Deposited
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xl font-black text-amber-500 mt-1">
+                      {formatINR(summary?.totalPendingInBranch ?? summary?.totalUnclosedCash ?? 0)}
+                    </p>
+                    <span className="text-[11px] text-amber-600 dark:text-amber-400 font-semibold block truncate" title="Cash in Drawer Awaiting Deposit (Delivered Dockets)">
+                      {(summary?.totalPendingInBranch ?? summary?.totalUnclosedCash ?? 0) > 0 ? 'Cash in Drawer Awaiting Deposit' : 'All Collections Remitted'}
+                    </span>
+                  </div>
+
+                  {/* 3. Deposited to Bank */}
+                  <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'}`}>
+                    <span className="text-[10px] font-bold uppercase text-emerald-500">Deposited to Bank</span>
+                    <p className="text-xl font-black text-emerald-600 dark:text-emerald-400 mt-1">{formatINR(summary?.totalRemittedToBank || 0)}</p>
+                    <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">Bank Remitted (Cash / Online UTR)</span>
+                  </div>
+
+                  {/* 4. Total Pending Revenue */}
+                  <div className={`p-4 rounded-2xl border ${
+                    (summary?.totalPendingRevenue !== undefined ? summary.totalPendingRevenue : (summary?.totalBranchRevenue || 0) - (summary?.totalRemittedToBank || 0)) > 0
                       ? 'bg-rose-500/10 border-rose-500/30'
                       : (isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200')
-                  } col-span-2 md:col-span-1`}>
-                    <span className="text-[10px] font-bold uppercase text-rose-500">Unclosed Cash In-Hand</span>
-                    <p className="text-xl font-black text-rose-600 dark:text-rose-400 mt-1">{formatINR(summary.totalUnclosedCash || 0)}</p>
-                    <span className="text-[11px] text-rose-500 font-semibold">
-                      {(summary.totalUnclosedCash || 0) > 0 ? 'Pending Bank Deposit' : 'All Dues Cleared'}
+                  }`}>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold uppercase text-rose-500">Total Pending Revenue</span>
+                      {(summary?.totalPendingRevenue !== undefined ? summary.totalPendingRevenue : (summary?.totalBranchRevenue || 0) - (summary?.totalRemittedToBank || 0)) > 0 ? (
+                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300">
+                          Unremitted
+                        </span>
+                      ) : (
+                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                          Remitted
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xl font-black text-rose-600 dark:text-rose-400 mt-1">
+                      {formatINR(summary?.totalPendingRevenue !== undefined ? summary.totalPendingRevenue : Math.max(0, (summary?.totalBranchRevenue ?? summary?.totalRevenue ?? 0) - (summary?.totalRemittedToBank || 0)))}
+                    </p>
+                    <span className="text-[11px] text-rose-600 dark:text-rose-400 font-medium block truncate" title="Total branch revenue not deposited to bank">
+                      {(summary?.totalPendingRevenue !== undefined ? summary.totalPendingRevenue : (summary?.totalBranchRevenue || 0) - (summary?.totalRemittedToBank || 0)) > 0 ? 'Not Deposited to Bank' : 'All Revenue Remitted'}
                     </span>
+                  </div>
+
+                  {/* 5. 30-Day Daybook Total Card */}
+                  <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'}`}>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold uppercase text-slate-400">30-Day Daybook Total</span>
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+                        30 Days
+                      </span>
+                    </div>
+                    <p className="text-xl font-black text-slate-900 dark:text-white mt-1">
+                      {formatINR(summary?.totalPendingInBranch ?? summary?.totalUnclosedCash ?? 0)}
+                    </p>
+                    <div className="flex items-center justify-between text-[11px] mt-1 pt-1.5 border-t border-slate-100 dark:border-slate-800/80">
+                      <span className="text-slate-500 font-medium">
+                        Deposited: <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">{formatINR(summary?.totalRemittedToBank || 0)}</span>
+                      </span>
+                      <span className="text-slate-500 font-medium">
+                        Revenue: <span className="font-mono font-bold text-slate-900 dark:text-white">{formatINR(summary?.totalBranchRevenue ?? summary?.totalRevenue ?? 0)}</span>
+                      </span>
+                    </div>
                   </div>
                 </>
               )}
@@ -825,764 +2731,201 @@ export default function ReportsPage() {
             </div>
           )}
 
-          {/* Interactive Report Data Table */}
-          <div
-            className={`rounded-2xl border overflow-hidden transition-all ${
-              isDark ? 'bg-[#0B1020] border-slate-800/80' : 'bg-white border-slate-200/80 shadow-card'
-            }`}
-          >
-            {/* Table Header Action Bar with Search, Filters, Dates, and Export */}
-            <div className={`px-4 py-3 border-b flex flex-wrap items-center justify-between gap-3 ${
-              isDark ? 'border-slate-800/80 bg-slate-900/40' : 'border-slate-100 bg-slate-50/50'
-            }`}>
-              {/* Left: Instant Search Box */}
-              <div className="relative w-64 sm:w-72 md:w-80">
-                <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => {
-                    setSearchQuery(e.target.value);
-                    setPage(1);
-                  }}
-                  placeholder={
-                    activeTab === 'DOCKETS'
-                      ? 'Search LR #, Party, Route...'
-                      : activeTab === 'AGEING'
-                      ? 'Search Customer, GSTIN...'
-                      : activeTab === 'TRIPS'
-                      ? 'Search Trip #, Vehicle...'
-                      : activeTab === 'POD'
-                      ? 'Search Docket #, Consignee...'
-                      : 'Search records...'
-                  }
-                  className={`w-full text-xs font-semibold rounded-xl border pl-9 pr-8 py-2 outline-none transition-all ${
-                    isDark
-                      ? 'bg-slate-900/90 border-slate-800 text-slate-200 placeholder-slate-500 focus:border-cyan-400'
-                      : 'bg-white border-slate-200 text-slate-800 placeholder-slate-400 focus:border-blue-500 shadow-2xs'
-                  }`}
-                />
-                {searchQuery && (
-                  <button
-                    onClick={() => {
-                      setSearchQuery('');
-                      setPage(1);
-                    }}
-                    className={`absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold ${
-                      isDark ? 'text-slate-400 hover:text-white' : 'text-slate-400 hover:text-slate-700'
-                    }`}
-                  >
-                    ×
-                  </button>
-                )}
-              </div>
-
-              {/* Right: Contextual Filters + Branch (Admin) + Date Filter + Export */}
-              <div className="flex flex-wrap items-center gap-2.5">
-
-                {/* Contextual Filter: Payment Type & Clearance for Dockets */}
-                {activeTab === 'DOCKETS' && (
-                  <>
-                    <select
-                      value={paymentTypeFilter}
-                      onChange={(e) => {
-                        setPaymentTypeFilter(e.target.value);
-                        setPage(1);
-                      }}
-                      className={`text-xs font-bold rounded-xl border px-3 py-2 outline-none transition-all cursor-pointer ${
-                        isDark
-                          ? 'bg-slate-900/90 border-slate-800 text-slate-200 focus:border-cyan-400'
-                          : 'bg-white border-slate-200 text-slate-700 focus:border-blue-500 shadow-xs'
-                      }`}
-                    >
-                      <option value="ALL">All Payment Modes</option>
-                      <option value="PAID">PAID</option>
-                      <option value="TO_PAY">TO-PAY</option>
-                      <option value="TBB">TBB</option>
-                    </select>
-
-                    <select
-                      value={paymentClearanceFilter}
-                      onChange={(e) => {
-                        setPaymentClearanceFilter(e.target.value);
-                        setPage(1);
-                      }}
-                      className={`text-xs font-bold rounded-xl border px-3 py-2 outline-none transition-all cursor-pointer ${
-                        isDark
-                          ? 'bg-slate-900/90 border-slate-800 text-slate-200 focus:border-cyan-400'
-                          : 'bg-white border-slate-200 text-slate-700 focus:border-blue-500 shadow-xs'
-                      }`}
-                    >
-                      <option value="ALL">All Payment Status</option>
-                      <option value="CLEARED">Payment Cleared</option>
-                      <option value="PENDING">Payment Pending</option>
-                    </select>
-                  </>
-                )}
-
-                {/* Contextual Filter: POD Status for POD Tab */}
-                {activeTab === 'POD' && (
-                  <select
-                    value={podStatusFilter}
-                    onChange={(e) => {
-                      setPodStatusFilter(e.target.value);
-                      setPage(1);
-                    }}
-                    className={`text-xs font-bold rounded-xl border px-3 py-2 outline-none transition-all cursor-pointer ${
-                      isDark
-                        ? 'bg-slate-900/90 border-slate-800 text-slate-200 focus:border-cyan-400'
-                        : 'bg-white border-slate-200 text-slate-700 focus:border-blue-500 shadow-xs'
-                    }`}
-                  >
-                    <option value="ALL">All POD Statuses</option>
-                    <option value="VERIFIED">VERIFIED</option>
-                    <option value="UPLOADED">UPLOADED</option>
-                    <option value="PENDING">PENDING UPLOAD</option>
-                  </select>
-                )}
-
-                {/* Branch Selector: only shown for Admin users */}
-                {isAdmin && (
-                  <select
-                    value={selectedBranch}
-                    onChange={(e) => {
-                      setSelectedBranch(e.target.value);
-                      setPage(1);
-                    }}
-                    className={`text-xs font-bold rounded-xl border px-3 py-2 outline-none transition-all cursor-pointer ${
-                      isDark
-                        ? 'bg-slate-900/90 border-slate-800 text-slate-200 focus:border-cyan-400'
-                        : 'bg-white border-slate-200 text-slate-700 focus:border-blue-500 shadow-xs'
-                    }`}
-                  >
-                    <option value="ALL">All Network Hubs</option>
-                    {branches.map((b) => (
-                      <option key={b.id} value={b.id}>
-                        {b.name || b.branch_name} ({b.code || b.branch_code || 'HUB'})
-                      </option>
-                    ))}
-                  </select>
-                )}
-
-                {/* Remit to Bank Action for Branch Cash & Daybook */}
-                {activeTab === 'COLLECTIONS' && (
-                  <button
-                    onClick={() => openRemitModal()}
-                    className="flex items-center space-x-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white shadow-xs transition-all cursor-pointer"
-                  >
-                    <Landmark className="w-3.5 h-3.5" />
-                    <span>Deposit to Bank</span>
-                  </button>
-                )}
-
-                {/* Date Range Filter */}
-                <DateRangeFilter
-                  fromDate={dateFrom}
-                  toDate={dateTo}
-                  align="right"
-                  onChange={({ fromDate, toDate }) => {
-                    setDateFrom(fromDate);
-                    setDateTo(toDate);
-                    setPage(1);
-                  }}
-                  onClear={() => {
-                    setDateFrom('');
-                    setDateTo('');
-                    setPage(1);
-                  }}
-                />
-
-                {/* Download CSV Action */}
-                {canExport && (
-                  <button
-                    onClick={handleExportCsv}
-                    className={`p-2 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
-                      isDark
-                        ? 'border-slate-800 bg-slate-900/90 text-slate-300 hover:text-white'
-                        : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-xs'
-                    }`}
-                    title="Download CSV"
-                  >
-                    <Download className="w-4 h-4 text-blue-500" />
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className={`border-b text-[11px] font-bold uppercase tracking-wider ${
-                    isDark ? 'bg-slate-900/60 border-slate-800 text-slate-400' : 'bg-slate-50/75 border-slate-200 text-slate-600'
-                  }`}>
-                    {activeTab === 'DOCKETS' && (
-                      <>
-                        <th className="py-3 px-4">LR #</th>
-                        <th className="py-3 px-4">Booking Date</th>
-                        <th className="py-3 px-4">Route</th>
-                        <th className="py-3 px-4">Consignor</th>
-                        <th className="py-3 px-4">Consignee</th>
-                        <th className="py-3 px-4 text-center">Pkgs</th>
-                        <th className="py-3 px-4 text-right">Charged Wt</th>
-                        <th className="py-3 px-4 text-right">Base Freight</th>
-                        <th className="py-3 px-4 text-right">Total (₹)</th>
-                        <th className="py-3 px-4 text-center">Payment Mode</th>
-                        <th className="py-3 px-4 text-center">Payment Status</th>
-                        <th className="py-3 px-4 text-center">Delivery Status</th>
-                      </>
-                    )}
-
-                    {activeTab === 'AGEING' && (
-                      <>
-                        <th className="py-3 px-4">Party Name</th>
-                        <th className="py-3 px-4">GSTIN</th>
-                        <th className="py-3 px-4">Branch</th>
-                        <th className="py-3 px-4 text-right">Total Billed</th>
-                        <th className="py-3 px-4 text-right">Outstanding (₹)</th>
-                        <th className="py-3 px-4 text-right text-emerald-600 dark:text-emerald-400">0-30 Days</th>
-                        <th className="py-3 px-4 text-right text-amber-600 dark:text-amber-400">31-60 Days</th>
-                        <th className="py-3 px-4 text-right text-orange-600 dark:text-orange-400">61-90 Days</th>
-                        <th className="py-3 px-4 text-right text-rose-600 dark:text-rose-400">90+ Days</th>
-                        <th className="py-3 px-4 text-center">Alert</th>
-                      </>
-                    )}
-
-                    {activeTab === 'TRIPS' && (
-                      <>
-                        <th className="py-3 px-4">Trip #</th>
-                        <th className="py-3 px-4">Start Date</th>
-                        <th className="py-3 px-4">Route</th>
-                        <th className="py-3 px-4">Vehicle</th>
-                        <th className="py-3 px-4">Driver</th>
-                        <th className="py-3 px-4 text-center">Dockets</th>
-                        <th className="py-3 px-4 text-right">Revenue (₹)</th>
-                        <th className="py-3 px-4 text-right">Expenses (₹)</th>
-                        <th className="py-3 px-4 text-right">Net Profit (₹)</th>
-                        <th className="py-3 px-4 text-center">Margin</th>
-                        <th className="py-3 px-4 text-center">Settlement</th>
-                      </>
-                    )}
-
-                    {activeTab === 'POD' && (
-                      <>
-                        <th className="py-3 px-4">Docket #</th>
-                        <th className="py-3 px-4">Booking Date</th>
-                        <th className="py-3 px-4">Delivery Date</th>
-                        <th className="py-3 px-4 text-center">TAT (Days)</th>
-                        <th className="py-3 px-4">Route</th>
-                        <th className="py-3 px-4">Consignee</th>
-                        <th className="py-3 px-4 text-center">Delivery Status</th>
-                        <th className="py-3 px-4 text-center">POD Status</th>
-                        <th className="py-3 px-4 text-center">Physical Copy</th>
-                      </>
-                    )}
-
-                    {activeTab === 'COLLECTIONS' && (
-                      <>
-                        <th className="py-3 px-4">Date</th>
-                        <th className="py-3 px-4">Branch / Hub</th>
-                        <th className="py-3 px-4 text-center">Paid Dockets</th>
-                        <th className="py-3 px-4 text-right">Paid Cash (₹)</th>
-                        <th className="py-3 px-4 text-center">To-Pay Dockets</th>
-                        <th className="py-3 px-4 text-right">To-Pay Cash (₹)</th>
-                        <th className="py-3 px-4 text-right">Total Cash (₹)</th>
-                        <th className="py-3 px-4 text-center">Daybook Status</th>
-                        <th className="py-3 px-4 text-center">Bank Remittance</th>
-                        <th className="py-3 px-4 text-center">Action / Receipt</th>
-                      </>
-                    )}
-
-                    {activeTab === 'GST' && (
-                      <>
-                        <th className="py-3 px-4">LR #</th>
-                        <th className="py-3 px-4">Date</th>
-                        <th className="py-3 px-4">Branch</th>
-                        <th className="py-3 px-4">Consignor</th>
-                        <th className="py-3 px-4">Consignee</th>
-                        <th className="py-3 px-4 text-right">Taxable (₹)</th>
-                        <th className="py-3 px-4 text-center">Tax Type</th>
-                        <th className="py-3 px-4 text-right">CGST</th>
-                        <th className="py-3 px-4 text-right">SGST</th>
-                        <th className="py-3 px-4 text-right">IGST</th>
-                        <th className="py-3 px-4 text-right">Total Invoice (₹)</th>
-                      </>
-                    )}
-                  </tr>
-                </thead>
-
-                <tbody className={`divide-y text-xs ${isDark ? 'divide-slate-800/80 text-slate-300' : 'divide-slate-100 text-slate-700'}`}>
-                  {loading ? (
-                    <tr>
-                      <td colSpan={12} className="py-12 text-center">
-                        <div className="flex flex-col items-center justify-center space-y-2">
-                          <RefreshCw className="w-6 h-6 animate-spin text-blue-500" />
-                          <p className="text-xs font-semibold text-slate-400">Loading audited register records...</p>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : dataRows.length === 0 ? (
-                    <tr>
-                      <td colSpan={12} className="py-12 text-center text-slate-400">
-                        <div className="flex flex-col items-center justify-center space-y-1">
-                          <FileText className="w-8 h-8 opacity-30 mb-1" />
-                          <p className="text-sm font-bold text-slate-500">No records found</p>
-                          <p className="text-xs text-slate-400">Try adjusting your date range, branch filter, or search query.</p>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : (
-                    dataRows.map((row, idx) => {
-                      return (
-                        <tr
-                          key={row.id || idx}
-                          className={`hover:bg-blue-50/30 dark:hover:bg-slate-800/40 transition-colors ${
-                            idx % 2 === 1 ? (isDark ? 'bg-slate-900/30' : 'bg-slate-50/40') : ''
-                          }`}
-                        >
-                          {/* 1. Dockets View */}
-                          {activeTab === 'DOCKETS' && (
-                            <>
-                              <td className="py-3 px-4 font-bold text-blue-600 dark:text-blue-400">
-                                {row.lr_number}
-                              </td>
-                              <td className="py-3 px-4 text-slate-500 dark:text-slate-400">
-                                {row.booking_date}
-                              </td>
-                              <td className="py-3 px-4">
-                                <span className="font-semibold">{row.originBranch?.code || row.origin_city}</span>
-                                <span className="text-slate-400 mx-1">→</span>
-                                <span className="font-semibold">{row.destBranch?.code || row.destination_city}</span>
-                              </td>
-                              <td className="py-3 px-4 max-w-[140px] truncate" title={row.consignor?.name}>
-                                {row.consignor?.name || 'Cash Booking'}
-                              </td>
-                              <td className="py-3 px-4 max-w-[140px] truncate" title={row.consignee?.name}>
-                                {row.consignee?.name || 'Direct Delivery'}
-                              </td>
-                              <td className="py-3 px-4 text-center font-semibold">{row.packages_count || 1}</td>
-                              <td className="py-3 px-4 text-right font-medium">{row.charged_weight || 0} kg</td>
-                              <td className="py-3 px-4 text-right font-medium">{formatINR(row.freight_amount)}</td>
-                              <td className="py-3 px-4 text-right font-bold text-slate-900 dark:text-white">
-                                {formatINR(row.total_amount)}
-                              </td>
-                              <td className="py-3 px-4 text-center">
-                                <span
-                                  className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
-                                    row.payment_type === 'PAID'
-                                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
-                                      : row.payment_type === 'TO_PAY'
-                                      ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300'
-                                      : 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300'
-                                  }`}
-                                >
-                                  {row.payment_type}
-                                </span>
-                              </td>
-                              <td className="py-3 px-4 text-center">
-                                <span
-                                  className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                                    row.payment_cleared ||
-                                    row.clearance_status === 'CLEARED' ||
-                                    row.payment_type === 'PAID' ||
-                                    (row.payment_type === 'TO_PAY' && ['DELIVERED', 'POD_UPLOADED', 'COMPLETED', 'POD_PENDING', 'POD_VERIFIED'].includes(row.status))
-                                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300/40'
-                                      : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300/40'
-                                  }`}
-                                >
-                                  <span
-                                    className={`w-1.5 h-1.5 rounded-full ${
-                                      row.payment_cleared ||
-                                      row.clearance_status === 'CLEARED' ||
-                                      row.payment_type === 'PAID' ||
-                                      (row.payment_type === 'TO_PAY' && ['DELIVERED', 'POD_UPLOADED', 'COMPLETED', 'POD_PENDING', 'POD_VERIFIED'].includes(row.status))
-                                        ? 'bg-emerald-500'
-                                        : 'bg-amber-500'
-                                    }`}
-                                  />
-                                  {row.payment_cleared ||
-                                  row.clearance_status === 'CLEARED' ||
-                                  row.payment_type === 'PAID' ||
-                                  (row.payment_type === 'TO_PAY' && ['DELIVERED', 'POD_UPLOADED', 'COMPLETED', 'POD_PENDING', 'POD_VERIFIED'].includes(row.status))
-                                    ? 'Cleared'
-                                    : 'Pending'}
-                                </span>
-                              </td>
-                              <td className="py-3 px-4 text-center">
-                                <span className="inline-block px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                                  {row.status}
-                                </span>
-                              </td>
-                            </>
-                          )}
-
-                          {/* 2. Customer Ageing View */}
-                          {activeTab === 'AGEING' && (
-                            <>
-                              <td className="py-3 px-4 font-bold text-slate-900 dark:text-white">
-                                {row.customerName}
-                                <span className="block text-[10px] text-slate-400 font-normal">{row.phone}</span>
-                              </td>
-                              <td className="py-3 px-4 font-mono text-[11px] text-slate-500">
-                                {row.gstin}
-                              </td>
-                              <td className="py-3 px-4">{row.branch}</td>
-                              <td className="py-3 px-4 text-right font-medium">{formatINR(row.totalInvoiced)}</td>
-                              <td className="py-3 px-4 text-right font-bold text-rose-600 dark:text-rose-400">
-                                {formatINR(row.totalOutstanding)}
-                              </td>
-                              <td className="py-3 px-4 text-right font-semibold text-emerald-600 dark:text-emerald-400">
-                                {formatINR(row.bucket0_30)}
-                              </td>
-                              <td className="py-3 px-4 text-right font-semibold text-amber-600 dark:text-amber-400">
-                                {formatINR(row.bucket31_60)}
-                              </td>
-                              <td className="py-3 px-4 text-right font-semibold text-orange-600 dark:text-orange-400">
-                                {formatINR(row.bucket61_90)}
-                              </td>
-                              <td className="py-3 px-4 text-right font-bold text-rose-600 dark:text-rose-400">
-                                {formatINR(row.bucket90Plus)}
-                              </td>
-                              <td className="py-3 px-4 text-center">
-                                {row.isOverdue ? (
-                                  <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300">
-                                    <AlertCircle className="w-3 h-3" />
-                                    <span>Overdue</span>
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">
-                                    <CheckCircle2 className="w-3 h-3" />
-                                    <span>OK</span>
-                                  </span>
-                                )}
-                              </td>
-                            </>
-                          )}
-
-                          {/* 3. Trip P&L View */}
-                          {activeTab === 'TRIPS' && (
-                            <>
-                              <td className="py-3 px-4 font-bold text-purple-600 dark:text-purple-400">
-                                {row.tripNumber}
-                              </td>
-                              <td className="py-3 px-4 text-slate-500">{row.startDate}</td>
-                              <td className="py-3 px-4 font-semibold">{row.route}</td>
-                              <td className="py-3 px-4 font-bold text-slate-800 dark:text-slate-200">{row.vehicleNumber}</td>
-                              <td className="py-3 px-4">{row.driverName}</td>
-                              <td className="py-3 px-4 text-center font-semibold">{row.docketCount}</td>
-                              <td className="py-3 px-4 text-right font-bold text-slate-900 dark:text-white">
-                                {formatINR(row.totalRevenue)}
-                              </td>
-                              <td className="py-3 px-4 text-right font-medium text-rose-600 dark:text-rose-400">
-                                {formatINR(row.totalCost)}
-                              </td>
-                              <td className="py-3 px-4 text-right font-black text-emerald-600 dark:text-emerald-400">
-                                {formatINR(row.netProfit)}
-                              </td>
-                              <td className="py-3 px-4 text-center">
-                                <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
-                                  row.marginPct > 15
-                                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
-                                    : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
-                                }`}>
-                                  {row.marginPct}%
-                                </span>
-                              </td>
-                              <td className="py-3 px-4 text-center">
-                                <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
-                                  row.isSettled ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 text-slate-600'
-                                }`}>
-                                  {row.isSettled ? 'SETTLED' : 'OPEN'}
-                                </span>
-                              </td>
-                            </>
-                          )}
-
-                          {/* 4. POD Compliance View */}
-                          {activeTab === 'POD' && (
-                            <>
-                              <td className="py-3 px-4 font-bold text-blue-600 dark:text-blue-400">{row.docketNumber}</td>
-                              <td className="py-3 px-4 text-slate-500">{row.bookingDate}</td>
-                              <td className="py-3 px-4 text-slate-500">{row.deliveryDate}</td>
-                              <td className="py-3 px-4 text-center font-bold text-slate-800 dark:text-slate-200">
-                                {row.transitDays}
-                              </td>
-                              <td className="py-3 px-4">
-                                {row.originBranch} → {row.destBranch}
-                              </td>
-                              <td className="py-3 px-4 font-medium">{row.consigneeName}</td>
-                              <td className="py-3 px-4 text-center">
-                                <span className="inline-block px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                                  {row.shipmentStatus}
-                                </span>
-                              </td>
-                              <td className="py-3 px-4 text-center">
-                                <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
-                                  row.podStatus === 'VERIFIED'
-                                    ? 'bg-emerald-100 text-emerald-800'
-                                    : row.podStatus === 'UPLOADED'
-                                    ? 'bg-amber-100 text-amber-800'
-                                    : 'bg-rose-100 text-rose-800'
-                                }`}>
-                                  {row.podStatus}
-                                </span>
-                              </td>
-                              <td className="py-3 px-4 text-center">
-                                {row.hasPhysicalPod ? (
-                                  <span className="text-emerald-500 font-bold">YES</span>
-                                ) : (
-                                  <span className="text-slate-400">NO</span>
-                                )}
-                              </td>
-                            </>
-                          )}
-
-                          {/* 5. Collections View */}
-                          {activeTab === 'COLLECTIONS' && (
-                            <>
-                              <td className="py-3 px-4 font-bold text-slate-900 dark:text-white">{row.date}</td>
-                              <td className="py-3 px-4 font-semibold text-blue-600 dark:text-blue-400">{row.branchName}</td>
-                              <td className="py-3 px-4 text-center font-semibold">{row.paidBookingsCount}</td>
-                              <td className="py-3 px-4 text-right font-medium text-emerald-600">{formatINR(row.paidCashAmount)}</td>
-                              <td className="py-3 px-4 text-center font-semibold">{row.toPayDeliveriesCount}</td>
-                              <td className="py-3 px-4 text-right font-medium text-blue-600">{formatINR(row.toPayCashAmount)}</td>
-                              <td className="py-3 px-4 text-right font-black text-slate-900 dark:text-white">
-                                {formatINR(row.totalCollected)}
-                              </td>
-                              <td className="py-3 px-4 text-center">
-                                <span
-                                  className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                                    row.isClosed
-                                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300/40'
-                                      : 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-300/40'
-                                  }`}
-                                >
-                                  <span className={`w-1.5 h-1.5 rounded-full ${row.isClosed ? 'bg-emerald-500' : 'bg-rose-500'}`} />
-                                  {row.isClosed ? 'Remitted to Bank' : 'Unclosed Cash'}
-                                </span>
-                              </td>
-                              <td className="py-3 px-4 text-center text-xs">
-                                {row.isClosed ? (
-                                  <div className="flex flex-col items-center">
-                                    <span className="font-semibold text-slate-800 dark:text-slate-200">{row.bankName || 'Bank'}</span>
-                                    <span className="font-mono text-[10px] text-slate-400">{row.utrNumber ? `UTR: ${row.utrNumber}` : 'Direct Deposit'}</span>
-                                  </div>
-                                ) : (
-                                  <span className="text-[10px] text-rose-500 font-semibold">Pending Bank Deposit</span>
-                                )}
-                              </td>
-                              <td className="py-3 px-4 text-center">
-                                {row.isClosed && row.receiptSlipUrl ? (
-                                  <button
-                                    onClick={() => setSelectedReceiptModal({
-                                      slipUrl: row.receiptSlipUrl,
-                                      bankName: row.bankName,
-                                      utrNumber: row.utrNumber,
-                                      amount: row.remittedAmount || row.totalCollected,
-                                      date: row.date,
-                                      branchName: row.branchName,
-                                    })}
-                                    className="inline-flex items-center space-x-1 px-2 py-1 rounded-lg text-xs font-semibold bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400 cursor-pointer"
-                                  >
-                                    <Eye className="w-3.5 h-3.5" />
-                                    <span>Slip</span>
-                                  </button>
-                                ) : !row.isClosed ? (
-                                  <button
-                                    onClick={() => openRemitModal(row)}
-                                    className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-500 text-white hover:bg-amber-600 shadow-xs cursor-pointer"
-                                  >
-                                    <Landmark className="w-3.5 h-3.5" />
-                                    <span>Deposit</span>
-                                  </button>
-                                ) : (
-                                  <span className="text-[10px] text-slate-400">No Slip</span>
-                                )}
-                              </td>
-                            </>
-                          )}
-
-                          {/* 6. GST View */}
-                          {activeTab === 'GST' && (
-                            <>
-                              <td className="py-3 px-4 font-bold text-indigo-600 dark:text-indigo-400">{row.lrNumber}</td>
-                              <td className="py-3 px-4 text-slate-500">{row.bookingDate}</td>
-                              <td className="py-3 px-4">{row.branch}</td>
-                              <td className="py-3 px-4 truncate max-w-[120px]" title={row.consignorName}>
-                                {row.consignorName}
-                                <span className="block font-mono text-[10px] text-slate-400">{row.consignorGst}</span>
-                              </td>
-                              <td className="py-3 px-4 truncate max-w-[120px]" title={row.consigneeName}>
-                                {row.consigneeName}
-                                <span className="block font-mono text-[10px] text-slate-400">{row.consigneeGst}</span>
-                              </td>
-                              <td className="py-3 px-4 text-right font-bold text-slate-900 dark:text-white">
-                                {formatINR(row.taxableValue)}
-                              </td>
-                              <td className="py-3 px-4 text-center">
-                                <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                                  {row.taxType}
-                                </span>
-                              </td>
-                              <td className="py-3 px-4 text-right text-slate-500">{formatINR(row.cgst)}</td>
-                              <td className="py-3 px-4 text-right text-slate-500">{formatINR(row.sgst)}</td>
-                              <td className="py-3 px-4 text-right text-slate-500">{formatINR(row.igst)}</td>
-                              <td className="py-3 px-4 text-right font-bold text-indigo-600 dark:text-indigo-400">
-                                {formatINR(row.totalInvoiceValue)}
-                              </td>
-                            </>
-                          )}
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Pagination Toolbar */}
-            <div className={`p-4 border-t flex flex-col sm:flex-row items-center justify-between gap-3 text-xs ${
-              isDark ? 'border-slate-800 text-slate-400 bg-slate-950/20' : 'border-slate-200 text-slate-500 bg-slate-50/40'
-            }`}>
-              {/* Left: Summary text */}
-              <div>
-                Showing{' '}
-                <span className={`font-mono font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                  {startItem}-{endItem}
-                </span>{' '}
-                of{' '}
-                <span className={`font-mono font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                  {totalRecords.toLocaleString()}
-                </span>{' '}
-                records
-              </div>
-
-              {/* Right: Rows Per Page Selector + Divider + Pagination Controls */}
-              <div className="flex flex-wrap items-center gap-3">
-                {/* Rows Per Page Selector */}
-                <div className="flex items-center space-x-1.5 text-xs">
-                  <span className={`text-[11px] font-medium ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                    Rows:
-                  </span>
-                  <select
-                    value={limit}
-                    onChange={(e) => {
-                      setLimit(Number(e.target.value));
-                      setPage(1);
-                    }}
-                    className={`px-2.5 py-1 rounded-xl border text-xs font-bold transition-all focus:outline-none cursor-pointer ${
-                      isDark
-                        ? 'bg-slate-900 border-slate-800 text-cyan-400 hover:border-slate-700'
-                        : 'bg-white border-slate-200 text-blue-600 hover:border-slate-300 shadow-xs'
-                    }`}
-                  >
-                    {[10, 15, 25, 50, 100].map((opt) => (
-                      <option key={opt} value={opt} className={isDark ? "bg-slate-900 text-white" : "bg-white text-slate-900"}>
-                        {opt}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Divider Line */}
-                <div className={`h-4 w-px ${isDark ? 'bg-slate-800' : 'bg-slate-300'}`} />
-
-                {/* Pagination Controls */}
-                <div className="flex items-center space-x-1.5">
-                  {/* First Page */}
-                  <button
-                    onClick={() => setPage(1)}
-                    disabled={page <= 1 || loading}
-                    className={`p-1.5 rounded-lg border transition-all ${
-                      page <= 1 || loading
-                        ? 'border-transparent text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-50'
-                        : isDark
-                        ? 'bg-slate-900 border-slate-800 text-slate-300 hover:text-white hover:bg-slate-800'
-                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100 shadow-xs'
-                    }`}
-                    title="First Page"
-                  >
-                    <ChevronsLeft className="w-3.5 h-3.5" />
-                  </button>
-
-                  {/* Previous Page */}
-                  <button
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    disabled={page <= 1 || loading}
-                    className={`px-2.5 py-1 rounded-lg border text-xs font-bold transition-all ${
-                      page <= 1 || loading
-                        ? 'border-transparent text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-50'
-                        : isDark
-                        ? 'bg-slate-900 border-slate-800 text-slate-300 hover:text-white hover:bg-slate-800'
-                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100 shadow-xs'
-                    }`}
-                  >
-                    Prev
-                  </button>
-
-                  {/* Page Number Chips */}
-                  <div className="flex items-center space-x-1">
-                    {pageNumbers.map((p, pIdx) => {
-                      if (p === '...') {
-                        return (
-                          <span key={`dots-${pIdx}`} className="px-1 text-slate-500 font-mono">
-                            ...
-                          </span>
-                        );
-                      }
-                      const isActive = p === page;
-                      return (
-                        <button
-                          key={p}
-                          onClick={() => setPage(p)}
-                          disabled={loading}
-                          className={`min-w-[28px] h-7 px-2 rounded-lg font-mono text-xs font-bold transition-all ${
-                            isActive
-                              ? 'bg-blue-600 text-white shadow-sm shadow-blue-600/30'
-                              : isDark
-                              ? 'bg-slate-900/60 border border-slate-800/80 text-slate-400 hover:text-white hover:bg-slate-800'
-                              : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
-                          }`}
-                        >
-                          {p}
-                        </button>
-                      );
-                    })}
+          {/* Admin Branch-Wise Cash & Remittance Breakdown Panel */}
+          {activeTab === 'COLLECTIONS' && isAdmin && summary?.branchBreakdown?.length > 0 && (
+            <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 mb-3 border-b border-slate-100 dark:border-slate-800/80">
+                <div className="flex items-center space-x-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center font-bold">
+                    <Building2 className="w-4 h-4" />
                   </div>
-
-                  {/* Next Page */}
-                  <button
-                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                    disabled={page >= totalPages || loading}
-                    className={`px-2.5 py-1 rounded-lg border text-xs font-bold transition-all ${
-                      page >= totalPages || loading
-                        ? 'border-transparent text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-50'
-                        : isDark
-                        ? 'bg-slate-900 border-slate-800 text-slate-300 hover:text-white hover:bg-slate-800'
-                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100 shadow-xs'
-                    }`}
-                  >
-                    Next
-                  </button>
-
-                  {/* Last Page */}
-                  <button
-                    onClick={() => setPage(totalPages)}
-                    disabled={page >= totalPages || loading}
-                    className={`p-1.5 rounded-lg border transition-all ${
-                      page >= totalPages || loading
-                        ? 'border-transparent text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-50'
-                        : isDark
-                        ? 'bg-slate-900 border-slate-800 text-slate-300 hover:text-white hover:bg-slate-800'
-                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100 shadow-xs'
-                    }`}
-                    title="Last Page"
-                  >
-                    <ChevronsRight className="w-3.5 h-3.5" />
-                  </button>
+                  <div>
+                    <h3 className="text-xs font-black tracking-tight uppercase text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                      <span>Branch-Wise Collection &amp; Bank Deposit Audit</span>
+                      <span className="text-[9px] font-bold lowercase tracking-normal px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                        {summary.branchBreakdown.length} hubs active
+                      </span>
+                    </h3>
+                    <p className="text-[11px] text-slate-400">
+                      Live cash collections, bank deposits, and pending in-hand drawer balances by branch hub
+                    </p>
+                  </div>
                 </div>
+                {selectedBranch !== 'ALL' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedBranch('ALL');
+                      setPage(1);
+                    }}
+                    className="inline-flex items-center gap-1 text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer self-start sm:self-auto"
+                  >
+                    <span>View All Network Branches</span>
+                    <ChevronRight className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                {summary.branchBreakdown.map((b) => {
+                  const isSelected = selectedBranch === String(b.branchId);
+                  return (
+                    <div
+                      key={b.branchId || b.branchName}
+                      onClick={() => {
+                        if (b.branchId) {
+                          setSelectedBranch(isSelected ? 'ALL' : String(b.branchId));
+                          setPage(1);
+                        }
+                      }}
+                      className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
+                        isSelected
+                          ? 'border-blue-500 bg-blue-50/60 dark:bg-blue-950/40 ring-2 ring-blue-500/30 shadow-xs'
+                          : isDark
+                          ? 'bg-slate-900/60 border-slate-800/90 hover:border-slate-700 hover:bg-slate-800/50'
+                          : 'bg-slate-50/70 border-slate-200/80 hover:border-slate-300 hover:bg-slate-100/60 shadow-2xs'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-1 mb-2">
+                        <span className="font-bold text-xs text-slate-900 dark:text-slate-100 truncate" title={b.branchName}>
+                          {b.branchName}
+                        </span>
+                        {isSelected ? (
+                          <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-blue-600 text-white shrink-0">
+                            Filtered
+                          </span>
+                        ) : (
+                          <span className="text-[9px] text-slate-400 hover:text-blue-500 font-semibold shrink-0">
+                            Filter →
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="space-y-1 text-xs">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-slate-400">Total Collected:</span>
+                          <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{formatINR(b.totalCollected)}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-slate-400">Deposited to Bank:</span>
+                          <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">{formatINR(b.remittedAmount)}</span>
+                        </div>
+                        <div className="flex items-center justify-between pt-1.5 border-t border-slate-200/60 dark:border-slate-800/60">
+                          <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">Pending in Drawer:</span>
+                          <span className={`font-mono text-xs font-black ${
+                            b.pendingCash > 0
+                              ? 'text-amber-500'
+                              : 'text-emerald-600 dark:text-emerald-400'
+                          }`}>
+                            {formatINR(b.pendingCash)}
+                          </span>
+                        </div>
+                        {b.lastUtrNumber && (
+                          <div className="pt-1 text-[10px] text-slate-400 truncate" title={`Last UTR: ${b.lastUtrNumber}`}>
+                            Last UTR: <span className="font-mono text-slate-600 dark:text-slate-300">{b.lastUtrNumber}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
-          </div>
+          )}
+
+          {/* Interactive Report Enterprise DataTable */}
+          <DataTable
+            columns={columns}
+            data={dataRows}
+            totalItems={totalRecords}
+            loading={loading}
+            page={page}
+            pageSize={limit}
+            pageSizeOptions={[10, 15, 25, 50, 100]}
+            onPageChange={(p) => setPage(p)}
+            onPageSizeChange={(l) => {
+              setLimit(l);
+              setPage(1);
+            }}
+            searchQuery={searchInput}
+            onSearchChange={(val) => {
+              setSearchInput(val);
+            }}
+            searchPlaceholder={
+              activeTab === 'DOCKETS'
+                ? 'Search LR #, Party, Route, City...'
+                : activeTab === 'AGEING'
+                ? 'Search Customer, Code, GSTIN, Phone...'
+                : activeTab === 'TRIPS'
+                ? 'Search Trip #, Vehicle, Driver, Route...'
+                : activeTab === 'POD'
+                ? 'Search Docket #, Consignee, City...'
+                : activeTab === 'COLLECTIONS'
+                ? (collectionSubView === 'DEPOSITS' ? 'Search Bank, UTR, Branch, Mode, Date...' : 'Search Branch, Bank, UTR, Date...')
+                : 'Search LR #, GSTIN, Consignor/Consignee...'
+            }
+            emptyTitle={
+              activeTab === 'COLLECTIONS' && collectionSubView === 'DEPOSITS'
+                ? 'No Bank Deposit Transactions Yet'
+                : undefined
+            }
+            emptySubtitle={
+              activeTab === 'COLLECTIONS' && collectionSubView === 'DEPOSITS'
+                ? `Branch drawer cash of ${formatINR(summary?.totalPendingInBranch ?? summary?.totalUnclosedCash ?? 0)} is awaiting remittance. Click 'Deposit to Bank' to record cash counter or online transfer.`
+                : undefined
+            }
+            emptyIcon={
+              activeTab === 'COLLECTIONS' && collectionSubView === 'DEPOSITS' ? (
+                <Landmark className="w-7 h-7 text-amber-500" />
+              ) : null
+            }
+            emptyActionSlot={
+              activeTab === 'COLLECTIONS' && collectionSubView === 'DEPOSITS' ? (
+                <button
+                  type="button"
+                  onClick={() => openRemitModal()}
+                  className="inline-flex items-center justify-center space-x-2 px-5 py-2.5 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white shadow-md hover:shadow-lg transition-all cursor-pointer active:scale-95 mx-auto"
+                >
+                  <Landmark className="w-4 h-4" />
+                  <span>Deposit to Bank Now</span>
+                </button>
+              ) : null
+            }
+            headerFiltersSlot={headerFilters}
+            dateFilterSlot={
+              <DateRangeFilter
+                fromDate={dateFrom}
+                toDate={dateTo}
+                align="right"
+                onChange={({ fromDate, toDate }) => {
+                  setDateFrom(fromDate);
+                  setDateTo(toDate);
+                  setPage(1);
+                }}
+                onClear={() => {
+                  setDateFrom('');
+                  setDateTo('');
+                  setPage(1);
+                }}
+              />
+            }
+            exportable={canExport}
+            exportFilename={`${activeTab}_${activeTab === 'COLLECTIONS' ? collectionSubView : ''}_Register_${new Date().toISOString().slice(0, 10)}`}
+            onExportAll={handleExportCsv}
+            actionsSlot={
+              activeTab === 'COLLECTIONS' ? (
+                <button
+                  type="button"
+                  onClick={() => openRemitModal()}
+                  className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white shadow-xs transition-all cursor-pointer active:scale-95"
+                  title="Deposit cash or online payment to bank and record transaction"
+                >
+                  <Landmark className="w-3.5 h-3.5" />
+                  <span>Deposit to Bank</span>
+                </button>
+              ) : null
+            }
+          />
         </main>
       </div>
 
@@ -1622,6 +2965,32 @@ export default function ReportsPage() {
 
               {/* Form Inputs Grid */}
               <div className="grid grid-cols-2 gap-3">
+                {isAdmin && (
+                  <div className="col-span-2">
+                    <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">
+                      Remitting Branch Hub *
+                    </label>
+                    <select
+                      value={remitFormData.branchId}
+                      onChange={(e) => {
+                        const sel = branches.find((b) => String(b.id) === String(e.target.value));
+                        setRemitFormData({
+                          ...remitFormData,
+                          branchId: e.target.value,
+                          branchName: sel?.name || sel?.branch_name || 'Selected Branch',
+                        });
+                      }}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 font-bold text-slate-900 dark:text-white outline-none focus:border-amber-500 cursor-pointer"
+                    >
+                      {branches.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.name || b.branch_name} ({b.code || b.branch_code || 'HUB'})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 <div>
                   <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">
                     Remitted Amount (₹) *
@@ -1664,6 +3033,19 @@ export default function ReportsPage() {
                 </div>
 
                 <div>
+                  <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">
+                    Bank Account # (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={remitFormData.bankAccountNo}
+                    placeholder="e.g. 302910293810"
+                    onChange={(e) => setRemitFormData({ ...remitFormData, bankAccountNo: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 font-mono text-slate-900 dark:text-white outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                <div className="col-span-2">
                   <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">
                     Deposit Mode
                   </label>
@@ -1782,12 +3164,21 @@ export default function ReportsPage() {
           }`}>
             <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
               <div>
-                <h3 className="text-sm font-bold">Bank Remittance Receipt</h3>
+                <h3 className="text-sm font-bold flex items-center gap-1.5">
+                  {(selectedReceiptModal.isDigital || selectedReceiptModal.slipUrl?.startsWith('AUTO_VERIFIED')) ? (
+                    <>
+                      <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                      <span>Digital Remittance Receipt</span>
+                    </>
+                  ) : (
+                    <span>Bank Remittance Receipt</span>
+                  )}
+                </h3>
                 <span className="text-[10px] text-slate-400">{selectedReceiptModal.branchName} • {selectedReceiptModal.date}</span>
               </div>
               <button
                 onClick={() => setSelectedReceiptModal(null)}
-                className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-white"
+                className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-white cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1797,8 +3188,8 @@ export default function ReportsPage() {
               <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs">
                 <div>
                   <span className="text-[10px] uppercase font-bold text-slate-400">Bank Details</span>
-                  <div className="font-bold">{selectedReceiptModal.bankName || 'Bank Deposit'}</div>
-                  <div className="font-mono text-[10px] text-slate-400">UTR: {selectedReceiptModal.utrNumber || 'N/A'}</div>
+                  <div className="font-bold text-slate-800 dark:text-slate-200">{selectedReceiptModal.bankName || 'Company Bank Account'}</div>
+                  <div className="font-mono text-[10px] text-slate-400">UTR / Ref: {selectedReceiptModal.utrNumber || 'N/A'}</div>
                 </div>
                 <div className="text-right">
                   <span className="text-[10px] uppercase font-bold text-slate-400">Deposited Amount</span>
@@ -1808,22 +3199,451 @@ export default function ReportsPage() {
                 </div>
               </div>
 
-              <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-950/50 flex items-center justify-center min-h-[220px]">
-                <img
-                  src={selectedReceiptModal.slipUrl}
-                  alt="Bank deposit slip"
-                  className="max-h-80 w-auto object-contain rounded-lg"
-                />
-              </div>
+              {(selectedReceiptModal.isDigital || selectedReceiptModal.slipUrl?.startsWith('AUTO_VERIFIED')) ? (
+                <div className="rounded-xl border border-emerald-500/30 bg-emerald-50/40 dark:bg-emerald-950/20 p-5 text-center space-y-3">
+                  <div className="w-12 h-12 mx-auto rounded-full bg-emerald-100 dark:bg-emerald-900/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shadow-inner">
+                    <ShieldCheck className="w-7 h-7" />
+                  </div>
+                  <div>
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-300 border border-emerald-300/60">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Verified Digital E-Receipt</span>
+                    </span>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 max-w-xs mx-auto">
+                      Settled electronically via Direct UPI / Banking Gateway directly into the corporate account. No physical paper slip is required.
+                    </p>
+                  </div>
+
+                  <div className="p-3 rounded-lg bg-white dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800 text-left text-xs space-y-1.5 font-mono">
+                    <div className="flex justify-between items-center py-0.5 border-b border-slate-100 dark:border-slate-800/80">
+                      <span className="text-slate-400 font-sans">Payment Method:</span>
+                      <span className="font-bold text-slate-800 dark:text-slate-200">Direct UPI / Gateway</span>
+                    </div>
+                    <div className="flex justify-between items-center py-0.5 border-b border-slate-100 dark:border-slate-800/80">
+                      <span className="text-slate-400 font-sans">Bank Reference / UTR:</span>
+                      <span className="font-bold text-slate-800 dark:text-slate-200 truncate max-w-[170px]" title={selectedReceiptModal.utrNumber}>
+                        {selectedReceiptModal.utrNumber || 'N/A'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center py-0.5">
+                      <span className="text-slate-400 font-sans">Verification:</span>
+                      <span className="font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1 font-sans">
+                        <Check className="w-3.5 h-3.5" /> Reconciled & Cleared
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-950/50 flex items-center justify-center min-h-[220px]">
+                  <img
+                    src={selectedReceiptModal.slipUrl?.startsWith('http') || selectedReceiptModal.slipUrl?.startsWith('/') ? selectedReceiptModal.slipUrl : `/uploads/${selectedReceiptModal.slipUrl}`}
+                    alt="Bank deposit slip"
+                    className="max-h-80 w-auto object-contain rounded-lg"
+                    onError={(e) => {
+                      e.target.onerror = null;
+                      e.target.style.display = 'none';
+                      if (e.target.nextElementSibling) {
+                        e.target.nextElementSibling.style.display = 'flex';
+                      }
+                    }}
+                  />
+                  <div style={{ display: 'none' }} className="flex-col items-center justify-center p-6 text-center text-slate-400 space-y-2">
+                    <FileText className="w-10 h-10 text-slate-400 mx-auto" />
+                    <span className="text-xs">Physical slip image not available</span>
+                  </div>
+                </div>
+              )}
 
               <div className="text-center pt-1">
                 <button
                   onClick={() => setSelectedReceiptModal(null)}
-                  className="px-4 py-1.5 rounded-xl text-xs font-bold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200"
+                  className="px-4 py-1.5 rounded-xl text-xs font-bold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 cursor-pointer"
                 >
                   Close Preview
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 3: View Proof of Delivery (POD) Slip */}
+      {selectedPodModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className={`w-full max-w-2xl rounded-2xl border shadow-2xl overflow-hidden flex flex-col max-h-[92vh] ${
+            isDark ? 'bg-[#0B1020] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
+          }`}>
+            {/* Modal Header */}
+            <div className="px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between shrink-0">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-8 h-8 rounded-lg bg-teal-500/10 text-teal-500 border border-teal-500/20 flex items-center justify-center font-bold">
+                  <FileSpreadsheet className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black tracking-tight">Proof of Delivery (POD) Slip</h3>
+                  <p className="text-[11px] text-slate-400 font-mono">
+                    Docket #{selectedPodModal.docketNumber || selectedPodModal.lrNumber}
+                    {selectedPodModal.lrNumber && selectedPodModal.lrNumber !== selectedPodModal.docketNumber ? ` • LR #${selectedPodModal.lrNumber}` : ''}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedPodModal(null)}
+                className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors cursor-pointer"
+                title="Close modal"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Info Summary Banner */}
+            <div className="px-5 py-3 bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-800 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs shrink-0">
+              <div>
+                <span className="text-[10px] uppercase font-bold text-slate-400">Consignee</span>
+                <div className="font-bold truncate text-slate-800 dark:text-slate-100" title={selectedPodModal.consigneeName}>
+                  {selectedPodModal.consigneeName || 'Cash Party'}
+                </div>
+                {selectedPodModal.receiverName && selectedPodModal.receiverName !== 'NA' && (
+                  <span className="text-[10px] text-slate-400 block truncate">Rcvd: {selectedPodModal.receiverName}</span>
+                )}
+              </div>
+              <div>
+                <span className="text-[10px] uppercase font-bold text-slate-400">Route / Corridor</span>
+                <div className="font-semibold text-slate-800 dark:text-slate-200 truncate">
+                  {selectedPodModal.originBranch} → {selectedPodModal.destBranch}
+                </div>
+                <span className="text-[10px] text-slate-400 font-mono">Booked: {selectedPodModal.bookingDate}</span>
+              </div>
+              <div>
+                <span className="text-[10px] uppercase font-bold text-slate-400">Delivery Status</span>
+                <div className="mt-0.5">
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${
+                    selectedPodModal.isDelivered ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300' : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+                  }`}>
+                    <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                    <span>{selectedPodModal.deliveryDate !== 'Pending' ? selectedPodModal.deliveryDate : 'Pending'}</span>
+                  </span>
+                </div>
+              </div>
+              <div>
+                <span className="text-[10px] uppercase font-bold text-slate-400">POD Audit Status</span>
+                <div className="mt-0.5">
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${
+                    selectedPodModal.podStatus === 'VERIFIED'
+                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                      : 'bg-teal-100 text-teal-800 dark:bg-teal-950/60 dark:text-teal-300'
+                  }`}>
+                    <ShieldCheck className="w-3 h-3 text-teal-500" />
+                    <span>{selectedPodModal.podStatus === 'VERIFIED' ? 'Verified & Signed' : 'Uploaded (Audit Due)'}</span>
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Slip Document Viewport */}
+            <div className="flex-1 overflow-auto p-4 flex items-center justify-center bg-slate-950/40 min-h-[300px]">
+              {selectedPodModal.podUrl?.startsWith('data:application/pdf') || selectedPodModal.podUrl?.endsWith('.pdf') ? (
+                <iframe
+                  src={selectedPodModal.podUrl}
+                  title="POD PDF Document"
+                  className="w-full h-[480px] rounded-xl border border-slate-700 bg-white"
+                />
+              ) : (
+                <img
+                  src={selectedPodModal.podUrl}
+                  alt={`Proof of Delivery slip for ${selectedPodModal.docketNumber || selectedPodModal.lrNumber}`}
+                  className="max-h-[480px] w-auto max-w-full object-contain rounded-xl shadow-lg border border-slate-200/20 dark:border-slate-800"
+                />
+              )}
+            </div>
+
+            {/* Modal Actions Footer */}
+            <div className="px-5 py-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30 flex items-center justify-between shrink-0">
+              <span className="text-[11px] text-slate-400">
+                TransHub Digital Proof of Delivery
+              </span>
+              <div className="flex items-center space-x-2">
+                <a
+                  href={selectedPodModal.podUrl}
+                  download={`POD_${selectedPodModal.docketNumber || selectedPodModal.lrNumber}.jpg`}
+                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-xs transition-all cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Download Slip</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setSelectedPodModal(null)}
+                  className="px-4 py-1.5 rounded-xl text-xs font-bold border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 cursor-pointer transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Modal 4: Bank Deposit & Covered Docket Breakdown Modal */}
+      {selectedDepositDetails && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className={`w-full max-w-xl rounded-3xl border shadow-2xl overflow-hidden flex flex-col max-h-[92vh] ${
+            isDark ? 'bg-[#0B1020] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
+          }`}>
+            {/* Header */}
+            <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between shrink-0">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-500 border border-amber-500/20 flex items-center justify-center font-bold">
+                  <Landmark className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold">Bank Remittance &amp; Covered Docket</h3>
+                  <p className="text-xs text-slate-400 font-mono">
+                    Ref / UTR: {selectedDepositDetails.utrNumber || 'N/A'} • {selectedDepositDetails.date}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedDepositDetails(null)}
+                className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Scrollable Body */}
+            <div className="p-5 space-y-4 overflow-y-auto">
+              {/* Duplicate Notice */}
+              {selectedDepositDetails.isDuplicateUtr && (
+                <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-300 space-y-1">
+                  <div className="flex items-center gap-1.5 font-bold text-xs">
+                    <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
+                    <span>Duplicate UTR Submission Detected (Recorded Twice)</span>
+                  </div>
+                  <p className="text-[11px] text-amber-700/90 dark:text-amber-300/90 leading-relaxed">
+                    This transaction has the exact same UTR (<strong className="font-mono">{selectedDepositDetails.utrNumber}</strong>) and amount (<strong className="font-mono">₹{selectedDepositDetails.remittedAmount?.toLocaleString('en-IN')}</strong>) recorded twice within 2 minutes for the same delivery docket. This typically happens when the user clicks the delivery confirmation button twice. Both entries point to Docket <strong className="font-mono">{selectedDepositDetails.docketNumber || 'BAL000018'}</strong>.
+                  </p>
+                </div>
+              )}
+
+              {/* Deposit Financial Instrument Card */}
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 space-y-3">
+                <div className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                  Bank Instrument &amp; Transfer Details
+                </div>
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <span className="text-slate-400 block text-[11px]">Deposited Amount</span>
+                    <strong className="text-base font-black font-mono text-emerald-600 dark:text-emerald-400">
+                      ₹ {selectedDepositDetails.remittedAmount?.toLocaleString('en-IN')}
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block text-[11px]">Deposit Mode</span>
+                    <strong className="font-bold text-slate-800 dark:text-slate-200">
+                      {selectedDepositDetails.depositMode === 'UPI' ? 'UPI / QR Transfer' : (selectedDepositDetails.depositMode || 'Bank Transfer')}
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block text-[11px]">Beneficiary Bank Account</span>
+                    <strong className="text-slate-800 dark:text-slate-200 block truncate" title={selectedDepositDetails.bankName}>
+                      {selectedDepositDetails.bankName || 'Company Bank Account'}
+                    </strong>
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      {selectedDepositDetails.bankAccountNo ? `A/C: ••••${String(selectedDepositDetails.bankAccountNo).slice(-4)}` : 'Main Commercial Account'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block text-[11px]">Branch Hub</span>
+                    <strong className="text-slate-800 dark:text-slate-200 block truncate">
+                      {typeof selectedDepositDetails.branchName === 'object' ? (selectedDepositDetails.branchName?.name || selectedDepositDetails.branchName?.branch_name) : selectedDepositDetails.branchName}
+                    </strong>
+                    {selectedDepositDetails.createdAt && (
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        {new Date(selectedDepositDetails.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Covered Docket / Consignment Breakdown Card */}
+              <div className="p-4 rounded-2xl bg-blue-50/50 dark:bg-blue-950/20 border border-blue-200/60 dark:border-blue-800/60 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs font-bold text-blue-700 dark:text-blue-400 uppercase tracking-wider flex items-center gap-1.5">
+                    {selectedDepositDetails.sourceType === 'TBB_INVOICE_PAYMENT' ? (
+                      <>
+                        <FileText className="w-4 h-4 text-indigo-500" />
+                        <span>Billed Invoice &amp; Covered Consignments</span>
+                      </>
+                    ) : (
+                      <>
+                        <Truck className="w-4 h-4 text-blue-500" />
+                        <span>Covered Consignment / Docket Details</span>
+                      </>
+                    )}
+                  </div>
+                  {selectedDepositDetails.sourceType === 'TBB_INVOICE_PAYMENT' ? (
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${
+                      selectedDepositDetails.isPartialPayment
+                        ? 'bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/30'
+                        : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+                    }`}>
+                      {selectedDepositDetails.isPartialPayment ? 'PARTIAL PAYMENT' : 'FULLY RECONCILED'}
+                    </span>
+                  ) : selectedDepositDetails.linkedDocket ? (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                      {selectedDepositDetails.linkedDocket.status || 'DELIVERED'}
+                    </span>
+                  ) : null}
+                </div>
+
+                {selectedDepositDetails.sourceType === 'TBB_INVOICE_PAYMENT' ? (
+                  <div className="space-y-3 text-xs">
+                    {/* Invoice Summary Bar */}
+                    <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 grid grid-cols-4 gap-2 text-center">
+                      <div>
+                        <span className="text-[10px] text-slate-400 block">Invoice #</span>
+                        <strong className="font-mono text-xs text-indigo-600 dark:text-indigo-400">{selectedDepositDetails.invoiceNumber || 'Direct Payment'}</strong>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-400 block">Invoice Total</span>
+                        <strong className="font-mono text-xs text-slate-800 dark:text-slate-200">₹ {formatINR(selectedDepositDetails.invoiceTotal)}</strong>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-400 block">Paid Amount</span>
+                        <strong className="font-mono text-xs text-emerald-600 dark:text-emerald-400">₹ {formatINR(selectedDepositDetails.remittedAmount)}</strong>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-400 block">Remaining Due</span>
+                        <strong className={`font-mono text-xs ${selectedDepositDetails.invoiceBalance > 0 ? 'text-rose-500' : 'text-slate-500'}`}>
+                          ₹ {formatINR(selectedDepositDetails.invoiceBalance)}
+                        </strong>
+                      </div>
+                    </div>
+
+                    {/* Covered Dockets Table */}
+                    {selectedDepositDetails.coveredDockets && selectedDepositDetails.coveredDockets.length > 0 ? (
+                      <div>
+                        <div className="text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1.5 flex items-center justify-between">
+                          <span>Dockets Covered by this Invoice ({selectedDepositDetails.coveredDockets.length}):</span>
+                          <span className="text-[10px] text-slate-400">Consignor / Consignee: {selectedDepositDetails.customerName}</span>
+                        </div>
+                        <div className="max-h-56 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 divide-y divide-slate-100 dark:divide-slate-800">
+                          {selectedDepositDetails.coveredDockets.map((cd, idx) => {
+                            const invTotal = Number(selectedDepositDetails.invoiceTotal || 0);
+                            const ratio = invTotal > 0 ? Number(selectedDepositDetails.remittedAmount || 0) / invTotal : 1;
+                            const docketTotal = Number(cd.totalAmount || 0);
+                            const proRataPaid = Number((docketTotal * Math.min(1, ratio)).toFixed(2));
+                            const proRataBal = Math.max(0, Number((docketTotal - proRataPaid).toFixed(2)));
+
+                            return (
+                              <div key={idx} className="p-2.5 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/40 text-xs">
+                                <div className="space-y-0.5">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-mono font-bold text-blue-600 dark:text-cyan-400">{cd.docketNumber}</span>
+                                    <span className="text-[10px] text-slate-400">({cd.originCity} → {cd.destCity})</span>
+                                  </div>
+                                  <div className="text-[10px] text-slate-400 font-mono">
+                                    Total Freight: ₹{formatINR(docketTotal)} {cd.chargedWeight > 0 ? `• ${cd.chargedWeight} kg` : ''}
+                                  </div>
+                                </div>
+                                <div className="text-right">
+                                  {selectedDepositDetails.isPartialPayment ? (
+                                    <>
+                                      <div className="font-mono font-bold text-emerald-600 dark:text-emerald-400 text-xs">
+                                        ₹{formatINR(proRataPaid)} <span className="text-[10px] font-normal text-emerald-500 font-sans">Cleared</span>
+                                      </div>
+                                      <div className="font-mono text-[10px] text-rose-500 font-semibold">
+                                        Bal: ₹{formatINR(proRataBal)}
+                                      </div>
+                                    </>
+                                  ) : (
+                                    <div className="font-mono font-bold text-slate-800 dark:text-slate-200 text-xs">
+                                      ₹{formatINR(docketTotal)}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-slate-500 text-xs">Direct payment received against customer account {selectedDepositDetails.customerName}.</p>
+                    )}
+                  </div>
+                ) : selectedDepositDetails.linkedDocket ? (
+                  <div className="space-y-2.5 text-xs">
+                    <div className="flex justify-between items-center pb-2 border-b border-blue-200/40 dark:border-blue-800/40">
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">Docket / LR Number</span>
+                        <strong className="text-sm font-black font-mono text-slate-900 dark:text-white">
+                          {selectedDepositDetails.linkedDocket.docketNumber}
+                        </strong>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-slate-400 block text-[10px]">Freight Amount</span>
+                        <strong className="text-sm font-black font-mono text-blue-600 dark:text-cyan-400">
+                          ₹ {selectedDepositDetails.linkedDocket.totalAmount?.toLocaleString('en-IN')}
+                        </strong>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-[11px]">
+                      <div>
+                        <span className="text-slate-400 block">Consignor (Shipper):</span>
+                        <strong className="text-slate-800 dark:text-slate-200">{selectedDepositDetails.linkedDocket.consignorName || 'Shipper'}</strong>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block">Consignee (Receiver):</span>
+                        <strong className="text-slate-800 dark:text-slate-200">{selectedDepositDetails.linkedDocket.consigneeName || 'Receiver'}</strong>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block">Corridor Route:</span>
+                        <strong className="text-slate-800 dark:text-slate-200">
+                          {selectedDepositDetails.linkedDocket.originCity} → {selectedDepositDetails.linkedDocket.destCity}
+                        </strong>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block">Payment Mode:</span>
+                        <strong className="text-amber-600 dark:text-amber-400 font-bold">
+                          {selectedDepositDetails.linkedDocket.paymentType} ({selectedDepositDetails.linkedDocket.paymentMethod})
+                        </strong>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5 text-xs">
+                    <p className="text-slate-600 dark:text-slate-300 font-medium">
+                      {selectedDepositDetails.remarks || 'Daily cash drawer deposit consolidated for multiple counter cash transactions.'}
+                    </p>
+                    {selectedDepositDetails.docketNumber && (
+                      <div className="pt-1">
+                        <span className="text-[10px] text-slate-400">Extracted Docket Ref:</span>{' '}
+                        <strong className="font-mono text-blue-600 dark:text-cyan-400 font-bold">
+                          {selectedDepositDetails.docketNumber}
+                        </strong>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-5 py-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30 flex items-center justify-between shrink-0">
+              <span className="text-[11px] text-slate-400 font-mono">
+                TransHub Bank Remittance Audit Register
+              </span>
+              <button
+                type="button"
+                onClick={() => setSelectedDepositDetails(null)}
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 cursor-pointer transition-colors"
+              >
+                Close Breakdown
+              </button>
             </div>
           </div>
         </div>

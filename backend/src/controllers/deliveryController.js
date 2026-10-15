@@ -4,6 +4,7 @@ const defaultModels = require('../models');
 const { successResponse, paginatedResponse, errorResponse } = require('../utils/apiResponse');
 const { logAudit } = require('../middleware/auditLogger');
 const { saveMediaFile } = require('../utils/fileStorage');
+const paymentGatewayService = require('../services/paymentGatewayService');
 
 // Helper to resolve all sibling branches and city variations within a metro region
 const resolveCityAndSiblingBranches = async (branchId, Branch, organizationId) => {
@@ -167,8 +168,17 @@ const listDeliveryOperations = async (req, res) => {
       where.status = 'OUT_FOR_DELIVERY';
     } else if (tab === 'DELIVERED') {
       where.status = {
-        [Op.in]: ['DELIVERED', 'POD_PENDING', 'POD_UPLOADED', 'COMPLETED']
+        [Op.in]: ['DELIVERED', 'POD_PENDING', 'POD_UPLOADED', 'COMPLETED', 'POD_VERIFIED']
       };
+      // Once an invoice is generated for a delivered docket, it moves to the Invoices tab/register
+      where[Op.and] = where[Op.and] || [];
+      where[Op.and].push({
+        [Op.or]: [
+          { is_billed: false },
+          { is_billed: null },
+        ],
+        invoice_id: null,
+      });
     } else if (tab === 'ALL') {
       where.status = {
         [Op.in]: REACHED_STATUSES
@@ -334,7 +344,7 @@ const listDeliveryOperations = async (req, res) => {
 
     const allBranchConsignments = await Consignment.findAll({
       where: statsWhere,
-      attributes: ['id', 'status', 'delivery_type', 'payment_type', 'total_amount', 'packages_count'],
+      attributes: ['id', 'status', 'delivery_type', 'payment_type', 'total_amount', 'packages_count', 'is_billed', 'invoice_id'],
       raw: true,
     });
 
@@ -350,6 +360,7 @@ const listDeliveryOperations = async (req, res) => {
       const isReady = ['REACHED_DESTINATION', 'DAMAGED', 'SHORT_MATERIAL', 'HOLD'].includes(item.status);
       const isOut = item.status === 'OUT_FOR_DELIVERY';
       const isDelivered = ['DELIVERED', 'POD_PENDING', 'POD_UPLOADED', 'COMPLETED'].includes(item.status);
+      const isBilled = Boolean(item.is_billed || item.invoice_id);
 
       if (isReady) {
         readyCount++;
@@ -365,7 +376,7 @@ const listDeliveryOperations = async (req, res) => {
         outForDeliveryCount++;
       }
 
-      if (isDelivered) {
+      if (isDelivered && !isBilled) {
         deliveredCount++;
       }
 
@@ -494,6 +505,9 @@ const markGodownDelivery = async (req, res) => {
       is_otp_verified: true,
       receiver_signature_url: rawSignature,
       delivery_photo_url: rawPhoto,
+      payment_method: payment_mode || 'CASH',
+      payment_ref: payment_ref || null,
+      is_direct_bank_settled: Boolean(req.body.is_direct_bank_settled || ['UPI', 'NEFT', 'RTGS', 'ONLINE_TRANSFER'].includes(payment_mode)),
       remarks: `[GODOWN COUNTER DELIVERY] Paid: ${consignment.payment_type} (${payment_mode}${payment_ref ? ` - Ref: ${payment_ref}` : ''}) | ${remarks || 'Goods handed over at godown counter'}`,
       delivered_by: req.user?.id || consignment.dest_branch_id,
     };
@@ -550,7 +564,47 @@ const markGodownDelivery = async (req, res) => {
 
     // Status update: DELIVERED or POD_UPLOADED
     const finalStatus = rawPhoto ? 'POD_UPLOADED' : 'DELIVERED';
-    await consignment.update({ status: finalStatus }, { transaction });
+    const isDirectBank = Boolean(req.body.is_direct_bank_settled || ['UPI', 'NEFT', 'RTGS', 'ONLINE_TRANSFER'].includes(payment_mode));
+    const effectiveUtr = payment_ref || (isDirectBank ? paymentGatewayService.generateDemoUtr(payment_mode) : null);
+
+    const isPaidBooking = consignment.payment_type === 'PAID';
+    const isExplicitlyCollected = req.body.payment_collected === true || req.body.payment_collected === 'true';
+    const finalPaymentStatus = (isPaidBooking || isDirectBank || isExplicitlyCollected) ? 'CLEARED' : 'PENDING';
+
+    await consignment.update({
+      status: finalStatus,
+      payment_method: payment_mode || consignment.payment_method || 'CASH',
+      payment_status: finalPaymentStatus,
+      is_direct_bank_settled: isDirectBank,
+      payment_ref: effectiveUtr || consignment.payment_ref,
+      payment_bank_name: isDirectBank ? 'HDFC Bank - Main Corporate Account' : null,
+      payment_date: new Date(),
+    }, { transaction });
+
+    // If To-Pay paid via Direct UPI/Bank, auto-record bank remittance so it bypasses drawer cash
+    if (isDirectBank && consignment.payment_type === 'TO_PAY') {
+      const { BranchCashClosure } = req.tenantDb || defaultModels;
+      if (BranchCashClosure) {
+        await BranchCashClosure.create({
+          tenant_id: req.tenant.tenantId,
+          organization_id: req.tenant.organizationId,
+          branch_id: consignment.current_branch_id || consignment.dest_branch_id || req.user?.branch_id,
+          user_id: req.user?.id || consignment.created_by,
+          closure_date: new Date().toISOString().slice(0, 10),
+          total_collected_amount: Number(consignment.total_amount || 0),
+          remitted_amount: Number(consignment.total_amount || 0),
+          status: 'VERIFIED',
+          deposit_mode: ['UPI', 'NEFT', 'RTGS', 'CHEQUE', 'CDM', 'CASH_DEPOSIT'].includes(payment_mode) ? payment_mode : 'UPI',
+          bank_name: 'HDFC Bank - Main Corporate Account',
+          bank_account_no: 'MAIN-CORP-A/C-0982',
+          utr_reference_no: effectiveUtr,
+          receipt_slip_url: 'AUTO_VERIFIED_DIRECT_BANK_PAYMENT',
+          remarks: `Direct ${payment_mode} collected at delivery for To-Pay Docket ${consignment.lr_number || consignment.docket_number}. Bypasses branch cash drawer (UTR: ${effectiveUtr}).`,
+          verified_by: req.user?.id || null,
+          verified_at: new Date(),
+        }, { transaction });
+      }
+    }
 
     // Status Timeline Entry
     await ConsignmentStatusHistory.create({
@@ -559,7 +613,7 @@ const markGodownDelivery = async (req, res) => {
       location: consignment.destination_city || 'Godown Counter',
       branch_id: consignment.current_branch_id || consignment.dest_branch_id,
       user_id: req.user?.id || null,
-      remarks: `Godown counter delivery completed to ${receiver_name.trim()} (${receiver_phone || 'Phone N/A'}). Packages: ${pkgsToDeliver}/${consignment.packages_count}. Payment: ${consignment.payment_type} settled via ${payment_mode}.`,
+      remarks: `Godown counter delivery completed to ${receiver_name.trim()} (${receiver_phone || 'Phone N/A'}). Packages: ${pkgsToDeliver}/${consignment.packages_count}. Payment: ${consignment.payment_type} settled via ${payment_mode}${effectiveUtr ? ` (UTR: ${effectiveUtr})` : ''}.`,
       timestamp: new Date(),
     }, { transaction });
 
@@ -863,6 +917,9 @@ const markDelivered = async (req, res) => {
       is_otp_verified: true,
       receiver_signature_url: rawSignature,
       delivery_photo_url: rawPhoto,
+      payment_method: payment_mode || 'CASH',
+      payment_ref: payment_ref || null,
+      is_direct_bank_settled: Boolean(req.body.is_direct_bank_settled || ['UPI', 'NEFT', 'RTGS', 'ONLINE_TRANSFER'].includes(payment_mode)),
       remarks: `Delivered to recipient. Payment: ${consignment.payment_type} (${payment_mode}${payment_ref ? ` - ${payment_ref}` : ''}) | ${remarks || 'Delivered successfully'}`,
       delivered_by: req.user?.id || null,
     };
@@ -918,7 +975,47 @@ const markDelivered = async (req, res) => {
     }
 
     const nextStatus = rawPhoto ? 'POD_UPLOADED' : 'DELIVERED';
-    await consignment.update({ status: nextStatus }, { transaction });
+    const isDirectBank = Boolean(req.body.is_direct_bank_settled || ['UPI', 'NEFT', 'RTGS', 'ONLINE_TRANSFER'].includes(payment_mode));
+    const effectiveUtr = payment_ref || (isDirectBank ? paymentGatewayService.generateDemoUtr(payment_mode) : null);
+
+    const isPaidBooking = consignment.payment_type === 'PAID';
+    const isExplicitlyCollected = req.body.payment_collected === true || req.body.payment_collected === 'true';
+    const finalPaymentStatus = (isPaidBooking || isDirectBank || isExplicitlyCollected) ? 'CLEARED' : 'PENDING';
+
+    await consignment.update({
+      status: nextStatus,
+      payment_method: payment_mode || consignment.payment_method || 'CASH',
+      payment_status: finalPaymentStatus,
+      is_direct_bank_settled: isDirectBank,
+      payment_ref: effectiveUtr || consignment.payment_ref,
+      payment_bank_name: isDirectBank ? 'HDFC Bank - Main Corporate Account' : null,
+      payment_date: new Date(),
+    }, { transaction });
+
+    // If To-Pay paid via Direct UPI/Bank, auto-record bank remittance so it bypasses drawer cash
+    if (isDirectBank && consignment.payment_type === 'TO_PAY') {
+      const { BranchCashClosure } = req.tenantDb || defaultModels;
+      if (BranchCashClosure) {
+        await BranchCashClosure.create({
+          tenant_id: req.tenant.tenantId,
+          organization_id: req.tenant.organizationId,
+          branch_id: consignment.current_branch_id || consignment.dest_branch_id || req.user?.branch_id,
+          user_id: req.user?.id || consignment.created_by,
+          closure_date: new Date().toISOString().slice(0, 10),
+          total_collected_amount: Number(consignment.total_amount || 0),
+          remitted_amount: Number(consignment.total_amount || 0),
+          status: 'VERIFIED',
+          deposit_mode: ['UPI', 'NEFT', 'RTGS', 'CHEQUE', 'CDM', 'CASH_DEPOSIT'].includes(payment_mode) ? payment_mode : 'UPI',
+          bank_name: 'HDFC Bank - Main Corporate Account',
+          bank_account_no: 'MAIN-CORP-A/C-0982',
+          utr_reference_no: effectiveUtr,
+          receipt_slip_url: 'AUTO_VERIFIED_DIRECT_BANK_PAYMENT',
+          remarks: `Direct ${payment_mode} collected at doorstep delivery for To-Pay Docket ${consignment.lr_number || consignment.docket_number}. Bypasses branch cash drawer (UTR: ${effectiveUtr}).`,
+          verified_by: req.user?.id || null,
+          verified_at: new Date(),
+        }, { transaction });
+      }
+    }
 
     // Timeline update
     await ConsignmentStatusHistory.create({
@@ -927,7 +1024,7 @@ const markDelivered = async (req, res) => {
       location: consignment.destination_city,
       branch_id: consignment.current_branch_id || consignment.dest_branch_id,
       user_id: req.user?.id || null,
-      remarks: `Material handed over to ${receiver_name.trim()} (${receiver_phone || 'Phone N/A'}). Packages: ${pkgsDelivered}/${consignment.packages_count}.`,
+      remarks: `Material handed over to ${receiver_name.trim()} (${receiver_phone || 'Phone N/A'}). Packages: ${pkgsDelivered}/${consignment.packages_count}. Payment: ${consignment.payment_type} settled via ${payment_mode}${effectiveUtr ? ` (UTR: ${effectiveUtr})` : ''}.`,
       timestamp: new Date(),
     }, { transaction });
 

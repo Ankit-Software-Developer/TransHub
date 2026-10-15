@@ -107,6 +107,31 @@ module.exports = (sequelize) => {
       type: DataTypes.ENUM('PAID', 'TO_PAY', 'TBB', 'CREDIT', 'FOC'),
       defaultValue: 'TO_PAY',
     },
+    payment_method: {
+      type: DataTypes.STRING(50),
+      defaultValue: 'CASH',
+    },
+    payment_status: {
+      type: DataTypes.ENUM('PENDING', 'COLLECTED', 'CLEARED', 'REMITTED'),
+      defaultValue: 'PENDING',
+    },
+    is_direct_bank_settled: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+    },
+    payment_ref: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+      comment: 'Bank Transaction ID / UTR / Cheque No',
+    },
+    payment_bank_name: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+    },
+    payment_date: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
     delivery_type: {
       type: DataTypes.ENUM('DOOR_DELIVERY', 'GODOWN_DELIVERY'),
       defaultValue: 'GODOWN_DELIVERY',

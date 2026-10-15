@@ -127,12 +127,26 @@ const getBookingDetail = async (req, res) => {
   }
 };
 
+const DELIVERED_STATUSES = ['DELIVERED', 'COMPLETED', 'POD_UPLOADED', 'POD_VERIFIED'];
+
+const isConsignmentDelivered = (consignment) => {
+  if (!consignment) return false;
+  return Boolean(
+    consignment.is_delivered ||
+    DELIVERED_STATUSES.includes(consignment.status)
+  );
+};
+
 const updateBooking = async (req, res) => {
   try {
     const { id } = req.params;
     const ConsignmentModel = req.tenantDb?.Consignment;
     const existing = ConsignmentModel ? await ConsignmentModel.findByPk(id) : null;
     const oldSnapshot = existing ? existing.toJSON() : null;
+
+    if (existing && isConsignmentDelivered(existing)) {
+      return errorResponse(res, 'Delivered dockets cannot be modified or edited. Only view and print are permitted.', null, 403);
+    }
 
     const updated = await bookingService.updateBooking({
       id,
@@ -180,6 +194,10 @@ const deleteBooking = async (req, res) => {
     const ConsignmentModel = req.tenantDb?.Consignment;
     const existing = ConsignmentModel ? await ConsignmentModel.findByPk(id) : null;
     const oldSnapshot = existing ? existing.toJSON() : null;
+
+    if (existing && isConsignmentDelivered(existing)) {
+      return errorResponse(res, 'Delivered dockets cannot be deleted. Only view and print are permitted.', null, 403);
+    }
 
     const result = await bookingService.deleteBooking({
       id,

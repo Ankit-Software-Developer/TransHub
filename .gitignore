@@ -36,3 +36,7 @@ Thumbs.db
 # IDE files
 .vscode/
 .idea/
+
+# Scratch & temporary scripts
+scratch*
+*/scratch*

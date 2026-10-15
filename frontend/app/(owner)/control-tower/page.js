@@ -396,20 +396,14 @@ export default function ControlTowerPage() {
 
             {/* Action Toolbar: Single-Row Layout when space is present, smoothly responsive */}
             <div className="flex items-center gap-2 overflow-x-auto sm:overflow-visible pb-1 sm:pb-0 shrink-0">
-              {/* Branch / Transporter Scope Selector */}
-              <div className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-bold shrink-0 ${
-                isDark ? 'bg-slate-900/90 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-800 shadow-xs'
-              }`}>
-                <Building2 className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[11px] text-slate-400 shrink-0">Branch:</span>
-                  {isRestrictedBranchUser ? (
-                    <span className={`font-bold text-xs max-w-[150px] truncate ${
-                      isDark ? 'text-cyan-300' : 'text-blue-700'
-                    }`}>
-                      {branches.find((b) => b.id === selectedBranchId)?.branch_name || user?.branchName || 'Assigned Branch'}
-                    </span>
-                  ) : (
+              {/* Branch / Transporter Scope Selector: only for multi-branch admins */}
+              {!isRestrictedBranchUser && (
+                <div className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-bold shrink-0 ${
+                  isDark ? 'bg-slate-900/90 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-800 shadow-xs'
+                }`}>
+                  <Building2 className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] text-slate-400 shrink-0">Branch:</span>
                     <select
                       value={selectedBranchId}
                       onChange={(e) => setSelectedBranchId(e.target.value)}
@@ -426,9 +420,9 @@ export default function ControlTowerPage() {
                         </option>
                       ))}
                     </select>
-                  )}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Live IST Radar Time */}
               <div className={`flex items-center space-x-1.5 px-3 py-2 rounded-xl border text-xs font-mono font-bold shrink-0 whitespace-nowrap ${

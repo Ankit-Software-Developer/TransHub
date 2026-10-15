@@ -70,6 +70,18 @@ module.exports = (sequelize) => {
     delivered_longitude: {
       type: DataTypes.DECIMAL(11, 8),
     },
+    payment_method: {
+      type: DataTypes.STRING(50),
+      defaultValue: 'CASH',
+    },
+    payment_ref: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+    },
+    is_direct_bank_settled: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+    },
     remarks: {
       type: DataTypes.TEXT,
     },

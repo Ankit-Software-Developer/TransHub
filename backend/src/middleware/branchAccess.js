@@ -14,7 +14,10 @@ const branchAccess = (req, res, next) => {
     (req.userRoles && req.userRoles.some((r) => ['SUPER_ADMIN', 'TRANSPORT_OWNER', 'ADMIN', 'OWNER'].includes(r)))
   );
 
-  const requestedBranchId = req.query.branch_id || req.body.branch_id || req.params.branch_id;
+  const rawBranchId = req.query.branch_id || req.body.branch_id || req.params.branch_id;
+  const requestedBranchId = (rawBranchId && rawBranchId !== 'ALL' && rawBranchId !== 'undefined' && rawBranchId !== 'null' && String(rawBranchId).trim() !== '')
+    ? rawBranchId
+    : (rawBranchId === 'ALL' ? 'ALL' : null);
 
   if (isGlobalUser) {
     // Owner / Admin can operate on any branch or across all network branches (null)
@@ -49,19 +52,20 @@ const getEffectiveBranch = (req, requestedBranchId) => {
     (req.userRoles && req.userRoles.some((r) => ['SUPER_ADMIN', 'TRANSPORT_OWNER', 'ADMIN', 'OWNER'].includes(r)))
   );
 
-  if (!isGlobalUser && req.user?.branch_id) {
-    return req.user.branch_id;
+  const userAssignedBranch = req.user?.branch_id || req.branchId;
+
+  // Non-admin user: strictly locked to their login branch only
+  if (!isGlobalUser) {
+    return userAssignedBranch || null;
   }
 
-  if (requestedBranchId && requestedBranchId !== 'ALL') {
-    return requestedBranchId;
+  // Admin user: explicitly requested 'ALL' branches or unselected
+  if (!requestedBranchId || requestedBranchId === 'ALL' || requestedBranchId === 'undefined' || requestedBranchId === 'null') {
+    return null;
   }
 
-  if (!isGlobalUser && req.branchId && req.branchId !== 'ALL') {
-    return req.branchId;
-  }
-
-  return null;
+  // Admin user: explicitly requested a specific branch
+  return requestedBranchId;
 };
 
 branchAccess.branchAccess = branchAccess;

@@ -863,18 +863,13 @@ export default function LoadPlanningPage() {
 
             {/* Branch Context & Operational Actions */}
             <div className="flex flex-wrap items-center gap-2 shrink-0">
-              {/* Branch Selector */}
-              <div className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-bold ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'
-                }`}>
-                <Building2 className="w-4 h-4 text-cyan-400 shrink-0" />
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[11px] text-slate-400 shrink-0">Origin Dock:</span>
-                  {isRestrictedBranchUser ? (
-                    <span className={`font-bold text-xs max-w-[240px] truncate ${isDark ? 'text-cyan-300' : 'text-blue-700'
-                      }`}>
-                      {userAssignedBranch?.branch_code ? `[${userAssignedBranch.branch_code}] ` : ''}{userAssignedBranch?.branch_name || user?.branchName || 'Assigned Branch'} {userAssignedBranch?.city ? `• ${userAssignedBranch.city}` : ''}
-                    </span>
-                  ) : (
+              {/* Branch Selector: only for multi-branch admins who can switch origin docks */}
+              {!isRestrictedBranchUser && (
+                <div className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-bold ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'
+                  }`}>
+                  <Building2 className="w-4 h-4 text-cyan-400 shrink-0" />
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] text-slate-400 shrink-0">Origin Dock:</span>
                     <select
                       value={selectedBranchId}
                       onChange={(e) => setSelectedBranchId(e.target.value)}
@@ -890,9 +885,9 @@ export default function LoadPlanningPage() {
                         </option>
                       ))}
                     </select>
-                  )}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Confirm & Dispatch Truck Button */}
               <button

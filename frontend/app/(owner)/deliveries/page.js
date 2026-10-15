@@ -2,6 +2,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import api from '../../../services/api';
 import { useTerminology } from '../../../hooks/useTerminology';
 import Sidebar from '../../../components/layout/Sidebar';
@@ -13,6 +14,8 @@ import { usePermissions } from '../../../hooks/usePermissions';
 import { useStore } from '../../../store/useStore';
 import CameraCaptureModal from '../../../components/ui/CameraCaptureModal';
 import Modal from '../../../components/ui/Modal';
+import UpiPaymentModal from '../../../components/ui/UpiPaymentModal';
+import billingService from '../../../services/billingService';
 import {
   PackageCheck,
   CheckCircle2,
@@ -36,6 +39,8 @@ import {
   ChevronRight,
   Download,
   Receipt,
+  Mail,
+  MessageSquare,
   Boxes,
   MapPin,
   RefreshCw,
@@ -49,10 +54,13 @@ import {
   IndianRupee,
   Loader2,
   Camera,
-  ExternalLink
+  ExternalLink,
+  Zap,
+  ChevronDown,
 } from 'lucide-react';
 
 export default function DeliveriesPage() {
+  const router = useRouter();
   const { term, plural } = useTerminology();
   const { theme } = useTheme();
   const isDark = theme === 'dark';
@@ -125,6 +133,184 @@ export default function DeliveriesPage() {
   const [cameraModalOpen, setCameraModalOpen] = useState(false);
   const [viewingPodDocket, setViewingPodDocket] = useState(null);
   const [handoverSuccessDocket, setHandoverSuccessDocket] = useState(null);
+  const [upiModalDocket, setUpiModalDocket] = useState(null);
+
+  // Invoice generation & Print state
+  const [invoiceModalDocket, setInvoiceModalDocket] = useState(null);
+  const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().slice(0, 10));
+  const [creditDays, setCreditDays] = useState(30);
+  const [taxRate, setTaxRate] = useState(5.0);
+  const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
+  const [printModalInvoice, setPrintModalInvoice] = useState(null);
+
+  const orgProfile = useStore((state) => state.orgProfile);
+  const transporterDetails = useMemo(() => {
+    const businessName =
+      orgProfile?.business_name ||
+      orgProfile?.legal_name ||
+      user?.organizationName ||
+      user?.businessName ||
+      user?.organization?.name ||
+      (typeof window !== 'undefined' ? localStorage.getItem('transporter_brand_name') : null) ||
+      'Balaji Logistics';
+
+    const tagline =
+      orgProfile?.settings?.tagline ||
+      orgProfile?.tagline ||
+      user?.tagline ||
+      'Logistics & Goods Transport Agency (GTA)';
+
+    const address =
+      orgProfile?.address ||
+      orgProfile?.settings?.address ||
+      'Registered Operations Hub';
+
+    const city = orgProfile?.city || orgProfile?.settings?.city || '';
+    const state = orgProfile?.state || orgProfile?.settings?.state || '';
+    const pincode = orgProfile?.pincode || orgProfile?.settings?.pincode || '';
+    const fullAddress = [address, city, state, pincode].filter(Boolean).join(', ');
+
+    const phone = orgProfile?.phone || orgProfile?.settings?.phone || user?.phone || '';
+    const email = orgProfile?.email || orgProfile?.settings?.email || user?.email || '';
+    const gstin = orgProfile?.gstin || orgProfile?.settings?.gstin || user?.gstin || user?.organization?.gst_number || '';
+    const sacCode = orgProfile?.settings?.sacCode || orgProfile?.sac_code || '9965';
+
+    const bankName = orgProfile?.settings?.bankName || orgProfile?.bank_name || 'HDFC Bank';
+    const accountNumber = orgProfile?.settings?.accountNumber || orgProfile?.account_number || '';
+    const ifscCode = orgProfile?.settings?.ifscCode || orgProfile?.ifsc_code || '';
+    const bankBranch = orgProfile?.settings?.bankBranch || orgProfile?.bank_branch || '';
+
+    return {
+      businessName,
+      tagline,
+      fullAddress,
+      phone,
+      email,
+      gstin,
+      sacCode,
+      bankName,
+      accountNumber,
+      ifscCode,
+      bankBranch,
+    };
+  }, [orgProfile, user]);
+
+  const openGenerateInvoiceModal = (row) => {
+    setInvoiceModalDocket(row);
+    setInvoiceDate(new Date().toISOString().slice(0, 10));
+    setCreditDays(row.credit_days || (row.payment_type === 'TBB' ? 30 : 0));
+    setTaxRate(parseFloat(row.tax_percent || 5.0));
+  };
+
+  const handleConfirmGenerateInvoice = async (e) => {
+    if (e) e.preventDefault();
+    if (!invoiceModalDocket) return;
+
+    const row = invoiceModalDocket;
+    const customerId =
+      row.consignor_id ||
+      row.consignee_id ||
+      row.consignor?.id ||
+      row.consignee?.id;
+
+    if (!customerId) {
+      alert('Cannot generate invoice: No Shipper/Party account is linked to this docket.');
+      return;
+    }
+
+    setIsGeneratingInvoice(true);
+    try {
+      const payload = {
+        customer_id: customerId,
+        consignment_ids: [row.id],
+        invoice_date: invoiceDate,
+        credit_days: Number(creditDays) || 0,
+        tax_rate: parseFloat(taxRate) || 5.0,
+        is_rcm: false,
+        branch_id: row.origin_branch_id || userBranchId || activeBranch?.id,
+        remarks: `GST Freight Tax Invoice for ${row.docket_number || row.lr_number}`,
+      };
+
+      const result = await billingService.createInvoice(payload);
+
+      // Remove this docket from the deliveries operations table as it has now moved into the Invoice Register
+      setConsignments((prev) => prev.filter((c) => c.id !== row.id));
+      setTotalCount((prev) => Math.max(0, prev - 1));
+      setSummary((prev) => ({
+        ...prev,
+        delivered_count: Math.max(0, (prev.delivered_count || 1) - 1),
+      }));
+
+      setInvoiceModalDocket(null);
+      fetchDeliveries();
+
+      const invoiceId = result.id || result.invoice_id;
+      if (invoiceId) {
+        try {
+          const fullInv = await billingService.getInvoiceById(invoiceId);
+          if (fullInv) {
+            setPrintModalInvoice(fullInv);
+          }
+        } catch (fetchErr) {
+          console.warn('Could not auto-open print dialog', fetchErr);
+        }
+      }
+    } catch (err) {
+      console.error('Invoice generation failed', err);
+      alert(err.response?.data?.message || err.message || 'Failed to generate freight invoice');
+    } finally {
+      setIsGeneratingInvoice(false);
+    }
+  };
+
+  const handleViewOrPrintInvoice = async (row) => {
+    const invId = row.invoice_id;
+    if (!invId) return;
+    try {
+      const fullInv = await billingService.getInvoiceById(invId);
+      if (fullInv) {
+        setPrintModalInvoice(fullInv);
+      }
+    } catch (err) {
+      console.error('Failed to load invoice', err);
+      alert('Could not fetch invoice details. Please check Invoice Register.');
+    }
+  };
+
+  const sendInvoiceWhatsAppReminder = (inv) => {
+    if (!inv) return;
+    const phone =
+      inv.customer?.phone ||
+      inv.consignor?.phone ||
+      inv.consignee?.phone ||
+      '';
+    const cleanPhone = phone.replace(/[^0-9]/g, '');
+    const company = transporterDetails.businessName;
+    const bank = transporterDetails.bankName;
+    const acc = transporterDetails.accountNumber;
+    const ifsc = transporterDetails.ifscCode;
+    const invNum = inv.invoice_number;
+    const total = Number(inv.total_amount || 0).toLocaleString('en-IN');
+    const due = inv.due_date;
+
+    const message = `*GST FREIGHT TAX INVOICE*\nFrom: *${company}*\n\nDear Customer,\nPlease find your Freight Tax Invoice details:\n📄 Invoice No: *${invNum}*\n💰 Total Amount: *₹${total}*\n📅 Due Date: *${due}*\n\n*Bank Settlement Details:*\nBank: ${bank}\nA/C No: ${acc}\nIFSC: ${ifsc}\n\nKindly acknowledge and remit as per agreed credit terms. Thank you!`;
+
+    const encoded = encodeURIComponent(message);
+    const targetUrl = cleanPhone
+      ? `https://api.whatsapp.com/send?phone=91${cleanPhone.slice(-10)}&text=${encoded}`
+      : `https://api.whatsapp.com/send?text=${encoded}`;
+    window.open(targetUrl, '_blank');
+  };
+
+  const sendInvoiceEmail = (inv) => {
+    if (!inv) return;
+    const email = inv.customer?.email || inv.consignor?.email || inv.consignee?.email || '';
+    const subject = encodeURIComponent(`GST Freight Tax Invoice: ${inv.invoice_number} - ${transporterDetails.businessName}`);
+    const body = encodeURIComponent(
+      `Dear Customer,\n\nPlease find the details of Freight Tax Invoice ${inv.invoice_number} for ₹ ${Number(inv.total_amount).toLocaleString('en-IN')}.\n\nDue Date: ${inv.due_date}\n\nBank Payment Details:\nBank: ${transporterDetails.bankName}\nA/C No: ${transporterDetails.accountNumber}\nIFSC: ${transporterDetails.ifscCode}\nBranch: ${transporterDetails.bankBranch}\n\nRegards,\n${transporterDetails.businessName}`
+    );
+    window.open(`mailto:${email}?subject=${subject}&body=${body}`, '_blank');
+  };
 
   // DRS-specific full docket list and search/filters
   const [drsDockets, setDrsDockets] = useState([]);
@@ -611,6 +797,7 @@ export default function DeliveriesPage() {
         payment_collected: handoverForm.payment_collected,
         payment_mode: handoverForm.payment_mode,
         payment_ref: handoverForm.payment_ref,
+        is_direct_bank_settled: Boolean(handoverForm.is_direct_bank_settled || ['UPI', 'NEFT', 'RTGS', 'ONLINE_TRANSFER'].includes(handoverForm.payment_mode)),
         pod_file_url: handoverForm.pod_file_url,
         receiver_signature_url: handoverForm.receiver_signature_url,
         remarks: handoverForm.remarks,
@@ -730,6 +917,7 @@ export default function DeliveriesPage() {
         damaged_packages: Number(handoverForm.damaged_packages) || 0,
         payment_mode: handoverForm.payment_mode,
         payment_ref: handoverForm.payment_ref,
+        is_direct_bank_settled: Boolean(handoverForm.is_direct_bank_settled || ['UPI', 'NEFT', 'RTGS', 'ONLINE_TRANSFER'].includes(handoverForm.payment_mode)),
         pod_file_url: handoverForm.pod_file_url,
         receiver_signature_url: handoverForm.receiver_signature_url,
         remarks: handoverForm.remarks,
@@ -930,26 +1118,47 @@ export default function DeliveriesPage() {
         header: 'Payment Status',
         sortable: true,
         align: 'center',
-        width: 150,
-        minWidth: 130,
+        width: 155,
+        minWidth: 135,
         render: (val, row) => {
           const isToPay = row.payment_type === 'TO_PAY';
           const isPaid = row.payment_type === 'PAID';
+          const isDelivered = ['DELIVERED', 'POD_UPLOADED', 'POD_PENDING', 'COMPLETED', 'POD_VERIFIED'].includes(row.status);
+          const isCleared = row.payment_status === 'CLEARED' || row.payment_status === 'COLLECTED' || Boolean(row.is_direct_bank_settled);
+          const isPaidOut = isPaid || (isToPay && isCleared) || (isCleared && row.payment_type !== 'TBB');
+
           return (
             <div className="flex justify-center items-center">
-              {isToPay ? (
+              {isPaidOut ? (
+                <div className="inline-flex flex-col items-center">
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800/60 shadow-xs">
+                    <CheckCircle2 className="w-3 h-3 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                    PAID (₹{Number(row.total_amount || 0).toLocaleString('en-IN')})
+                  </span>
+                  {isToPay && (
+                    <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-semibold mt-0.5 whitespace-nowrap">
+                      To-Pay Collected
+                    </span>
+                  )}
+                </div>
+              ) : isDelivered ? (
                 <div className="inline-flex flex-col items-center">
                   <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-800/60 shadow-xs">
                     <AlertCircle className="w-3 h-3 shrink-0 text-rose-600 dark:text-rose-400" />
+                    PENDING (₹{Number(row.total_amount || 0).toLocaleString('en-IN')})
+                  </span>
+                  <span className="text-[9px] text-rose-600 dark:text-rose-400 font-semibold mt-0.5 whitespace-nowrap">
+                    {isToPay ? 'To-Pay Uncollected' : row.payment_type || 'Payment Due'}
+                  </span>
+                </div>
+              ) : isToPay ? (
+                <div className="inline-flex flex-col items-center">
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800/60 shadow-xs">
+                    <AlertCircle className="w-3 h-3 shrink-0 text-amber-600 dark:text-amber-400" />
                     TO-PAY: ₹{Number(row.total_amount || 0).toLocaleString('en-IN')}
                   </span>
                   <span className="text-[9px] text-amber-600 dark:text-amber-400 font-semibold mt-0.5 whitespace-nowrap">Collect at handover</span>
                 </div>
-              ) : isPaid ? (
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800/60 shadow-xs">
-                  <CheckCircle2 className="w-3 h-3 shrink-0 text-emerald-600 dark:text-emerald-400" />
-                  PAID (₹{Number(row.total_amount || 0).toLocaleString('en-IN')})
-                </span>
               ) : (
                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/50 dark:text-blue-300 dark:border-blue-800/60 shadow-xs">
                   {row.payment_type || 'TBB (Credit)'}
@@ -958,7 +1167,105 @@ export default function DeliveriesPage() {
             </div>
           );
         },
-      },
+      }
+    );
+
+    // MODE & REF column: ONLY shown after delivery is complete (activeTab === 'DELIVERED')
+    if (activeTab === 'DELIVERED') {
+      cols.push({
+        key: 'payment_settlement',
+        header: 'Mode & Ref',
+        sortable: false,
+        align: 'center',
+        width: 165,
+        minWidth: 145,
+        render: (val, row) => {
+          // 1. TBB (To Be Billed / Corporate Credit)
+          if (row.payment_type === 'TBB' || row.payment_type === 'CREDIT') {
+            return (
+              <div className="flex flex-col items-center">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/50 dark:text-blue-300 dark:border-blue-800/60 shadow-xs">
+                  📑 Corporate Credit
+                </span>
+                <span className="text-[9px] text-slate-500 dark:text-slate-400 font-medium mt-0.5">
+                  Monthly Ledger Billing
+                </span>
+              </div>
+            );
+          }
+
+          // 2. PAID (Prepaid at Origin Booking)
+          if (row.payment_type === 'PAID') {
+            return (
+              <div className="flex flex-col items-center">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-950/50 dark:text-indigo-300 dark:border-indigo-800/60 shadow-xs">
+                  💳 Origin Prepaid
+                </span>
+                <span className="text-[9px] text-slate-500 dark:text-slate-400 font-medium mt-0.5">
+                  Paid at Booking
+                </span>
+              </div>
+            );
+          }
+
+          // 3. TO-PAY: Collected at Delivery Handover
+          const method = row.payment_method || row.deliveryRecord?.payment_method || '';
+          const ref = row.payment_ref || row.deliveryRecord?.payment_ref || '';
+          const isDirect = Boolean(row.is_direct_bank_settled || row.deliveryRecord?.is_direct_bank_settled || method === 'UPI');
+
+          // 3a. Direct Bank UPI (Original UTR from DB)
+          if (isDirect || method === 'UPI') {
+            return (
+              <div className="flex flex-col items-center">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap bg-teal-50 text-teal-700 border border-teal-200 dark:bg-teal-950/50 dark:text-teal-300 dark:border-teal-800/60 shadow-xs">
+                  <Zap className="w-3 h-3 text-amber-500 fill-current" />
+                  Direct Bank UPI
+                </span>
+                {ref ? (
+                  <span className="font-mono text-[9px] font-bold text-slate-700 dark:text-slate-300 mt-0.5 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 max-w-[130px] truncate" title={ref}>
+                    {ref}
+                  </span>
+                ) : (
+                  <span className="text-[9px] text-teal-600 dark:text-teal-400 font-semibold mt-0.5">Bank Settled</span>
+                )}
+              </div>
+            );
+          }
+
+          // 3b. Cash Drawer at Handover
+          if (method === 'CASH') {
+            return (
+              <div className="flex flex-col items-center">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800/60 shadow-xs">
+                  💵 Cash Drawer
+                </span>
+                <span className="text-[9px] text-slate-500 dark:text-slate-400 font-medium mt-0.5">Counter Cash</span>
+              </div>
+            );
+          }
+
+          // 3c. Bank Transfer / Cheque
+          if (method && method !== 'CASH') {
+            return (
+              <div className="flex flex-col items-center">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/50 dark:text-blue-300 dark:border-blue-800/60 shadow-xs">
+                  🏦 {method}
+                </span>
+                {ref && (
+                  <span className="font-mono text-[9px] font-bold text-slate-700 dark:text-slate-300 mt-0.5 max-w-[130px] truncate" title={ref}>
+                    {ref}
+                  </span>
+                )}
+              </div>
+            );
+          }
+
+          return <span className="text-slate-400 text-xs">—</span>;
+        },
+      });
+    }
+
+    cols.push(
       {
         key: 'status',
         header: 'Cargo Status',
@@ -982,8 +1289,8 @@ export default function DeliveriesPage() {
         key: 'actions',
         header: 'Delivery Actions',
         align: 'center',
-        width: 240,
-        minWidth: 210,
+        width: 200,
+        minWidth: 170,
         excludeFromExport: true,
         resizable: false,
         render: (val, row) => {
@@ -1057,6 +1364,59 @@ export default function DeliveriesPage() {
       }
     );
 
+    // Invoice Action column displays only when delivery is complete (Delivered tab or ALL archive)
+    if (activeTab === 'DELIVERED' || activeTab === 'ALL') {
+      cols.push({
+        key: 'invoice_action',
+        header: 'Invoice Action',
+        align: 'center',
+        width: 170,
+        minWidth: 150,
+        excludeFromExport: true,
+        resizable: false,
+        render: (val, row) => {
+          const isDelivered = ['DELIVERED', 'POD_UPLOADED', 'COMPLETED'].includes(row.status);
+          if (!isDelivered) {
+            return (
+              <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium italic">
+                Pending Delivery
+              </span>
+            );
+          }
+
+          if (row.is_billed || row.invoice_id) {
+            return (
+              <div className="flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+                <button
+                  type="button"
+                  onClick={() => handleViewOrPrintInvoice(row)}
+                  className="px-2.5 py-1 text-[11px] font-bold bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30 rounded-lg hover:bg-blue-500/25 transition-colors flex items-center gap-1 cursor-pointer whitespace-nowrap"
+                  title="View Official GST Freight Tax Invoice"
+                >
+                  <Receipt className="w-3.5 h-3.5" />
+                  <span>Invoice</span>
+                </button>
+              </div>
+            );
+          }
+
+          return (
+            <div className="flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+              <button
+                type="button"
+                onClick={() => openGenerateInvoiceModal(row)}
+                className="px-2.5 py-1 text-[11px] font-bold bg-blue-600 hover:bg-blue-500 text-white rounded-lg shadow-xs transition-all active:scale-95 flex items-center gap-1 cursor-pointer whitespace-nowrap"
+                title="Generate Official GST Freight Tax Invoice for this delivered docket"
+              >
+                <Receipt className="w-3.5 h-3.5" />
+                <span>Generate Invoice</span>
+              </button>
+            </div>
+          );
+        },
+      });
+    }
+
     return cols;
   }, [activeTab, consignments, selectedDocketIds, term, isDark]);
 
@@ -1087,7 +1447,7 @@ export default function DeliveriesPage() {
 
             {/* Top Action Controls: Branch Switcher & Quick DRS in a single non-wrapping row */}
             <div className="flex items-center gap-2 shrink-0 flex-nowrap">
-              {isAdmin ? (
+              {isAdmin && (
                 <div className={`flex items-center gap-1.5 p-1 rounded-xl border shadow-xs transition-colors shrink-0 ${
                   isDark ? 'bg-slate-900/80 border-slate-800' : 'bg-white border-slate-200'
                 }`}>
@@ -1111,25 +1471,6 @@ export default function DeliveriesPage() {
                       </option>
                     ))}
                   </select>
-                </div>
-              ) : (
-                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border shadow-xs shrink-0 select-none ${
-                  isDark ? 'bg-slate-900/80 border-slate-800' : 'bg-white border-slate-200'
-                }`}>
-                  <Building2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                  <div className="flex items-center gap-1.5 whitespace-nowrap">
-                    <span className={`text-xs font-bold ${isDark ? 'text-white' : 'text-slate-800'}`}>
-                      {currentBranch?.branch_name || user?.branchName || 'Assigned Branch'}
-                    </span>
-                    {(currentBranch?.city || user?.city) && (
-                      <span className={`text-[11px] font-medium ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                        ({currentBranch?.city || user?.city})
-                      </span>
-                    )}
-                    <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 tracking-wider">
-                      {currentBranch?.branch_code || user?.branchCode || 'HUB'}
-                    </span>
-                  </div>
                 </div>
               )}
 
@@ -1315,38 +1656,6 @@ export default function DeliveriesPage() {
                 Delivered & Gate Pass Archive ({summary.delivered_count})
               </button>
             </div>
-
-            {/* Quick Filters: Delivery Mode & Payment */}
-            <div className="flex items-center gap-2">
-              <select
-                value={deliveryTypeFilter}
-                onChange={(e) => setDeliveryTypeFilter(e.target.value)}
-                className={`text-xs font-semibold px-3 py-2 rounded-xl border shadow-xs transition-colors cursor-pointer ${
-                  isDark
-                    ? 'bg-slate-900 border-slate-800 text-slate-300'
-                    : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
-                }`}
-              >
-                <option value="ALL">All Delivery Types</option>
-                <option value="DOOR_DELIVERY">Door Delivery</option>
-                <option value="GODOWN_DELIVERY">Godown Pickup</option>
-              </select>
-
-              <select
-                value={paymentTypeFilter}
-                onChange={(e) => setPaymentTypeFilter(e.target.value)}
-                className={`text-xs font-semibold px-3 py-2 rounded-xl border shadow-xs transition-colors cursor-pointer ${
-                  isDark
-                    ? 'bg-slate-900 border-slate-800 text-slate-300'
-                    : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
-                }`}
-              >
-                <option value="ALL">All Payment Types</option>
-                <option value="TO_PAY">TO-PAY (Freight Pending)</option>
-                <option value="PAID">PAID</option>
-                <option value="TBB">TBB (Billed to Account)</option>
-              </select>
-            </div>
           </div>
 
           {/* Master Deliveries DataTable */}
@@ -1471,6 +1780,36 @@ export default function DeliveriesPage() {
                           />
                         </div>
                       </div>
+
+                      {/* Direct UPI QR Demo Trigger */}
+                      {handoverForm.is_direct_bank_settled ? (
+                        <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between">
+                          <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
+                            <CheckCircle2 className="w-4 h-4 shrink-0" />
+                            <div>
+                              <span className="font-bold text-xs">Direct Bank UPI Verified</span>
+                              <p className="text-[10px] text-slate-500 font-mono">UTR: {handoverForm.payment_ref}</p>
+                            </div>
+                          </div>
+                          <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-600">
+                            Zero Drawer Cash
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between p-2 rounded-xl bg-emerald-500/5 border border-dashed border-emerald-500/30">
+                          <div className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-300">
+                            <QrCode className="w-3.5 h-3.5 text-emerald-500" />
+                            <span className="text-[11px] font-semibold">Customer paying via GPay/PhonePe?</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setUpiModalDocket(counterHandoverDocket)}
+                            className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] flex items-center gap-1 shadow-sm transition-all"
+                          >
+                            <span>⚡ Scan & Pay UPI (Demo)</span>
+                          </button>
+                        </div>
+                      )}
 
                       <label className="flex items-center gap-2 pt-0.5 cursor-pointer">
                         <input
@@ -2556,14 +2895,42 @@ export default function DeliveriesPage() {
                 {/* Scrollable Body */}
                 <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3.5 text-xs">
                   {doorstepDeliveryDocket.payment_type === 'TO_PAY' && (
-                    <div className="p-3 rounded-xl border border-rose-500/30 bg-rose-500/10 flex items-center justify-between">
-                      <div>
-                        <span className="font-bold text-rose-500 dark:text-rose-400">TO-PAY Freight Collection</span>
-                        <p className={`text-[10px] ${isDark ? 'text-slate-300' : 'text-rose-800'}`}>Driver must collect cash/UPI</p>
+                    <div className="space-y-2">
+                      <div className="p-3 rounded-xl border border-rose-500/30 bg-rose-500/10 flex items-center justify-between">
+                        <div>
+                          <span className="font-bold text-rose-500 dark:text-rose-400">TO-PAY Freight Collection</span>
+                          <p className={`text-[10px] ${isDark ? 'text-slate-300' : 'text-rose-800'}`}>Collect cash or scan UPI</p>
+                        </div>
+                        <span className={`text-sm font-black ${isDark ? 'text-white' : 'text-rose-950'}`}>
+                          ₹{Number(doorstepDeliveryDocket.total_amount || 0).toLocaleString('en-IN')}
+                        </span>
                       </div>
-                      <span className={`text-sm font-black ${isDark ? 'text-white' : 'text-rose-950'}`}>
-                        ₹{Number(doorstepDeliveryDocket.total_amount || 0).toLocaleString('en-IN')}
-                      </span>
+
+                      {handoverForm.is_direct_bank_settled ? (
+                        <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between">
+                          <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
+                            <CheckCircle2 className="w-4 h-4 shrink-0" />
+                            <div>
+                              <span className="font-bold text-xs">Direct Bank UPI Verified</span>
+                              <p className="text-[10px] text-slate-500 font-mono">UTR: {handoverForm.payment_ref}</p>
+                            </div>
+                          </div>
+                          <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-600">
+                            Zero Drawer Cash
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between p-2 rounded-xl bg-emerald-500/5 border border-dashed border-emerald-500/30">
+                          <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">Customer paying via GPay/PhonePe?</span>
+                          <button
+                            type="button"
+                            onClick={() => setUpiModalDocket(doorstepDeliveryDocket)}
+                            className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] flex items-center gap-1 shadow-sm transition-all"
+                          >
+                            <span>⚡ Scan & Pay UPI (Demo)</span>
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -3091,6 +3458,498 @@ export default function DeliveriesPage() {
             }}
             title="Take Signed POD Photo"
           />
+
+          {/* DYNAMIC BANK UPI PAYMENT MODAL (DEMO) */}
+          <UpiPaymentModal
+            isOpen={Boolean(upiModalDocket)}
+            onClose={() => setUpiModalDocket(null)}
+            entityType="CONSIGNMENT"
+            entityId={upiModalDocket?.id}
+            referenceNo={upiModalDocket?.docket_number || upiModalDocket?.lr_number}
+            amount={Number(upiModalDocket?.total_amount || 0)}
+            payerName={upiModalDocket?.consignee?.name || ''}
+            branchId={upiModalDocket?.dest_branch_id}
+            onSuccess={(result) => {
+              setHandoverForm((prev) => ({
+                ...prev,
+                payment_mode: 'UPI',
+                payment_ref: result.utr,
+                is_direct_bank_settled: true,
+                payment_collected: true,
+              }));
+              setUpiModalDocket(null);
+            }}
+          />
+
+          {/* ======================================================== */}
+          {/* MODAL 7: GENERATE FREIGHT TAX INVOICE MODAL              */}
+          {/* ======================================================== */}
+          <Modal isOpen={Boolean(invoiceModalDocket)} onClose={() => setInvoiceModalDocket(null)}>
+            {invoiceModalDocket && (
+              <div className={`rounded-3xl max-w-xl w-full p-6 shadow-2xl border transition-all text-left ${
+                isDark ? 'bg-[#0B1020] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
+              }`}>
+                {/* Header */}
+                <div className="flex items-center justify-between pb-3.5 border-b border-slate-200 dark:border-slate-800">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 rounded-2xl bg-blue-600/10 border border-blue-500/20 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+                      <Receipt className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-base sm:text-lg font-black tracking-tight text-slate-900 dark:text-white">
+                        Generate Freight Tax Invoice
+                      </h3>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        Create an official GST outward tax invoice for this delivered consignment
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setInvoiceModalDocket(null)}
+                    className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <form onSubmit={handleConfirmGenerateInvoice} className="space-y-4 pt-4 text-xs">
+                  {/* Docket Summary Snapshot */}
+                  <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="font-mono font-bold text-sm text-blue-600 dark:text-blue-400">
+                        #{invoiceModalDocket.docket_number || invoiceModalDocket.lr_number}
+                      </span>
+                      <span className="px-2 py-0.5 rounded-md font-bold text-[10.5px] bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">
+                        {invoiceModalDocket.payment_type}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-[11px] pt-1 border-t border-slate-200/60 dark:border-slate-800/60">
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">Shipper / Consignor:</span>
+                        <strong className="text-slate-800 dark:text-slate-200 truncate block">
+                          {invoiceModalDocket.consignor?.name || invoiceModalDocket.customer || 'Shipper'}
+                        </strong>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">Consignee (Receiver):</span>
+                        <strong className="text-slate-800 dark:text-slate-200 truncate block">
+                          {invoiceModalDocket.consignee?.name || 'Receiver'}
+                        </strong>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-between items-center pt-1 text-[11px]">
+                      <span className="text-slate-500 dark:text-slate-400">
+                        Route: {invoiceModalDocket.origin_city || invoiceModalDocket.originBranch?.city || 'Origin'} ➔ {invoiceModalDocket.destination_city || invoiceModalDocket.destBranch?.city || 'Destination'}
+                      </span>
+                      <span className="text-base font-black font-mono text-emerald-600 dark:text-emerald-400">
+                        ₹ {Number(invoiceModalDocket.total_amount || invoiceModalDocket.freight_amount || 0).toLocaleString('en-IN')}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Form fields: Invoice Date, Credit Days, Tax Rate */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                        Invoice Date *
+                      </label>
+                      <input
+                        type="date"
+                        value={invoiceDate}
+                        onChange={(e) => setInvoiceDate(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 font-mono text-xs focus:border-blue-500 focus:outline-none"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                        Credit Terms *
+                      </label>
+                      <select
+                        value={creditDays}
+                        onChange={(e) => setCreditDays(Number(e.target.value))}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs font-medium focus:border-blue-500 focus:outline-none"
+                      >
+                        <option value={0}>Immediate / Cash (0 Days)</option>
+                        <option value={15}>15 Days Credit</option>
+                        <option value={30}>30 Days Credit (Standard TBB)</option>
+                        <option value={45}>45 Days Credit</option>
+                        <option value={60}>60 Days Credit</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                        GST Tax Rate *
+                      </label>
+                      <select
+                        value={taxRate}
+                        onChange={(e) => setTaxRate(parseFloat(e.target.value))}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs font-medium focus:border-blue-500 focus:outline-none"
+                      >
+                        <option value={5.0}>5% GST (Standard GTA)</option>
+                        <option value={12.0}>12% GST (Forward Charge)</option>
+                        <option value={0.0}>0% (RCM Exempt)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-200 dark:border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => setInvoiceModalDocket(null)}
+                      className="px-4 py-2 text-xs font-bold rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-all cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isGeneratingInvoice}
+                      className="px-5 py-2 text-xs font-bold rounded-xl bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-600/30 flex items-center space-x-1.5 transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      <Receipt className="w-4 h-4" />
+                      <span>{isGeneratingInvoice ? 'Generating Invoice...' : 'Generate & View / Print ➔'}</span>
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+          </Modal>
+
+          {/* ======================================================== */}
+          {/* MODAL 8: PRINT OFFICIAL GST FREIGHT TAX INVOICE MODAL    */}
+          {/* ======================================================== */}
+          {printModalInvoice && (
+            <div className="invoice-print-dialog fixed inset-0 z-50 overflow-y-auto flex min-h-full items-center justify-center p-4 sm:p-6 print:p-0">
+              <div className="fixed inset-0 bg-black/75 backdrop-blur-sm no-print" onClick={() => setPrintModalInvoice(null)} />
+              <div className="invoice-print-card relative w-full max-w-4xl my-auto max-h-[95vh] overflow-y-auto rounded-3xl bg-white text-slate-900 p-6 sm:p-8 shadow-2xl z-10 space-y-5">
+                
+                {/* Top Action Toolbar (Hidden during print) */}
+                <div className="flex items-center justify-between pb-3 border-b border-slate-200 no-print">
+                  <div className="flex items-center space-x-2">
+                    <Printer className="w-5 h-5 text-blue-600" />
+                    <h3 className="text-base font-bold text-slate-900">Official GST Freight Tax Invoice</h3>
+                    <span className="text-xs px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-mono font-bold">
+                      {printModalInvoice.invoice_number}
+                    </span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={() => sendInvoiceWhatsAppReminder(printModalInvoice)}
+                      className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md shadow-emerald-600/20 flex items-center space-x-1.5 active:scale-95 transition-all cursor-pointer"
+                      title="Send Invoice & Bank Details to Party via WhatsApp"
+                    >
+                      <MessageSquare className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">WhatsApp</span>
+                    </button>
+                    <button
+                      onClick={() => sendInvoiceEmail(printModalInvoice)}
+                      className="px-3 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold shadow-md shadow-sky-600/20 flex items-center space-x-1.5 active:scale-95 transition-all cursor-pointer"
+                      title="Send Invoice & Bank Details to Party via Email"
+                    >
+                      <Mail className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">Email</span>
+                    </button>
+                    <button
+                      onClick={() => window.print()}
+                      className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 flex items-center space-x-1.5 active:scale-95 transition-all cursor-pointer"
+                    >
+                      <Printer className="w-4 h-4" />
+                      <span>Print / Save PDF</span>
+                    </button>
+                    <button
+                      onClick={() => setPrintModalInvoice(null)}
+                      className="p-2 text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Info banner confirming docket movement to Invoice Register */}
+                <div className="no-print p-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>
+                      <strong>Docket invoiced successfully!</strong> This docket has been moved out of Deliveries and into the <strong>Invoices Register</strong>.
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPrintModalInvoice(null);
+                        router.push('/billing/invoices');
+                      }}
+                      className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] shadow-xs flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                    >
+                      <Receipt className="w-3.5 h-3.5" />
+                      <span>Go to Invoices Register</span>
+                      <ArrowRight className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* PRINTABLE GST TAX INVOICE SHEET */}
+                <div id="invoice-printable-sheet" className="space-y-4 bg-white text-slate-900">
+                  
+                  {/* Header: Transporter Profile */}
+                  <div className="flex justify-between items-start border-b border-slate-300 pb-3">
+                    <div>
+                      <h2 className="text-xl sm:text-2xl font-black tracking-tight text-slate-900 uppercase">
+                        {transporterDetails.businessName}
+                      </h2>
+                      <p className="text-[11px] text-slate-500 font-medium">
+                        {transporterDetails.tagline}
+                      </p>
+                      <p className="text-[11px] text-slate-600 mt-0.5">
+                        {transporterDetails.fullAddress}
+                      </p>
+                      <p className="text-[11px] text-slate-600 font-mono">
+                        Phone: {transporterDetails.phone} • Email: {transporterDetails.email}
+                      </p>
+                    </div>
+                    <div className="text-right space-y-0.5">
+                      <div className="inline-block px-2.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 text-[11px] font-bold uppercase tracking-wider">
+                        GST TAX INVOICE
+                      </div>
+                      <div className="text-xs font-black font-mono text-slate-900">
+                        GSTIN: {transporterDetails.gstin}
+                      </div>
+                      <div className="text-[11px] text-slate-600">
+                        SAC Code: <strong className="font-mono text-slate-900">{transporterDetails.sacCode}</strong> (Road Freight)
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Billed To & Invoice Metadata */}
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    <div className="p-3 rounded-xl border border-slate-300 bg-slate-50/70 space-y-1">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                        Billed To (Consignor / Party):
+                      </span>
+                      <div className="font-bold text-slate-900 text-sm">
+                        {typeof printModalInvoice.customer === 'object'
+                          ? (printModalInvoice.customer?.name || 'Customer Account')
+                          : (printModalInvoice.customer || 'Customer Account')}
+                      </div>
+                      <div className="font-mono text-slate-600 text-[11px]">
+                        GSTIN: <strong className="text-slate-900">
+                          {typeof printModalInvoice.gstin === 'string'
+                            ? printModalInvoice.gstin
+                            : (printModalInvoice.customer?.gstin || 'URP')}
+                        </strong>
+                      </div>
+                      <div className="text-slate-600 text-[11px]">
+                        Billing Address: {printModalInvoice.customer?.billing_address || printModalInvoice.customer?.address || 'Registered Business Address'}
+                      </div>
+                      <div className="text-slate-600 text-[11px]">
+                        Delivery Branch: <strong className="text-slate-900">
+                          {typeof printModalInvoice.delivery_branch === 'object'
+                            ? (printModalInvoice.delivery_branch?.branch_name || 'Destination Branch')
+                            : (printModalInvoice.delivery_branch || 'Destination Branch')}
+                        </strong>
+                      </div>
+                    </div>
+
+                    <div className="p-3 rounded-xl border border-slate-300 bg-slate-50/70 space-y-1.5 font-mono text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-slate-500 font-sans">Invoice Number:</span>
+                        <span className="font-black text-slate-900">{printModalInvoice.invoice_number}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500 font-sans">Invoice Date:</span>
+                        <span className="font-bold text-slate-900">{printModalInvoice.invoice_date}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500 font-sans">Payment Due Date:</span>
+                        <span className="font-black text-rose-600">{printModalInvoice.due_date}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500 font-sans">Credit Terms:</span>
+                        <span className="font-bold text-slate-900">{printModalInvoice.credit_days || 30} Days (TBB)</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500 font-sans">Reverse Charge (RCM):</span>
+                        <span className="font-bold text-slate-900">{printModalInvoice.is_rcm ? 'YES (Applicable)' : 'NO (Forward Charge)'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500 font-sans">Payment Status:</span>
+                        <span className={`font-black ${printModalInvoice.status === 'PAID' ? 'text-emerald-600' : 'text-amber-600'}`}>
+                          {printModalInvoice.status}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Itemized Freight Table */}
+                  <div className="border border-slate-300 rounded-xl overflow-hidden">
+                    <table className="w-full text-xs text-left">
+                      <thead className="bg-slate-100 border-b border-slate-300 font-bold text-slate-700">
+                        <tr>
+                          <th className="p-2 w-10 text-center">#</th>
+                          <th className="p-2">Docket / LR #</th>
+                          <th className="p-2">Booking Date</th>
+                          <th className="p-2">Route Corridor</th>
+                          <th className="p-2 text-right">Taxable Base (₹)</th>
+                          <th className="p-2 text-right">GST @ 5% (₹)</th>
+                          <th className="p-2 text-right">Total Freight (₹)</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200">
+                        {printModalInvoice.items && printModalInvoice.items.length > 0 ? (
+                          printModalInvoice.items.map((item, idx) => {
+                            const itemTaxable = Number(item.taxable_amount || item.freight_amount || (item.total_amount && item.tax_amount ? item.total_amount - item.tax_amount : (item.total_amount ? Math.round(item.total_amount / 1.05) : printModalInvoice.taxable_amount)) || 0);
+                            const itemGst = Number(item.tax_amount || item.gst_amount || (item.total_amount ? item.total_amount - itemTaxable : printModalInvoice.gst_amount) || 0);
+                            const itemTotal = Number(item.total_amount || (itemTaxable + itemGst) || printModalInvoice.total_amount || 0);
+                            return (
+                              <tr key={item.id || idx}>
+                                <td className="p-2 text-center text-slate-500 font-mono">{idx + 1}</td>
+                                <td className="p-2 font-mono font-bold text-blue-700">{item.consignment?.docket_number || item.docket_number || item.lr_number || `ITEM-${idx + 1}`}</td>
+                                <td className="p-2 text-slate-600">{item.consignment?.booking_date || item.booking_date || printModalInvoice.invoice_date}</td>
+                                <td className="p-2 font-sans">{item.origin_city || 'Origin'} ➔ {item.destination_city || 'Destination'}</td>
+                                <td className="p-2 text-right text-slate-900 font-mono">₹ {itemTaxable.toLocaleString('en-IN')}</td>
+                                <td className="p-2 text-right text-slate-600 font-mono">₹ {itemGst.toLocaleString('en-IN')}</td>
+                                <td className="p-2 text-right font-black text-slate-900 font-mono">₹ {itemTotal.toLocaleString('en-IN')}</td>
+                              </tr>
+                            );
+                          })
+                        ) : (
+                          <tr>
+                            <td className="p-2 text-center font-mono">1</td>
+                            <td className="p-2 font-bold text-slate-900">{printModalInvoice.invoice_number}</td>
+                            <td className="p-2 text-slate-600">{printModalInvoice.invoice_date}</td>
+                            <td className="p-2 font-sans">Full Truckload Transport Services</td>
+                            <td className="p-2 text-right text-slate-900 font-bold">₹ {Number(printModalInvoice.taxable_amount).toLocaleString('en-IN')}</td>
+                            <td className="p-2 text-right text-slate-600">₹ {Number(printModalInvoice.gst_amount).toLocaleString('en-IN')}</td>
+                            <td className="p-2 text-right font-black text-slate-900">₹ {Number(printModalInvoice.total_amount).toLocaleString('en-IN')}</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Financial Breakup & Bank Details */}
+                  <div className="grid grid-cols-2 gap-3 pt-1">
+                    <div className="p-3 rounded-xl border border-slate-300 bg-slate-50/70 text-xs space-y-1">
+                      <span className="font-bold text-slate-800 text-[11px] block">
+                        Bank Details for Remittance (NEFT / RTGS):
+                      </span>
+                      <div className="font-mono text-slate-700 text-[11px]">
+                        Bank: <strong className="text-slate-900">{transporterDetails.bankName}</strong>
+                      </div>
+                      <div className="font-mono text-slate-700 text-[11px]">
+                        A/C No: <strong className="text-slate-900">{transporterDetails.accountNumber}</strong>
+                      </div>
+                      <div className="font-mono text-slate-700 text-[11px]">
+                        IFSC Code: <strong className="text-slate-900">{transporterDetails.ifscCode}</strong>
+                      </div>
+                      <div className="font-mono text-slate-700 text-[11px]">
+                        Branch: <strong className="text-slate-900">{transporterDetails.bankBranch}</strong>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1 text-xs font-mono">
+                      <div className="flex justify-between text-slate-600">
+                        <span>Taxable Freight Value:</span>
+                        <span>₹ {Number(printModalInvoice.taxable_amount).toLocaleString('en-IN')}</span>
+                      </div>
+                      <div className="flex justify-between text-slate-600">
+                        <span>CGST @ 2.5%:</span>
+                        <span>₹ {Number(Math.round(printModalInvoice.gst_amount / 2)).toLocaleString('en-IN')}</span>
+                      </div>
+                      <div className="flex justify-between text-slate-600">
+                        <span>SGST @ 2.5%:</span>
+                        <span>₹ {Number(Math.round(printModalInvoice.gst_amount / 2)).toLocaleString('en-IN')}</span>
+                      </div>
+                      <div className="flex justify-between text-sm font-black text-slate-900 pt-1.5 border-t border-slate-300">
+                        <span>Total Invoice Amount:</span>
+                        <span>₹ {Number(printModalInvoice.total_amount).toLocaleString('en-IN')}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Declaration & Signatory */}
+                  <div className="pt-3 border-t border-slate-300 flex justify-between items-end text-xs">
+                    <div className="text-[10px] text-slate-500 max-w-sm">
+                      Declaration: We declare that this invoice shows the actual price of the goods and transportation services described and that all particulars are true and correct.
+                    </div>
+                    <div className="text-center font-bold">
+                      <div className="h-10 flex items-center justify-center text-slate-400 italic text-[11px]">
+                        [Digitally Signed & Verified]
+                      </div>
+                      <div className="border-t border-slate-400 pt-1 text-slate-900 text-xs">
+                        For {transporterDetails.businessName}<br/>
+                        <span className="text-[10px] font-normal text-slate-500">Authorized Signatory</span>
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+
+              </div>
+            </div>
+          )}
+
+          {/* GLOBAL PRINT STYLES FOR CRISP FULL-PAGE A4 GST INVOICES */}
+          <style dangerouslySetInnerHTML={{ __html: `
+            @media print {
+              @page {
+                size: A4 portrait;
+                margin: 10mm 10mm 10mm 10mm;
+              }
+              html, body {
+                background: #ffffff !important;
+                color: #000000 !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                height: auto !important;
+                min-height: auto !important;
+                overflow: visible !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+              }
+              aside,
+              nav,
+              header,
+              footer,
+              .no-print {
+                display: none !important;
+              }
+              .invoice-print-dialog {
+                position: static !important;
+                inset: auto !important;
+                display: block !important;
+                width: 100% !important;
+                height: auto !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                background: transparent !important;
+                overflow: visible !important;
+              }
+              .invoice-print-card {
+                position: static !important;
+                display: block !important;
+                max-width: 100% !important;
+                max-height: none !important;
+                overflow: visible !important;
+                box-shadow: none !important;
+                border: none !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                background: #ffffff !important;
+              }
+              #invoice-printable-sheet {
+                display: block !important;
+                width: 100% !important;
+                max-width: 100% !important;
+                margin: 0 !important;
+                padding: 12px 16px !important;
+              }
+            }
+          ` }} />
         </main>
       </div>
     </div>

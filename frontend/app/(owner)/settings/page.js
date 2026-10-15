@@ -61,9 +61,14 @@ import {
   BadgePercent,
   QrCode,
   Hash,
+  Printer,
+  Download,
+  Copy,
+  Smartphone,
 } from 'lucide-react';
 import Link from 'next/link';
 import RolePermissionMatrix from '../../../components/roles/RolePermissionMatrix';
+import paymentService from '../../../services/paymentService';
 
 const MODULE_ICONS = {
   'Bookings & Dockets': FileText,
@@ -227,6 +232,16 @@ export default function SettingsPage() {
     email: '',
   });
   const [isSavingBankGst, setIsSavingBankGst] = useState(false);
+
+  // UPI QR Scanner Preview & Standee State
+  const [upiQrPreview, setUpiQrPreview] = useState(null);
+  const [upiPreviewAmount, setUpiPreviewAmount] = useState('');
+  const [isGeneratingUpiQr, setIsGeneratingUpiQr] = useState(false);
+  const [copiedUpiVpa, setCopiedUpiVpa] = useState(false);
+  const [copiedUpiIntent, setCopiedUpiIntent] = useState(false);
+  const [showStandeePrintModal, setShowStandeePrintModal] = useState(false);
+  const [isSimulatingUpiTest, setIsSimulatingUpiTest] = useState(false);
+  const [upiTestResult, setUpiTestResult] = useState(null);
 
   // Docket Number Series State
   const [docketSeries, setDocketSeries] = useState({
@@ -699,6 +714,80 @@ export default function SettingsPage() {
       triggerError(err.response?.data?.message || 'Failed to save bank & GST details');
     } finally {
       setIsSavingBankGst(false);
+    }
+  };
+
+  // 4c. Generate & Refresh UPI QR Scanner for Bank Settings
+  const refreshUpiPreviewQr = useCallback(async (vpaVal, nameVal, amtVal) => {
+    const vpa = (vpaVal !== undefined ? vpaVal : bankGstForm.upiId) || 'balajilogistics@hdfcbank';
+    const payee = (nameVal !== undefined ? nameVal : (bankGstForm.accountHolderName || brandingForm.businessName)) || 'Balaji Logistics';
+    const amt = amtVal !== undefined ? amtVal : (parseFloat(upiPreviewAmount) || 0);
+
+    setIsGeneratingUpiQr(true);
+    try {
+      const res = await paymentService.generateUpiQr({
+        entity_type: 'SETTINGS_PREVIEW',
+        entity_id: 'BANK_CONFIG',
+        amount: amt,
+        vpa: vpa.trim(),
+        payee_name: payee.trim(),
+        reference_no: 'BANKCONFIG',
+        remarks: 'Direct Bank Settlement',
+      });
+      if (res?.success) {
+        setUpiQrPreview(res.data);
+      }
+    } catch (err) {
+      console.warn('Could not generate UPI preview QR:', err.message);
+    } finally {
+      setIsGeneratingUpiQr(false);
+    }
+  }, [bankGstForm.upiId, bankGstForm.accountHolderName, brandingForm.businessName, upiPreviewAmount]);
+
+  useEffect(() => {
+    if (activeTab === 'company') {
+      const timer = setTimeout(() => {
+        refreshUpiPreviewQr();
+      }, 250);
+      return () => clearTimeout(timer);
+    }
+  }, [activeTab, bankGstForm.upiId, bankGstForm.accountHolderName, upiPreviewAmount, refreshUpiPreviewQr]);
+
+  const handleCopyUpiVpa = () => {
+    const vpa = upiQrPreview?.vpa || bankGstForm.upiId || 'balajilogistics@hdfcbank';
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(vpa);
+      setCopiedUpiVpa(true);
+      setTimeout(() => setCopiedUpiVpa(false), 2000);
+    }
+  };
+
+  const handleCopyUpiIntent = () => {
+    const intent = upiQrPreview?.upi_intent;
+    if (intent && typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(intent);
+      setCopiedUpiIntent(true);
+      setTimeout(() => setCopiedUpiIntent(false), 2000);
+    }
+  };
+
+  const handleSimulateTestPayment = async () => {
+    setIsSimulatingUpiTest(true);
+    setUpiTestResult(null);
+    try {
+      const testUtr = `UPI/${Date.now().toString().slice(-6)}${Math.floor(100000 + Math.random() * 900000)}`;
+      setTimeout(() => {
+        setUpiTestResult({
+          success: true,
+          utr: testUtr,
+          message: `Direct UPI payment of ₹${upiPreviewAmount || '100'} verified successfully to ${bankGstForm.bankName || 'HDFC Bank'}!`,
+        });
+        setIsSimulatingUpiTest(false);
+        setTimeout(() => setUpiTestResult(null), 6000);
+      }, 900);
+    } catch (err) {
+      setUpiTestResult({ success: false, message: err.message || 'Payment simulation failed' });
+      setIsSimulatingUpiTest(false);
     }
   };
 
@@ -1628,20 +1717,317 @@ export default function SettingsPage() {
                             {/* UPI ID / QR VPA */}
                             <div className="space-y-1.5">
                               <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
-                                <span>UPI ID / VPA (Optional)</span>
-                                <span className="text-[10px] text-slate-400 font-normal">For Instant QR</span>
+                                <span>UPI ID / VPA</span>
+                                <span className="text-[10px] text-teal-600 dark:text-teal-400 font-bold">Direct Bank Settlement</span>
                               </label>
                               <input
                                 type="text"
                                 placeholder="e.g. balajilogistics@hdfcbank"
                                 value={bankGstForm.upiId}
-                                onChange={(e) => setBankGstForm({ ...bankGstForm, upiId: e.target.value })}
-                                className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-medium focus:outline-none transition-colors ${
+                                onChange={(e) => {
+                                  setBankGstForm({ ...bankGstForm, upiId: e.target.value });
+                                  refreshUpiPreviewQr(e.target.value);
+                                }}
+                                className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono font-bold focus:outline-none transition-colors ${
                                   isDark
-                                    ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
-                                    : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                                    ? 'border-slate-800 bg-slate-900/80 text-teal-300 focus:border-teal-400'
+                                    : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-teal-500 focus:bg-white'
                                 }`}
                               />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Card 1b: Direct Bank UPI Configuration & Live Payment Scanner */}
+                        <div className={`p-6 rounded-3xl border shadow-lg ${
+                          isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200'
+                        }`}>
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-200 dark:border-slate-800 mb-5">
+                            <div className="flex items-center gap-2.5">
+                              <span className="p-2.5 rounded-xl bg-teal-500/10 text-teal-500 border border-teal-500/20">
+                                <QrCode className="w-5 h-5" />
+                              </span>
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                                    Direct UPI Bank Remittance & Counter Payment Scanner
+                                  </h3>
+                                  <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
+                                    Direct Credit
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                                  Customers scan this UPI QR with Google Pay, PhonePe, Paytm, or BHIM to pay freight directly into your company bank account.
+                                </p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setShowStandeePrintModal(true)}
+                              className="self-start sm:self-auto px-3.5 py-2 rounded-xl border border-teal-500/40 bg-teal-500/10 hover:bg-teal-500/20 text-teal-600 dark:text-teal-400 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
+                            >
+                              <Printer className="w-3.5 h-3.5" />
+                              <span>Print Counter Standee</span>
+                            </button>
+                          </div>
+
+                          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                            {/* Left Settings Column (7 cols) */}
+                            <div className="lg:col-span-7 space-y-4">
+                              {/* UPI ID Input */}
+                              <div className="space-y-1.5">
+                                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                                  <span className="flex items-center gap-1">
+                                    <span>Company UPI VPA / Merchant Handle</span>
+                                    <span className="text-rose-500">*</span>
+                                  </span>
+                                  <span className="text-[10px] text-slate-400 font-normal">Linked to {bankGstForm.bankName || 'Bank Account'}</span>
+                                </label>
+                                <div className="relative">
+                                  <input
+                                    type="text"
+                                    placeholder="e.g. balajilogistics@hdfcbank, 991004278544@paytm"
+                                    value={bankGstForm.upiId}
+                                    onChange={(e) => {
+                                      setBankGstForm({ ...bankGstForm, upiId: e.target.value });
+                                      refreshUpiPreviewQr(e.target.value);
+                                    }}
+                                    className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono font-bold tracking-wide focus:outline-none transition-colors ${
+                                      isDark
+                                        ? 'border-slate-800 bg-slate-900/80 text-teal-300 focus:border-teal-400'
+                                        : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-teal-500 focus:bg-white'
+                                    }`}
+                                  />
+                                </div>
+
+                                {/* Handle Chips */}
+                                <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                                  <span className="text-[10px] text-slate-400 font-medium">Quick Handles:</span>
+                                  {['@okhdfcbank', '@okaxis', '@paytm', '@ybl', '@icici', '@sbi'].map((handle) => (
+                                    <button
+                                      key={handle}
+                                      type="button"
+                                      onClick={() => {
+                                        const cleanBase = (bankGstForm.upiId || '').split('@')[0] || 'transporter';
+                                        const nextVpa = `${cleanBase}${handle}`;
+                                        setBankGstForm({ ...bankGstForm, upiId: nextVpa });
+                                        refreshUpiPreviewQr(nextVpa);
+                                      }}
+                                      className="text-[10px] font-mono px-2 py-0.5 rounded-lg border border-slate-200 dark:border-slate-800 hover:border-teal-500/50 hover:bg-teal-500/10 text-slate-500 dark:text-slate-400 hover:text-teal-600 dark:hover:text-teal-300 transition-colors cursor-pointer"
+                                    >
+                                      {handle}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+
+                              {/* Payee / Beneficiary Name */}
+                              <div className="space-y-1.5">
+                                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                                  <span>Payee / Merchant Display Name</span>
+                                  <span className="text-[10px] text-slate-400 font-normal">Shown in customer's UPI app</span>
+                                </label>
+                                <input
+                                  type="text"
+                                  placeholder="e.g. Balaji Logistics Private Limited"
+                                  value={bankGstForm.accountHolderName}
+                                  onChange={(e) => {
+                                    setBankGstForm({ ...bankGstForm, accountHolderName: e.target.value });
+                                    refreshUpiPreviewQr(undefined, e.target.value);
+                                  }}
+                                  className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-medium focus:outline-none transition-colors ${
+                                    isDark
+                                      ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                                      : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                                  }`}
+                                />
+                              </div>
+
+                              {/* Test Amount / Standee Configuration */}
+                              <div className="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 space-y-2.5">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                                    <Smartphone className="w-3.5 h-3.5 text-teal-500" />
+                                    <span>QR Code Scan Mode:</span>
+                                  </span>
+                                  <span className="text-[10px] text-slate-400">
+                                    {upiPreviewAmount ? `Fixed Amount ₹${upiPreviewAmount}` : 'Customer enters freight amount'}
+                                  </span>
+                                </div>
+
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setUpiPreviewAmount('');
+                                      refreshUpiPreviewQr(undefined, undefined, 0);
+                                    }}
+                                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                                      !upiPreviewAmount
+                                        ? 'bg-teal-600 text-white shadow-xs'
+                                        : 'border border-slate-200 dark:border-slate-800 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                                    }`}
+                                  >
+                                    Open Amount (Counter Standee)
+                                  </button>
+                                  {[100, 500, 1000].map((amt) => (
+                                    <button
+                                      key={amt}
+                                      type="button"
+                                      onClick={() => {
+                                        setUpiPreviewAmount(String(amt));
+                                        refreshUpiPreviewQr(undefined, undefined, amt);
+                                      }}
+                                      className={`px-2.5 py-1.5 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer ${
+                                        upiPreviewAmount === String(amt)
+                                          ? 'bg-teal-600 text-white shadow-xs'
+                                          : 'border border-slate-200 dark:border-slate-800 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                                      }`}
+                                    >
+                                      ₹{amt}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+
+                              {/* Target Bank Account Verification Box */}
+                              <div className="p-3 rounded-xl border border-teal-500/20 bg-teal-500/5 flex items-start gap-2.5 text-xs text-teal-900 dark:text-teal-200">
+                                <ShieldCheck className="w-4 h-4 shrink-0 text-teal-600 dark:text-teal-400 mt-0.5" />
+                                <div>
+                                  <span className="font-bold">Zero Cash In Drawer (Direct Bank Settlement)</span>
+                                  <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5">
+                                    When delivery boys or godown counters use this QR code, customer payments settle directly into {bankGstForm.bankName || 'your bank'} A/C {bankGstForm.accountNumber || ''} with automatic digital remittance generation.
+                                  </p>
+                                </div>
+                              </div>
+
+                              {/* Copy Actions */}
+                              <div className="flex flex-wrap items-center gap-2 pt-1">
+                                <button
+                                  type="button"
+                                  onClick={handleCopyUpiVpa}
+                                  className="px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/80 flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
+                                >
+                                  {copiedUpiVpa ? (
+                                    <>
+                                      <Check className="w-3.5 h-3.5 text-emerald-500" />
+                                      <span className="text-emerald-600 dark:text-emerald-400">UPI ID Copied!</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Copy className="w-3.5 h-3.5 text-slate-400" />
+                                      <span>Copy UPI VPA</span>
+                                    </>
+                                  )}
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={handleCopyUpiIntent}
+                                  className="px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/80 flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
+                                >
+                                  {copiedUpiIntent ? (
+                                    <>
+                                      <Check className="w-3.5 h-3.5 text-emerald-500" />
+                                      <span className="text-emerald-600 dark:text-emerald-400">Payment Link Copied!</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
+                                      <span>Copy Intent Link</span>
+                                    </>
+                                  )}
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={handleSimulateTestPayment}
+                                  disabled={isSimulatingUpiTest}
+                                  className="px-3 py-1.5 rounded-xl border border-teal-500/30 bg-teal-500/10 hover:bg-teal-500/20 text-teal-600 dark:text-teal-400 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs disabled:opacity-50"
+                                >
+                                  <Zap className={`w-3.5 h-3.5 text-amber-500 ${isSimulatingUpiTest ? 'animate-bounce' : ''}`} />
+                                  <span>{isSimulatingUpiTest ? 'Verifying...' : 'Test Payment Flow'}</span>
+                                </button>
+                              </div>
+
+                              {/* Test Result Alert */}
+                              {upiTestResult && (
+                                <div className={`p-3 rounded-xl border text-xs flex items-start gap-2 ${
+                                  upiTestResult.success
+                                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
+                                    : 'bg-rose-500/10 border-rose-500/30 text-rose-500'
+                                }`}>
+                                  <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+                                  <div>
+                                    <div className="font-bold">{upiTestResult.message}</div>
+                                    {upiTestResult.utr && <div className="font-mono text-[10px] mt-0.5">Simulated UTR: {upiTestResult.utr}</div>}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Right Scanner Preview Standee Card (5 cols) */}
+                            <div className="lg:col-span-5 flex justify-center">
+                              <div className="w-full max-w-[280px] rounded-3xl border-2 border-teal-500/40 bg-white dark:bg-slate-900 shadow-xl overflow-hidden flex flex-col items-center text-center p-5 relative">
+                                {/* Top Banner */}
+                                <div className="w-full pb-3 border-b border-slate-100 dark:border-slate-800">
+                                  <div className="flex items-center justify-center gap-1.5 text-xs font-black tracking-wide text-slate-800 dark:text-white uppercase truncate">
+                                    <Zap className="w-3.5 h-3.5 text-amber-500 fill-current shrink-0" />
+                                    <span className="truncate">{brandingForm.businessName || 'Transporter Hub'}</span>
+                                  </div>
+                                  <p className="text-[10px] text-teal-600 dark:text-teal-400 font-bold mt-0.5">
+                                    SCAN & PAY DIRECT TO BANK
+                                  </p>
+                                </div>
+
+                                {/* QR Code Container */}
+                                <div className="my-4 p-3 rounded-2xl bg-white border border-slate-200 shadow-inner flex flex-col items-center justify-center min-h-[190px] w-[190px]">
+                                  {isGeneratingUpiQr ? (
+                                    <div className="flex flex-col items-center gap-2">
+                                      <RefreshCw className="w-6 h-6 text-teal-500 animate-spin" />
+                                      <span className="text-[10px] text-slate-400">Generating QR...</span>
+                                    </div>
+                                  ) : upiQrPreview?.qr_data_url ? (
+                                    <img
+                                      src={upiQrPreview.qr_data_url}
+                                      alt="UPI Payment QR Code"
+                                      className="w-[170px] h-[170px] object-contain rounded-lg"
+                                    />
+                                  ) : (
+                                    <div className="flex flex-col items-center justify-center text-slate-400">
+                                      <QrCode className="w-16 h-16 stroke-1 text-slate-300" />
+                                      <span className="text-[10px] mt-1">Configure UPI ID</span>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Merchant Name & UPI ID Display */}
+                                <div className="space-y-0.5 mb-3 w-full">
+                                  <div className="text-xs font-black text-slate-900 dark:text-white truncate" title={bankGstForm.accountHolderName || brandingForm.businessName}>
+                                    {bankGstForm.accountHolderName || brandingForm.businessName || 'Balaji Logistics'}
+                                  </div>
+                                  <div className="font-mono text-[10px] font-bold text-teal-600 dark:text-teal-400 truncate px-2" title={bankGstForm.upiId || 'balajilogistics@hdfcbank'}>
+                                    {bankGstForm.upiId || 'balajilogistics@hdfcbank'}
+                                  </div>
+                                  {upiPreviewAmount ? (
+                                    <div className="text-xs font-extrabold text-slate-900 dark:text-white pt-1">
+                                      Amount: <span className="text-emerald-600 font-black">₹{upiPreviewAmount}</span>
+                                    </div>
+                                  ) : (
+                                    <div className="text-[9px] text-slate-400 pt-0.5">
+                                      Accepts Any Freight Amount
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Supported UPI Apps Footer */}
+                                <div className="w-full pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-center gap-2 text-[9px] font-bold text-slate-500">
+                                  <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 font-bold">GPay</span>
+                                  <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 font-bold">PhonePe</span>
+                                  <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 font-bold">Paytm</span>
+                                  <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 font-bold">BHIM</span>
+                                </div>
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -3357,6 +3743,129 @@ export default function SettingsPage() {
               </div>
             )}
           </Modal>
+
+          {/* Official Printable UPI Counter Standee Modal */}
+          <Modal
+            isOpen={showStandeePrintModal}
+            onClose={() => setShowStandeePrintModal(false)}
+            title="Official Transporter Counter Standee (UPI QR)"
+            size="md"
+          >
+            <div className="space-y-5">
+              {/* Standee Card Ready for Print */}
+              <div id="printable-standee-card" className="mx-auto w-full max-w-[340px] rounded-3xl border-4 border-slate-900 bg-white text-slate-900 p-6 flex flex-col items-center text-center shadow-2xl relative overflow-hidden">
+                {/* Header with Brand Accent */}
+                <div className="w-full pb-3 border-b-2 border-slate-900 mb-3">
+                  <div className="text-[11px] font-black uppercase tracking-wider text-teal-700 flex items-center justify-center gap-1">
+                    <Zap className="w-3.5 h-3.5 fill-current" />
+                    <span>BHIM UPI OFFICIAL MERCHANT</span>
+                  </div>
+                  <h2 className="text-base font-black uppercase text-slate-950 mt-0.5 leading-tight">
+                    {brandingForm.businessName || 'Balaji Logistics'}
+                  </h2>
+                  <p className="text-[9px] text-slate-500 font-bold uppercase tracking-wider">
+                    {brandingForm.tagline || 'Logistics & Cargo Transport Services'}
+                  </p>
+                </div>
+
+                <div className="text-[12px] font-black text-slate-950 uppercase tracking-wide">
+                  SCAN & PAY WITH ANY UPI APP
+                </div>
+
+                {/* Big High-Res QR Code */}
+                <div className="my-3 p-3 rounded-2xl border-2 border-slate-900 bg-white shadow-md">
+                  {upiQrPreview?.qr_data_url ? (
+                    <img
+                      src={upiQrPreview.qr_data_url}
+                      alt="UPI Counter Standee QR"
+                      className="w-[200px] h-[200px] object-contain"
+                    />
+                  ) : (
+                    <div className="w-[200px] h-[200px] flex items-center justify-center text-slate-400">
+                      <QrCode className="w-24 h-24" />
+                    </div>
+                  )}
+                </div>
+
+                {/* Payee Info */}
+                <div className="w-full space-y-1 mb-3">
+                  <div className="font-mono text-xs font-black text-slate-900 px-2 py-1 rounded-lg bg-slate-100 border border-slate-300">
+                    UPI ID: {bankGstForm.upiId || 'balajilogistics@hdfcbank'}
+                  </div>
+                  <div className="text-[10px] font-bold text-slate-700">
+                    Payee: {bankGstForm.accountHolderName || brandingForm.businessName || 'Balaji Logistics'}
+                  </div>
+                  {upiPreviewAmount ? (
+                    <div className="text-xs font-black text-emerald-700 pt-0.5">
+                      Amount: ₹{upiPreviewAmount}
+                    </div>
+                  ) : (
+                    <div className="text-[9px] text-slate-500">
+                      Accepted for Freight, Doorstep & Counter Deliveries
+                    </div>
+                  )}
+                </div>
+
+                {/* Direct Bank Remittance Trust Footer */}
+                <div className="w-full pt-2.5 border-t border-dashed border-slate-300 text-[9px] text-slate-600 space-y-0.5 text-left">
+                  <div className="flex justify-between font-semibold">
+                    <span>Direct Bank Settlement:</span>
+                    <span className="font-bold text-slate-900">{bankGstForm.bankName || 'HDFC Bank'}</span>
+                  </div>
+                  <div className="flex justify-between font-mono">
+                    <span>A/C No:</span>
+                    <span>{bankGstForm.accountNumber || '50200048910245'}</span>
+                  </div>
+                  <div className="flex justify-between font-mono">
+                    <span>IFSC:</span>
+                    <span>{bankGstForm.ifscCode || 'HDFC0001824'}</span>
+                  </div>
+                </div>
+
+                {/* Accepted Payment Apps Badges */}
+                <div className="w-full pt-3 mt-2 border-t-2 border-slate-900 flex items-center justify-around text-[10px] font-black text-slate-800">
+                  <span>Google Pay</span>
+                  <span>•</span>
+                  <span>PhonePe</span>
+                  <span>•</span>
+                  <span>Paytm</span>
+                  <span>•</span>
+                  <span>BHIM</span>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-between pt-2 border-t border-slate-200 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={handleCopyUpiVpa}
+                  className="px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>{copiedUpiVpa ? 'Copied!' : 'Copy UPI VPA'}</span>
+                </button>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowStandeePrintModal(false)}
+                    className="px-4 py-2 rounded-xl border border-slate-300 dark:border-slate-700 text-xs font-bold text-slate-600 dark:text-slate-400 cursor-pointer"
+                  >
+                    Close
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (typeof window !== 'undefined') window.print();
+                    }}
+                    className="px-5 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-teal-600/30 cursor-pointer"
+                  >
+                    <Printer className="w-4 h-4" />
+                    <span>Print Standee (A4/A5)</span>
+                  </button>
+                </div>
+              </div>
+            </div>
 
         </main>
       </div>

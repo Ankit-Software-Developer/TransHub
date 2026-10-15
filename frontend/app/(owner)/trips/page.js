@@ -1016,17 +1016,6 @@ export default function TripsPage() {
                     </div>
                   )}
 
-                  {!isAdmin && userBranchId && (
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-300">
-                      <span className="text-slate-400">Branch:</span>
-                      <span className="font-bold text-blue-600 dark:text-cyan-400">
-                        {(() => {
-                          const b = branchesList.find((item) => item.id === userBranchId);
-                          return b ? `${b.branch_code ? `[${b.branch_code}] ` : ''}${b.branch_name}` : 'Your Branch';
-                        })()}
-                      </span>
-                    </div>
-                  )}
 
                   {/* Status Filter Dropdown */}
                   <div className="flex items-center gap-2">

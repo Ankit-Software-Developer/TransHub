@@ -586,6 +586,11 @@ const updateBooking = async ({ id, tenantId, organizationId, payload, models, se
     throw new Error('Docket / Consignment not found');
   }
 
+  const deliveredStatuses = ['DELIVERED', 'COMPLETED', 'POD_UPLOADED', 'POD_VERIFIED'];
+  if (consignment.is_delivered || deliveredStatuses.includes(consignment.status)) {
+    throw new Error('Delivered dockets cannot be modified or edited. Only view and print are permitted.');
+  }
+
   // Ensure transport_mode column exists outside transaction
   try {
     await db.query("ALTER TABLE consignments ADD COLUMN transport_mode VARCHAR(30) DEFAULT 'ROAD';");
@@ -778,6 +783,11 @@ const deleteBooking = async ({ id, tenantId, models, sequelize: customSequelize 
 
   if (!consignment) {
     throw new Error('Docket / Consignment not found');
+  }
+
+  const deliveredStatuses = ['DELIVERED', 'COMPLETED', 'POD_UPLOADED', 'POD_VERIFIED'];
+  if (consignment.is_delivered || deliveredStatuses.includes(consignment.status)) {
+    throw new Error('Delivered dockets cannot be deleted. Only view and print are permitted.');
   }
 
   const transaction = await db.transaction();

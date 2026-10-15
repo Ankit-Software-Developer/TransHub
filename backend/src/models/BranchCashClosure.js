@@ -22,7 +22,7 @@ module.exports = (sequelize) => {
     },
     user_id: {
       type: DataTypes.UUID,
-      allowNull: false,
+      allowNull: true,
     },
     closure_date: {
       type: DataTypes.DATEONLY,

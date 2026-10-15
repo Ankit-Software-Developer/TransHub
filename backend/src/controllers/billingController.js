@@ -646,36 +646,12 @@ const getUnbilledConsignments = async (req, res) => {
         ...(cityKeywords.length > 0 ? [{ destination_city: { [Op.in]: cityKeywords } }] : []),
       ];
 
-      // Transport Billing Rules:
-      // - TO_PAY: Collected from Consignee at Delivery Branch (destination).
-      // - PAID: Collected upfront from Shipper at Booking Branch (origin).
-      // - TBB: Billed on corporate credit at Booking Branch (origin) only, NOT at Delivery Branch.
+      // Transport Operations & Invoicing Scope:
+      // Include all dockets where this branch is either the Booking Branch (origin) or Delivery Branch (destination)
       const branchCondition = {
         [Op.or]: [
-          {
-            [Op.and]: [
-              { payment_type: 'TO_PAY' },
-              { [Op.or]: destMatch },
-            ],
-          },
-          {
-            [Op.and]: [
-              { payment_type: 'PAID' },
-              { [Op.or]: originMatch },
-            ],
-          },
-          {
-            [Op.and]: [
-              { payment_type: 'TBB' },
-              { [Op.or]: originMatch },
-            ],
-          },
-          {
-            [Op.and]: [
-              { payment_type: { [Op.notIn]: ['TO_PAY', 'PAID', 'TBB'] } },
-              { [Op.or]: originMatch },
-            ],
-          },
+          ...originMatch,
+          ...destMatch,
         ],
       };
 
@@ -690,12 +666,17 @@ const getUnbilledConsignments = async (req, res) => {
       }
     }
 
-    // Delivery Completion Requirement: Only show consignments where delivery has completed (POD uploaded / DELIVERED / COMPLETED).
-    // Consignments still booked, in hub, or in transit cannot be billed yet.
-    if (include_all_statuses !== 'true') {
+    // Delivery Status Filtering:
+    // If delivered_only === 'true', only return delivered consignments (POD uploaded/completed).
+    // Otherwise allow all active operational dockets (excluding cancelled).
+    if (delivered_only === 'true') {
       where.status = { [Op.in]: ['DELIVERED', 'POD_UPLOADED', 'COMPLETED', 'POD_VERIFIED'] };
+    } else if (include_all_statuses !== 'true') {
+      where.status = { [Op.notIn]: ['CANCELLED'] };
     }
 
+    // Payment Type Filtering:
+    // Supports TBB (corporate credit), PAID (counter upfront), and TO_PAY (destination collected).
     if (payment_type && payment_type !== 'ALL') {
       where.payment_type = payment_type;
     } else if (tbb_only === 'true') {
@@ -1383,12 +1364,12 @@ const updateInvoice = async (req, res) => {
  */
 const cancelInvoice = async (req, res) => {
   const db = req.tenantSequelize || defaultModels.sequelize;
-  const { Invoice, InvoiceItem, Consignment, CustomerLedger, Customer } = req.tenantDb || defaultModels;
+  const { Invoice, InvoiceItem, Consignment, CustomerLedger, Customer, Payment } = req.tenantDb || defaultModels;
   const transaction = await db.transaction();
 
   try {
     const { id } = req.params;
-    const { reason = 'Cancelled by transporter' } = req.body;
+    const { reason = 'Cancelled and reversed to billing queue' } = req.body;
 
     const invoice = await Invoice.findOne({
       where: {
@@ -1409,9 +1390,12 @@ const cancelInvoice = async (req, res) => {
       return errorResponse(res, 'Invoice is already cancelled', null, 400);
     }
 
-    if (parseFloat(invoice.paid_amount) > 0) {
-      await transaction.rollback();
-      return errorResponse(res, 'Cannot cancel invoice with recorded remittances. Please delete or reverse payment transactions first.', null, 400);
+    // Clean up any recorded payments against this invoice
+    if (Payment) {
+      await Payment.destroy({
+        where: { invoice_id: id, tenant_id: req.tenant.tenantId },
+        transaction,
+      });
     }
 
     // 1. Release all consignments back to unbilled pool
@@ -1444,7 +1428,7 @@ const cancelInvoice = async (req, res) => {
         entry_type: 'CREDIT_NOTE',
         reference_id: invoice.id,
         reference_number: invoice.invoice_number,
-        description: `Cancelled Invoice ${invoice.invoice_number}: ${reason}`,
+        description: `Cancelled & Reversed Invoice ${invoice.invoice_number}: ${reason}`,
         debit_amount: 0.00,
         credit_amount: balanceToReverse,
         running_balance: newBalance,
@@ -1462,12 +1446,13 @@ const cancelInvoice = async (req, res) => {
     await invoice.update({
       status: 'CANCELLED',
       balance_amount: 0.00,
-      remarks: invoice.remarks ? `${invoice.remarks} | CANCELLED: ${reason}` : `CANCELLED: ${reason}`,
+      paid_amount: 0.00,
+      remarks: invoice.remarks ? `${invoice.remarks} | REVERSED: ${reason}` : `REVERSED: ${reason}`,
     }, { transaction });
 
     await transaction.commit();
 
-    return successResponse(res, 'Invoice cancelled successfully and consignments released for re-billing', invoice);
+    return successResponse(res, 'Invoice cancelled successfully and consignments released to billing queue', invoice);
   } catch (error) {
     await transaction.rollback();
     return errorResponse(res, error.message, null, 500);

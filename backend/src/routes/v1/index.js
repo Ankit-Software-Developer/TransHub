@@ -23,6 +23,7 @@ const gpsRoutes = require('./gpsRoutes');
 const reportRoutes = require('./reportRoutes');
 const supportRoutes = require('./supportRoutes');
 const branchCashClosureRoutes = require('./branchCashClosureRoutes');
+const paymentRoutes = require('./paymentRoutes');
 
 router.use('/auth', authRoutes);
 router.use('/dashboard', dashboardRoutes);
@@ -48,5 +49,6 @@ router.use('/roles', roleRoutes);
 router.use('/gps', gpsRoutes);
 router.use('/branch-closures', branchCashClosureRoutes);
 router.use('/branch-collections', branchCashClosureRoutes);
+router.use('/payments', paymentRoutes);
 
 module.exports = router;

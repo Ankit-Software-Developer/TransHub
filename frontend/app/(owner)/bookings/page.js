@@ -1509,6 +1509,15 @@ export default function BookingsMasterPage() {
 
   // Handle Edit Action
   const handleOpenEdit = (c) => {
+    if (!c) return;
+    const isDelivered = Boolean(
+      c.is_delivered ||
+      ['DELIVERED', 'COMPLETED', 'POD_UPLOADED', 'POD_VERIFIED'].includes(c.status)
+    );
+    if (isDelivered) {
+      alert('Delivered dockets cannot be edited. Only view and print are permitted.');
+      return;
+    }
     setEditingDocket(c);
     const weight = parseFloat(c.charged_weight || c.actual_weight || 0);
     const rate = parseFloat(c.rate || 18);
@@ -1621,6 +1630,16 @@ export default function BookingsMasterPage() {
   const handleEditSubmit = async (e) => {
     e.preventDefault();
     if (!editingDocket) return;
+    const isDelivered = Boolean(
+      editingDocket.is_delivered ||
+      ['DELIVERED', 'COMPLETED', 'POD_UPLOADED', 'POD_VERIFIED'].includes(editingDocket.status)
+    );
+    if (isDelivered) {
+      alert('Delivered dockets cannot be edited. Only view and print are permitted.');
+      setIsSubmittingEdit(false);
+      setIsEditModalOpen(false);
+      return;
+    }
     setIsSubmittingEdit(true);
     try {
       const weight = parseFloat(editFormData.weightKg) || 0;
@@ -1707,12 +1726,31 @@ export default function BookingsMasterPage() {
 
   // Handle Delete Action
   const handleOpenDelete = (c) => {
+    if (!c) return;
+    const isDelivered = Boolean(
+      c.is_delivered ||
+      ['DELIVERED', 'COMPLETED', 'POD_UPLOADED', 'POD_VERIFIED'].includes(c.status)
+    );
+    if (isDelivered) {
+      alert('Delivered dockets cannot be deleted. Only view and print are permitted.');
+      return;
+    }
     setDeletingDocket(c);
     setIsDeleteModalOpen(true);
   };
 
   const handleDeleteConfirm = async () => {
     if (!deletingDocket) return;
+    const isDelivered = Boolean(
+      deletingDocket.is_delivered ||
+      ['DELIVERED', 'COMPLETED', 'POD_UPLOADED', 'POD_VERIFIED'].includes(deletingDocket.status)
+    );
+    if (isDelivered) {
+      alert('Delivered dockets cannot be deleted. Only view and print are permitted.');
+      setIsDeleteModalOpen(false);
+      setDeletingDocket(null);
+      return;
+    }
     setIsSubmittingDelete(true);
     try {
       await api.delete(`/bookings/${deletingDocket.id}`);
@@ -2177,57 +2215,64 @@ export default function BookingsMasterPage() {
         minWidth: 130,
         excludeFromExport: true,
         resizable: false,
-        render: (val, row) => (
-          <div className="flex items-center justify-center space-x-1.5" onClick={(e) => e.stopPropagation()}>
-            <button
-              onClick={() => handleOpenDetails(row)}
-              className={`p-1.5 rounded-lg border transition-all ${isDark
-                  ? 'bg-slate-900 border-slate-800 text-slate-300 hover:text-cyan-400 hover:border-cyan-500/40'
-                  : 'bg-slate-50 border-slate-200 text-slate-600 hover:text-blue-600'
-                }`}
-              title="View Consignment Details"
-            >
-              <Eye className="w-3.5 h-3.5" />
-            </button>
+        render: (val, row) => {
+          const isDelivered = Boolean(
+            row.is_delivered ||
+            ['DELIVERED', 'COMPLETED', 'POD_UPLOADED', 'POD_VERIFIED'].includes(row.status)
+          );
 
-            {canEdit && (
+          return (
+            <div className="flex items-center justify-center space-x-1.5" onClick={(e) => e.stopPropagation()}>
               <button
-                onClick={() => handleOpenEdit(row)}
+                onClick={() => handleOpenDetails(row)}
                 className={`p-1.5 rounded-lg border transition-all ${isDark
-                    ? 'bg-slate-900 border-slate-800 text-amber-400 hover:text-amber-300 hover:border-amber-500/40 hover:bg-amber-500/10'
-                    : 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100'
+                    ? 'bg-slate-900 border-slate-800 text-slate-300 hover:text-cyan-400 hover:border-cyan-500/40'
+                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:text-blue-600'
                   }`}
-                title="Edit Docket (Admin)"
+                title="View Consignment Details"
               >
-                <Pencil className="w-3.5 h-3.5" />
+                <Eye className="w-3.5 h-3.5" />
               </button>
-            )}
 
-            {canDelete && (
+              {canEdit && !isDelivered && (
+                <button
+                  onClick={() => handleOpenEdit(row)}
+                  className={`p-1.5 rounded-lg border transition-all ${isDark
+                      ? 'bg-slate-900 border-slate-800 text-amber-400 hover:text-amber-300 hover:border-amber-500/40 hover:bg-amber-500/10'
+                      : 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100'
+                    }`}
+                  title="Edit Docket"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+              )}
+
+              {canDelete && !isDelivered && (
+                <button
+                  onClick={() => handleOpenDelete(row)}
+                  className={`p-1.5 rounded-lg border transition-all ${isDark
+                      ? 'bg-slate-900 border-slate-800 text-rose-400 hover:text-rose-300 hover:border-rose-500/40 hover:bg-rose-500/10'
+                      : 'bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100'
+                    }`}
+                  title="Delete Docket"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+
               <button
-                onClick={() => handleOpenDelete(row)}
+                onClick={() => handleOpenPrintPreview(row)}
                 className={`p-1.5 rounded-lg border transition-all ${isDark
-                    ? 'bg-slate-900 border-slate-800 text-rose-400 hover:text-rose-300 hover:border-rose-500/40 hover:bg-rose-500/10'
-                    : 'bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100'
+                    ? 'bg-slate-900 border-slate-800 text-slate-300 hover:text-cyan-400 hover:border-cyan-500/40'
+                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:text-blue-600'
                   }`}
-                title="Delete Docket (Admin)"
+                title="Print 3-Part Lorry Receipt / Bilty"
               >
-                <Trash2 className="w-3.5 h-3.5" />
+                <Printer className="w-3.5 h-3.5" />
               </button>
-            )}
-
-            <button
-              onClick={() => handleOpenPrintPreview(row)}
-              className={`p-1.5 rounded-lg border transition-all ${isDark
-                  ? 'bg-slate-900 border-slate-800 text-slate-300 hover:text-cyan-400 hover:border-cyan-500/40'
-                  : 'bg-slate-50 border-slate-200 text-slate-600 hover:text-blue-600'
-                }`}
-              title="Print 3-Part Lorry Receipt / Bilty"
-            >
-              <Printer className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        ),
+            </div>
+          );
+        },
       },
     ],
     [isDark, canEdit, canDelete]
@@ -4565,26 +4610,30 @@ export default function BookingsMasterPage() {
                   </span>
                 </button>
 
-                <button
-                  onClick={() => handleOpenEdit(selectedConsignment)}
-                  className={`p-2 rounded-xl border transition-colors ${isDark
-                      ? 'border-slate-800 bg-slate-900/60 text-amber-400 hover:text-amber-300 hover:bg-amber-500/10'
-                      : 'border-slate-200 bg-amber-50 text-amber-600 hover:bg-amber-100 hover:text-amber-700'
-                    }`}
-                  title="Edit Docket"
-                >
-                  <Pencil className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => handleOpenDelete(selectedConsignment)}
-                  className={`p-2 rounded-xl border transition-colors ${isDark
-                      ? 'border-slate-800 bg-slate-900/60 text-rose-400 hover:text-rose-300 hover:bg-rose-500/10'
-                      : 'border-slate-200 bg-rose-50 text-rose-600 hover:bg-rose-100 hover:text-rose-700'
-                    }`}
-                  title="Delete Docket"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+                {canEdit && !selectedConsignment?.is_delivered && !['DELIVERED', 'COMPLETED', 'POD_UPLOADED', 'POD_VERIFIED'].includes(selectedConsignment?.status) && (
+                  <button
+                    onClick={() => handleOpenEdit(selectedConsignment)}
+                    className={`p-2 rounded-xl border transition-colors ${isDark
+                        ? 'border-slate-800 bg-slate-900/60 text-amber-400 hover:text-amber-300 hover:bg-amber-500/10'
+                        : 'border-slate-200 bg-amber-50 text-amber-600 hover:bg-amber-100 hover:text-amber-700'
+                      }`}
+                    title="Edit Docket"
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </button>
+                )}
+                {canDelete && !selectedConsignment?.is_delivered && !['DELIVERED', 'COMPLETED', 'POD_UPLOADED', 'POD_VERIFIED'].includes(selectedConsignment?.status) && (
+                  <button
+                    onClick={() => handleOpenDelete(selectedConsignment)}
+                    className={`p-2 rounded-xl border transition-colors ${isDark
+                        ? 'border-slate-800 bg-slate-900/60 text-rose-400 hover:text-rose-300 hover:bg-rose-500/10'
+                        : 'border-slate-200 bg-rose-50 text-rose-600 hover:bg-rose-100 hover:text-rose-700'
+                      }`}
+                    title="Delete Docket"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
                 <button
                   onClick={() => handleOpenPrintPreview(selectedConsignment)}
                   className={`p-2 rounded-xl border transition-colors ${isDark

@@ -57,6 +57,7 @@ export default function DataTable({
   onSearchChange,
   searchPlaceholder = 'Search records...',
   filtersSlot = null,
+  headerFiltersSlot = null,
   actionsSlot = null,
   onRowClick = null,
   exportFilename,
@@ -67,6 +68,7 @@ export default function DataTable({
   emptyMessage,
   emptySubtitle = 'There are no records matching your criteria.',
   emptyActionSlot = null,
+  emptyIcon = null,
   requiredExportPermission = 'data.export',
   onExportDateRange = null,
   onExportAll = null,
@@ -270,6 +272,31 @@ export default function DataTable({
     };
     document.addEventListener('mousedown', handleOutsideClick);
     return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, []);
+
+  // Table Scroll Container Ref & Measured Width for Centering Empty/Loading States
+  const tableScrollRef = useRef(null);
+  const [containerWidth, setContainerWidth] = useState(null);
+
+  useEffect(() => {
+    const el = tableScrollRef.current;
+    if (!el) return;
+    const updateWidth = () => {
+      if (el) setContainerWidth(el.clientWidth);
+    };
+    updateWidth();
+
+    let ro;
+    if (typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(() => updateWidth());
+      ro.observe(el);
+    }
+    window.addEventListener('resize', updateWidth);
+
+    return () => {
+      if (ro) ro.disconnect();
+      window.removeEventListener('resize', updateWidth);
+    };
   }, []);
 
   // Initialize column widths
@@ -560,6 +587,7 @@ export default function DataTable({
 
           {/* Right Action Tools: Date Filter, Export & Custom Actions */}
           <div className="flex flex-wrap items-center gap-2.5">
+            {headerFiltersSlot}
             {/* Date Filter: Render custom slot if provided, or built-in DateRangeFilter */}
             {dateFilterSlot ? (
               dateFilterSlot
@@ -657,8 +685,8 @@ export default function DataTable({
       </div>
 
       {/* Main Table Scroll Container */}
-      <div className="overflow-x-auto relative min-h-[280px]">
-        <table className="w-full text-left text-xs border-collapse">
+      <div ref={tableScrollRef} className="overflow-x-auto relative min-h-[280px] [container-type:inline-size]">
+        <table className="min-w-full text-left text-xs border-collapse">
           {/* Table Header */}
           <thead className={`border-b select-none ${
             isDark
@@ -680,12 +708,12 @@ export default function DataTable({
                   <th
                     key={col.key}
                     style={width ? { width: `${width}px`, minWidth: `${col.minWidth || 70}px` } : {}}
-                    className={`py-3.5 px-3 relative group transition-colors ${alignClass} ${
+                    className={`py-3.5 px-3 relative group transition-colors whitespace-nowrap ${alignClass} ${
                       col.sortable ? 'cursor-pointer hover:text-cyan-400' : ''
                     } ${isCurrentSort ? (isDark ? 'text-cyan-400 bg-cyan-950/20' : 'text-blue-600 bg-blue-50/50') : ''}`}
                     onClick={() => handleSortClick(col)}
                   >
-                    <div className={`inline-flex items-center space-x-1.5 ${col.align === 'right' ? 'justify-end' : col.align === 'center' ? 'justify-center' : 'justify-start'}`}>
+                    <div className={`inline-flex items-center space-x-1.5 whitespace-nowrap ${col.align === 'right' ? 'justify-end' : col.align === 'center' ? 'justify-center' : 'justify-start'}`}>
                       <span>{col.header || col.label || col.key}</span>
                       {col.sortable && (
                         <span className="shrink-0">
@@ -721,34 +749,52 @@ export default function DataTable({
           <tbody className={`divide-y ${isDark ? 'divide-slate-800/40' : 'divide-slate-200'}`}>
             {effectiveLoading ? (
               <tr>
-                <td colSpan={columns.length} className="py-12 px-4 text-center">
-                  <LoadingState
-                    title="Fetching records from server..."
-                    description="Syncing real-time operational data across fleet network"
-                    minHeight="min-h-[180px]"
-                  />
+                <td colSpan={columns.length} className="py-12 p-0 text-center">
+                  <div
+                    className="sticky left-0 flex flex-col items-center justify-center mx-auto"
+                    style={{
+                      width: containerWidth ? `${containerWidth}px` : '100cqw',
+                      maxWidth: '100%',
+                    }}
+                  >
+                    <LoadingState
+                      title="Fetching records from server..."
+                      description="Syncing real-time operational data across fleet network"
+                      minHeight="min-h-[180px]"
+                    />
+                  </div>
                 </td>
               </tr>
             ) : displayData.length === 0 ? (
               <tr>
-                <td colSpan={columns.length} className="py-20 text-center">
-                  <div className="max-w-md mx-auto space-y-3">
-                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mx-auto border ${
-                      isDark ? 'bg-slate-900 border-slate-800 text-cyan-400' : 'bg-blue-50 border-blue-200 text-blue-600'
-                    }`}>
-                      <FileText className="w-7 h-7" />
-                    </div>
-                    <h3 className={`text-base font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                      {effectiveEmptyTitle}
-                    </h3>
-                    <p className={`text-xs max-w-sm mx-auto ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                      {emptySubtitle}
-                    </p>
-                    {emptyActionSlot && (
-                      <div className="pt-2">
-                        {emptyActionSlot}
+                <td colSpan={columns.length} className="py-20 p-0 text-center">
+                  <div
+                    className="sticky left-0 flex flex-col items-center justify-center mx-auto px-4"
+                    style={{
+                      width: containerWidth ? `${containerWidth}px` : '100cqw',
+                      maxWidth: '100%',
+                    }}
+                  >
+                    <div className="max-w-md mx-auto space-y-3">
+                      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mx-auto border ${
+                        emptyIcon
+                          ? (isDark ? 'bg-amber-500/10 border-amber-500/30 text-amber-500' : 'bg-amber-50 border-amber-200 text-amber-600')
+                          : (isDark ? 'bg-slate-900 border-slate-800 text-cyan-400' : 'bg-blue-50 border-blue-200 text-blue-600')
+                      }`}>
+                        {emptyIcon || <FileText className="w-7 h-7" />}
                       </div>
-                    )}
+                      <h3 className={`text-base font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                        {effectiveEmptyTitle}
+                      </h3>
+                      <p className={`text-xs max-w-sm mx-auto ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                        {emptySubtitle}
+                      </p>
+                      {emptyActionSlot && (
+                        <div className="pt-2 flex items-center justify-center">
+                          {emptyActionSlot}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </td>
               </tr>
@@ -776,7 +822,7 @@ export default function DataTable({
                       <td
                         key={col.key}
                         style={width ? { width: `${width}px`, minWidth: `${col.minWidth || width}px` } : {}}
-                        className={`py-3 px-3.5 text-xs ${col.truncate ? 'truncate' : ''} ${alignClass}`}
+                        className={`py-3 px-3.5 text-xs ${col.nowrap !== false ? 'whitespace-nowrap' : ''} ${col.truncate ? 'truncate' : ''} ${alignClass}`}
                       >
                         {col.render
                           ? col.render(row[col.key], row, idx)

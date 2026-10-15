@@ -2,6 +2,7 @@
 'use client';
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import Link from 'next/link';
 import Sidebar from '../../../../components/layout/Sidebar';
 import Navbar from '../../../../components/layout/Navbar';
 import DataTable from '../../../../components/ui/DataTable';
@@ -50,7 +51,8 @@ import {
   Layers,
   Zap,
   Banknote,
-  ChevronDown
+  ChevronDown,
+  RotateCcw
 } from 'lucide-react';
 
 export default function InvoicesMasterPage() {
@@ -179,13 +181,31 @@ export default function InvoicesMasterPage() {
   const [customersList, setCustomersList] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [statusFilter, setStatusFilter] = useState('TBB'); // Default to 'TBB'
+  const [paymentClearanceFilter, setPaymentClearanceFilter] = useState('PENDING'); // 'PENDING' | 'CLEARED' | 'ALL'
+  const [isClearanceDropdownOpen, setIsClearanceDropdownOpen] = useState(false);
+  const clearanceDropdownRef = useRef(null);
 
-  // Main View Navigation: 'UNBILLED' (Delivered / Pending Invoicing Dockets) | 'INVOICES' (Tax Invoices)
-  const [activeTab, setActiveTab] = useState('UNBILLED');
+  // Close clearance dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (clearanceDropdownRef.current && !clearanceDropdownRef.current.contains(event.target)) {
+        setIsClearanceDropdownOpen(false);
+      }
+    };
+    if (isClearanceDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isClearanceDropdownOpen]);
+
+  // Main View Navigation: 'INVOICES' (Tax Invoices Register)
+  const [activeTab, setActiveTab] = useState('INVOICES');
   const [unbilledSearch, setUnbilledSearch] = useState('');
-  const [unbilledFilter, setUnbilledFilter] = useState('ALL'); // Default to All Delivered Dockets ready to Bill
-  const [showPendingTransit, setShowPendingTransit] = useState(false); // Strict: Only show completed deliveries (POD uploaded)
+  const [unbilledFilter, setUnbilledFilter] = useState('ALL_READY'); // 'ALL_READY' | 'TBB' | 'PAID' | 'TO_PAY' | 'IN_TRANSIT'
+  const [showPendingTransit, setShowPendingTransit] = useState(false); // Toggle to include booked/in-transit dockets
 
   // Modals state
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
@@ -229,7 +249,7 @@ export default function InvoicesMasterPage() {
   // Form states for Generate Invoice
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
   const [selectedLrIds, setSelectedLrIds] = useState([]);
-  const [wizardPaymentFilter, setWizardPaymentFilter] = useState('TBB'); // Default to TBB credit dockets
+  const [wizardPaymentFilter, setWizardPaymentFilter] = useState('ALL'); // Default to ALL dockets (TBB, Paid, To-Pay)
   const [onlyDeliveredPod, setOnlyDeliveredPod] = useState(true);
   const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().slice(0, 10));
   const [creditDays, setCreditDays] = useState(30);
@@ -277,7 +297,7 @@ export default function InvoicesMasterPage() {
       const [profileRes, invRes, unbilledRes, custList, branchesRes] = await Promise.allSettled([
         api.get('/organizations/profile'),
         billingService.listInvoices({ limit: 100 }),
-        billingService.getUnbilledConsignments(),
+        billingService.getUnbilledConsignments({ include_all_statuses: 'true' }),
         billingService.getCustomers(),
         api.get('/branches?all=true')
       ]);
@@ -986,9 +1006,27 @@ export default function InvoicesMasterPage() {
     return { totalCount, countsMap };
   }, [invoices, branches]);
 
-  // Filtered Invoices (now strictly reflecting active branch selection)
+  // Helper to determine if an invoice payment is pending clearance vs fully cleared
+  const isInvoicePending = (inv) => {
+    const bal = parseFloat(inv.balance_amount || 0);
+    return bal > 0 && inv.status !== 'PAID';
+  };
+
+  const isInvoiceCleared = (inv) => {
+    const bal = parseFloat(inv.balance_amount || 0);
+    return bal === 0 || inv.status === 'PAID';
+  };
+
+  // Filtered Invoices (TBB vs Other dockets, strictly non-cancelled, respecting payment clearance dropdown)
   const filteredInvoices = useMemo(() => {
     return branchScopedInvoices.filter((inv) => {
+      const isCancelled = inv.status === 'CANCELLED';
+      if (isCancelled) return false;
+
+      // Payment Clearance Dropdown Filter (Pending vs Cleared)
+      if (paymentClearanceFilter === 'PENDING' && !isInvoicePending(inv)) return false;
+      if (paymentClearanceFilter === 'CLEARED' && !isInvoiceCleared(inv)) return false;
+
       const q = (search || '').trim().toLowerCase();
       const match =
         !q ||
@@ -1003,52 +1041,79 @@ export default function InvoicesMasterPage() {
         (inv.booking_branch && inv.booking_branch.toLowerCase().includes(q)) ||
         (inv.delivery_branch && inv.delivery_branch.toLowerCase().includes(q));
 
-      const todayStr = new Date().toISOString().slice(0, 10);
-      const isCancelled = inv.status === 'CANCELLED';
-      const isOverdue = !isCancelled && inv.balance_amount > 0 && inv.due_date < todayStr;
-      const isPaid = !isCancelled && inv.balance_amount === 0;
-      const isPartial = !isCancelled && inv.paid_amount > 0 && inv.balance_amount > 0;
-      const isUnpaid = !isCancelled && inv.balance_amount > 0 && inv.due_date >= todayStr;
+      if (!match) return false;
 
-      if (statusFilter === 'ALL') return match;
-      if (statusFilter === 'UNCLEARED') return match && inv.balance_amount > 0 && !isCancelled;
-      if (statusFilter === 'UNPAID' || statusFilter === 'PENDING') return match && isUnpaid;
-      if (statusFilter === 'OVERDUE') return match && isOverdue;
-      if (statusFilter === 'PARTIAL') return match && isPartial;
-      if (statusFilter === 'PAID') return match && isPaid;
-      if (statusFilter === 'CANCELLED') return match && isCancelled;
-      return match;
+      const isTbb =
+        inv.docket_type === 'TBB' ||
+        (Array.isArray(inv.docket_types) && inv.docket_types.includes('TBB')) ||
+        (Array.isArray(inv.items) && inv.items.some((it) => it.payment_type === 'TBB' || it.consignment?.payment_type === 'TBB'));
+
+      if (statusFilter === 'TBB') return isTbb;
+      if (statusFilter === 'OTHER') return !isTbb;
+      return true;
     });
-  }, [branchScopedInvoices, search, statusFilter]);
+  }, [branchScopedInvoices, search, statusFilter, paymentClearanceFilter]);
 
-  // Counts and Total Amounts for Invoice filter tabs
-  const invoiceCounts = useMemo(() => {
-    const todayStr = new Date().toISOString().slice(0, 10);
+  // Overall clearance stats for the dropdown badges
+  const clearanceStats = useMemo(() => {
     const activeInvoices = branchScopedInvoices.filter((i) => i.status !== 'CANCELLED');
-    const sumBal = (list) => list.reduce((sum, i) => sum + parseFloat(i.balance_amount || 0), 0);
-    const sumPaid = (list) => list.reduce((sum, i) => sum + parseFloat(i.paid_amount || 0), 0);
-    const sumTotal = (list) => list.reduce((sum, i) => sum + parseFloat(i.total_amount || 0), 0);
-
-    const unpaidList = activeInvoices.filter((i) => i.balance_amount > 0 && i.due_date >= todayStr);
-    const overdueList = activeInvoices.filter((i) => i.balance_amount > 0 && i.due_date < todayStr);
-    const partialList = activeInvoices.filter((i) => i.paid_amount > 0 && i.balance_amount > 0);
-    const paidList = activeInvoices.filter((i) => i.balance_amount === 0);
-    const cancelledList = branchScopedInvoices.filter((i) => i.status === 'CANCELLED');
-
     return {
-      all: branchScopedInvoices.length,
-      allAmount: sumTotal(branchScopedInvoices),
-      unpaid: unpaidList.length,
-      unpaidAmount: sumBal(unpaidList),
-      overdue: overdueList.length,
-      overdueAmount: sumBal(overdueList),
-      partial: partialList.length,
-      partialAmount: sumBal(partialList),
-      paid: paidList.length,
-      paidAmount: sumPaid(paidList),
-      cancelled: cancelledList.length,
+      pendingCount: activeInvoices.filter(isInvoicePending).length,
+      clearedCount: activeInvoices.filter(isInvoiceCleared).length,
+      totalCount: activeInvoices.length,
     };
   }, [branchScopedInvoices]);
+
+  // Counts and Total Amounts for TBB and Other Invoice tabs (dynamically respecting payment clearance)
+  const invoiceCounts = useMemo(() => {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const nonCancelledInvoices = branchScopedInvoices.filter((i) => i.status !== 'CANCELLED');
+    const cancelledInvoices = branchScopedInvoices.filter((i) => i.status === 'CANCELLED');
+
+    const activeInvoices = branchScopedInvoices.filter((i) => {
+      if (i.status === 'CANCELLED') return false;
+      if (paymentClearanceFilter === 'PENDING') return isInvoicePending(i);
+      if (paymentClearanceFilter === 'CLEARED') return isInvoiceCleared(i);
+      return true;
+    });
+
+    const sumTotal = (list) => list.reduce((sum, i) => sum + parseFloat(i.total_amount || 0), 0);
+    const sumBalance = (list) => list.reduce((sum, i) => sum + parseFloat(i.balance_amount || 0), 0);
+
+    const isTbbInv = (inv) =>
+      inv.docket_type === 'TBB' ||
+      (Array.isArray(inv.docket_types) && inv.docket_types.includes('TBB')) ||
+      (Array.isArray(inv.items) && inv.items.some((it) => it.payment_type === 'TBB' || it.consignment?.payment_type === 'TBB'));
+
+    const tbbList = activeInvoices.filter(isTbbInv);
+    const otherList = activeInvoices.filter((i) => !isTbbInv(i));
+
+    const paidList = nonCancelledInvoices.filter(isInvoiceCleared);
+    const pendingList = nonCancelledInvoices.filter(isInvoicePending);
+    const overdueList = pendingList.filter((inv) => inv.due_date && inv.due_date < todayStr);
+
+    const tbbPendingList = pendingList.filter(isTbbInv);
+
+    return {
+      all: activeInvoices.length,
+      allAmount: sumTotal(activeInvoices),
+      tbb: tbbList.length,
+      tbbAmount: sumTotal(tbbList),
+      other: otherList.length,
+      otherAmount: sumTotal(otherList),
+
+      // Global invoice stats for KPI Cards
+      totalActive: nonCancelledInvoices.length,
+      cancelled: cancelledInvoices.length,
+      paid: paidList.length,
+      pending: pendingList.length,
+      overdue: overdueList.length,
+      unpaid: pendingList.length,
+      partial: pendingList.filter((i) => parseFloat(i.paid_amount || 0) > 0).length,
+      tbbPendingAmount: sumBalance(tbbPendingList),
+      tbbPendingCount: tbbPendingList.length,
+    };
+  }, [branchScopedInvoices, paymentClearanceFilter]);
 
   // TBB unbilled calculations
   const unbilledTbbDockets = useMemo(() => {
@@ -1068,7 +1133,7 @@ export default function InvoicesMasterPage() {
     );
   }, [unbilledTbbDelivered]);
 
-  // Counts and Total Amounts for Unbilled filter tabs (Delivered & POD Uploaded)
+  // Counts and Total Amounts for Unbilled TBB filter tabs (Delivered & POD Uploaded)
   const unbilledCounts = useMemo(() => {
     const sumTotal = (list) => list.reduce((sum, c) => sum + parseFloat(c.total_amount || c.freight_amount || 0), 0);
 
@@ -1076,33 +1141,36 @@ export default function InvoicesMasterPage() {
       c.is_delivered || ['DELIVERED', 'POD_UPLOADED', 'COMPLETED', 'POD_VERIFIED'].includes(c.status)
     );
 
-    const deliveredList = scopedUnbilledConsignments.filter(isDeliveredDocket);
-    const inTransitList = scopedUnbilledConsignments.filter((c) => !isDeliveredDocket(c));
-
-    const tbbReadyList = deliveredList.filter((c) => c.payment_type === 'TBB');
-    const toPayList = deliveredList.filter((c) => c.payment_type === 'TO_PAY');
-    const paidList = deliveredList.filter((c) => c.payment_type === 'PAID');
+    // Invoicing is strictly for TBB (Corporate Credit) consignments
+    const tbbList = scopedUnbilledConsignments.filter((c) => c.payment_type === 'TBB');
+    const deliveredList = tbbList.filter(isDeliveredDocket);
+    const inTransitList = tbbList.filter((c) => !isDeliveredDocket(c));
 
     return {
       all: deliveredList.length,
       allAmount: sumTotal(deliveredList),
-      tbbReady: tbbReadyList.length,
-      tbbReadyAmount: sumTotal(tbbReadyList),
-      tbbAll: tbbReadyList.length,
-      tbbAllAmount: sumTotal(tbbReadyList),
-      toPay: toPayList.length,
-      toPayAmount: sumTotal(toPayList),
-      paid: paidList.length,
-      paidAmount: sumTotal(paidList),
+      tbbReady: deliveredList.length,
+      tbbReadyAmount: sumTotal(deliveredList),
+      tbbAll: tbbList.length,
+      tbbAllAmount: sumTotal(tbbList),
+      toPay: 0,
+      toPayAmount: 0,
+      paid: 0,
+      paidAmount: 0,
       inTransit: inTransitList.length,
       inTransitAmount: sumTotal(inTransitList),
-      allTotalWithTransit: scopedUnbilledConsignments.length,
+      allTotalWithTransit: tbbList.length,
     };
   }, [scopedUnbilledConsignments]);
 
-  // Filtered unbilled consignments for main table
+  // Filtered unbilled consignments for main table (Strict TBB Only)
   const filteredUnbilledConsignments = useMemo(() => {
     return scopedUnbilledConsignments.filter((c) => {
+      // Strict Option A: Invoicing is strictly for TBB (Corporate Credit) consignments
+      if (c.payment_type !== 'TBB') {
+        return false;
+      }
+
       const isDelivered = Boolean(
         c.is_delivered || ['DELIVERED', 'POD_UPLOADED', 'COMPLETED', 'POD_VERIFIED'].includes(c.status)
       );
@@ -1146,22 +1214,10 @@ export default function InvoicesMasterPage() {
           freight.includes(q);
       }
 
-      if (unbilledFilter === 'TBB_READY' || unbilledFilter === 'TBB' || unbilledFilter === 'ALL_TBB') {
-        return match && c.payment_type === 'TBB' && isDelivered;
-      }
       if (unbilledFilter === 'TBB_IN_TRANSIT') {
-        return match && c.payment_type === 'TBB' && !isDelivered;
+        return match && !isDelivered;
       }
-      if (unbilledFilter === 'TO_PAY') {
-        return match && c.payment_type === 'TO_PAY';
-      }
-      if (unbilledFilter === 'PAID') {
-        return match && c.payment_type === 'PAID';
-      }
-      if (unbilledFilter === 'ALL') {
-        return match;
-      }
-      return match;
+      return match && isDelivered;
     });
   }, [scopedUnbilledConsignments, unbilledSearch, unbilledFilter, showPendingTransit]);
 
@@ -1176,7 +1232,7 @@ export default function InvoicesMasterPage() {
     const deliveredBase = scopedUnbilledConsignments.filter(
       (c) => c.is_delivered || ['DELIVERED', 'POD_UPLOADED', 'COMPLETED', 'POD_VERIFIED'].includes(c.status)
     );
-    if (!selectedCustomerId) return deliveredBase;
+    if (!selectedCustomerId) return [];
     const cust = currentSelectedCustomer;
     const custName = cust?.name?.trim()?.toLowerCase();
     const custGstin = cust?.gstin?.trim()?.toLowerCase();
@@ -1345,8 +1401,13 @@ export default function InvoicesMasterPage() {
   // Handle Generate Invoice Submit
   const handleGenerateInvoice = async (e) => {
     e.preventDefault();
-    if (!selectedCustomerId) {
-      showToast('Please select a customer', 'error');
+    let targetCustomerId = selectedCustomerId;
+    if (!targetCustomerId && selectedLrIds.length > 0) {
+      const firstDocket = scopedUnbilledConsignments.find((d) => selectedLrIds.includes(d.id)) || unbilledConsignments.find((d) => selectedLrIds.includes(d.id));
+      targetCustomerId = firstDocket?.consignor_id || firstDocket?.consignee_id || firstDocket?.customer_id;
+    }
+    if (!targetCustomerId) {
+      showToast('Please select a customer (party)', 'error');
       return;
     }
     if (selectedLrIds.length === 0) {
@@ -1357,7 +1418,7 @@ export default function InvoicesMasterPage() {
     setIsSubmitting(true);
     try {
       await billingService.createInvoice({
-        customer_id: selectedCustomerId,
+        customer_id: targetCustomerId,
         consignment_ids: selectedLrIds,
         invoice_date: invoiceDate,
         credit_days: creditDays,
@@ -1513,6 +1574,7 @@ export default function InvoicesMasterPage() {
     setPaymentModalInvoice(invoice);
     setReceivedAmount(invoice.balance_amount);
     setTdsDeducted(0);
+    setPaymentMethod('NEFT');
     setUtrNumber(`UTR${Math.floor(100000000 + Math.random() * 900000000)}`);
   };
 
@@ -1526,6 +1588,19 @@ export default function InvoicesMasterPage() {
 
     if (totalCredit <= 0) {
       showToast('Amount received or TDS credit must be greater than ₹0', 'error');
+      return;
+    }
+
+    if (!utrNumber || !utrNumber.trim()) {
+      const refName =
+        paymentMethod === 'CHEQUE'
+          ? 'Cheque Number'
+          : paymentMethod === 'UPI'
+          ? 'UPI Reference / Transaction ID'
+          : paymentMethod === 'CASH'
+          ? 'Cash Receipt / Voucher Number'
+          : 'Bank Reference / UTR Number';
+      showToast(`Please enter ${refName}`, 'error');
       return;
     }
 
@@ -2017,19 +2092,21 @@ export default function InvoicesMasterPage() {
     {
       key: 'billing_actions',
       label: 'Actions',
-      width: 140,
-      minWidth: 125,
+      width: 175,
+      minWidth: 155,
       sortable: false,
       align: 'center',
       render: (val, row) => (
         <div className="flex items-center justify-center space-x-1.5" onClick={(e) => e.stopPropagation()}>
-          {/* Print GST Tax Invoice */}
+          {/* View & Print Official GST Tax Invoice */}
           <button
+            type="button"
             onClick={() => openPrintModal(row)}
-            className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:text-cyan-500 hover:border-cyan-400 transition-all shadow-2xs"
+            className="px-2.5 py-1 text-[11px] font-bold bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30 rounded-lg hover:bg-blue-500/25 transition-colors flex items-center gap-1 cursor-pointer whitespace-nowrap shadow-2xs"
             title="View & Print Official GST Tax Invoice"
           >
-            <Printer className="w-3.5 h-3.5" />
+            <Receipt className="w-3.5 h-3.5" />
+            <span>Invoice</span>
           </button>
 
           {/* Record / Collect Remittance */}
@@ -2087,14 +2164,14 @@ export default function InvoicesMasterPage() {
             </button>
           )}
 
-          {/* Close / Cancel Invoice */}
-          {parseFloat(row.paid_amount || 0) === 0 && row.status !== 'CANCELLED' && canEdit && (
+          {/* Reverse to Billing Queue / Cancel Invoice */}
+          {row.status !== 'CANCELLED' && canEdit && (
             <button
               onClick={() => openCancelModal(row)}
               className="p-1.5 rounded-lg border border-rose-500/20 bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 transition-all shadow-2xs"
-              title="Cancel / Close Invoice"
+              title="Reverse to Billing Queue & Release Dockets"
             >
-              <X className="w-3.5 h-3.5" />
+              <RotateCcw className="w-3.5 h-3.5" />
             </button>
           )}
         </div>
@@ -2285,8 +2362,8 @@ export default function InvoicesMasterPage() {
     {
       key: 'actions',
       label: 'Actions',
-      width: 175,
-      minWidth: 165,
+      width: 200,
+      minWidth: 190,
       sortable: false,
       align: 'center',
       render: (val, row) => {
@@ -2309,11 +2386,11 @@ export default function InvoicesMasterPage() {
             {canCreateInvoice && !isToPay && (
               <button
                 onClick={() => openQuickBillModal(row)}
-                className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold shadow-xs active:scale-95 transition-all whitespace-nowrap shrink-0 h-7"
-                title="Instant 1-Click GST Freight Tax Invoice for this docket"
+                className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold shadow-xs active:scale-95 transition-all whitespace-nowrap shrink-0 h-7"
+                title="Generate GST Freight Tax Invoice for this docket and send directly to customer/company"
               >
-                <Zap className="w-3.5 h-3.5 shrink-0" />
-                <span className="whitespace-nowrap">Quick Bill</span>
+                <Receipt className="w-3.5 h-3.5 shrink-0" />
+                <span className="whitespace-nowrap">Generate Invoice</span>
               </button>
             )}
 
@@ -2463,8 +2540,8 @@ export default function InvoicesMasterPage() {
                   <button
                     onClick={() => {
                       setSelectedCustomerId('');
-                      setSelectedLrIds([]);
-                      setWizardPaymentFilter('TBB');
+                      setSelectedLrIds([]); // By default, do NOT pre-select any docket!
+                      setWizardPaymentFilter('ALL');
                       setIsGenerateModalOpen(true);
                     }}
                     className="flex items-center space-x-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 transition-all active:scale-95"
@@ -2491,6 +2568,7 @@ export default function InvoicesMasterPage() {
 
             {/* Top 6 Financial KPIs (Including Live Unbilled TBB Credit) */}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
+              {/* Card 1: Total Invoiced */}
               <div
                 onClick={() => setActiveTab('INVOICES')}
                 className={`p-4 rounded-2xl border cursor-pointer transition-all hover:scale-[1.01] ${
@@ -2502,21 +2580,18 @@ export default function InvoicesMasterPage() {
                   ₹ {kpis.totalInvoiced.toLocaleString('en-IN')}
                 </div>
                 <div className="text-[10px] text-slate-400 mt-1">
-                  {invoiceCounts.all - invoiceCounts.cancelled} Active {invoiceCounts.cancelled > 0 ? `(${invoiceCounts.cancelled} Cancelled)` : 'Invoices'}
+                  {invoiceCounts.totalActive} Active {invoiceCounts.cancelled > 0 ? `(${invoiceCounts.cancelled} Cancelled)` : 'Invoices'}
                 </div>
               </div>
 
+              {/* Card 2: Unbilled TBB Dockets */}
               <div
-                onClick={() => {
-                  setActiveTab('UNBILLED');
-                  setUnbilledFilter('TBB_READY');
-                }}
-                className={`p-4 rounded-2xl border cursor-pointer transition-all hover:scale-[1.01] ${
-                  activeTab === 'UNBILLED' ? 'ring-2 ring-purple-500/40' : ''
-                } ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}
+                onClick={() => setIsGenerateModalOpen(true)}
+                className={`p-4 rounded-2xl border cursor-pointer transition-all hover:scale-[1.01] ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}
+                title="Delivered TBB consignments waiting for invoice generation"
               >
                 <div className="text-[11px] font-semibold text-purple-600 dark:text-purple-400 mb-1 flex items-center justify-between">
-                  <span>Unbilled TBB Credit</span>
+                  <span>Unbilled TBB Dockets</span>
                   {kpis.unbilledTbbCount > 0 && (
                     <span className="w-2 h-2 rounded-full bg-purple-500 animate-ping" />
                   )}
@@ -2525,10 +2600,11 @@ export default function InvoicesMasterPage() {
                   ₹ {kpis.unbilledTbbAmount.toLocaleString('en-IN')}
                 </div>
                 <div className="text-[10px] text-purple-500/80 mt-1">
-                  {kpis.unbilledTbbCount} Delivered {termPlural} Ready
+                  {kpis.unbilledTbbCount > 0 ? `${kpis.unbilledTbbCount} Delivered Ready to Bill` : '0 Dockets Awaiting Bill (All Billed)'}
                 </div>
               </div>
 
+              {/* Card 3: Total Received */}
               <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
                 <div className="text-[11px] font-semibold text-slate-400 mb-1">Total Received</div>
                 <div className="text-xl sm:text-2xl font-black text-emerald-500 dark:text-emerald-400 font-mono">
@@ -2537,10 +2613,11 @@ export default function InvoicesMasterPage() {
                 <div className="text-[10px] text-emerald-500/80 mt-1">{invoiceCounts.paid} Invoices Cleared</div>
               </div>
 
+              {/* Card 4: Outstanding Balance */}
               <div
                 onClick={() => {
                   setActiveTab('INVOICES');
-                  setStatusFilter('UNCLEARED');
+                  setPaymentClearanceFilter('PENDING');
                 }}
                 className={`p-4 rounded-2xl border cursor-pointer transition-all hover:scale-[1.01] ${
                   isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'
@@ -2550,13 +2627,15 @@ export default function InvoicesMasterPage() {
                 <div className="text-xl sm:text-2xl font-black text-cyan-500 dark:text-cyan-400 font-mono">
                   ₹ {kpis.outstandingBalance.toLocaleString('en-IN')}
                 </div>
-                <div className="text-[10px] text-slate-400 mt-1">{invoiceCounts.unpaid + invoiceCounts.partial + invoiceCounts.overdue} Invoices Pending</div>
+                <div className="text-[10px] text-slate-400 mt-1">
+                  {invoiceCounts.pending} Invoices Pending {invoiceCounts.tbbPendingAmount > 0 ? `(TBB: ₹${invoiceCounts.tbbPendingAmount.toLocaleString('en-IN')})` : ''}
+                </div>
               </div>
 
+              {/* Card 5: Overdue Receivables */}
               <div
                 onClick={() => {
                   setActiveTab('INVOICES');
-                  setStatusFilter('OVERDUE');
                 }}
                 className={`p-4 rounded-2xl border cursor-pointer transition-all hover:scale-[1.01] ${
                   isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'
@@ -2566,7 +2645,9 @@ export default function InvoicesMasterPage() {
                 <div className={`text-xl sm:text-2xl font-black font-mono ${kpis.overdueReceivables > 0 ? 'text-rose-500 dark:text-rose-400' : 'text-slate-400'}`}>
                   ₹ {kpis.overdueReceivables.toLocaleString('en-IN')}
                 </div>
-                <div className="text-[10px] text-rose-500/80 mt-1">{kpis.overdueReceivables > 0 ? `${invoiceCounts.overdue} Invoices Overdue` : 'Zero overdue'}</div>
+                <div className="text-[10px] text-rose-500/80 mt-1">
+                  {invoiceCounts.overdue > 0 ? `${invoiceCounts.overdue} Invoices Overdue` : 'Zero overdue'}
+                </div>
               </div>
 
               <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
@@ -2578,126 +2659,44 @@ export default function InvoicesMasterPage() {
               </div>
             </div>
 
-            {/* Alert Banner for Delivered TBB Consignments Pending Invoicing */}
-            {unbilledTbbDelivered.length > 0 && (
-              <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
-                isDark
-                  ? 'bg-gradient-to-r from-purple-950/40 via-indigo-950/30 to-blue-950/20 border-purple-800/50'
-                  : 'bg-gradient-to-r from-purple-50 via-indigo-50/50 to-blue-50/30 border-purple-200 shadow-xs'
-              }`}>
-                <div className="flex items-start sm:items-center space-x-3">
-                  <div className="w-10 h-10 rounded-xl bg-purple-500/15 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
-                    <Receipt className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <div className="flex items-center flex-wrap gap-2">
-                      <span className="text-xs font-bold text-slate-900 dark:text-white">
-                        {unbilledTbbDelivered.length} Delivered TBB {unbilledTbbDelivered.length === 1 ? termSingular : termPlural} Awaiting Freight Tax Invoice
-                      </span>
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-700 dark:text-purple-300 font-bold border border-purple-500/30">
-                        ₹ {unbilledTbbPendingAmount.toLocaleString('en-IN')} Pending Billing
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                      Deliveries and PODs completed. Generate GST Freight Tax Invoices to dispatch formal bills to your corporate customers.
-                    </p>
-                  </div>
+
+            {/* Invoice Register Header Strip */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-3">
+              <div className="flex items-center space-x-2.5">
+                <div className="p-2 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                  <Receipt className="w-5 h-5" />
                 </div>
-                <div className="flex items-center space-x-2 self-end sm:self-auto shrink-0">
-                  <button
-                    onClick={() => {
-                      setActiveTab('UNBILLED');
-                      setUnbilledFilter('TBB_READY');
-                    }}
-                    className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition-all ${
-                      isDark
-                        ? 'bg-slate-900/80 border-slate-700 text-slate-300 hover:text-white'
-                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                    }`}
-                  >
-                    View Pending Dockets
-                  </button>
-                  <button
-                    onClick={() => {
-                      const firstTbb = unbilledTbbDelivered[0];
-                      if (firstTbb) {
-                        const custId = firstTbb.consignor_id || firstTbb.consignee_id;
-                        if (custId) setSelectedCustomerId(custId);
-                        setSelectedLrIds([firstTbb.id]);
-                        setWizardPaymentFilter('TBB');
-                      }
-                      setIsGenerateModalOpen(true);
-                    }}
-                    className="px-3.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold shadow-md shadow-purple-600/30 flex items-center space-x-1.5 active:scale-95 transition-all"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Generate Invoice</span>
-                  </button>
+                <div>
+                  <div className="flex items-center space-x-2">
+                    <h2 className="text-base font-bold text-slate-900 dark:text-white">GST Freight Invoice Register</h2>
+                    <span className="text-[11px] px-2.5 py-0.5 rounded-full font-mono font-bold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                      {invoiceCounts.all} Invoices • ₹{invoiceCounts.allAmount.toLocaleString('en-IN')}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400">
+                    Track issued corporate freight invoices, due dates, payments, and reverse cancelled bills.
+                  </p>
                 </div>
               </div>
-            )}
 
-            {/* Primary Navigation Tabs */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-3">
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => {
-                    setActiveTab('UNBILLED');
-                    setUnbilledFilter('ALL');
-                  }}
-                  className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                    activeTab === 'UNBILLED'
-                      ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20'
-                      : isDark
-                      ? 'bg-slate-900/60 text-slate-400 hover:text-white border border-slate-800'
-                      : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'
+              <div className="flex items-center gap-2">
+                <Link
+                  href="/deliveries"
+                  className={`inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-xl border text-xs font-bold transition-all ${
+                    isDark
+                      ? 'bg-slate-900/60 border-slate-800 text-slate-300 hover:text-white hover:bg-slate-800'
+                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-xs'
                   }`}
+                  title="Go to Deliveries & POD to bill individual delivered dockets"
                 >
-                  <Clock className="w-4 h-4" />
-                  <span>Unbilled {termPlural} / Pending Invoicing</span>
-                  <span
-                    className={`text-[10px] px-2.5 py-0.5 rounded-full font-mono font-bold transition-all ${
-                      activeTab === 'UNBILLED'
-                        ? 'bg-white/20 text-white border border-white/20'
-                        : unbilledCounts.all > 0
-                        ? isDark
-                          ? 'bg-purple-950/70 text-purple-300 border border-purple-700/60'
-                          : 'bg-purple-100 text-purple-800 border border-purple-300'
-                        : isDark
-                        ? 'bg-slate-800 text-slate-400 border border-slate-700'
-                        : 'bg-slate-100 text-slate-600 border border-slate-200'
-                    }`}
-                  >
-                    {unbilledCounts.all > 0
-                      ? `${unbilledCounts.all} Ready • ₹${unbilledCounts.allAmount.toLocaleString('en-IN')}`
-                      : '0 Ready • ₹0'}
-                  </span>
-                </button>
-
-                <button
-                  onClick={() => setActiveTab('INVOICES')}
-                  className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                    activeTab === 'INVOICES'
-                      ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
-                      : isDark
-                      ? 'bg-slate-900/60 text-slate-400 hover:text-white border border-slate-800'
-                      : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'
-                  }`}
-                >
-                  <Receipt className="w-4 h-4" />
-                  <span>Tax Invoices</span>
-                  <span
-                    className={`text-[10px] px-2.5 py-0.5 rounded-full font-mono font-bold transition-all ${
-                      activeTab === 'INVOICES'
-                        ? 'bg-white/20 text-white border border-white/20'
-                        : isDark
-                        ? 'bg-slate-800 text-slate-400 border border-slate-700'
-                        : 'bg-slate-100 text-slate-700 border border-slate-200'
-                    }`}
-                  >
-                    {invoiceCounts.all} • ₹{invoiceCounts.allAmount.toLocaleString('en-IN')}
-                  </span>
-                </button>
+                  <Truck className="w-4 h-4 text-emerald-500" />
+                  <span>Deliveries & POD</span>
+                  {kpis.unbilledTbbCount > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/20 font-mono">
+                      {kpis.unbilledTbbCount} Ready
+                    </span>
+                  )}
+                </Link>
               </div>
             </div>
 
@@ -3006,68 +3005,160 @@ export default function InvoicesMasterPage() {
                   searchQuery={search}
                   onSearchChange={setSearch}
                   filtersSlot={
-                    <div className="flex flex-wrap items-center gap-1.5 text-xs font-bold">
+                    <div className="flex flex-wrap items-center gap-2 text-xs font-bold">
+                      <button
+                        onClick={() => setStatusFilter('TBB')}
+                        className={`px-3.5 py-1.5 rounded-xl transition-all cursor-pointer ${
+                          statusFilter === 'TBB'
+                            ? 'bg-purple-600 text-white shadow-sm'
+                            : isDark ? 'bg-slate-800 text-slate-400 hover:text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                        }`}
+                      >
+                        TBB Invoices ({invoiceCounts.tbb} • ₹{invoiceCounts.tbbAmount.toLocaleString('en-IN')})
+                      </button>
+                      <button
+                        onClick={() => setStatusFilter('OTHER')}
+                        className={`px-3.5 py-1.5 rounded-xl transition-all cursor-pointer ${
+                          statusFilter === 'OTHER'
+                            ? 'bg-emerald-600 text-white shadow-sm'
+                            : isDark ? 'bg-slate-800 text-slate-400 hover:text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                        }`}
+                      >
+                        Other Invoices (Paid / To-Pay) ({invoiceCounts.other} • ₹{invoiceCounts.otherAmount.toLocaleString('en-IN')})
+                      </button>
                       <button
                         onClick={() => setStatusFilter('ALL')}
-                        className={`px-3 py-1.5 rounded-xl transition-all ${
+                        className={`px-3.5 py-1.5 rounded-xl transition-all cursor-pointer ${
                           statusFilter === 'ALL'
                             ? 'bg-blue-600 text-white shadow-sm'
                             : isDark ? 'bg-slate-800 text-slate-400 hover:text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
                         }`}
                       >
-                        All ({invoiceCounts.all} • ₹{kpis.totalInvoiced.toLocaleString('en-IN')})
+                        All Invoices ({invoiceCounts.all} • ₹{invoiceCounts.allAmount.toLocaleString('en-IN')})
                       </button>
+                    </div>
+                  }
+                  headerFiltersSlot={
+                    <div className="relative" ref={clearanceDropdownRef}>
                       <button
-                        onClick={() => setStatusFilter('UNPAID')}
-                        className={`px-3 py-1.5 rounded-xl transition-all ${
-                          statusFilter === 'UNPAID'
-                            ? 'bg-amber-600 text-white shadow-sm'
-                            : isDark ? 'bg-slate-800 text-slate-400 hover:text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                        type="button"
+                        onClick={() => setIsClearanceDropdownOpen(!isClearanceDropdownOpen)}
+                        className={`flex items-center space-x-2 px-3.5 py-2 rounded-2xl border text-xs font-bold transition-all active:scale-95 cursor-pointer shadow-xs select-none ${
+                          paymentClearanceFilter === 'PENDING'
+                            ? 'bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20'
+                            : paymentClearanceFilter === 'CLEARED'
+                            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20'
+                            : isDark
+                            ? 'bg-slate-900/90 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
+                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
                         }`}
+                        title="Filter invoices by payment clearance status"
                       >
-                        Unpaid / Open ({invoiceCounts.unpaid} • ₹{invoiceCounts.unpaidAmount.toLocaleString('en-IN')})
+                        <div className="flex items-center space-x-1.5">
+                          {paymentClearanceFilter === 'PENDING' ? (
+                            <Clock className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                          ) : paymentClearanceFilter === 'CLEARED' ? (
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                          ) : (
+                            <Layers className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                          )}
+                          <span>
+                            {paymentClearanceFilter === 'PENDING'
+                              ? `Pending (${clearanceStats.pendingCount})`
+                              : paymentClearanceFilter === 'CLEARED'
+                              ? `Cleared (${clearanceStats.clearedCount})`
+                              : `All (${clearanceStats.totalCount})`}
+                          </span>
+                        </div>
+                        <ChevronDown className="w-3.5 h-3.5 opacity-60 ml-0.5 shrink-0" />
                       </button>
-                      <button
-                        onClick={() => setStatusFilter('OVERDUE')}
-                        className={`px-3 py-1.5 rounded-xl transition-all ${
-                          statusFilter === 'OVERDUE'
-                            ? 'bg-rose-600 text-white shadow-sm'
-                            : isDark ? 'bg-slate-800 text-slate-400 hover:text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
-                        }`}
-                      >
-                        Overdue ({invoiceCounts.overdue} • ₹{invoiceCounts.overdueAmount.toLocaleString('en-IN')})
-                      </button>
-                      <button
-                        onClick={() => setStatusFilter('PARTIAL')}
-                        className={`px-3 py-1.5 rounded-xl transition-all ${
-                          statusFilter === 'PARTIAL'
-                            ? 'bg-cyan-600 text-white shadow-sm'
-                            : isDark ? 'bg-slate-800 text-slate-400 hover:text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
-                        }`}
-                      >
-                        Partially Paid ({invoiceCounts.partial} • ₹{invoiceCounts.partialAmount.toLocaleString('en-IN')})
-                      </button>
-                      <button
-                        onClick={() => setStatusFilter('PAID')}
-                        className={`px-3 py-1.5 rounded-xl transition-all ${
-                          statusFilter === 'PAID'
-                            ? 'bg-emerald-600 text-white shadow-sm'
-                            : isDark ? 'bg-slate-800 text-slate-400 hover:text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
-                        }`}
-                      >
-                        Paid & Cleared ({invoiceCounts.paid} • ₹{invoiceCounts.paidAmount.toLocaleString('en-IN')})
-                      </button>
-                      {invoiceCounts.cancelled > 0 && (
-                        <button
-                          onClick={() => setStatusFilter('CANCELLED')}
-                          className={`px-3 py-1.5 rounded-xl transition-all ${
-                            statusFilter === 'CANCELLED'
-                              ? 'bg-slate-700 text-white shadow-sm'
-                              : isDark ? 'bg-slate-800 text-slate-400 hover:text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
-                          }`}
-                        >
-                          Cancelled ({invoiceCounts.cancelled})
-                        </button>
+
+                      {isClearanceDropdownOpen && (
+                        <div className={`absolute right-0 mt-1.5 w-64 rounded-2xl border shadow-xl z-30 p-1.5 overflow-hidden animate-in fade-in duration-150 ${
+                          isDark ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
+                        }`}>
+                          <div className="px-2.5 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                            Payment Clearance Status
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPaymentClearanceFilter('PENDING');
+                              setIsClearanceDropdownOpen(false);
+                            }}
+                            className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-left text-xs transition-all cursor-pointer ${
+                              paymentClearanceFilter === 'PENDING'
+                                ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 font-bold border border-amber-500/30'
+                                : isDark
+                                ? 'hover:bg-slate-800 text-slate-300'
+                                : 'hover:bg-slate-100 text-slate-700'
+                            }`}
+                          >
+                            <div className="flex items-center space-x-2">
+                              <Clock className="w-4 h-4 text-amber-500 shrink-0" />
+                              <div>
+                                <div className="font-bold">Pending Payment</div>
+                                <div className="text-[10px] text-slate-400 font-normal">Payment uncleared / open</div>
+                              </div>
+                            </div>
+                            <span className="text-[11px] px-2 py-0.5 rounded-full font-mono font-bold bg-amber-500/20 text-amber-600 dark:text-amber-400">
+                              {clearanceStats.pendingCount}
+                            </span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPaymentClearanceFilter('CLEARED');
+                              setIsClearanceDropdownOpen(false);
+                            }}
+                            className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-left text-xs transition-all cursor-pointer mt-1 ${
+                              paymentClearanceFilter === 'CLEARED'
+                                ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-bold border border-emerald-500/30'
+                                : isDark
+                                ? 'hover:bg-slate-800 text-slate-300'
+                                : 'hover:bg-slate-100 text-slate-700'
+                            }`}
+                          >
+                            <div className="flex items-center space-x-2">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                              <div>
+                                <div className="font-bold">Complete / Cleared</div>
+                                <div className="text-[10px] text-slate-400 font-normal">Fully settled & reconciled</div>
+                              </div>
+                            </div>
+                            <span className="text-[11px] px-2 py-0.5 rounded-full font-mono font-bold bg-emerald-500/20 text-emerald-600 dark:text-emerald-400">
+                              {clearanceStats.clearedCount}
+                            </span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPaymentClearanceFilter('ALL');
+                              setIsClearanceDropdownOpen(false);
+                            }}
+                            className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-left text-xs transition-all cursor-pointer mt-1 ${
+                              paymentClearanceFilter === 'ALL'
+                                ? 'bg-blue-500/15 text-blue-700 dark:text-blue-300 font-bold border border-blue-500/30'
+                                : isDark
+                                ? 'hover:bg-slate-800 text-slate-300'
+                                : 'hover:bg-slate-100 text-slate-700'
+                            }`}
+                          >
+                            <div className="flex items-center space-x-2">
+                              <Layers className="w-4 h-4 text-blue-500 shrink-0" />
+                              <div>
+                                <div className="font-bold">All Invoices</div>
+                                <div className="text-[10px] text-slate-400 font-normal">Both pending & cleared</div>
+                              </div>
+                            </div>
+                            <span className="text-[11px] px-2 py-0.5 rounded-full font-mono font-bold bg-slate-500/15 text-slate-400">
+                              {clearanceStats.totalCount}
+                            </span>
+                          </button>
+                        </div>
                       )}
                     </div>
                   }
@@ -3076,118 +3167,6 @@ export default function InvoicesMasterPage() {
                   emptyMessage="No invoices found matching criteria."
                 />
               )
-            )}
-
-            {/* TAB CONTENT: 2. UNBILLED DOCKETS / PENDING BILLING TABLE */}
-            {activeTab === 'UNBILLED' && (
-              <div className="space-y-4">
-
-
-                <DataTable
-                  columns={unbilledColumns}
-                  data={filteredUnbilledConsignments}
-                  loading={isLoading}
-                  pageSizeOptions={[10, 15, 25, 50, 100]}
-                  searchable={true}
-                  searchPlaceholder={`Search unbilled ${termPlural.toLowerCase()} by Docket #, Shipper, Consignee, Route, GSTIN...`}
-                  searchQuery={unbilledSearch}
-                  onSearchChange={setUnbilledSearch}
-                  filtersSlot={
-                    <div className="flex flex-wrap items-center gap-1.5 text-xs font-bold">
-                      <button
-                        onClick={() => {
-                          setUnbilledFilter('ALL');
-                          setShowPendingTransit(false);
-                        }}
-                        className={`px-3 py-1.5 rounded-xl transition-all ${
-                          unbilledFilter === 'ALL' && !showPendingTransit
-                            ? 'bg-purple-600 text-white shadow-sm font-bold'
-                            : isDark ? 'bg-slate-800 text-slate-400 hover:text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
-                        }`}
-                        title="All delivered dockets ready for invoicing"
-                      >
-                        All Delivered ({unbilledCounts.all} • ₹{unbilledCounts.allAmount.toLocaleString('en-IN')})
-                      </button>
-
-                      {unbilledCounts.toPay > 0 && (
-                        <button
-                          onClick={() => {
-                            setUnbilledFilter('TO_PAY');
-                            setShowPendingTransit(false);
-                          }}
-                          className={`px-3 py-1.5 rounded-xl transition-all flex items-center space-x-1.5 ${
-                            unbilledFilter === 'TO_PAY' && !showPendingTransit
-                              ? 'bg-amber-600 text-white shadow-sm font-bold'
-                              : isDark ? 'bg-slate-800 text-amber-400 hover:text-white border border-amber-500/20' : 'bg-amber-50 border border-amber-200 text-amber-700 hover:bg-amber-100'
-                          }`}
-                        >
-                          <span>💰 To-Pay Delivered</span>
-                          <span className="text-[10px] px-1.5 py-0.2 rounded-full font-mono bg-white/20">
-                            {unbilledCounts.toPay} • ₹{unbilledCounts.toPayAmount.toLocaleString('en-IN')}
-                          </span>
-                        </button>
-                      )}
-
-                      <button
-                        onClick={() => {
-                          setUnbilledFilter('TBB_READY');
-                          setShowPendingTransit(false);
-                        }}
-                        className={`px-3 py-1.5 rounded-xl transition-all flex items-center space-x-1.5 ${
-                          unbilledFilter === 'TBB_READY' && !showPendingTransit
-                            ? 'bg-purple-600 text-white shadow-sm font-bold'
-                            : isDark
-                            ? 'bg-slate-800 text-purple-400 hover:text-white border border-purple-500/20'
-                            : 'bg-purple-50 border border-purple-200 text-purple-700 hover:bg-purple-100'
-                        }`}
-                        title="Delivered TBB dockets with POD verified, ready to generate invoice"
-                      >
-                        <span>⭐ TBB Credit</span>
-                        <span className="text-[10px] px-1.5 py-0.2 rounded-full font-mono bg-white/20">
-                          {unbilledCounts.tbbReady} • ₹{unbilledCounts.tbbReadyAmount.toLocaleString('en-IN')}
-                        </span>
-                      </button>
-
-                      {unbilledCounts.paid > 0 && (
-                        <button
-                          onClick={() => {
-                            setUnbilledFilter('PAID');
-                            setShowPendingTransit(false);
-                          }}
-                          className={`px-3 py-1.5 rounded-xl transition-all ${
-                            unbilledFilter === 'PAID' && !showPendingTransit
-                              ? 'bg-emerald-600 text-white shadow-sm font-bold'
-                              : isDark ? 'bg-slate-800 text-emerald-400 hover:text-white border border-emerald-500/20' : 'bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100'
-                          }`}
-                        >
-                          Paid Upfront ({unbilledCounts.paid} • ₹{unbilledCounts.paidAmount.toLocaleString('en-IN')})
-                        </button>
-                      )}
-
-                      {unbilledCounts.inTransit > 0 && (
-                        <button
-                          onClick={() => setShowPendingTransit(!showPendingTransit)}
-                          className={`px-3 py-1.5 rounded-xl transition-all border ${
-                            showPendingTransit
-                              ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
-                              : isDark
-                              ? 'bg-slate-900/60 text-slate-400 hover:text-slate-200 border-slate-800'
-                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200 border-slate-300'
-                          }`}
-                          title="Toggle to view dockets still booked or in transit/hub (cannot be billed yet)"
-                        >
-                          {showPendingTransit
-                            ? `Showing Hub & Booked (${unbilledCounts.inTransit}) ✕`
-                            : `Include Hub / Booked (${unbilledCounts.inTransit})`}
-                        </button>
-                      )}
-                    </div>
-                  }
-                  exportable={true}
-                  exportFileName="Unbilled_Consignments_Register"
-                  emptyMessage="No unbilled consignments found matching criteria."
-                />
-              </div>
             )}
 
             {/* Quick Actions Strip (Customer Ledger & TDS Reconciliation) */}
@@ -3242,6 +3221,22 @@ export default function InvoicesMasterPage() {
                 </span>
               </div>
               <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => sendInvoiceWhatsAppReminder(printModalInvoice)}
+                  className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md shadow-emerald-600/20 flex items-center space-x-1.5 active:scale-95 transition-all"
+                  title="Send Invoice & Bank Details to Party via WhatsApp"
+                >
+                  <MessageSquare className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">WhatsApp</span>
+                </button>
+                <button
+                  onClick={() => sendInvoiceEmail(printModalInvoice)}
+                  className="px-3 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold shadow-md shadow-sky-600/20 flex items-center space-x-1.5 active:scale-95 transition-all"
+                  title="Send Invoice & Bank Details to Party via Email"
+                >
+                  <Mail className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Email</span>
+                </button>
                 <button
                   onClick={() => window.print()}
                   className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 flex items-center space-x-1.5 active:scale-95 transition-all"
@@ -3490,10 +3485,17 @@ export default function InvoicesMasterPage() {
                     <Building2 className="w-4 h-4 text-cyan-500" />
                     <span>Party & Invoice Terms</span>
                   </span>
-                  {customerUnbilledAll.length > 0 && (
-                    <span className="px-2.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 font-bold text-[11px] border border-cyan-500/20">
-                      {customerUnbilledAll.length} Unbilled Dockets Found (₹ {customerUnbilledAll.reduce((sum, ub) => sum + parseFloat(ub.total_amount || ub.freight_amount || 0), 0).toLocaleString('en-IN')})
-                    </span>
+                  {customerUnbilledAll.length > 0 && selectedCustomerId && (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="px-2.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 font-bold text-[11px] border border-cyan-500/20">
+                        {customerUnbilledAll.length} Unbilled Dockets Available
+                      </span>
+                      {selectedLrIds.length > 0 && (
+                        <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-bold text-[11px] border border-emerald-500/30">
+                          ✓ {selectedLrIds.length} Selected • ₹ {wizardCalculations.totalAmount.toLocaleString('en-IN')}
+                        </span>
+                      )}
+                    </div>
                   )}
                 </div>
 
@@ -3505,33 +3507,20 @@ export default function InvoicesMasterPage() {
                       onChange={(e) => {
                         const newCustId = e.target.value;
                         setSelectedCustomerId(newCustId);
-                        const targetIdStr = String(newCustId);
-                        const custObj = customersList.find((c) => String(c.id) === targetIdStr);
-                        const cName = custObj?.name?.trim()?.toLowerCase();
-                        const cGstin = custObj?.gstin?.trim()?.toLowerCase();
-                        const matching = unbilledConsignments.filter((ub) => {
-                          if (ub.consignor_id && String(ub.consignor_id) === targetIdStr) return true;
-                          if (ub.consignee_id && String(ub.consignee_id) === targetIdStr) return true;
-                          if (ub.consignor?.id && String(ub.consignor.id) === targetIdStr) return true;
-                          if (ub.consignee?.id && String(ub.consignee.id) === targetIdStr) return true;
-                          if (cGstin && cGstin !== 'urp' && (ub.customer_gstin || ub.consignor?.gstin || ub.consignee?.gstin)?.trim()?.toLowerCase() === cGstin) return true;
-                          if (cName && ((ub.customer || ub.consignor?.name)?.trim()?.toLowerCase() === cName || ub.consignee?.name?.trim()?.toLowerCase() === cName)) return true;
-                          return false;
-                        });
-                        // Automatically select all unbilled dockets for this customer for 1-click batch billing
-                        setSelectedLrIds(matching.map((ub) => ub.id));
+                        setSelectedLrIds([]); // By default, do NOT pre-select any docket!
                       }}
                       className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-medium focus:border-cyan-400 focus:outline-none transition-colors"
                     >
-                      {customersList.length === 0 ? (
-                        <option value="">No customers found in database</option>
-                      ) : (
-                        customersList.map((c) => {
+                      <option value="">-- Choose Customer (Party) --</option>
+                      {customersList
+                        .map((c) => {
                           const targetIdStr = String(c.id);
                           const cName = c.name?.trim()?.toLowerCase();
                           const cGstin = c.gstin?.trim()?.toLowerCase();
 
-                          const custUnbilled = unbilledConsignments.filter((ub) => {
+                          const custUnbilled = scopedUnbilledConsignments.filter((ub) => {
+                            const isReady = ub.is_delivered || ['DELIVERED', 'POD_UPLOADED', 'COMPLETED', 'POD_VERIFIED'].includes(ub.status);
+                            if (!isReady) return false;
                             if (ub.consignor_id && String(ub.consignor_id) === targetIdStr) return true;
                             if (ub.consignee_id && String(ub.consignee_id) === targetIdStr) return true;
                             if (ub.consignor?.id && String(ub.consignor.id) === targetIdStr) return true;
@@ -3541,21 +3530,33 @@ export default function InvoicesMasterPage() {
                             return false;
                           });
 
-                          const tbbCount = custUnbilled.filter((ub) => ub.payment_type === 'TBB').length;
-                          const totalAmt = custUnbilled.reduce(
-                            (sum, ub) => sum + parseFloat(ub.total_amount || ub.freight_amount || 0),
-                            0
-                          );
-                          return (
-                            <option key={c.id} value={c.id}>
-                              {c.name} {c.gstin ? `(${c.gstin})` : ''}
-                              {custUnbilled.length > 0
-                                ? ` — ${custUnbilled.length} Dockets (₹${totalAmt.toLocaleString('en-IN')})`
-                                : ' — (0 Dockets)'}
-                            </option>
-                          );
+                          const isCurrentParty = selectedCustomerId && String(selectedCustomerId) === targetIdStr;
+                          const selectedCount = isCurrentParty
+                            ? custUnbilled.filter((ub) => selectedLrIds.includes(ub.id)).length
+                            : 0;
+                          const selectedAmt = isCurrentParty
+                            ? custUnbilled
+                                .filter((ub) => selectedLrIds.includes(ub.id))
+                                .reduce((sum, ub) => sum + parseFloat(ub.total_amount || ub.freight_amount || 0), 0)
+                            : 0;
+
+                          return {
+                            ...c,
+                            readyCount: custUnbilled.length,
+                            selectedCount,
+                            selectedAmt,
+                          };
                         })
-                      )}
+                        .filter((c) => c.readyCount > 0) // Only show customers that have delivered ready dockets!
+                        .map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name} {c.gstin ? `(${c.gstin})` : ''} — {
+                              c.selectedCount > 0
+                                ? `${c.selectedCount} of ${c.readyCount} Selected (₹${c.selectedAmt.toLocaleString('en-IN')})`
+                                : `${c.readyCount} Delivered Ready`
+                            }
+                          </option>
+                        ))}
                     </select>
                   </div>
 
@@ -3609,8 +3610,12 @@ export default function InvoicesMasterPage() {
                         <Truck className="w-4 h-4 text-cyan-500" />
                         <span>Select Dockets to Include in this Invoice</span>
                       </span>
-                      <span className="px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 font-bold text-[10.5px]">
-                        {wizardCalculations.selectedCount} of {unbilledForCustomer.length} Selected
+                      <span className={`px-2 py-0.5 rounded-full font-bold text-[10.5px] ${
+                        selectedLrIds.length > 0
+                          ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
+                          : 'bg-slate-200 dark:bg-slate-800 text-slate-500'
+                      }`}>
+                        {selectedLrIds.length} of {customerUnbilledAll.length} Selected
                       </span>
                     </div>
 
@@ -4129,7 +4134,10 @@ export default function InvoicesMasterPage() {
 
               {/* Amount Received Input */}
               <div className="space-y-1">
-                <label className="font-bold text-slate-700 dark:text-slate-300">Amount Received in Bank (₹) *</label>
+                <label className="font-bold text-slate-700 dark:text-slate-300">
+                  {paymentMethod === 'CASH' ? 'Cash Amount Received (₹)' : 'Amount Received in Bank (₹)'}{' '}
+                  <span className="text-red-500 font-bold">*</span>
+                </label>
                 <input
                   type="number"
                   value={receivedAmount}
@@ -4179,7 +4187,27 @@ export default function InvoicesMasterPage() {
                   <label className="font-bold text-slate-700 dark:text-slate-300">Payment Mode</label>
                   <select
                     value={paymentMethod}
-                    onChange={(e) => setPaymentMethod(e.target.value)}
+                    onChange={(e) => {
+                      const newMode = e.target.value;
+                      setPaymentMethod(newMode);
+                      if (newMode === 'CHEQUE') {
+                        if (utrNumber.startsWith('UTR') || utrNumber.startsWith('UPI')) {
+                          setUtrNumber('');
+                        }
+                      } else if (newMode === 'UPI') {
+                        if (!utrNumber || utrNumber.startsWith('UTR')) {
+                          setUtrNumber(`UPI${Math.floor(100000000 + Math.random() * 900000000)}`);
+                        }
+                      } else if (newMode === 'CASH') {
+                        if (utrNumber.startsWith('UTR') || utrNumber.startsWith('UPI')) {
+                          setUtrNumber('');
+                        }
+                      } else {
+                        if (!utrNumber || utrNumber.startsWith('UPI')) {
+                          setUtrNumber(`UTR${Math.floor(100000000 + Math.random() * 900000000)}`);
+                        }
+                      }
+                    }}
                     className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white text-xs focus:border-cyan-400 focus:outline-none"
                   >
                     <option value="NEFT">NEFT</option>
@@ -4187,27 +4215,62 @@ export default function InvoicesMasterPage() {
                     <option value="IMPS">IMPS</option>
                     <option value="CHEQUE">Cheque</option>
                     <option value="UPI">UPI</option>
+                    <option value="CASH">Cash</option>
                   </select>
                 </div>
 
                 <div className="space-y-1">
-                  <label className="font-bold text-slate-700 dark:text-slate-300">Bank Name</label>
+                  <label className="font-bold text-slate-700 dark:text-slate-300">
+                    {paymentMethod === 'CHEQUE'
+                      ? 'Issuing Bank Name'
+                      : paymentMethod === 'CASH'
+                      ? 'Cash Counter / Branch'
+                      : 'Bank Name'}
+                  </label>
                   <input
                     type="text"
                     value={bankName}
                     onChange={(e) => setBankName(e.target.value)}
+                    placeholder={
+                      paymentMethod === 'CHEQUE'
+                        ? 'e.g. HDFC / SBI / ICICI Bank'
+                        : paymentMethod === 'CASH'
+                        ? 'e.g. Booking Branch Counter'
+                        : 'e.g. HDFC Bank'
+                    }
                     className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white text-xs focus:border-cyan-400 focus:outline-none"
                   />
                 </div>
               </div>
 
               <div className="space-y-1">
-                <label className="font-bold text-slate-700 dark:text-slate-300">Bank Reference / UTR Number *</label>
+                <label className="font-bold text-slate-700 dark:text-slate-300">
+                  {paymentMethod === 'CHEQUE'
+                    ? 'Cheque Number'
+                    : paymentMethod === 'UPI'
+                    ? 'UPI Reference / Transaction ID'
+                    : paymentMethod === 'CASH'
+                    ? 'Cash Receipt / Voucher Number'
+                    : paymentMethod === 'IMPS'
+                    ? 'IMPS Reference / UTR Number'
+                    : paymentMethod === 'RTGS'
+                    ? 'RTGS / UTR Number'
+                    : 'Bank Reference / UTR Number'}{' '}
+                  <span className="text-red-500 font-bold">*</span>
+                </label>
                 <input
                   type="text"
                   value={utrNumber}
                   onChange={(e) => setUtrNumber(e.target.value)}
-                  placeholder="e.g. UTR879654210"
+                  placeholder={
+                    paymentMethod === 'CHEQUE'
+                      ? 'e.g. 000123 / 6-digit Cheque No.'
+                      : paymentMethod === 'UPI'
+                      ? 'e.g. UPI Ref / 12-digit UTR'
+                      : paymentMethod === 'CASH'
+                      ? 'e.g. CR-4521 / Voucher No.'
+                      : 'e.g. UTR879654210 / Bank Ref #'
+                  }
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white text-xs font-mono focus:border-cyan-400 focus:outline-none"
                 />
               </div>
@@ -4443,8 +4506,8 @@ export default function InvoicesMasterPage() {
             
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
               <div className="flex items-center space-x-2">
-                <AlertTriangle className="w-5 h-5 text-rose-500" />
-                <h3 className="text-base font-bold text-rose-500">Cancel & Void Invoice</h3>
+                <RotateCcw className="w-5 h-5 text-rose-500" />
+                <h3 className="text-base font-bold text-rose-500">Reverse Invoice to Billing Queue</h3>
               </div>
               <button onClick={() => setCancelModalInvoice(null)} className="text-slate-400 hover:text-slate-600 dark:hover:text-white">
                 <X className="w-5 h-5" />
@@ -4453,19 +4516,19 @@ export default function InvoicesMasterPage() {
 
             <form onSubmit={handleConfirmCancelInvoice} className="space-y-3 text-xs">
               <div className="p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-700 dark:text-rose-300 space-y-1.5">
-                <p className="font-bold">Are you sure you want to cancel invoice {cancelModalInvoice.invoice_number}?</p>
+                <p className="font-bold">Are you sure you want to reverse invoice {cancelModalInvoice.invoice_number}?</p>
                 <p className="text-[11px] leading-relaxed opacity-90">
-                  This will reverse the ledger debit of <strong>₹{cancelModalInvoice.total_amount.toLocaleString('en-IN')}</strong> and release the {cancelModalInvoice.lr_count} attached {termPlural.toLowerCase()} back to the unbilled queue so they can be re-billed.
+                  This will cancel the invoice, reverse the ledger balance, and release all <strong>{cancelModalInvoice.lr_count || 'all'} attached {termPlural.toLowerCase()}</strong> back to the Billing Queue so they can be re-billed.
                 </p>
               </div>
 
               <div className="space-y-1">
-                <label className="font-bold text-slate-700 dark:text-slate-300">Cancellation Reason *</label>
+                <label className="font-bold text-slate-700 dark:text-slate-300">Reversal Reason *</label>
                 <input
                   type="text"
                   value={cancelReason}
                   onChange={(e) => setCancelReason(e.target.value)}
-                  placeholder="e.g. Rate revision needed / Wrong consignments attached"
+                  placeholder="e.g. Reversing to re-bill with correct dockets / rate revision"
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white text-xs focus:border-rose-400 focus:outline-none"
                   required
                 />
@@ -4484,8 +4547,8 @@ export default function InvoicesMasterPage() {
                   disabled={isCancellingInvoice}
                   className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white font-bold text-xs shadow-md shadow-rose-600/30 flex items-center space-x-1.5"
                 >
-                  <X className="w-4 h-4" />
-                  <span>{isCancellingInvoice ? 'Cancelling...' : 'Void & Release Consignments'}</span>
+                  <RotateCcw className="w-4 h-4" />
+                  <span>{isCancellingInvoice ? 'Reversing...' : 'Reverse & Release to Billing Queue ➔'}</span>
                 </button>
               </div>
             </form>
@@ -4700,12 +4763,12 @@ export default function InvoicesMasterPage() {
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
               <div className="flex items-center space-x-3">
                 <div className="p-2.5 rounded-2xl bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
-                  <Zap className="w-5 h-5" />
+                  <Receipt className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">Instant 1-Click Freight Invoice</h3>
+                  <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">Generate Freight Tax Invoice</h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                    Generate an individual GST Tax Invoice for this docket without batch steps.
+                    Generate an individual GST Tax Invoice for this docket and send directly to the company.
                   </p>
                 </div>
               </div>
@@ -4806,8 +4869,8 @@ export default function InvoicesMasterPage() {
                   disabled={isProcessingAction}
                   className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold text-xs shadow-md shadow-blue-600/30 flex items-center space-x-2"
                 >
-                  <Zap className="w-4 h-4" />
-                  <span>{isProcessingAction ? 'Generating Invoice...' : 'Generate GST Invoice & Print ➔'}</span>
+                  <Receipt className="w-4 h-4" />
+                  <span>{isProcessingAction ? 'Generating Invoice...' : 'Generate & View / Send Invoice ➔'}</span>
                 </button>
               </div>
 
