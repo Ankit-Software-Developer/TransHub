@@ -119,6 +119,9 @@ export default function ReportsPage() {
   const [searchInput, setSearchInput] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [paymentTypeFilter, setPaymentTypeFilter] = useState('ALL');
+  const [ageingPaymentTypeFilter, setAgeingPaymentTypeFilter] = useState('ALL');
+  const [selectedPartyDetails, setSelectedPartyDetails] = useState(null);
+  const [isPartyModalOpen, setIsPartyModalOpen] = useState(false);
   const [paymentClearanceFilter, setPaymentClearanceFilter] = useState('PENDING');
   const [podStatusFilter, setPodStatusFilter] = useState('PENDING');
   const [copied, setCopied] = useState(false);
@@ -318,6 +321,7 @@ export default function ReportsPage() {
         if (paymentClearanceFilter !== 'ALL') params.payment_clearance = paymentClearanceFilter;
         res = await reportService.getDocketFreightReport(params);
       } else if (activeTab === 'AGEING') {
+        if (ageingPaymentTypeFilter !== 'ALL') params.payment_type = ageingPaymentTypeFilter;
         res = await reportService.getCustomerAgeingReport(params);
       } else if (activeTab === 'TRIPS') {
         res = await reportService.getTripProfitabilityReport(params);
@@ -350,7 +354,7 @@ export default function ReportsPage() {
     } finally {
       setLoading(false);
     }
-  }, [activeTab, page, limit, selectedBranch, dateFrom, dateTo, debouncedSearch, paymentTypeFilter, paymentClearanceFilter, podStatusFilter, collectionSubView]);
+  }, [activeTab, page, limit, selectedBranch, dateFrom, dateTo, debouncedSearch, paymentTypeFilter, paymentClearanceFilter, podStatusFilter, collectionSubView, ageingPaymentTypeFilter]);
 
   useEffect(() => {
     loadReportData();
@@ -712,6 +716,27 @@ export default function ReportsPage() {
             <option value="ALL">All Payment Status</option>
           </select>
         </>
+      )}
+
+      {/* Contextual Filter: Freight / Payment Mode for Customer Outstanding & Ageing */}
+      {activeTab === 'AGEING' && (
+        <select
+          value={ageingPaymentTypeFilter}
+          onChange={(e) => {
+            setAgeingPaymentTypeFilter(e.target.value);
+            setPage(1);
+          }}
+          className={`text-xs font-bold rounded-xl border px-3 py-2 outline-none transition-all cursor-pointer shadow-xs ${
+            isDark
+              ? 'bg-slate-900/90 border-slate-800 text-slate-200 focus:border-cyan-400'
+              : 'bg-white border-slate-200 text-slate-700 focus:border-blue-500'
+          }`}
+        >
+          <option value="ALL">All Freight Modes (TBB, To-Pay, Paid)</option>
+          <option value="TBB">TBB (Corporate Credit & Invoices)</option>
+          <option value="TO_PAY">TO-PAY (Destination Delivery Cash)</option>
+          <option value="PAID">PAID (Booking Dockets)</option>
+        </select>
       )}
 
       {/* Contextual Filter: POD & Delivery Compliance Tab (Executive Custom Dropdown) */}
@@ -1095,21 +1120,28 @@ export default function ReportsPage() {
         {
           key: 'customerName',
           header: 'Party Name',
-          width: 180,
-          minWidth: 140,
+          width: 200,
+          minWidth: 150,
           sortable: true,
           render: (val, row) => (
             <div>
-              <div className="font-bold text-xs text-slate-900 dark:text-white">{row.customerName}</div>
-              <span className="block text-[10px] text-slate-400 font-normal">{row.phone}</span>
+              <div className="font-bold text-xs text-slate-900 dark:text-white flex items-center gap-1.5">
+                <span>{row.customerName}</span>
+                {row.customerCode && row.customerCode !== 'NA' && (
+                  <span className="text-[9px] font-mono px-1 rounded bg-slate-100 dark:bg-slate-800 text-slate-500">
+                    {row.customerCode}
+                  </span>
+                )}
+              </div>
+              <span className="block text-[10px] text-slate-400 font-mono mt-0.5">{row.phone}</span>
             </div>
           ),
         },
         {
           key: 'gstin',
           header: 'GSTIN',
-          width: 140,
-          minWidth: 120,
+          width: 130,
+          minWidth: 110,
           render: (val, row) => (
             <span className="font-mono text-[11px] text-slate-500">{row.gstin || '-'}</span>
           ),
@@ -1126,30 +1158,65 @@ export default function ReportsPage() {
           ),
         },
         {
-          key: 'totalInvoiced',
+          key: 'primaryMode',
+          header: 'Freight Mode',
+          width: 110,
+          align: 'center',
+          render: (val, row) => {
+            const mode = row.primaryMode || 'TBB';
+            const colors = {
+              TBB: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300 border border-blue-200/50',
+              TO_PAY: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 border border-amber-200/50',
+              MIXED: 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300 border border-purple-200/50',
+              PAID: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300 border border-emerald-200/50',
+            };
+            const labels = {
+              TBB: 'TBB Credit',
+              TO_PAY: 'To-Pay Cash',
+              MIXED: 'TBB + To-Pay',
+              PAID: 'Paid Clearance',
+            };
+            return (
+              <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${colors[mode] || colors.TBB}`}>
+                {labels[mode] || mode}
+              </span>
+            );
+          },
+        },
+        {
+          key: 'totalBilled',
           header: 'Total Billed',
           align: 'right',
-          width: 130,
+          width: 120,
           render: (val, row) => (
-            <span className="font-mono font-medium text-xs">{formatINR(row.totalInvoiced)}</span>
+            <span className="font-mono font-medium text-xs text-slate-700 dark:text-slate-300">
+              {formatINR(row.totalBilled !== undefined ? row.totalBilled : row.totalInvoiced)}
+            </span>
           ),
         },
         {
           key: 'totalOutstanding',
           header: 'Outstanding (₹)',
           align: 'right',
-          width: 140,
+          width: 160,
           render: (val, row) => (
-            <span className="font-mono font-bold text-xs text-rose-600 dark:text-rose-400">
-              {formatINR(row.totalOutstanding)}
-            </span>
+            <div>
+              <span className="font-mono font-bold text-xs text-rose-600 dark:text-rose-400 block">
+                {formatINR(row.totalOutstanding)}
+              </span>
+              <div className="flex items-center justify-end gap-1.5 text-[9px] text-slate-400 font-mono mt-0.5">
+                {row.invoicedDue > 0 && <span title="Billed Invoices">Inv: {formatINR(row.invoicedDue)}</span>}
+                {row.unbilledTbbDue > 0 && <span title="Unbilled TBB Dockets">TBB: {formatINR(row.unbilledTbbDue)}</span>}
+                {row.topayDue > 0 && <span title="Pending To-Pay Dockets">ToPay: {formatINR(row.topayDue)}</span>}
+              </div>
+            </div>
           ),
         },
         {
           key: 'bucket0_30',
           header: '0-30 Days',
           align: 'right',
-          width: 120,
+          width: 110,
           render: (val, row) => (
             <span className="font-mono font-semibold text-xs text-emerald-600 dark:text-emerald-400">
               {formatINR(row.bucket0_30)}
@@ -1160,7 +1227,7 @@ export default function ReportsPage() {
           key: 'bucket31_60',
           header: '31-60 Days',
           align: 'right',
-          width: 120,
+          width: 110,
           render: (val, row) => (
             <span className="font-mono font-semibold text-xs text-amber-600 dark:text-amber-400">
               {formatINR(row.bucket31_60)}
@@ -1171,7 +1238,7 @@ export default function ReportsPage() {
           key: 'bucket61_90',
           header: '61-90 Days',
           align: 'right',
-          width: 120,
+          width: 110,
           render: (val, row) => (
             <span className="font-mono font-semibold text-xs text-orange-600 dark:text-orange-400">
               {formatINR(row.bucket61_90)}
@@ -1182,7 +1249,7 @@ export default function ReportsPage() {
           key: 'bucket90Plus',
           header: '90+ Days',
           align: 'right',
-          width: 120,
+          width: 110,
           render: (val, row) => (
             <span className="font-mono font-bold text-xs text-rose-600 dark:text-rose-400">
               {formatINR(row.bucket90Plus)}
@@ -1190,22 +1257,61 @@ export default function ReportsPage() {
           ),
         },
         {
-          key: 'isOverdue',
+          key: 'alertLevel',
           header: 'Alert',
           align: 'center',
           width: 100,
-          render: (val, row) => (
-            row.isOverdue ? (
-              <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300">
-                <AlertCircle className="w-3 h-3" />
-                <span>Overdue</span>
-              </span>
-            ) : (
-              <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">
+          render: (val, row) => {
+            const level = row.alertLevel || (row.isOverdue ? 'OVERDUE' : 'OK');
+            if (level === 'CRITICAL') {
+              return (
+                <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-rose-600 text-white animate-pulse">
+                  <AlertCircle className="w-3 h-3" />
+                  <span>Critical</span>
+                </span>
+              );
+            }
+            if (level === 'HIGH' || level === 'OVERDUE') {
+              return (
+                <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300">
+                  <AlertCircle className="w-3 h-3" />
+                  <span>Overdue</span>
+                </span>
+              );
+            }
+            if (level === 'DUE') {
+              return (
+                <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                  <Clock className="w-3 h-3" />
+                  <span>Due Soon</span>
+                </span>
+              );
+            }
+            return (
+              <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">
                 <CheckCircle2 className="w-3 h-3" />
-                <span>OK</span>
+                <span>Normal</span>
               </span>
-            )
+            );
+          },
+        },
+        {
+          key: 'actions',
+          header: 'Action',
+          align: 'center',
+          width: 100,
+          render: (val, row) => (
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedPartyDetails(row);
+                setIsPartyModalOpen(true);
+              }}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-300 dark:hover:bg-blue-900/50 transition-all cursor-pointer shadow-2xs"
+            >
+              <Eye className="w-3.5 h-3.5" />
+              <span>Breakdown</span>
+            </button>
           ),
         },
       ];
@@ -2472,7 +2578,9 @@ export default function ReportsPage() {
                   <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'}`}>
                     <span className="text-[10px] font-bold uppercase text-slate-400">Total Receivables</span>
                     <p className="text-xl font-black text-rose-500 mt-1">{formatINR(summary.totalReceivables)}</p>
-                    <span className="text-[11px] text-slate-400">{summary.totalCustomers} Credit Parties</span>
+                    <span className="text-[11px] text-slate-400 block truncate" title={`TBB: ${formatINR(summary.totalTbbReceivables || 0)} | To-Pay: ${formatINR(summary.totalTopayReceivables || 0)}`}>
+                      TBB: {formatINR(summary.totalTbbReceivables || 0)} • To-Pay: {formatINR(summary.totalTopayReceivables || 0)}
+                    </span>
                   </div>
                   <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'}`}>
                     <span className="text-[10px] font-bold uppercase text-slate-400">0 - 30 Days (Current)</span>
@@ -3643,6 +3751,240 @@ export default function ReportsPage() {
                 className="px-4 py-2 rounded-xl text-xs font-bold bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 cursor-pointer transition-colors"
               >
                 Close Breakdown
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 3: Customer Outstanding & Ageing Party Breakdown */}
+      {isPartyModalOpen && selectedPartyDetails && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className={`w-full max-w-3xl max-h-[90vh] rounded-3xl border shadow-2xl flex flex-col overflow-hidden ${
+            isDark ? 'bg-[#0B1020] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
+          }`}>
+            {/* Modal Header */}
+            <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between shrink-0 bg-slate-50/50 dark:bg-slate-900/40">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-2xl bg-rose-500/10 text-rose-500 flex items-center justify-center font-bold">
+                  <TrendingUp className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-extrabold">{selectedPartyDetails.customerName}</h3>
+                    {selectedPartyDetails.customerCode && selectedPartyDetails.customerCode !== 'NA' && (
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500">
+                        {selectedPartyDetails.customerCode}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-3">
+                    <span>GSTIN: <strong className="font-mono text-slate-600 dark:text-slate-300">{selectedPartyDetails.gstin}</strong></span>
+                    <span>•</span>
+                    <span>Phone: <strong className="font-mono text-slate-600 dark:text-slate-300">{selectedPartyDetails.phone}</strong></span>
+                    <span>•</span>
+                    <span>Branch: <strong className="text-slate-600 dark:text-slate-300">{selectedPartyDetails.branch}</strong></span>
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsPartyModalOpen(false);
+                  setSelectedPartyDetails(null);
+                }}
+                className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-white cursor-pointer transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              {/* Financial KPI Strip */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="p-3.5 rounded-2xl border border-rose-500/30 bg-rose-500/5">
+                  <span className="text-[10px] font-bold uppercase text-rose-500">Total Outstanding</span>
+                  <p className="text-xl font-black text-rose-600 dark:text-rose-400 mt-0.5">
+                    {formatINR(selectedPartyDetails.totalOutstanding)}
+                  </p>
+                </div>
+                <div className="p-3.5 rounded-2xl border border-blue-500/20 bg-blue-500/5">
+                  <span className="text-[10px] font-bold uppercase text-blue-500">Billed Invoices</span>
+                  <p className="text-lg font-bold text-slate-900 dark:text-white mt-0.5">
+                    {formatINR(selectedPartyDetails.invoicedDue || 0)}
+                  </p>
+                  <span className="text-[10px] text-slate-400">{selectedPartyDetails.invoiceCount || 0} Invoices Pending</span>
+                </div>
+                <div className="p-3.5 rounded-2xl border border-amber-500/20 bg-amber-500/5">
+                  <span className="text-[10px] font-bold uppercase text-amber-500">Unbilled TBB Freight</span>
+                  <p className="text-lg font-bold text-slate-900 dark:text-white mt-0.5">
+                    {formatINR(selectedPartyDetails.unbilledTbbDue || 0)}
+                  </p>
+                  <span className="text-[10px] text-slate-400">Accrued Freight</span>
+                </div>
+                <div className="p-3.5 rounded-2xl border border-purple-500/20 bg-purple-500/5">
+                  <span className="text-[10px] font-bold uppercase text-purple-500">To-Pay Delivery Cash</span>
+                  <p className="text-lg font-bold text-slate-900 dark:text-white mt-0.5">
+                    {formatINR(selectedPartyDetails.topayDue || 0)}
+                  </p>
+                  <span className="text-[10px] text-slate-400">Destination Collection</span>
+                </div>
+              </div>
+
+              {/* Ageing Buckets Bar */}
+              <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-500 block mb-2">Ageing Timeline Breakdown</span>
+                <div className="grid grid-cols-4 gap-2 text-center text-xs">
+                  <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+                    <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 block">0-30 Days</span>
+                    <strong className="font-mono text-emerald-700 dark:text-emerald-300 font-bold text-sm">{formatINR(selectedPartyDetails.bucket0_30)}</strong>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20">
+                    <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 block">31-60 Days</span>
+                    <strong className="font-mono text-amber-700 dark:text-amber-300 font-bold text-sm">{formatINR(selectedPartyDetails.bucket31_60)}</strong>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-orange-500/10 border border-orange-500/20">
+                    <span className="text-[10px] font-semibold text-orange-600 dark:text-orange-400 block">61-90 Days</span>
+                    <strong className="font-mono text-orange-700 dark:text-orange-300 font-bold text-sm">{formatINR(selectedPartyDetails.bucket61_90)}</strong>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20">
+                    <span className="text-[10px] font-semibold text-rose-600 dark:text-rose-400 block">90+ Days (Risk)</span>
+                    <strong className="font-mono text-rose-700 dark:text-rose-300 font-bold text-sm">{formatINR(selectedPartyDetails.bucket90Plus)}</strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* 1. Unpaid Billed Invoices List */}
+              {selectedPartyDetails.detailedInvoices && selectedPartyDetails.detailedInvoices.length > 0 && (
+                <div>
+                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200 mb-2 flex items-center justify-between">
+                    <span>Unpaid Invoices ({selectedPartyDetails.detailedInvoices.length})</span>
+                    <span className="text-rose-500 font-mono font-bold">{formatINR(selectedPartyDetails.invoicedDue)}</span>
+                  </h4>
+                  <div className="border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden">
+                    <table className="w-full text-xs text-left">
+                      <thead className="bg-slate-100 dark:bg-slate-800/60 font-bold text-slate-600 dark:text-slate-300">
+                        <tr>
+                          <th className="p-2.5">Invoice #</th>
+                          <th className="p-2.5">Invoice Date</th>
+                          <th className="p-2.5">Due Date</th>
+                          <th className="p-2.5 text-right">Billed Amount</th>
+                          <th className="p-2.5 text-right">Balance Due</th>
+                          <th className="p-2.5 text-center">Overdue Days</th>
+                          <th className="p-2.5 text-center">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-mono text-[11px]">
+                        {selectedPartyDetails.detailedInvoices.map((inv) => (
+                          <tr key={inv.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40">
+                            <td className="p-2.5 font-bold text-blue-600 dark:text-blue-400">{inv.invoiceNumber}</td>
+                            <td className="p-2.5">{inv.invoiceDate ? String(inv.invoiceDate).slice(0, 10) : '-'}</td>
+                            <td className="p-2.5">{inv.dueDate ? String(inv.dueDate).slice(0, 10) : '-'}</td>
+                            <td className="p-2.5 text-right">{formatINR(inv.totalAmount)}</td>
+                            <td className="p-2.5 text-right font-bold text-rose-600 dark:text-rose-400">{formatINR(inv.balanceAmount)}</td>
+                            <td className="p-2.5 text-center">
+                              <span className={`px-2 py-0.5 rounded font-bold ${inv.overdueDays > 30 ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/40' : 'bg-slate-100 text-slate-700 dark:bg-slate-800'}`}>
+                                {inv.overdueDays} days
+                              </span>
+                            </td>
+                            <td className="p-2.5 text-center">
+                              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                                {inv.status}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* 2. Unbilled TBB & Pending To-Pay Dockets List */}
+              {selectedPartyDetails.detailedDockets && selectedPartyDetails.detailedDockets.length > 0 && (
+                <div>
+                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200 mb-2 flex items-center justify-between">
+                    <span>Pending Consignments &amp; Dockets ({selectedPartyDetails.detailedDockets.length})</span>
+                    <span className="text-amber-500 font-mono font-bold">
+                      {formatINR((selectedPartyDetails.unbilledTbbDue || 0) + (selectedPartyDetails.topayDue || 0))}
+                    </span>
+                  </h4>
+                  <div className="border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden">
+                    <table className="w-full text-xs text-left">
+                      <thead className="bg-slate-100 dark:bg-slate-800/60 font-bold text-slate-600 dark:text-slate-300">
+                        <tr>
+                          <th className="p-2.5">Docket / LR #</th>
+                          <th className="p-2.5">Freight Type</th>
+                          <th className="p-2.5">Booking Date</th>
+                          <th className="p-2.5">Delivery Status</th>
+                          <th className="p-2.5 text-right">Freight Amount</th>
+                          <th className="p-2.5 text-center">Age (Days)</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-mono text-[11px]">
+                        {selectedPartyDetails.detailedDockets.map((d) => (
+                          <tr key={d.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40">
+                            <td className="p-2.5 font-bold text-slate-900 dark:text-white">{d.docketNumber}</td>
+                            <td className="p-2.5">
+                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                                d.paymentType === 'TBB' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40'
+                              }`}>
+                                {d.modeDesc || d.paymentType}
+                              </span>
+                            </td>
+                            <td className="p-2.5">{d.bookingDate ? String(d.bookingDate).slice(0, 10) : '-'}</td>
+                            <td className="p-2.5 font-sans font-semibold text-slate-600 dark:text-slate-300">{d.status}</td>
+                            <td className="p-2.5 text-right font-bold text-rose-600 dark:text-rose-400">{formatINR(d.totalAmount)}</td>
+                            <td className="p-2.5 text-center">
+                              <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                                {d.overdueDays} days
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-3.5 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 flex items-center justify-between shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  const rawPhone = (selectedPartyDetails.phone || '').replace(/[^0-9]/g, '');
+                  const phoneWithCountry = rawPhone.length === 10 ? `91${rawPhone}` : rawPhone;
+                  const message = `*Payment Reminder - ${user?.organization?.name || 'TransHub Logistics'}*
+Dear ${selectedPartyDetails.customerName},
+
+Your freight account has an outstanding balance of *${formatINR(selectedPartyDetails.totalOutstanding)}*.
+
+Breakdown:
+• Billed Invoices (${selectedPartyDetails.invoiceCount || 0}): ${formatINR(selectedPartyDetails.invoicedDue || 0)}
+• Unbilled TBB Dockets: ${formatINR(selectedPartyDetails.unbilledTbbDue || 0)}
+• To-Pay Delivery Freight: ${formatINR(selectedPartyDetails.topayDue || 0)}
+
+Please arrange settlement at your earliest convenience.
+Thank you for your business!`;
+                  window.open(`https://wa.me/${phoneWithCountry}?text=${encodeURIComponent(message)}`, '_blank');
+                }}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/20 cursor-pointer active:scale-95 transition-all"
+              >
+                <span>Send WhatsApp Reminder</span>
+                <Send className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsPartyModalOpen(false);
+                  setSelectedPartyDetails(null);
+                }}
+                className="px-5 py-2 rounded-xl text-xs font-bold bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 cursor-pointer transition-colors"
+              >
+                Close
               </button>
             </div>
           </div>

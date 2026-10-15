@@ -1,7 +1,7 @@
 // frontend/app/(owner)/settings/page.js - Updated tab navigation
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import api from '../../../services/api';
 import { useStore } from '../../../store/useStore';
 import { useTerminology } from '../../../hooks/useTerminology';

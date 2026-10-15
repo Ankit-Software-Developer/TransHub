@@ -360,27 +360,36 @@ const getDocketFreightReport = async (req, res) => {
 const getCustomerAgeingReport = async (req, res) => {
   try {
     const m = req.tenantDb || defaultModels;
-    const { Customer, Invoice, Payment, Branch } = m;
-    const { branch_id, search, min_balance = 0, page = 1, limit = 25 } = req.query;
+    const { Customer, Invoice, Branch, Consignment } = m;
+    const {
+      branch_id,
+      payment_type = 'ALL',
+      search,
+      min_balance = 0,
+      page = 1,
+      limit = 25,
+    } = req.query;
 
-    const customerWhere = {
+    const tenantFilter = {
       tenant_id: req.tenant.tenantId,
       ...(req.tenant.organizationId ? { organization_id: req.tenant.organizationId } : {}),
-      status: 'ACTIVE',
     };
 
     const effectiveBranchId = getEffectiveBranch(req, branch_id);
-    if (effectiveBranchId) {
-      customerWhere.branch_id = effectiveBranchId;
-    }
+
+    // 1. Fetch Customers
+    const customerWhere = {
+      ...tenantFilter,
+      status: 'ACTIVE',
+    };
 
     if (search && search.trim()) {
       const q = `%${search.trim()}%`;
       customerWhere[Op.or] = [
-        { name: { [Op.iLike || Op.like]: q } },
-        { customer_code: { [Op.iLike || Op.like]: q } },
-        { phone: { [Op.iLike || Op.like]: q } },
-        { gstin: { [Op.iLike || Op.like]: q } },
+        { name: { [Op.like]: q } },
+        { customer_code: { [Op.like]: q } },
+        { phone: { [Op.like]: q } },
+        { gstin: { [Op.like]: q } },
       ];
     }
 
@@ -393,24 +402,70 @@ const getCustomerAgeingReport = async (req, res) => {
           attributes: ['id', 'branch_name', 'branch_code', ['branch_name', 'name'], ['branch_code', 'code'], 'city'],
           required: false,
         },
-        {
-          model: Invoice,
-          as: 'invoices',
-          where: {
-            status: { [Op.in]: ['GENERATED', 'SENT', 'PARTIAL', 'OVERDUE'] },
-          },
-          required: false,
-          include: [
-            {
-              model: Payment,
-              as: 'payments',
-              required: false,
-              where: { status: 'COMPLETED' },
-            },
-          ],
-        },
       ],
       order: [['name', 'ASC']],
+    });
+
+    // 2. Fetch Invoices (Billed TBB / Credit)
+    const invoiceWhere = {
+      ...tenantFilter,
+      status: { [Op.in]: ['GENERATED', 'SENT', 'PARTIAL', 'OVERDUE'] },
+    };
+    if (effectiveBranchId) {
+      invoiceWhere.branch_id = effectiveBranchId;
+    }
+
+    const pendingInvoices = await Invoice.findAll({
+      where: invoiceWhere,
+      attributes: [
+        'id', 'invoice_number', 'customer_id', 'branch_id', 'total_amount',
+        'paid_amount', 'balance_amount', 'status', 'invoice_date', 'due_date', 'created_at',
+      ],
+    });
+
+    // 3. Fetch Consignments (Unbilled TBB & Pending To-Pay)
+    const consignmentWhere = {
+      ...tenantFilter,
+    };
+    if (effectiveBranchId) {
+      consignmentWhere[Op.or] = [
+        { origin_branch_id: effectiveBranchId },
+        { dest_branch_id: effectiveBranchId },
+        { current_branch_id: effectiveBranchId },
+      ];
+    }
+
+    if (payment_type === 'TBB') {
+      consignmentWhere.payment_type = 'TBB';
+      consignmentWhere[Op.and] = [
+        { [Op.or]: [{ is_billed: false }, { invoice_id: null }] },
+      ];
+    } else if (payment_type === 'TO_PAY') {
+      consignmentWhere.payment_type = 'TO_PAY';
+      consignmentWhere.status = { [Op.in]: ['POD_UPLOADED', 'DELIVERED', 'REACHED_DESTINATION', 'COMPLETED', 'RECEIVED_AT_HUB'] };
+    } else if (payment_type === 'PAID') {
+      consignmentWhere.payment_type = 'PAID';
+    } else {
+      // ALL
+      consignmentWhere[Op.or] = [
+        {
+          payment_type: 'TBB',
+          [Op.or]: [{ is_billed: false }, { invoice_id: null }],
+        },
+        {
+          payment_type: 'TO_PAY',
+          status: { [Op.in]: ['POD_UPLOADED', 'DELIVERED', 'REACHED_DESTINATION', 'COMPLETED', 'RECEIVED_AT_HUB'] },
+        },
+      ];
+    }
+
+    const pendingConsignments = await Consignment.findAll({
+      where: consignmentWhere,
+      attributes: [
+        'id', 'docket_number', 'lr_number', 'consignor_id', 'consignee_id',
+        'origin_branch_id', 'dest_branch_id', 'payment_type', 'total_amount',
+        'status', 'booking_date', 'expected_delivery_date', 'created_at',
+      ],
     });
 
     const now = new Date();
@@ -423,70 +478,197 @@ const getCustomerAgeingReport = async (req, res) => {
     let totalBucket61_90 = 0;
     let totalBucket90Plus = 0;
 
+    let totalTbbReceivables = 0;
+    let totalTopayReceivables = 0;
+
     customers.forEach((cust) => {
-      let custTotalInvoiced = 0;
-      let custTotalPaid = 0;
-      let custBalance = Number(cust.current_balance || 0);
+      // Match invoices
+      const custInvs = pendingInvoices.filter((i) => i.customer_id === cust.id);
+
+      // Match unbilled TBB (Consignor is billed)
+      const custTbb = (payment_type === 'TO_PAY')
+        ? []
+        : pendingConsignments.filter((c) => c.payment_type === 'TBB' && c.consignor_id === cust.id);
+
+      // Match pending To-Pay (Consignee pays at delivery, or consignor if specified)
+      const custToPay = (payment_type === 'TBB')
+        ? []
+        : pendingConsignments.filter((c) => c.payment_type === 'TO_PAY' && (c.consignee_id === cust.id || c.consignor_id === cust.id));
+
+      // Skip if branch filter is applied and customer has no connection to this branch
+      if (effectiveBranchId) {
+        const matchesBranch = cust.branch_id === effectiveBranchId ||
+          custInvs.length > 0 ||
+          custTbb.length > 0 ||
+          custToPay.length > 0;
+        if (!matchesBranch) return;
+      }
 
       let b0_30 = 0;
       let b31_60 = 0;
       let b61_90 = 0;
       let b90Plus = 0;
 
-      const invoices = cust.invoices || [];
-      invoices.forEach((inv) => {
-        const invTotal = Number(inv.total_amount || 0);
-        const invPaid = (inv.payments || []).reduce((acc, p) => acc + Number(p.amount || 0), 0);
-        const invDue = Math.max(0, invTotal - invPaid);
+      let custInvoicedDue = 0;
+      let custUnbilledTbbDue = 0;
+      let custTopayDue = 0;
 
-        custTotalInvoiced += invTotal;
-        custTotalPaid += invPaid;
+      const detailedInvoices = [];
+      const detailedDockets = [];
 
-        if (invDue > 0) {
-          const invDate = new Date(inv.invoice_date || inv.created_at);
-          const diffDays = Math.floor((now - invDate) / (1000 * 60 * 60 * 24));
+      // 1. Process Billed Invoices
+      if (payment_type !== 'TO_PAY') {
+        custInvs.forEach((inv) => {
+          const invTotal = Number(inv.total_amount || 0);
+          const invPaid = Number(inv.paid_amount || 0);
+          const invDue = Number(
+            inv.balance_amount !== null && inv.balance_amount !== undefined
+              ? inv.balance_amount
+              : Math.max(0, invTotal - invPaid)
+          );
 
-          if (diffDays <= 30) b0_30 += invDue;
-          else if (diffDays <= 60) b31_60 += invDue;
-          else if (diffDays <= 90) b61_90 += invDue;
-          else b90Plus += invDue;
+          if (invDue > 0) {
+            custInvoicedDue += invDue;
+            const refDate = new Date(inv.due_date || inv.invoice_date || inv.created_at);
+            const diffDays = Math.max(0, Math.floor((now - refDate) / (1000 * 60 * 60 * 24)));
+
+            if (diffDays <= 30) b0_30 += invDue;
+            else if (diffDays <= 60) b31_60 += invDue;
+            else if (diffDays <= 90) b61_90 += invDue;
+            else b90Plus += invDue;
+
+            detailedInvoices.push({
+              id: inv.id,
+              invoiceNumber: inv.invoice_number,
+              invoiceDate: inv.invoice_date,
+              dueDate: inv.due_date,
+              totalAmount: invTotal,
+              paidAmount: invPaid,
+              balanceAmount: invDue,
+              status: inv.status,
+              overdueDays: diffDays,
+            });
+          }
+        });
+      }
+
+      // 2. Process Unbilled TBB Dockets
+      custTbb.forEach((c) => {
+        const amt = Number(c.total_amount || 0);
+        if (amt > 0) {
+          custUnbilledTbbDue += amt;
+          const refDate = new Date(c.booking_date || c.created_at);
+          const diffDays = Math.max(0, Math.floor((now - refDate) / (1000 * 60 * 60 * 24)));
+
+          if (diffDays <= 30) b0_30 += amt;
+          else if (diffDays <= 60) b31_60 += amt;
+          else if (diffDays <= 90) b61_90 += amt;
+          else b90Plus += amt;
+
+          detailedDockets.push({
+            id: c.id,
+            docketNumber: c.docket_number || c.lr_number,
+            paymentType: 'TBB',
+            modeDesc: 'TBB (Unbilled Accrued)',
+            totalAmount: amt,
+            status: c.status,
+            bookingDate: c.booking_date,
+            overdueDays: diffDays,
+          });
         }
       });
 
-      // If customer has an active ledger balance or calculated invoice due
-      const effectiveDue = Math.max(custBalance, b0_30 + b31_60 + b61_90 + b90Plus);
+      // 3. Process Pending To-Pay Dockets
+      custToPay.forEach((c) => {
+        const amt = Number(c.total_amount || 0);
+        if (amt > 0) {
+          custTopayDue += amt;
+          const refDate = new Date(c.expected_delivery_date || c.booking_date || c.created_at);
+          const diffDays = Math.max(0, Math.floor((now - refDate) / (1000 * 60 * 60 * 24)));
 
+          if (diffDays <= 30) b0_30 += amt;
+          else if (diffDays <= 60) b31_60 += amt;
+          else if (diffDays <= 90) b61_90 += amt;
+          else b90Plus += amt;
+
+          detailedDockets.push({
+            id: c.id,
+            docketNumber: c.docket_number || c.lr_number,
+            paymentType: 'TO_PAY',
+            modeDesc: 'TO-PAY (Destination Collection)',
+            totalAmount: amt,
+            status: c.status,
+            bookingDate: c.booking_date,
+            overdueDays: diffDays,
+          });
+        }
+      });
+
+      const effectiveDue = b0_30 + b31_60 + b61_90 + b90Plus;
+
+      // Filter by min_balance
       if (effectiveDue >= Number(min_balance)) {
         totalReceivables += effectiveDue;
-        totalOverdue += b31_60 + b61_90 + b90Plus;
+        totalOverdue += (b31_60 + b61_90 + b90Plus);
         totalBucket0_30 += b0_30;
         totalBucket31_60 += b31_60;
         totalBucket61_90 += b61_90;
         totalBucket90Plus += b90Plus;
 
+        totalTbbReceivables += (custInvoicedDue + custUnbilledTbbDue);
+        totalTopayReceivables += custTopayDue;
+
+        // Determine primary freight mode
+        let primaryMode = 'TBB';
+        if (custTopayDue > 0 && (custInvoicedDue > 0 || custUnbilledTbbDue > 0)) {
+          primaryMode = 'MIXED';
+        } else if (custTopayDue > 0) {
+          primaryMode = 'TO_PAY';
+        } else if (payment_type === 'PAID') {
+          primaryMode = 'PAID';
+        }
+
+        // Determine alert level
+        let alertLevel = 'OK';
+        if (b90Plus > 0) {
+          alertLevel = 'CRITICAL';
+        } else if (b61_90 > 0) {
+          alertLevel = 'HIGH';
+        } else if (b31_60 > 0) {
+          alertLevel = 'DUE';
+        }
+
         ageingData.push({
           customerId: cust.id,
           customerName: cust.name,
-          customerCode: cust.code || 'NA',
+          customerCode: cust.customer_code || 'NA',
           phone: cust.phone || 'NA',
           gstin: cust.gstin || 'Unregistered',
           branch: cust.branch ? (cust.branch.branch_name || cust.branch.name || 'Head Office') : 'Head Office',
-          creditPeriodDays: cust.credit_period_days || 30,
+          primaryMode,
+          creditPeriodDays: cust.credit_days || 30,
           creditLimit: Number(cust.credit_limit || 0),
-          totalInvoiced: parseFloat(custTotalInvoiced.toFixed(2)),
-          totalPaid: parseFloat(custTotalPaid.toFixed(2)),
+          invoicedDue: parseFloat(custInvoicedDue.toFixed(2)),
+          unbilledTbbDue: parseFloat(custUnbilledTbbDue.toFixed(2)),
+          topayDue: parseFloat(custTopayDue.toFixed(2)),
+          totalBilled: parseFloat((custInvoicedDue + custUnbilledTbbDue + custTopayDue).toFixed(2)),
           totalOutstanding: parseFloat(effectiveDue.toFixed(2)),
           bucket0_30: parseFloat(b0_30.toFixed(2)),
           bucket31_60: parseFloat(b31_60.toFixed(2)),
           bucket61_90: parseFloat(b61_90.toFixed(2)),
           bucket90Plus: parseFloat(b90Plus.toFixed(2)),
-          isOverdue: b31_60 + b61_90 + b90Plus > 0,
+          isOverdue: (b31_60 + b61_90 + b90Plus) > 0,
+          alertLevel,
+          invoiceCount: detailedInvoices.length,
+          docketCount: detailedDockets.length,
+          detailedInvoices,
+          detailedDockets,
         });
       }
     });
 
-    const pageInt = parseInt(page, 10);
-    const limitInt = parseInt(limit, 10);
+    const pageInt = parseInt(page, 10) || 1;
+    const limitInt = parseInt(limit, 10) || 25;
     const offset = (pageInt - 1) * limitInt;
     const paginatedRows = ageingData.slice(offset, offset + limitInt);
 
@@ -498,6 +680,8 @@ const getCustomerAgeingReport = async (req, res) => {
       bucket31_60: parseFloat(totalBucket31_60.toFixed(2)),
       bucket61_90: parseFloat(totalBucket61_90.toFixed(2)),
       bucket90Plus: parseFloat(totalBucket90Plus.toFixed(2)),
+      totalTbbReceivables: parseFloat(totalTbbReceivables.toFixed(2)),
+      totalTopayReceivables: parseFloat(totalTopayReceivables.toFixed(2)),
     };
 
     return paginatedResponse(
@@ -508,7 +692,7 @@ const getCustomerAgeingReport = async (req, res) => {
         page: pageInt,
         limit: limitInt,
         total: ageingData.length,
-        pages: Math.ceil(ageingData.length / limitInt),
+        pages: Math.ceil(ageingData.length / limitInt) || 1,
         summary,
       }
     );
