@@ -462,11 +462,11 @@ export default function AuditLogsPage() {
           <div className={`rounded-3xl border shadow-xl overflow-hidden ${
             isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200'
           }`}>
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto overflow-y-auto max-h-[480px] sm:max-h-[540px] lg:max-h-[calc(100vh-290px)] min-h-[280px] scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700">
               <table className="w-full text-left border-collapse text-xs">
-                <thead>
+                <thead className="sticky top-0 z-20 shadow-xs">
                   <tr className={`border-b text-[11px] font-bold uppercase tracking-wider ${
-                    isDark ? 'bg-slate-900/60 border-slate-800 text-slate-400' : 'bg-slate-50/80 border-slate-200 text-slate-500'
+                    isDark ? 'bg-[#0B1020] border-slate-800 text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-500'
                   }`}>
                     <th className="py-3.5 px-4">Action</th>
                     <th className="py-3.5 px-4">Entity & Target</th>

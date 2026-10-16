@@ -70,6 +70,25 @@ export function usePermissions() {
     );
   }, [roles, user]);
 
+  const isAccountant = useMemo(() => {
+    if (!user) return false;
+    return (
+      roles.includes('ACCOUNTANT') ||
+      roles.includes('ACCOUNTS') ||
+      roles.includes('FINANCE') ||
+      roles.includes('FINANCE_MANAGER')
+    );
+  }, [roles, user]);
+
+  const canViewFinancialAudit = useMemo(() => {
+    if (isAdmin || isAuditor || isAccountant) return true;
+    const permissions = user?.permissions || [];
+    if (Array.isArray(permissions) && (permissions.includes('*') || permissions.includes('reports.audit') || permissions.includes('finance.view') || permissions.includes('audit.view'))) {
+      return true;
+    }
+    return false;
+  }, [isAdmin, isAuditor, isAccountant, user]);
+
   const hasPermission = (permissionCode) => {
     if (isAdmin) return true;
     if (!user) return true;
@@ -182,6 +201,84 @@ export function usePermissions() {
     return hasPermission(`${mod}.${act}`) || hasPermission(`${mod}.manage`);
   };
 
+  const canViewReportTab = (tabId) => {
+    if (isAdmin) return true;
+    const tabCodeMap = {
+      DOCKETS: 'reports.dockets.view',
+      POD: 'reports.pod.view',
+      COLLECTIONS: 'reports.collections.view',
+      AGEING: 'reports.ageing.view',
+      TRIPS: 'reports.trips_pnl.view',
+      GST: 'reports.gst.view',
+    };
+    const code = tabCodeMap[tabId];
+    if (!code) return true;
+
+    const perms = Array.isArray(user?.permissions) ? user.permissions : [];
+    if (perms.includes('*')) return true;
+    if (perms.includes(code)) return true;
+
+    const hasGranularReportPerms = perms.some(
+      (p) =>
+        typeof p === 'string' &&
+        (p.startsWith('reports.dockets.') ||
+          p.startsWith('reports.pod.') ||
+          p.startsWith('reports.collections.') ||
+          p.startsWith('reports.ageing.') ||
+          p.startsWith('reports.trips_pnl.') ||
+          p.startsWith('reports.gst.'))
+    );
+
+    if (hasGranularReportPerms) {
+      return false;
+    }
+
+    if (canViewFinancialAudit || isAuditor || isAccountant) return true;
+    if (isBranchManager) {
+      return ['DOCKETS', 'POD', 'COLLECTIONS', 'AGEING'].includes(tabId);
+    }
+    return ['DOCKETS', 'POD'].includes(tabId);
+  };
+
+  const canExportReportTab = (tabId) => {
+    if (isAdmin) return true;
+    const tabCodeMap = {
+      DOCKETS: 'reports.dockets.export',
+      POD: 'reports.pod.export',
+      COLLECTIONS: 'reports.collections.export',
+      AGEING: 'reports.ageing.export',
+      TRIPS: 'reports.trips_pnl.export',
+      GST: 'reports.gst.export',
+    };
+    const code = tabCodeMap[tabId];
+    if (!code) return canExport;
+
+    const perms = Array.isArray(user?.permissions) ? user.permissions : [];
+    if (perms.includes('*')) return true;
+    if (perms.includes(code)) return true;
+
+    const hasGranularReportPerms = perms.some(
+      (p) =>
+        typeof p === 'string' &&
+        (p.startsWith('reports.dockets.') ||
+          p.startsWith('reports.pod.') ||
+          p.startsWith('reports.collections.') ||
+          p.startsWith('reports.ageing.') ||
+          p.startsWith('reports.trips_pnl.') ||
+          p.startsWith('reports.gst.'))
+    );
+
+    if (hasGranularReportPerms) {
+      return false;
+    }
+
+    if (canViewFinancialAudit || isAuditor || isAccountant) return true;
+    if (isBranchManager) {
+      return ['DOCKETS', 'POD', 'COLLECTIONS', 'AGEING'].includes(tabId);
+    }
+    return ['DOCKETS', 'POD'].includes(tabId);
+  };
+
   return {
     user,
     roles,
@@ -246,11 +343,15 @@ export function usePermissions() {
     // Reports permissions
     canViewReport: isAdmin || hasPermission('reports.view'),
     canCreateReport: isAdmin || hasPermission('reports.create'),
+    canViewReportTab,
+    canExportReportTab,
     // Administration & Audit permissions
     canManageRoles: isAdmin || hasPermission('role.manage'),
     canManageUsers: isAdmin || hasPermission('role.manage') || hasPermission('settings.manage') || hasPermission('user.manage'),
     canManageSettings: isAdmin || hasPermission('settings.manage') || hasPermission('role.manage'),
     isAuditor,
+    isAccountant,
+    canViewFinancialAudit,
     canViewAudit: isAdmin || isAuditor || hasPermission('audit.view'),
     canExportAudit: isAdmin || isAuditor || hasPermission('audit.export') || hasPermission('data.export'),
     // Generic action shortcuts

@@ -246,6 +246,18 @@ const createTripAndDispatch = async (req, res) => {
       return errorResponse(res, 'Origin, destination, vehicle, and driver are required', null, 400);
     }
 
+    // Verify driver branch assignment: If driver is assigned to a specific hub/branch, they can only be assigned to trips departing from that hub
+    const assignedDriverRec = await Driver.findByPk(driver_id, { transaction });
+    if (assignedDriverRec && assignedDriverRec.branch_id && assignedDriverRec.branch_id !== origin_branch_id) {
+      const driverBranch = await Branch.findByPk(assignedDriverRec.branch_id, { transaction });
+      return errorResponse(
+        res,
+        `Driver "${assignedDriverRec.name}" is registered at ${driverBranch?.branch_name || 'another hub'} and cannot be assigned to trips originating from this branch.`,
+        null,
+        400
+      );
+    }
+
     if (consignment_ids.length === 0) {
       return errorResponse(res, 'Select at least one consignment to load and dispatch', null, 400);
     }
@@ -418,6 +430,20 @@ const createTrip = async (req, res) => {
       return errorResponse(res, 'Please select a vehicle to assign to this trip', null, 400);
     }
 
+    // Verify driver branch assignment
+    if (driver_id && origin_branch_id) {
+      const assignedDriverRec = await Driver.findByPk(driver_id);
+      if (assignedDriverRec && assignedDriverRec.branch_id && assignedDriverRec.branch_id !== origin_branch_id) {
+        const driverBranch = await Branch.findByPk(assignedDriverRec.branch_id);
+        return errorResponse(
+          res,
+          `Driver "${assignedDriverRec.name}" is registered at ${driverBranch?.branch_name || 'another hub'} and cannot be assigned to trips originating from this branch.`,
+          null,
+          400
+        );
+      }
+    }
+
     const { formattedNumber: tripNumber } = await generateNextNumber({
       tenantId: req.tenant.tenantId,
       organizationId: req.tenant.organizationId,
@@ -520,6 +546,20 @@ const assignVehicleToTrip = async (req, res) => {
       trip.vehicle_id = vehicle_id;
     }
     if (driver_id) {
+      const originBranchId = trip.origin_branch_id;
+      if (originBranchId) {
+        const assignedDriverRec = await Driver.findByPk(driver_id);
+        if (assignedDriverRec && assignedDriverRec.branch_id && assignedDriverRec.branch_id !== originBranchId) {
+          const { Branch } = req.tenantDb || defaultModels;
+          const driverBranch = Branch ? await Branch.findByPk(assignedDriverRec.branch_id) : null;
+          return errorResponse(
+            res,
+            `Driver "${assignedDriverRec.name}" is registered at ${driverBranch?.branch_name || 'another hub'} and cannot be assigned to trips departing from this branch.`,
+            null,
+            400
+          );
+        }
+      }
       trip.driver_id = driver_id;
     }
 

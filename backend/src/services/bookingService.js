@@ -300,7 +300,6 @@ const listConsignments = async ({
       where[Op.or] = [
         { origin_branch_id: branchId },
         { dest_branch_id: branchId },
-        { current_branch_id: branchId },
       ];
     }
 
@@ -409,15 +408,7 @@ const listConsignments = async ({
   const orderCol = allowedSortCols[sortBy] || 'created_at';
   const orderDir = (sortOrder || 'DESC').toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
 
-  const orderClauses = [];
-  const targetBranch = originBranchId || branchId;
-  if (status === 'PENDING' && targetBranch && targetBranch !== 'ALL') {
-    orderClauses.push([
-      Sequelize.literal(`CASE WHEN "Consignment"."current_branch_id" = '${targetBranch}' OR "Consignment"."dest_branch_id" = '${targetBranch}' OR "Consignment"."origin_branch_id" = '${targetBranch}' THEN 0 ELSE 1 END`),
-      'ASC'
-    ]);
-  }
-  orderClauses.push([orderCol, orderDir]);
+  const orderClauses = [[orderCol, orderDir]];
 
   const { count, rows } = await Consignment.findAndCountAll({
     where,
@@ -465,7 +456,6 @@ const listConsignments = async ({
       statsWhere[Op.or] = [
         { origin_branch_id: branchId },
         { dest_branch_id: branchId },
-        { current_branch_id: branchId },
       ];
     }
     const statusStats = await Consignment.findAll({

@@ -57,6 +57,7 @@ import {
 import DataTable from '../../../components/ui/DataTable';
 import Barcode from '../../../components/ui/Barcode';
 import DateRangeFilter from '../../../components/ui/DateRangeFilter';
+import BranchFilterDropdown from '../../../components/ui/BranchFilterDropdown';
 import ExportDateRangeModal from '../../../components/bookings/ExportDateRangeModal';
 import { usePermissions } from '../../../hooks/usePermissions';
 
@@ -664,6 +665,42 @@ export default function BookingsMasterPage() {
   const userBranchId = user?.branch_id || user?.branchId || user?.branch?.id || null;
   const isGlobalUser = user?.role === 'SUPER_ADMIN' || user?.role === 'TRANSPORT_OWNER' || user?.role === 'ADMIN';
   const isRestrictedBranchUser = !isGlobalUser && !!userBranchId;
+  const setActiveBranch = useStore((state) => state.setActiveBranch);
+
+  const activeBranchIdFromStore = (activeBranch && typeof activeBranch === 'object') ? activeBranch.id : (activeBranch !== 'ALL' ? activeBranch : null);
+  const [selectedBranchId, setSelectedBranchId] = useState(
+    isRestrictedBranchUser && userBranchId ? userBranchId : (activeBranchIdFromStore || 'ALL')
+  );
+
+  useEffect(() => {
+    if (isRestrictedBranchUser && userBranchId && selectedBranchId !== userBranchId) {
+      setSelectedBranchId(userBranchId);
+    }
+  }, [isRestrictedBranchUser, userBranchId]);
+
+  useEffect(() => {
+    if (isAdmin && activeBranch) {
+      const storeId = (typeof activeBranch === 'object' && activeBranch.id) ? activeBranch.id : (activeBranch !== 'ALL' ? activeBranch : 'ALL');
+      if (storeId && storeId !== selectedBranchId) {
+        setSelectedBranchId(storeId);
+        setPage(1);
+      }
+    }
+  }, [activeBranch, isAdmin]);
+
+  const handleBranchChange = (newBranchId) => {
+    setSelectedBranchId(newBranchId);
+    setPage(1);
+    if (newBranchId === 'ALL') {
+      if (setActiveBranch) setActiveBranch({ id: null, code: 'ALL', name: 'All Branches' });
+    } else {
+      const bObj = branchesList.find((b) => String(b.id) === String(newBranchId));
+      if (bObj && setActiveBranch) {
+        setActiveBranch({ id: bObj.id, code: bObj.branch_code || 'HUB', name: bObj.branch_name || bObj.name });
+      }
+    }
+  };
+
   const [printConsignment, setPrintConsignment] = useState(null);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [activePrintCopy, setActivePrintCopy] = useState('ALL'); // 'ALL' | 'CONSIGNOR' | 'CONSIGNEE' | 'DRIVER'
@@ -1420,6 +1457,7 @@ export default function BookingsMasterPage() {
     const sf = overrides.status !== undefined ? overrides.status : statusFilter;
     const fd = overrides.fromDate !== undefined ? overrides.fromDate : fromDate;
     const td = overrides.toDate !== undefined ? overrides.toDate : toDate;
+    const br = overrides.branchId !== undefined ? overrides.branchId : selectedBranchId;
 
     try {
       let url = `/bookings?page=${p}&limit=${ps}&sort_by=${sb}&sort_order=${so}`;
@@ -1441,6 +1479,7 @@ export default function BookingsMasterPage() {
       }
       if (fd) url += `&from_date=${fd}`;
       if (td) url += `&to_date=${td}`;
+      if (br && br !== 'ALL') url += `&branch_id=${br}`;
 
       const res = await api.get(url);
       const rawList = res.data?.data || [];
@@ -1483,7 +1522,12 @@ export default function BookingsMasterPage() {
       }
       if (fromDate) url += `&from_date=${fromDate}`;
       if (toDate) url += `&to_date=${toDate}`;
-      if (activeBranch && activeBranch !== 'ALL') url += `&branch_id=${activeBranch}`;
+      if (selectedBranchId && selectedBranchId !== 'ALL') {
+        url += `&branch_id=${selectedBranchId}`;
+      } else if (activeBranch && activeBranch !== 'ALL') {
+        const abId = typeof activeBranch === 'object' ? activeBranch.id : activeBranch;
+        if (abId) url += `&branch_id=${abId}`;
+      }
 
       const res = await api.get(url);
       const rawList = res.data?.data || [];
@@ -1496,7 +1540,7 @@ export default function BookingsMasterPage() {
 
   useEffect(() => {
     fetchConsignments();
-  }, [activeBranch, page, pageSize, sortBy, sortOrder, statusFilter, fromDate, toDate]);
+  }, [selectedBranchId, page, pageSize, sortBy, sortOrder, statusFilter, fromDate, toDate]);
 
   // Debounce search so keystrokes don't spam the server
   useEffect(() => {
@@ -1841,7 +1885,8 @@ export default function BookingsMasterPage() {
     // Priority Sort for Pending / Dock:
     // Dockets arriving or stationed at THIS branch first, then other branch dockets
     if (statusFilter === 'PENDING') {
-      const branchId = activeBranch !== 'ALL' ? activeBranch : userBranchId;
+      const activeBranchId = (activeBranch && typeof activeBranch === 'object') ? activeBranch.id : activeBranch;
+      const branchId = selectedBranchId !== 'ALL' ? selectedBranchId : (activeBranchId !== 'ALL' ? activeBranchId : userBranchId);
       return [...list].sort((a, b) => {
         const aIsThisBranch = branchId && (a.current_branch_id === branchId || a.dest_branch_id === branchId || a.origin_branch_id === branchId);
         const bIsThisBranch = branchId && (b.current_branch_id === branchId || b.dest_branch_id === branchId || b.origin_branch_id === branchId);
@@ -1860,7 +1905,7 @@ export default function BookingsMasterPage() {
     }
 
     return list;
-  }, [consignments, searchQuery, statusFilter, activeBranch, userBranchId]);
+  }, [consignments, searchQuery, statusFilter, selectedBranchId, activeBranch, userBranchId]);
 
   const handleOpenDetails = (c) => {
     setSelectedConsignment(c);
@@ -2303,6 +2348,19 @@ export default function BookingsMasterPage() {
             </div>
 
             <div className="flex items-center space-x-3">
+              {isAdmin && (
+                <BranchFilterDropdown
+                  selectedBranchId={selectedBranchId}
+                  onChange={handleBranchChange}
+                  branches={branchesList}
+                  allLabel="All Branches (Network-wide)"
+                  allSubtitle="Consolidated Consignments & Dockets"
+                  label="Branch:"
+                  showLabel={true}
+                  align="right"
+                />
+              )}
+
               {canCreateBooking && (
                 <button
                   onClick={() => {
@@ -2313,11 +2371,12 @@ export default function BookingsMasterPage() {
                       customDocketNumber: '',
                       deliveryType: 'DOOR_DELIVERY',
                       doorDeliveryCharges: parseFloat(prev.doorDeliveryCharges || 0) < 100 ? '100' : prev.doorDeliveryCharges,
+                      originBranchId: selectedBranchId !== 'ALL' ? selectedBranchId : prev.originBranchId,
                     }));
                     fetchDocketSeriesPreview();
                     setIsDrawerOpen(true);
                   }}
-                  className="flex items-center space-x-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 transition-all active:scale-95"
+                  className="flex items-center space-x-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 transition-all active:scale-95 shrink-0"
                 >
                   <Plus className="w-4 h-4" />
                   <span>Create New Booking</span>

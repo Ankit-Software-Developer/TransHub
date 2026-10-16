@@ -6,6 +6,7 @@ import dynamic from 'next/dynamic';
 import LoadingState from '../../../components/ui/LoadingState';
 import Sidebar from '../../../components/layout/Sidebar';
 import Navbar from '../../../components/layout/Navbar';
+import BranchFilterDropdown from '../../../components/ui/BranchFilterDropdown';
 import { useTheme } from '../../../components/ThemeProvider';
 import { useAuth } from '../../../hooks/useAuth';
 import { usePermissions } from '../../../hooks/usePermissions';
@@ -317,17 +318,40 @@ export default function OwnerDashboard() {
           ? v.trips[0]
           : (trips || []).find(t => (t.vehicle_id === v.id || t.vehicle?.vehicle_number === v.vehicle_number || t.vehicleNumber === v.vehicle_number) && ['RUNNING', 'READY', 'IN_TRANSIT', 'LOADED'].includes(t.status));
 
+        const liveSpeedNum = parseFloat(v.last_speed || 0);
+        const hasLiveCoords = v.last_latitude && v.last_longitude && parseFloat(v.last_latitude) > 0;
         const isTransit = v.status === 'ON_TRIP' || (activeTrip && ['RUNNING', 'READY', 'IN_TRANSIT', 'LOADED'].includes(activeTrip.status));
+        const isMoving = liveSpeedNum > 0 || (v.last_ignition === 1 && liveSpeedNum > 0) || isTransit;
+
         const branchCity = v.branch?.city || 'Delhi';
         const originCity = isTransit ? (activeTrip?.origin_city || activeTrip?.originBranch?.city || branchCity) : branchCity;
         const destCity = isTransit ? (activeTrip?.destination_city || activeTrip?.destBranch?.city || 'Mumbai') : branchCity;
-        const hasGps = Boolean(v.gps_device_id);
+        const hasGps = Boolean(v.gps_device_id || hasLiveCoords);
 
         const progress = isTransit ? (activeTrip?.status === 'READY' ? 15 : 54) : 0;
-        const speed = isTransit ? (activeTrip?.status === 'DELAYED' ? 'Halt' : '68 km/h') : '0 km/h (Parked)';
-        const currentLocation = isTransit
+        const speed = liveSpeedNum > 0
+          ? `${Math.round(liveSpeedNum)} km/h`
+          : (isTransit ? (activeTrip?.status === 'DELAYED' ? 'Halt' : '68 km/h') : '0 km/h');
+
+        const currentLocation = v.last_location_name
+          ? v.last_location_name
+          : isTransit
           ? (progress < 30 ? `NH Outskirts of ${originCity}` : progress < 65 ? `National Expressway Corridor` : `Approaching ${destCity} Hub`)
-          : `${branchCity} Depot Yard`;
+          : (v.branch?.branch_name ? `${v.branch.branch_name} Yard` : `${branchCity} Hub Yard`);
+
+        const statusLabel = isTransit
+          ? 'In Transit'
+          : isMoving
+          ? `Moving (${speed})`
+          : v.status === 'MAINTENANCE'
+          ? 'Workshop'
+          : 'Parked (Ready)';
+
+        const statusColor = (isTransit || isMoving)
+          ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30'
+          : v.status === 'MAINTENANCE'
+          ? 'bg-amber-500/20 text-amber-400 border-amber-500/30'
+          : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30';
 
         return {
           id: v.id,
@@ -336,22 +360,30 @@ export default function OwnerDashboard() {
           capacityTon: v.capacity_ton || '16.0',
           gpsDeviceId: v.gps_device_id,
           hasGps,
-          status: isTransit ? 'IN_TRANSIT' : v.status,
+          status: isTransit ? 'IN_TRANSIT' : (isMoving ? 'MOVING' : v.status),
           isTransit,
+          hasActiveTrip: Boolean(isTransit),
+          isMoving,
           branchCity,
           originCity,
           destCity,
           currentLocation,
-          route: isTransit ? `${originCity} ➔ ${destCity}` : `Stationed at ${branchCity} Hub`,
+          latitude: v.last_latitude,
+          longitude: v.last_longitude,
+          last_latitude: v.last_latitude,
+          last_longitude: v.last_longitude,
+          last_location_name: v.last_location_name,
+          last_speed: v.last_speed,
+          last_heading: v.last_heading,
+          last_ignition: v.last_ignition,
+          last_gps_updated_at: v.last_gps_updated_at,
+          gps_provider_name: v.gps_provider_name || 'WheelsEye',
+          route: isTransit ? `${originCity} ➔ ${destCity}` : currentLocation,
           progress,
           speed,
-          eta: isTransit ? 'Today, 08:30 PM' : 'At Depot',
-          statusLabel: isTransit ? 'In Transit' : v.status === 'MAINTENANCE' ? 'Workshop' : 'At Yard (Ready)',
-          statusColor: isTransit
-            ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30'
-            : v.status === 'MAINTENANCE'
-            ? 'bg-amber-500/20 text-amber-400 border-amber-500/30'
-            : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+          eta: isTransit ? 'Today, 08:30 PM' : 'Live On Radar',
+          statusLabel,
+          statusColor,
         };
       });
     }
@@ -360,24 +392,21 @@ export default function OwnerDashboard() {
     return [];
   }, [vehicles, trips]);
 
-  // Set default selected truck once fleet is available
+  // Validate selected truck against fleet (clear if removed)
   useEffect(() => {
-    if (allFleetVehicles.length > 0) {
+    if (allFleetVehicles.length > 0 && selectedTruck) {
       const exists = allFleetVehicles.some(v => v.vehicleNumber === selectedTruck || v.id === selectedTruck);
-      if (!selectedTruck || !exists) {
-        const transitVeh = allFleetVehicles.find(v => v.isTransit);
-        setSelectedTruck(transitVeh ? transitVeh.vehicleNumber : allFleetVehicles[0].vehicleNumber);
+      if (!exists) {
+        setSelectedTruck(null);
       }
-    } else {
-      setSelectedTruck(null);
     }
   }, [allFleetVehicles, selectedTruck]);
 
   // Filtered fleet vehicles based on tabs
   const filteredFleet = allFleetVehicles.filter(veh => {
     if (filterTab === 'ALL') return true;
-    if (filterTab === 'TRANSIT') return veh.isTransit;
-    if (filterTab === 'YARD') return !veh.isTransit && veh.status !== 'MAINTENANCE';
+    if (filterTab === 'TRANSIT') return veh.isTransit || veh.isMoving;
+    if (filterTab === 'YARD') return !veh.isTransit && !veh.isMoving && veh.status !== 'MAINTENANCE';
     if (filterTab === 'MAINTENANCE') return veh.status === 'MAINTENANCE';
     return true;
   });
@@ -499,29 +528,15 @@ export default function OwnerDashboard() {
             {/* Scope Selector (for Admin) & Refresh Action */}
             <div className="flex items-center gap-2.5 self-start md:self-auto flex-wrap">
               {isAdmin && (
-                <div className="relative">
-                  <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-semibold shadow-sm transition-all ${
-                    isDark 
-                      ? 'bg-slate-900/90 border-slate-700/80 text-slate-200' 
-                      : 'bg-white border-slate-200 text-slate-800'
-                  }`}>
-                    <Building2 className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                    <select
-                      value={selectedBranchId}
-                      onChange={(e) => setSelectedBranchId(e.target.value)}
-                      className={`bg-transparent outline-none cursor-pointer pr-1 text-xs font-semibold ${
-                        isDark ? 'text-slate-200 [&>option]:bg-slate-900 [&>option]:text-white' : 'text-slate-800 [&>option]:bg-white [&>option]:text-slate-900'
-                      }`}
-                    >
-                      <option value="ALL">🏢 All Branches (Consolidated View)</option>
-                      {branches.map((b) => (
-                        <option key={b.id} value={b.id}>
-                          📍 {b.branch_name} ({b.branch_code || b.city || 'Branch'})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
+                <BranchFilterDropdown
+                  selectedBranchId={selectedBranchId}
+                  onChange={(newBranchId) => setSelectedBranchId(newBranchId)}
+                  branches={branches}
+                  allLabel="All Branches (Consolidated View)"
+                  allSubtitle="Network-wide Telemetry & Financials"
+                  showLabel={false}
+                  align="right"
+                />
               )}
 
               <button
@@ -781,7 +796,7 @@ export default function OwnerDashboard() {
                           : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
                       }`}
                     >
-                      In Transit ({allFleetVehicles.filter(v => v.isTransit).length})
+                      On Road ({allFleetVehicles.filter(v => v.isTransit || v.isMoving).length})
                     </button>
                     <button
                       onClick={() => setFilterTab('YARD')}
@@ -791,7 +806,7 @@ export default function OwnerDashboard() {
                           : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
                       }`}
                     >
-                      At Yard ({allFleetVehicles.filter(v => !v.isTransit && v.status !== 'MAINTENANCE').length})
+                      At Yard ({allFleetVehicles.filter(v => !v.isTransit && !v.isMoving && v.status !== 'MAINTENANCE').length})
                     </button>
                   </div>
 
@@ -851,43 +866,43 @@ export default function OwnerDashboard() {
                       return (
                         <div
                           key={veh.id}
-                          onClick={() => setSelectedTruck(veh.vehicleNumber)}
-                          className={`p-2.5 rounded-xl border cursor-pointer transition-all ${
+                          onClick={() => setSelectedTruck(isSelected ? null : veh.vehicleNumber)}
+                          className={`p-3 rounded-2xl border cursor-pointer transition-all duration-200 ${
                             isSelected
                               ? isDark
-                                ? 'bg-blue-950/70 border-cyan-400 shadow-md shadow-cyan-950/30 ring-1 ring-cyan-400/50'
-                                : 'bg-blue-50 border-blue-500 shadow-sm ring-1 ring-blue-400'
+                                ? 'bg-blue-950/80 border-cyan-400 shadow-lg shadow-cyan-950/40 ring-1 ring-cyan-400/50'
+                                : 'bg-blue-50/90 border-blue-500 shadow-md ring-1 ring-blue-400'
                               : isDark
-                              ? 'bg-slate-900/60 border-slate-800/80 hover:border-slate-700 hover:bg-slate-900/90'
-                              : 'bg-white border-slate-200 hover:border-blue-300 hover:bg-slate-50'
+                              ? 'bg-slate-900/50 border-slate-800/80 hover:border-slate-700 hover:bg-slate-900/80'
+                              : 'bg-white border-slate-200 hover:border-blue-300 hover:bg-slate-50/80'
                           }`}
                         >
-                          {/* Row 1: Icon, Plate (no-wrap), GPS tag, Type, and Status */}
-                          <div className="flex items-center justify-between gap-1.5">
+                          {/* Row 1: Vehicle Icon, Plate Number, GPS Badge & Status Pill */}
+                          <div className="flex items-center justify-between gap-2">
                             <div className="flex items-center gap-2 min-w-0">
-                              <div className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 ${
+                              <div className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 ${
                                 isSelected
-                                  ? isDark ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/40' : 'bg-blue-600 text-white'
+                                  ? isDark ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/40' : 'bg-blue-600 text-white shadow-xs'
                                   : isDark ? 'bg-slate-800 text-slate-400 border border-slate-700' : 'bg-slate-100 text-slate-600 border border-slate-200'
                               }`}>
-                                <Truck className="w-3.5 h-3.5" />
+                                <Truck className="w-4 h-4" />
                               </div>
-                              <span className={`font-bold text-xs font-mono whitespace-nowrap ${
-                                isSelected
-                                  ? isDark ? 'text-white' : 'text-blue-950'
-                                  : isDark ? 'text-white' : 'text-slate-900'
-                              }`}>
-                                {veh.vehicleNumber}
-                              </span>
-                              {veh.hasGps && (
-                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 whitespace-nowrap shrink-0">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-pulse" />
-                                  GPS
+
+                              <div className="min-w-0 flex items-center gap-1.5">
+                                <span className={`font-mono font-black text-xs tracking-wide ${
+                                  isSelected
+                                    ? isDark ? 'text-white' : 'text-blue-950'
+                                    : isDark ? 'text-slate-100' : 'text-slate-900'
+                                }`}>
+                                  {veh.vehicleNumber}
                                 </span>
-                              )}
-                              <span className={`text-[10px] truncate hidden sm:inline ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                                • {veh.vehicleType}
-                              </span>
+                                {veh.hasGps && (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-md text-[9px] font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                    GPS
+                                  </span>
+                                )}
+                              </div>
                             </div>
 
                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border whitespace-nowrap shrink-0 ${veh.statusColor}`}>
@@ -895,44 +910,32 @@ export default function OwnerDashboard() {
                             </span>
                           </div>
 
-                          {/* Row 2: Compact Inline Route (Start ➔ Current ➔ Next) or Yard Location */}
-                          {veh.isTransit ? (
-                            <div className={`mt-1.5 pt-1.5 border-t flex items-center justify-between text-[11px] gap-2 ${
-                              isDark ? 'border-slate-800/60' : 'border-slate-100'
-                            }`}>
-                              {/* 3-Point Trace: Start ➔ Current ➔ Next in one clean horizontal strip */}
-                              <div className="flex items-center gap-1 text-[10px] min-w-0 truncate">
-                                <span className="text-emerald-600 dark:text-emerald-400 font-bold shrink-0">{veh.originCity}</span>
-                                <span className={`${isDark ? 'text-slate-500' : 'text-slate-400'} shrink-0`}>➔</span>
-                                <span className={`font-semibold truncate flex items-center gap-1 ${isDark ? 'text-cyan-300' : 'text-blue-600'}`}>
-                                  <span className="w-1 h-1 rounded-full bg-cyan-400 animate-ping shrink-0" />
-                                  {veh.currentLocation}
-                                </span>
-                                <span className={`${isDark ? 'text-slate-500' : 'text-slate-400'} shrink-0`}>➔</span>
-                                <span className="text-rose-600 dark:text-rose-400 font-bold shrink-0">{veh.destCity}</span>
-                              </div>
-
-                              <div className="flex items-center gap-2 text-[10px] font-mono shrink-0 ml-auto">
-                                <span className={`font-bold ${isDark ? 'text-cyan-400' : 'text-blue-600'}`}>{veh.speed}</span>
-                                <span className={`text-[10px] ${isSelected ? (isDark ? 'text-cyan-300 font-bold' : 'text-blue-600 font-bold') : (isDark ? 'text-slate-500' : 'text-slate-400')}`}>
-                                  {isSelected ? '● On Map' : 'Track ➔'}
-                                </span>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className={`mt-1.5 pt-1.5 border-t flex items-center justify-between text-[10px] ${
-                              isDark ? 'border-slate-800/60' : 'border-slate-100'
-                            }`}>
-                              <div className={`flex items-center gap-1.5 truncate ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
-                                <MapPin className="w-3 h-3 text-blue-500 shrink-0" />
-                                <span>Stationed at <span className={`font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>{veh.branchCity} Hub</span></span>
-                                <span className={`hidden sm:inline ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>• Ready</span>
-                              </div>
-                              <span className={`text-[10px] shrink-0 ${isSelected ? (isDark ? 'text-cyan-300 font-bold' : 'text-blue-600 font-bold') : (isDark ? 'text-slate-500' : 'text-slate-400')}`}>
-                                {isSelected ? '● On Map' : 'Locate ➔'}
+                          {/* Row 2: Real Live GPS Location with Pin & Speed / Action */}
+                          <div className={`mt-2 pt-2 border-t flex items-center justify-between gap-2 text-[11px] ${
+                            isDark ? 'border-slate-800/60' : 'border-slate-100'
+                          }`}>
+                            <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                              <MapPin className={`w-3.5 h-3.5 shrink-0 ${veh.isMoving ? 'text-emerald-400 animate-pulse' : 'text-blue-500'}`} />
+                              <span className={`truncate text-[11px] font-medium ${isDark ? 'text-slate-200' : 'text-slate-700'}`} title={veh.currentLocation}>
+                                {veh.currentLocation}
                               </span>
                             </div>
-                          )}
+
+                            <div className="flex items-center gap-2 shrink-0 ml-auto font-mono text-[10px]">
+                              {veh.speed && veh.speed !== '0 km/h' && (
+                                <span className={`font-bold ${isDark ? 'text-cyan-400' : 'text-blue-600'}`}>
+                                  {veh.speed}
+                                </span>
+                              )}
+                              <span className={`text-[10px] font-semibold ${
+                                isSelected
+                                  ? (isDark ? 'text-cyan-300 font-bold' : 'text-blue-600 font-bold')
+                                  : (isDark ? 'text-slate-500 group-hover:text-slate-300' : 'text-slate-400 group-hover:text-slate-600')
+                              }`}>
+                                {isSelected ? '● Highlighted' : 'Locate ➔'}
+                              </span>
+                            </div>
+                          </div>
                         </div>
                       );
                     })
@@ -944,12 +947,15 @@ export default function OwnerDashboard() {
                   <IndiaFleetMap
                     selectedTrip={selectedVehicleData}
                     allTrips={allFleetVehicles}
-                    onSelectTrip={(veh) => setSelectedTruck(veh.vehicleNumber || veh.id)}
+                    onSelectTrip={(veh) => setSelectedTruck(veh ? (veh.vehicleNumber || veh.id) : null)}
                     activeTripsCount={allFleetVehicles.filter(v => v.isTransit).length}
                     onTimeCount={allFleetVehicles.filter(v => v.isTransit && v.status !== 'DELAYED').length}
                     delayedCount={allFleetVehicles.filter(v => v.status === 'DELAYED').length}
                     isDark={isDark}
-                    onOpenModal={() => setIsMapModalOpen(true)}
+                    onOpenModal={() => {
+                      setSelectedTruck('ALL');
+                      setIsMapModalOpen(true);
+                    }}
                   />
                 </div>
 
@@ -1139,54 +1145,70 @@ export default function OwnerDashboard() {
                 </div>
               </div>
 
-              {/* Vehicle Selector Pills & Summary in Modal Header */}
-              <div className="flex items-center gap-2 flex-wrap">
-                {/* Quick Vehicle Switcher */}
+              {/* Vehicle Selector Controls in Modal Header */}
+              <div className="flex items-center gap-2">
+                {/* 1. All-India Full View Segmented Button */}
+                <button
+                  type="button"
+                  onClick={() => setSelectedTruck('ALL')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm ${
+                    selectedTruck === 'ALL'
+                      ? 'bg-blue-600 text-white shadow-blue-500/25 ring-1 ring-blue-400'
+                      : isDark
+                      ? 'bg-slate-900 border border-slate-700 text-slate-300 hover:text-white hover:border-slate-600'
+                      : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
+                  }`}
+                  title="View complete nationwide India map with all vehicles"
+                >
+                  <Navigation className="w-3.5 h-3.5" />
+                  <span>All India Fleet ({allFleetVehicles.length})</span>
+                </button>
+
+                {/* 2. Professional Vehicle Dropdown Selector */}
                 {allFleetVehicles.length > 0 && (
-                  <div className={`hidden lg:flex items-center gap-1.5 p-1 rounded-xl border text-xs ${
-                    isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-slate-100 border-slate-200'
-                  }`}>
-                    <button
-                      onClick={() => setSelectedTruck('ALL')}
-                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                        selectedTruck === 'ALL'
-                          ? isDark ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20' : 'bg-blue-600 text-white shadow-sm'
-                          : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+                  <div className="relative">
+                    <select
+                      value={selectedTruck}
+                      onChange={(e) => setSelectedTruck(e.target.value)}
+                      className={`h-8 pl-3 pr-7 rounded-xl text-xs font-mono font-bold border transition-all cursor-pointer ${
+                        isDark
+                          ? 'bg-slate-900 border-slate-700 text-slate-100 hover:border-cyan-400 focus:border-cyan-400'
+                          : 'bg-white border-slate-200 text-slate-800 hover:border-blue-400 focus:border-blue-500 shadow-sm'
                       }`}
                     >
-                      All Fleet ({allFleetVehicles.length})
-                    </button>
-                    {allFleetVehicles.map((t) => {
-                      const isCur = selectedTruck === t.id || selectedTruck === t.vehicleNumber;
-                      return (
-                        <button
-                          key={t.id}
-                          onClick={() => setSelectedTruck(t.vehicleNumber || t.id)}
-                          className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
-                            isCur
-                              ? 'bg-blue-600 text-white shadow-md'
-                              : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
-                          }`}
-                        >
-                          <span className={`w-1.5 h-1.5 rounded-full ${t.isTransit ? 'bg-cyan-400 animate-pulse' : 'bg-emerald-400'}`} />
-                          <span>{t.vehicleNumber}</span>
-                        </button>
-                      );
-                    })}
+                      <option value="ALL">🌐 Focus: All Fleet (National View)</option>
+                      {allFleetVehicles.filter(v => v.isMoving).length > 0 && (
+                        <optgroup label="🚛 On Road / Moving">
+                          {allFleetVehicles.filter(v => v.isMoving).map(t => (
+                            <option key={t.id} value={t.vehicleNumber}>
+                              🟢 {t.vehicleNumber} — {t.currentLocation} ({t.speed})
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                      <optgroup label="🅿️ Stationed / Parked">
+                        {allFleetVehicles.filter(v => !v.isMoving).map(t => (
+                          <option key={t.id} value={t.vehicleNumber}>
+                            🔵 {t.vehicleNumber} — {t.currentLocation}
+                          </option>
+                        ))}
+                      </optgroup>
+                    </select>
                   </div>
                 )}
 
-                {/* Close Modal Button */}
+                {/* 3. Pinned Close Modal Button */}
                 <button
+                  type="button"
                   onClick={() => setIsMapModalOpen(false)}
-                  className={`w-9 h-9 rounded-xl border flex items-center justify-center transition-all shadow-md ml-2 cursor-pointer ${
+                  className={`w-8 h-8 rounded-xl border flex items-center justify-center transition-all shadow-sm cursor-pointer ml-1 ${
                     isDark
                       ? 'bg-slate-900 hover:bg-rose-500/20 border-slate-700 hover:border-rose-500/50 text-slate-300 hover:text-rose-400'
                       : 'bg-white hover:bg-rose-50 border-slate-200 hover:border-rose-300 text-slate-600 hover:text-rose-600'
                   }`}
                   title="Close Fullscreen (Esc)"
                 >
-                  <X className="w-5 h-5" />
+                  <X className="w-4 h-4" />
                 </button>
               </div>
             </div>
@@ -1234,8 +1256,8 @@ export default function OwnerDashboard() {
                           }`}
                         >
                           <Truck className={`w-3.5 h-3.5 ${isCur ? (isDark ? 'text-cyan-300' : 'text-white') : (isDark ? 'text-slate-400' : 'text-slate-500')}`} />
-                          <span>{t.vehicleNumber}</span>
-                          <span className={`text-[10px] font-normal ${isCur && !isDark ? 'text-blue-100' : isDark ? 'text-slate-400' : 'text-slate-500'}`}>({t.route})</span>
+                          <span className="font-mono">{t.vehicleNumber}</span>
+                          <span className={`text-[10px] font-normal truncate max-w-[140px] ${isCur && !isDark ? 'text-blue-100' : isDark ? 'text-slate-400' : 'text-slate-500'}`}>({t.currentLocation})</span>
                           <span className={`text-[10px] font-mono font-semibold ${t.isTransit ? (isDark ? 'text-cyan-400' : isCur ? 'text-cyan-200' : 'text-blue-600') : (isDark ? 'text-emerald-400' : isCur ? 'text-emerald-200' : 'text-emerald-600')}`}>
                             {t.speed}
                           </span>

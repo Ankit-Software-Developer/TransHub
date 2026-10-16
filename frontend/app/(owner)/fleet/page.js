@@ -307,12 +307,29 @@ export default function FleetManagementPage() {
         if (rawList.length > 0) {
           const mapped = rawList.map((v) => {
             const rawStatus = v.status || 'AVAILABLE';
+            const liveSpeedNum = parseFloat(v.last_speed || 0);
             const isTransit = rawStatus === 'ON_TRIP' || (v.trips && v.trips.length > 0);
+            const isMoving = liveSpeedNum > 0 || (v.last_ignition === 1 && liveSpeedNum > 0) || isTransit;
             const isInactive = rawStatus === 'INACTIVE';
             const isMaint = rawStatus === 'MAINTENANCE';
             const activeTrip = v.trips && v.trips.length > 0 ? v.trips[0] : null;
             const originCity = activeTrip?.origin_city || v.branch?.city || 'Delhi';
             const destCity = activeTrip?.destination_city || 'Mumbai';
+
+            const status = isInactive ? 'INACTIVE' : (isMoving || isTransit) ? 'ON_ROAD' : isMaint ? 'MAINTENANCE' : 'YARD';
+            const status_label = isInactive
+              ? 'Inactive / Retired'
+              : (isMoving || isTransit)
+              ? `On Road (${liveSpeedNum > 0 ? Math.round(liveSpeedNum) : 68} km/h)`
+              : isMaint
+              ? 'Under Service'
+              : 'In Yard (Available)';
+
+            const location = v.last_location_name
+              ? v.last_location_name
+              : isTransit
+              ? `${originCity} ➔ ${destCity}`
+              : (v.branch?.branch_name ? `Stationed at ${v.branch.branch_name}` : `Stationed at ${v.branch?.city || 'Depot'} Yard`);
 
             return {
               id: v.id,
@@ -334,9 +351,9 @@ export default function FleetManagementPage() {
               permit_expiry: v.permit_expiry || '',
               current_odometer: v.current_odometer || 0,
               rawStatus,
-              status: isInactive ? 'INACTIVE' : isTransit ? 'ON_ROAD' : isMaint ? 'MAINTENANCE' : 'YARD',
-              status_label: isInactive ? 'Inactive / Retired' : isTransit ? 'On Road (68 km/h)' : isMaint ? 'Under Service' : 'In Yard (Available)',
-              location: isTransit ? `${originCity} ➔ ${destCity}` : `Stationed at ${v.branch?.city || 'Delhi'} Hub`,
+              status,
+              status_label,
+              location,
               driver: v.assignedDriver?.name || 'Assigned Driver',
               driver_rating: '4.9 ★',
               fuel_level: 82,

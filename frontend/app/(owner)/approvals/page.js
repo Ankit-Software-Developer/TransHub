@@ -29,12 +29,14 @@ import {
   Check,
   X,
   ChevronRight,
+  ChevronDown,
   Eye,
   SlidersHorizontal,
   ExternalLink,
   MessageSquare,
   Sparkles,
 } from 'lucide-react';
+import BranchFilterDropdown from '../../../components/ui/BranchFilterDropdown';
 
 const REQUEST_TYPE_META = {
   EXPENSE_CLAIM: {
@@ -545,66 +547,90 @@ export default function ApprovalsPage() {
 
         <div className="flex flex-wrap items-center gap-2">
           {/* Request Type Filter */}
-          <select
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
-            className={`px-3 py-2 rounded-xl text-xs border font-medium transition-colors ${
-              isDark ? 'bg-slate-900 border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'
-            }`}
-          >
-            <option value="ALL">All Request Types</option>
-            {Object.keys(REQUEST_TYPE_META).map((key) => (
-              <option key={key} value={key}>{REQUEST_TYPE_META[key].label}</option>
-            ))}
-          </select>
-
-          {/* Status Filter */}
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className={`px-3 py-2 rounded-xl text-xs border font-medium transition-colors ${
-              isDark ? 'bg-slate-900 border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'
-            }`}
-          >
-            <option value="ALL">All Statuses</option>
-            <option value="PENDING">Pending Review</option>
-            <option value="APPROVED">Approved</option>
-            <option value="REJECTED">Rejected</option>
-            <option value="ESCALATED">Escalated</option>
-          </select>
-
           {/* Branch Filter (if Admin or has branches) */}
           {branches.length > 0 && (
-            <select
-              value={branchFilter}
-              onChange={(e) => setBranchFilter(e.target.value)}
-              className={`px-3 py-2 rounded-xl text-xs border font-medium transition-colors ${
-                isDark ? 'bg-slate-900 border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'
-              }`}
-            >
-              <option value="ALL">All Branches & Hubs</option>
-              {branches.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.branch_name} {b.is_hub ? '(Hub)' : ''}
-                </option>
-              ))}
-            </select>
+            <BranchFilterDropdown
+              selectedBranchId={branchFilter}
+              onChange={(newBranchId) => setBranchFilter(newBranchId)}
+              branches={branches}
+              allLabel="All Branches & Hubs"
+              allSubtitle="Network-wide Requests"
+              label="Branch:"
+              showLabel={true}
+              align="right"
+            />
           )}
 
+          {/* Request Type Filter */}
+          <div className="relative">
+            <select
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value)}
+              className={`pl-3 pr-8 py-2 rounded-xl text-xs border font-semibold focus:outline-none appearance-none cursor-pointer transition-all ${
+                typeFilter !== 'ALL'
+                  ? isDark
+                    ? 'bg-blue-600/20 border-blue-500/50 text-blue-300'
+                    : 'bg-blue-50 border-blue-300 text-blue-800'
+                  : isDark
+                  ? 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700'
+                  : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-xs'
+              }`}
+            >
+              <option value="ALL">All Request Types</option>
+              {Object.keys(REQUEST_TYPE_META).map((key) => (
+                <option key={key} value={key}>{REQUEST_TYPE_META[key].label}</option>
+              ))}
+            </select>
+            <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          </div>
+
+          {/* Status Filter */}
+          <div className="relative">
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className={`pl-3 pr-8 py-2 rounded-xl text-xs border font-semibold focus:outline-none appearance-none cursor-pointer transition-all ${
+                statusFilter !== 'ALL'
+                  ? isDark
+                    ? 'bg-amber-600/20 border-amber-500/50 text-amber-300'
+                    : 'bg-amber-50 border-amber-300 text-amber-800'
+                  : isDark
+                  ? 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700'
+                  : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-xs'
+              }`}
+            >
+              <option value="ALL">All Statuses</option>
+              <option value="PENDING">Pending Review</option>
+              <option value="APPROVED">Approved</option>
+              <option value="REJECTED">Rejected</option>
+              <option value="ESCALATED">Escalated</option>
+            </select>
+            <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          </div>
+
           {/* Priority Filter */}
-          <select
-            value={priorityFilter}
-            onChange={(e) => setPriorityFilter(e.target.value)}
-            className={`px-3 py-2 rounded-xl text-xs border font-medium transition-colors ${
-              isDark ? 'bg-slate-900 border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'
-            }`}
-          >
-            <option value="ALL">All Priorities</option>
-            <option value="URGENT">Urgent</option>
-            <option value="HIGH">High</option>
-            <option value="NORMAL">Normal</option>
-            <option value="LOW">Low</option>
-          </select>
+          <div className="relative">
+            <select
+              value={priorityFilter}
+              onChange={(e) => setPriorityFilter(e.target.value)}
+              className={`pl-3 pr-8 py-2 rounded-xl text-xs border font-semibold focus:outline-none appearance-none cursor-pointer transition-all ${
+                priorityFilter !== 'ALL'
+                  ? isDark
+                    ? 'bg-rose-600/20 border-rose-500/50 text-rose-300'
+                    : 'bg-rose-50 border-rose-300 text-rose-800'
+                  : isDark
+                  ? 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700'
+                  : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-xs'
+              }`}
+            >
+              <option value="ALL">All Priorities</option>
+              <option value="URGENT">Urgent</option>
+              <option value="HIGH">High</option>
+              <option value="NORMAL">Normal</option>
+              <option value="LOW">Low</option>
+            </select>
+            <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          </div>
         </div>
       </div>
 
@@ -632,9 +658,9 @@ export default function ApprovalsPage() {
             </div>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto overflow-y-auto max-h-[480px] sm:max-h-[540px] lg:max-h-[calc(100vh-290px)] min-h-[280px] scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700">
             <table className="w-full text-left text-xs">
-              <thead className={`border-b ${isDark ? 'border-slate-800 bg-slate-900/50 text-slate-400' : 'border-slate-100 bg-slate-50/75 text-slate-500'}`}>
+              <thead className={`sticky top-0 z-20 shadow-xs border-b ${isDark ? 'border-slate-800 bg-[#0B1020] text-slate-400' : 'border-slate-100 bg-slate-50 text-slate-500'}`}>
                 <tr>
                   <th className="px-4 py-3.5 font-bold uppercase tracking-wider text-[10px]">Reference / Type</th>
                   <th className="px-4 py-3.5 font-bold uppercase tracking-wider text-[10px]">Requester & Branch</th>

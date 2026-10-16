@@ -6,6 +6,7 @@ import Link from 'next/link';
 import Sidebar from '../../../../components/layout/Sidebar';
 import Navbar from '../../../../components/layout/Navbar';
 import DataTable from '../../../../components/ui/DataTable';
+import BranchFilterDropdown from '../../../../components/ui/BranchFilterDropdown';
 import { useTheme } from '../../../../components/ThemeProvider';
 import { usePermissions } from '../../../../hooks/usePermissions';
 import { useStore } from '../../../../store/useStore';
@@ -2679,7 +2680,33 @@ export default function InvoicesMasterPage() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                {/* Branch Dropdown Selector positioned right before Deliveries & POD */}
+                {isUserAdmin && (
+                  <BranchFilterDropdown
+                    selectedBranchId={branchFilter}
+                    onChange={(newBranchId) => setBranchFilter(newBranchId)}
+                    branches={branches}
+                    branchStats={branches.map((b) => ({
+                      branch_id: b.id,
+                      count:
+                        activeTab === 'INVOICES'
+                          ? branchInvoiceStats.countsMap[String(b.id)] || 0
+                          : branchDocketStats.countsMap[String(b.id)] || 0,
+                    }))}
+                    totalCount={
+                      activeTab === 'INVOICES'
+                        ? branchInvoiceStats.totalCount
+                        : branchDocketStats.totalCount
+                    }
+                    allLabel="All Branches"
+                    allSubtitle="Global Network Invoicing"
+                    label="Branch:"
+                    showLabel={true}
+                    align="right"
+                  />
+                )}
+
                 <Link
                   href="/deliveries"
                   className={`inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-xl border text-xs font-bold transition-all ${
@@ -2699,250 +2726,6 @@ export default function InvoicesMasterPage() {
                 </Link>
               </div>
             </div>
-
-            {/* Branch Scope Header & Filter Bar (Active for both Tax Invoices & Unbilled Dockets) */}
-            {isUserAdmin && (
-              <div className={`p-4 rounded-2xl border transition-all ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
-                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-400 flex items-center justify-center font-bold text-sm shrink-0">
-                      <Building2 className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <div className="flex items-center space-x-2">
-                        <span className="text-xs font-bold text-slate-900 dark:text-white">Branch Scope</span>
-                        <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-purple-500/20 text-purple-400 border border-purple-500/30">
-                          Admin Network Access
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-slate-400">
-                        Filtering {activeTab === 'INVOICES' ? 'tax invoices' : 'dockets'} booked through (origin) or delivering to (destination) each branch.
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Searchable Branch Dropdown Selector at Far Right End */}
-                  <div className="relative shrink-0 sm:ml-auto" ref={branchDropdownRef}>
-                    <button
-                      type="button"
-                      onClick={() => setIsBranchDropdownOpen((prev) => !prev)}
-                      className={`px-3.5 py-2 rounded-xl transition-all flex items-center justify-between gap-2.5 text-xs font-semibold border min-w-[220px] sm:min-w-[260px] max-w-[320px] shadow-xs active:scale-[0.99] ${
-                        selectedBranchObj
-                          ? 'bg-purple-600 text-white border-purple-500 shadow-purple-600/20 font-bold'
-                          : isDark
-                          ? 'bg-slate-900/90 border-slate-700/80 text-slate-200 hover:border-purple-500 hover:bg-slate-800/90'
-                          : 'bg-white border-slate-300 text-slate-700 hover:border-purple-400 hover:bg-slate-50'
-                      }`}
-                      title="Select branch to filter dockets & invoices"
-                    >
-                      <div className="flex items-center gap-2 min-w-0 truncate">
-                        {selectedBranchObj ? (
-                          <>
-                            <span className="text-xs shrink-0">📍</span>
-                            <span className="truncate font-bold">
-                              {selectedBranchObj.branch_name || selectedBranchObj.city}
-                            </span>
-                            <span className="text-[10px] font-mono opacity-80 shrink-0">
-                              [{selectedBranchObj.branch_code}]
-                            </span>
-                          </>
-                        ) : (
-                          <>
-                            <span className="text-xs shrink-0">🌐</span>
-                            <span className="truncate font-semibold">
-                              All Branches
-                            </span>
-                            <span className="text-[10px] font-mono opacity-60 shrink-0">
-                              ({branches.length})
-                            </span>
-                          </>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-1.5 shrink-0 ml-auto">
-                        <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
-                          selectedBranchObj
-                            ? 'bg-white/20 text-white'
-                            : isDark
-                            ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
-                            : 'bg-purple-100 text-purple-700 border border-purple-200'
-                        }`}>
-                          {activeTab === 'INVOICES'
-                            ? (selectedBranchObj
-                                ? (branchInvoiceStats.countsMap[String(selectedBranchObj.id)] || 0)
-                                : branchInvoiceStats.totalCount)
-                            : (selectedBranchObj
-                                ? (branchDocketStats.countsMap[String(selectedBranchObj.id)] || 0)
-                                : branchDocketStats.totalCount)}
-                        </span>
-
-                        {selectedBranchObj && (
-                          <span
-                            role="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setBranchFilter('ALL');
-                            }}
-                            className="hover:bg-white/25 p-0.5 rounded-full transition-colors cursor-pointer"
-                            title="Reset to All Branches"
-                          >
-                            <X className="w-3.5 h-3.5 text-white" />
-                          </span>
-                        )}
-
-                        <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${
-                          selectedBranchObj ? 'text-white' : 'text-slate-400'
-                        } ${isBranchDropdownOpen ? 'rotate-180' : ''}`} />
-                      </div>
-                    </button>
-
-                    {/* Popover Dropdown */}
-                    {isBranchDropdownOpen && (
-                      <div className={`absolute right-0 mt-2 w-80 sm:w-96 rounded-2xl shadow-2xl border z-50 p-2.5 space-y-2 backdrop-blur-md animate-in fade-in zoom-in-95 duration-150 ${
-                        isDark
-                          ? 'bg-[#0D1326]/98 border-slate-700/80 text-white'
-                          : 'bg-white/98 border-slate-200 text-slate-800'
-                      }`}>
-                        {/* Search Box */}
-                        <div className="relative">
-                          <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                          <input
-                            type="text"
-                            value={branchSearch}
-                            onChange={(e) => setBranchSearch(e.target.value)}
-                            placeholder={`Search ${branches.length} branches by name, city, code...`}
-                            className={`w-full pl-8 pr-7 py-2 rounded-xl text-xs font-medium border outline-none transition-all ${
-                              isDark
-                                ? 'bg-slate-900 border-slate-700 text-white placeholder-slate-500 focus:border-purple-500'
-                                : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400 focus:border-purple-500'
-                            }`}
-                            autoFocus
-                          />
-                          {branchSearch && (
-                            <button
-                              type="button"
-                              onClick={() => setBranchSearch('')}
-                              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          )}
-                        </div>
-
-                        {/* Dropdown Options List */}
-                        <div className="max-h-60 overflow-y-auto space-y-1 pr-1 custom-scrollbar">
-                          {/* All Branches Option */}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setBranchFilter('ALL');
-                              setIsBranchDropdownOpen(false);
-                            }}
-                            className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-left text-xs transition-all ${
-                              branchFilter === 'ALL'
-                                ? 'bg-purple-600 text-white font-bold'
-                                : isDark
-                                ? 'hover:bg-slate-800/80 text-slate-300'
-                                : 'hover:bg-slate-100 text-slate-700'
-                            }`}
-                          >
-                            <div className="flex items-center space-x-2">
-                              <span className="text-purple-400">🌐</span>
-                              <div>
-                                <div className="font-semibold">All Branches (Global Network)</div>
-                                <div className={`text-[10px] ${branchFilter === 'ALL' ? 'text-purple-200' : 'text-slate-400'}`}>
-                                  Consolidated view of all active branches
-                                </div>
-                              </div>
-                            </div>
-                            <div className="flex items-center space-x-2">
-                              <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold ${
-                                branchFilter === 'ALL' ? 'bg-white/20 text-white' : 'bg-slate-500/15 text-slate-400'
-                              }`}>
-                                {activeTab === 'INVOICES' ? branchInvoiceStats.totalCount : branchDocketStats.totalCount}
-                              </span>
-                              {branchFilter === 'ALL' && <Check className="w-3.5 h-3.5 text-white" />}
-                            </div>
-                          </button>
-
-                          {/* Branch Rows */}
-                          {filteredDropdownBranches.length === 0 ? (
-                            <div className="text-center py-6 text-xs text-slate-400">
-                              No branches found matching "{branchSearch}"
-                            </div>
-                          ) : (
-                            filteredDropdownBranches.map((b) => {
-                              const isSelected = String(branchFilter) === String(b.id) || branchFilter === b.branch_code;
-                              const count = activeTab === 'INVOICES'
-                                ? (branchInvoiceStats.countsMap[String(b.id)] || 0)
-                                : (branchDocketStats.countsMap[String(b.id)] || 0);
-                              return (
-                                <button
-                                  key={b.id}
-                                  type="button"
-                                  onClick={() => {
-                                    setBranchFilter(b.id);
-                                    setIsBranchDropdownOpen(false);
-                                  }}
-                                  className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-left text-xs transition-all ${
-                                    isSelected
-                                      ? 'bg-purple-600 text-white font-bold'
-                                      : isDark
-                                      ? 'hover:bg-slate-800/80 text-slate-300'
-                                      : 'hover:bg-slate-100 text-slate-700'
-                                  }`}
-                                >
-                                  <div className="flex items-center space-x-2 min-w-0">
-                                    <span className="text-purple-400 shrink-0">📍</span>
-                                    <div className="min-w-0">
-                                      <div className="font-semibold truncate">
-                                        {b.branch_name || b.city}
-                                      </div>
-                                      <div className={`text-[10px] font-mono ${isSelected ? 'text-purple-200' : 'text-slate-400'}`}>
-                                        {b.city && `${b.city} • `}[{b.branch_code}]
-                                      </div>
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center space-x-2 shrink-0">
-                                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold ${
-                                      isSelected
-                                        ? 'bg-white/20 text-white'
-                                        : count > 0
-                                        ? 'bg-purple-500/20 text-purple-600 dark:text-purple-300 border border-purple-500/30'
-                                        : 'bg-slate-500/10 text-slate-400'
-                                    }`}>
-                                      {count}
-                                    </span>
-                                    {isSelected && <Check className="w-3.5 h-3.5 text-white" />}
-                                  </div>
-                                </button>
-                              );
-                            })
-                          )}
-                        </div>
-
-                        {/* Dropdown Footer */}
-                        <div className="pt-1.5 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between text-[10px] text-slate-400 px-1 font-mono">
-                          <span>Showing {filteredDropdownBranches.length} of {branches.length} branches</span>
-                          {selectedBranchObj && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setBranchFilter('ALL');
-                                setIsBranchDropdownOpen(false);
-                              }}
-                              className="text-purple-500 dark:text-purple-400 hover:underline font-semibold"
-                            >
-                              Reset to All
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
 
             {/* TAB CONTENT: 1. TAX INVOICES TABLE */}
             {activeTab === 'INVOICES' && (

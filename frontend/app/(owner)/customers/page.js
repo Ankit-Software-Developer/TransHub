@@ -6,6 +6,7 @@ import api from '../../../services/api';
 import Sidebar from '../../../components/layout/Sidebar';
 import Navbar from '../../../components/layout/Navbar';
 import DataTable from '../../../components/ui/DataTable';
+import BranchFilterDropdown from '../../../components/ui/BranchFilterDropdown';
 import { usePermissions } from '../../../hooks/usePermissions';
 import { useTheme } from '../../../components/ThemeProvider';
 import { useStore } from '../../../store/useStore';
@@ -1313,21 +1314,41 @@ export default function CustomersPage() {
               </p>
             </div>
 
-            {canCreateCustomer && (
-              <button
-                onClick={() => {
-                  setShowAddModal(true);
-                  setIsManualBranchSelected(false);
-                  if (userBranch?.id) {
-                    setFormData((prev) => ({ ...prev, branch_id: userBranch.id }));
-                  }
-                }}
-                className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-md shadow-blue-600/30 transition-all active:scale-95 cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Add Commercial Client</span>
-              </button>
-            )}
+            <div className="flex items-center gap-3 flex-wrap">
+              {isAdmin && (
+                <BranchFilterDropdown
+                  selectedBranchId={branchFilter}
+                  onChange={(newBranchId) => {
+                    setBranchFilter(newBranchId);
+                    setPage(1);
+                  }}
+                  branches={branches}
+                  branchStats={metaStats?.branch_stats}
+                  totalCount={metaStats?.total_customers ?? totalCount}
+                  label="Branch:"
+                  showLabel={true}
+                  allLabel={`All Hubs (${metaStats?.total_customers ?? totalCount})`}
+                  allSubtitle="Consolidated Network Clients"
+                  align="right"
+                />
+              )}
+
+              {canCreateCustomer && (
+                <button
+                  onClick={() => {
+                    setShowAddModal(true);
+                    setIsManualBranchSelected(false);
+                    if (userBranch?.id) {
+                      setFormData((prev) => ({ ...prev, branch_id: userBranch.id }));
+                    }
+                  }}
+                  className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-md shadow-blue-600/30 transition-all active:scale-95 cursor-pointer whitespace-nowrap"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Add Commercial Client</span>
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Top Summary Metrics: Multi-Branch & Revolving Credit Telemetry */}
@@ -1427,14 +1448,16 @@ export default function CustomersPage() {
             exportFilename="Customer_Directory"
             emptyTitle="No Customers Found"
             emptySubtitle="No commercial clients match your search or filter parameters."
+            branchFilterable={false}
+
             filtersSlot={
-              <div className="space-y-3 w-full">
-                {/* Row 1: Territory & Branch Selector (Admin & Branch Manager) */}
-                <div className="flex flex-wrap items-center justify-between gap-2.5 pt-1">
-                  <div className="flex flex-wrap items-center gap-1.5">
+              <div className="space-y-2.5 w-full pt-1">
+                {/* Secondary Filter Row: Branch Territory (Branch Mgr) + Billing Modes */}
+                <div className="flex flex-wrap items-center justify-between gap-2.5">
+                  <div className="flex flex-wrap items-center gap-2">
                     {/* If Branch Manager, display active branch territory indicator */}
                     {!isAdmin && userBranch && (
-                      <div className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl border text-xs font-bold ${
+                      <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-bold ${
                         isDark
                           ? 'bg-slate-900/90 border-slate-800 text-slate-300'
                           : 'bg-white border-slate-200 text-slate-700 shadow-xs'
@@ -1443,57 +1466,6 @@ export default function CustomersPage() {
                         <span className="text-slate-400 font-medium">Branch Territory:</span>
                         <span className="font-bold text-blue-600 dark:text-cyan-400">{userBranch.branch_name}</span>
                         <span className="text-[11px] font-mono text-slate-400">[{userBranch.pincode || 'Local Hub'}]</span>
-                      </div>
-                    )}
-
-                    {/* If Admin, show Branch-wise Selector Tabs */}
-                    {isAdmin && (
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1 mr-1">
-                          <Building2 className="w-3.5 h-3.5 text-blue-500" />
-                          <span>Branch:</span>
-                        </span>
-
-                        <button
-                          type="button"
-                          onClick={() => { setBranchFilter('ALL'); setPage(1); }}
-                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                            branchFilter === 'ALL'
-                              ? 'bg-blue-600 text-white shadow-sm'
-                              : isDark
-                              ? 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'
-                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                          }`}
-                        >
-                          All Hubs ({metaStats?.total_customers ?? totalCount})
-                        </button>
-
-                        {metaStats?.branch_stats && metaStats.branch_stats.map((bs) => (
-                          <button
-                            key={bs.branch_id}
-                            type="button"
-                            onClick={() => { setBranchFilter(bs.branch_id); setPage(1); }}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
-                              branchFilter === bs.branch_id
-                                ? 'bg-blue-600 border-blue-500 text-white shadow-sm'
-                                : isDark
-                                ? 'bg-slate-900/90 border-slate-800 text-slate-400 hover:text-slate-200'
-                                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                            }`}
-                          >
-                            <span>{bs.branch_name}</span>
-                            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
-                              branchFilter === bs.branch_id ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-400'
-                            }`}>
-                              {bs.customer_count}
-                            </span>
-                            {bs.total_credit_limit > 0 && (
-                              <span className="text-[9px] font-semibold text-amber-400">
-                                ₹{(bs.total_credit_limit / 100000).toFixed(0)}L
-                              </span>
-                            )}
-                          </button>
-                        ))}
                       </div>
                     )}
                   </div>

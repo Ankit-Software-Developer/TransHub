@@ -355,6 +355,23 @@ const deleteVehicle = async (req, res) => {
 const listDrivers = async (req, res) => {
   try {
     const { Driver, Branch } = req.tenantDb || defaultModels;
+    const { branch_id, available_for_branch, status } = req.query;
+
+    const where = {
+      tenant_id: req.tenant.tenantId,
+      organization_id: req.tenant.organizationId,
+    };
+
+    if (status && status !== 'ALL') {
+      where.status = status;
+    }
+
+    if (branch_id && branch_id !== 'ALL') {
+      where.branch_id = branch_id;
+    } else if (available_for_branch && available_for_branch !== 'ALL') {
+      where[Op.or] = [{ branch_id: null }, { branch_id: available_for_branch }];
+    }
+
     const include = [];
     if (Branch) {
       include.push({
@@ -366,10 +383,7 @@ const listDrivers = async (req, res) => {
     }
 
     const drivers = await Driver.findAll({
-      where: {
-        tenant_id: req.tenant.tenantId,
-        organization_id: req.tenant.organizationId,
-      },
+      where,
       include,
       order: [['name', 'ASC']],
     });

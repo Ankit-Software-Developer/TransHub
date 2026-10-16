@@ -15,5 +15,6 @@ router.delete('/configs/:id', gpsController.deleteConfig);
 router.post('/test-connection', gpsController.testConnection);
 router.post('/sync-now', gpsController.syncNow);
 router.get('/telemetry', gpsController.getFleetTelemetry);
+router.get('/telemetry/:vehicleId/history', gpsController.getLocationHistory);
 
 module.exports = router;

@@ -11,6 +11,7 @@ import { useStore } from '../../../store/useStore';
 import supportService from '../../../services/supportService';
 import api from '../../../services/api';
 import Modal from '../../../components/ui/Modal';
+import BranchFilterDropdown from '../../../components/ui/BranchFilterDropdown';
 import {
   LifeBuoy,
   PlusCircle,
@@ -379,20 +380,15 @@ export default function SupportPage() {
                 <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
                   Branch
                 </label>
-                <select
-                  value={branchFilter}
-                  onChange={(e) => setBranchFilter(e.target.value)}
-                  className={`w-full text-xs font-semibold rounded-xl border px-3 py-2 outline-none ${
-                    isDark ? 'bg-slate-900 border-slate-800 text-slate-200' : 'bg-slate-50 border-slate-200 text-slate-800'
-                  }`}
-                >
-                  <option value="ALL">All Branches</option>
-                  {branches.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.name || b.branch_name}
-                    </option>
-                  ))}
-                </select>
+                <BranchFilterDropdown
+                  selectedBranchId={branchFilter}
+                  onChange={(newBranchId) => setBranchFilter(newBranchId)}
+                  branches={branches}
+                  allLabel="All Branches"
+                  allSubtitle="Network-wide Tickets"
+                  showLabel={false}
+                  className="w-full"
+                />
               </div>
 
               <div className="lg:col-span-2">
@@ -425,11 +421,11 @@ export default function SupportPage() {
 
           {/* Tickets List Table */}
           <div className={`rounded-2xl border overflow-hidden ${isDark ? 'bg-[#0B1020] border-slate-800/80' : 'bg-white border-slate-200/80 shadow-card'}`}>
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto overflow-y-auto max-h-[480px] sm:max-h-[540px] lg:max-h-[calc(100vh-290px)] min-h-[280px] scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700">
               <table className="w-full text-left border-collapse">
-                <thead>
+                <thead className="sticky top-0 z-20 shadow-xs">
                   <tr className={`border-b text-[11px] font-bold uppercase tracking-wider ${
-                    isDark ? 'bg-slate-900/60 border-slate-800 text-slate-400' : 'bg-slate-50/75 border-slate-200 text-slate-600'
+                    isDark ? 'bg-[#0B1020] border-slate-800 text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-600'
                   }`}>
                     <th className="py-3 px-4">Ticket #</th>
                     <th className="py-3 px-4">Subject &amp; Category</th>

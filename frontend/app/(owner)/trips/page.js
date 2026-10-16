@@ -35,7 +35,8 @@ import {
   ShieldAlert,
   Gauge,
   Send,
-  Info
+  Info,
+  ChevronDown
 } from 'lucide-react';
 import Link from 'next/link';
 import { useStore } from '../../../store/useStore';
@@ -986,62 +987,43 @@ export default function TripsPage() {
                     </button>
                   ))}
                 </div>
-
-                {/* Right Controls: Branch Filter (for Admin) & Status Filter */}
-                <div className="flex items-center gap-2.5 flex-wrap">
-                  {isAdmin && (
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 whitespace-nowrap">
-                        Branch:
-                      </span>
-                      <select
-                        value={selectedBranchId}
-                        onChange={(e) => {
-                          setSelectedBranchId(e.target.value);
-                          setPage(1);
-                        }}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all focus:outline-none cursor-pointer ${
-                          isDark
-                            ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
-                            : 'bg-white border-slate-200 text-slate-800 focus:border-blue-500 shadow-2xs'
-                        }`}
-                      >
-                        <option value="ALL">🌐 All Branches (Network-wide)</option>
-                        {branchesList.map((b) => (
-                          <option key={b.id} value={b.id}>
-                            {b.branch_code ? `[${b.branch_code}] ` : ''}{b.branch_name} ({b.city})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-
-
-                  {/* Status Filter Dropdown */}
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 whitespace-nowrap">
-                      Status:
-                    </span>
-                    <select
-                      value={statusFilter}
-                      onChange={(e) => {
-                        setStatusFilter(e.target.value);
-                        setPage(1);
-                      }}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all focus:outline-none cursor-pointer ${
-                        isDark
-                          ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
-                          : 'bg-white border-slate-200 text-slate-800 focus:border-blue-500 shadow-2xs'
-                      }`}
-                    >
-                      {statusOptions.map((opt) => (
-                        <option key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
+              </div>
+            }
+            branchFilterable={isAdmin}
+            branches={branchesList}
+            selectedBranchId={selectedBranchId}
+            onBranchChange={(newBranchId) => {
+              setSelectedBranchId(newBranchId);
+              setPage(1);
+            }}
+            branchFilterLabel="Branch:"
+            branchFilterAllLabel="All Branches (Network-wide)"
+            headerFiltersSlot={
+              <div className="relative">
+                <select
+                  value={statusFilter}
+                  onChange={(e) => {
+                    setStatusFilter(e.target.value);
+                    setPage(1);
+                  }}
+                  className={`pl-3 pr-8 py-1.5 rounded-xl text-xs font-semibold border transition-all focus:outline-none appearance-none cursor-pointer ${
+                    statusFilter !== 'ALL'
+                      ? isDark
+                        ? 'bg-blue-600/20 border-blue-500/50 text-blue-300'
+                        : 'bg-blue-50 border-blue-300 text-blue-800'
+                      : isDark
+                      ? 'bg-slate-900/90 border-slate-700/80 text-slate-200 hover:border-slate-600'
+                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-xs'
+                  }`}
+                  title="Filter trips by operational status"
+                >
+                  {statusOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value} className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
               </div>
             }
             fromDate={fromDate}
@@ -1589,11 +1571,17 @@ export default function TripsPage() {
                       }`}
                     >
                       <option value="">Keep current driver</option>
-                      {driversList.map((d) => (
-                        <option key={d.id} value={d.id}>
-                          {d.name} {d.phone ? `(${d.phone})` : ''}
-                        </option>
-                      ))}
+                      {driversList
+                        .filter((d) => {
+                          const originId = tripToAssign?.origin_branch_id || tripToAssign?.originBranch?.id || tripToAssign?.origin_branch?.id;
+                          if (!d.branch_id) return true;
+                          return originId ? d.branch_id === originId : true;
+                        })
+                        .map((d) => (
+                          <option key={d.id} value={d.id}>
+                            {d.name} {d.phone ? `(${d.phone})` : ''} {d.branch?.branch_name ? `• [${d.branch.branch_name}]` : '• [Yard]'}
+                          </option>
+                        ))}
                     </select>
                   </div>
 

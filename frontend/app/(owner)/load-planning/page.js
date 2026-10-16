@@ -10,6 +10,7 @@ import Navbar from '../../../components/layout/Navbar';
 import { useTheme } from '../../../components/ThemeProvider';
 import { usePermissions } from '../../../hooks/usePermissions';
 import { useStore } from '../../../store/useStore';
+import BranchFilterDropdown from '../../../components/ui/BranchFilterDropdown';
 import api from '../../../services/api';
 import { TRUCK_CONFIGS, getTruckConfigForVehicle } from '../../../components/loadPlanning/packingEngine';
 
@@ -476,10 +477,15 @@ export default function LoadPlanningPage() {
     setTruckDropdownOpen(false);
     setOverrideDriverSelection(false);
 
-    if (v.assignedDriver?.id) {
-      setSelectedDriverId(v.assignedDriver.id);
-    } else if (v.assigned_driver_id) {
-      setSelectedDriverId(v.assigned_driver_id);
+    const candidateDriverId = v.assignedDriver?.id || v.assigned_driver_id || '';
+    if (candidateDriverId) {
+      const dObj = drivers.find((d) => d.id === candidateDriverId);
+      const originBranch = (selectedBranchId && selectedBranchId !== 'ALL') ? selectedBranchId : modalOriginBranchId;
+      if (!dObj?.branch_id || !originBranch || dObj.branch_id === originBranch) {
+        setSelectedDriverId(candidateDriverId);
+      } else {
+        setSelectedDriverId('');
+      }
     } else {
       setSelectedDriverId('');
     }
@@ -499,7 +505,7 @@ export default function LoadPlanningPage() {
       return;
     }
     if (cleanPlate.length < 5) {
-      setMarketError('Vehicle registration number is too short (e.g. HR-55-AB-9876).');
+      setMarketError('Vehicle registration number is too short (e.g. HR-55-AY-8724).');
       return;
     }
 
@@ -599,11 +605,13 @@ export default function LoadPlanningPage() {
 
     setSubmittingDriver(true);
     try {
+      const effBranch = (selectedBranchId && selectedBranchId !== 'ALL') ? selectedBranchId : modalOriginBranchId;
       const payload = {
         name: cleanName,
         phone: cleanPhone,
         license_number: (driverForm.license_number || '').trim().toUpperCase() || `DL-${cleanPhone.slice(-6)}`,
         status: 'ACTIVE',
+        branch_id: effBranch || undefined,
       };
       const res = await api.post('/fleet/drivers', payload);
       const newDriver = res.data?.data;
@@ -865,28 +873,16 @@ export default function LoadPlanningPage() {
             <div className="flex flex-wrap items-center gap-2 shrink-0">
               {/* Branch Selector: only for multi-branch admins who can switch origin docks */}
               {!isRestrictedBranchUser && (
-                <div className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-bold ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'
-                  }`}>
-                  <Building2 className="w-4 h-4 text-cyan-400 shrink-0" />
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[11px] text-slate-400 shrink-0">Origin Dock:</span>
-                    <select
-                      value={selectedBranchId}
-                      onChange={(e) => setSelectedBranchId(e.target.value)}
-                      className={`bg-transparent font-bold focus:outline-none cursor-pointer text-xs max-w-[260px] truncate ${isDark ? 'text-white' : 'text-slate-900'
-                        }`}
-                    >
-                      <option value="ALL" className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>
-                        🌐 All Docks & Branches (Company-Wide)
-                      </option>
-                      {selectableBranches.map((b) => (
-                        <option key={b.id} value={b.id} className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>
-                          [{b.branch_code || 'CODE'}] {b.branch_name} {b.is_hub ? '(Hub)' : ''} • {b.city}{b.pincode ? ` (${b.pincode})` : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
+                <BranchFilterDropdown
+                  selectedBranchId={selectedBranchId}
+                  onChange={(newBranchId) => setSelectedBranchId(newBranchId)}
+                  branches={selectableBranches}
+                  allLabel="All Docks & Branches"
+                  allSubtitle="Company-Wide Origin Docks"
+                  label="Origin Dock:"
+                  showLabel={true}
+                  align="right"
+                />
               )}
 
               {/* Confirm & Dispatch Truck Button */}
@@ -1223,11 +1219,16 @@ export default function LoadPlanningPage() {
                                   }`}
                               >
                                 <option value="">-- Choose Driver --</option>
-                                {drivers.map((d) => (
-                                  <option key={d.id} value={d.id}>
-                                    {d.name} ({d.phone})
-                                  </option>
-                                ))}
+                                {drivers
+                                  .filter((d) => {
+                                    const effOrigin = (selectedBranchId && selectedBranchId !== 'ALL') ? selectedBranchId : modalOriginBranchId;
+                                    return !d.branch_id || !effOrigin || d.branch_id === effOrigin;
+                                  })
+                                  .map((d) => (
+                                    <option key={d.id} value={d.id}>
+                                      {d.name} ({d.phone || 'Driver'}) {d.branch?.branch_name ? `• [${d.branch.branch_name}]` : '• [Yard]'}
+                                    </option>
+                                  ))}
                               </select>
                               <button
                                 type="button"
@@ -1395,7 +1396,7 @@ export default function LoadPlanningPage() {
                   </div>
                 ) : (
                   /* Dense Professional Table / List View */
-                  <div className="overflow-x-auto flex-1 min-h-[280px] overflow-y-auto rounded-2xl border border-slate-200 dark:border-slate-800">
+                  <div className="overflow-x-auto flex-1 min-h-[280px] max-h-[480px] sm:max-h-[540px] lg:max-h-[calc(100vh-290px)] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700 rounded-2xl border border-slate-200 dark:border-slate-800">
                     <table className="w-full text-left text-xs">
                       <thead className={`sticky top-0 z-10 text-[10px] uppercase font-bold tracking-wider ${isDark ? 'bg-slate-900 text-slate-400 border-b border-slate-800' : 'bg-slate-100 text-slate-600 border-b border-slate-200'
                         }`}>
@@ -1682,7 +1683,7 @@ export default function LoadPlanningPage() {
                         const val = e.target.value.toUpperCase().replace(/[^A-Z0-9 -]/g, '');
                         setMarketForm({ ...marketForm, vehicle_number: val });
                       }}
-                      placeholder="e.g. HR-55-AB-9876 or DL-01-XY-5510"
+                      placeholder="e.g. HR-55-AY-8724 or HR-55-AZ-6141"
                       className={`w-full px-3 py-2 rounded-xl text-xs font-mono font-bold border focus:outline-none transition-all ${isDark
                           ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
                           : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 shadow-sm'
@@ -2108,6 +2109,12 @@ export default function LoadPlanningPage() {
                         if (destBranchId === newOrigin) {
                           setDestBranchId('');
                         }
+                        if (selectedDriverId) {
+                          const curD = drivers.find((d) => d.id === selectedDriverId);
+                          if (curD && curD.branch_id && curD.branch_id !== newOrigin) {
+                            setSelectedDriverId('');
+                          }
+                        }
                       }}
                       className={`w-full h-10 px-3 py-2 rounded-xl text-xs border font-medium focus:outline-none transition-all ${isDark
                           ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
@@ -2179,11 +2186,13 @@ export default function LoadPlanningPage() {
                         }`}
                     >
                       <option value="">Select Certified Driver</option>
-                      {drivers.map((d) => (
-                        <option key={d.id} value={d.id}>
-                          {d.name} ({d.phone || 'Driver'})
-                        </option>
-                      ))}
+                      {drivers
+                        .filter((d) => !d.branch_id || !modalOriginBranchId || d.branch_id === modalOriginBranchId)
+                        .map((d) => (
+                          <option key={d.id} value={d.id}>
+                            {d.name} ({d.phone || 'Driver'}) {d.branch?.branch_name ? `• [${d.branch.branch_name}]` : '• [Yard]'}
+                          </option>
+                        ))}
                     </select>
                   </div>
 

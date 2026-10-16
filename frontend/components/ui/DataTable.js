@@ -5,6 +5,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useTheme } from '../ThemeProvider';
 import { usePermissions } from '../../hooks/usePermissions';
 import DateRangeFilter from './DateRangeFilter';
+import BranchFilterDropdown from './BranchFilterDropdown';
 import LoadingState from './LoadingState';
 import {
   Search,
@@ -72,6 +73,15 @@ export default function DataTable({
   requiredExportPermission = 'data.export',
   onExportDateRange = null,
   onExportAll = null,
+  branchFilterSlot = null,
+  branchFilterable = false,
+  branches = [],
+  selectedBranchId = 'ALL',
+  onBranchChange = null,
+  branchStats = null,
+  totalBranchCount = null,
+  branchFilterLabel = 'Branch:',
+  branchFilterAllLabel = 'All Branches',
   dateFilterSlot = null,
   dateFilterable = true,
   fromDate = '',
@@ -79,10 +89,25 @@ export default function DataTable({
   onDateChange = null,
   onDateFilterChange = null,
   dateFilterKey = '',
+  maxHeight = null,
+  tableMaxHeight = null,
+  tableContainerClassName = '',
+  stickyHeader = true,
+  scrollable = true,
 }) {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
   const { canExport, isAdmin } = usePermissions();
+
+  const effectiveMaxHeight = maxHeight || tableMaxHeight;
+  const hasCustomHeight = Boolean(
+    effectiveMaxHeight ||
+    tableContainerClassName.includes('max-h') ||
+    tableContainerClassName.includes('h-')
+  );
+  const defaultHeightClasses = scrollable && !hasCustomHeight
+    ? 'max-h-[480px] sm:max-h-[540px] lg:max-h-[calc(100vh-290px)] min-h-[280px]'
+    : '';
 
   const effectiveLoading = isLoading || loading;
   const effectiveExportFilename = exportFilename || exportFileName || 'Report_Export';
@@ -585,8 +610,23 @@ export default function DataTable({
             )}
           </div>
 
-          {/* Right Action Tools: Date Filter, Export & Custom Actions */}
+          {/* Right Action Tools: Branch Filter, Header Filters, Date Filter, Export & Custom Actions */}
           <div className="flex flex-wrap items-center gap-2.5">
+            {/* Branch Filter: Positioned professionally before All Dates */}
+            {branchFilterSlot ? (
+              branchFilterSlot
+            ) : branchFilterable && branches && branches.length > 0 ? (
+              <BranchFilterDropdown
+                selectedBranchId={selectedBranchId}
+                onChange={onBranchChange}
+                branches={branches}
+                branchStats={branchStats}
+                totalCount={totalBranchCount}
+                label={branchFilterLabel}
+                allLabel={branchFilterAllLabel}
+              />
+            ) : null}
+
             {headerFiltersSlot}
             {/* Date Filter: Render custom slot if provided, or built-in DateRangeFilter */}
             {dateFilterSlot ? (
@@ -685,12 +725,30 @@ export default function DataTable({
       </div>
 
       {/* Main Table Scroll Container */}
-      <div ref={tableScrollRef} className="overflow-x-auto relative min-h-[280px] [container-type:inline-size]">
+      <div
+        ref={tableScrollRef}
+        style={
+          effectiveMaxHeight && !effectiveMaxHeight.startsWith('max-h-') && !effectiveMaxHeight.startsWith('h-')
+            ? { maxHeight: effectiveMaxHeight }
+            : {}
+        }
+        className={`overflow-x-auto relative [container-type:inline-size] ${
+          scrollable
+            ? 'overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700'
+            : ''
+        } ${defaultHeightClasses} ${
+          effectiveMaxHeight?.startsWith('max-h-') || effectiveMaxHeight?.startsWith('h-')
+            ? effectiveMaxHeight
+            : ''
+        } ${tableContainerClassName}`}
+      >
         <table className="min-w-full text-left text-xs border-collapse">
           {/* Table Header */}
           <thead className={`border-b select-none ${
+            stickyHeader ? 'sticky top-0 z-20 shadow-xs' : ''
+          } ${
             isDark
-              ? 'bg-slate-900/90 border-slate-800 text-slate-400'
+              ? 'bg-[#0B1020] border-slate-800 text-slate-400'
               : 'bg-slate-50 border-slate-200 text-slate-600'
           } font-bold text-[10px] tracking-wider uppercase`}>
             <tr>
@@ -708,9 +766,9 @@ export default function DataTable({
                   <th
                     key={col.key}
                     style={width ? { width: `${width}px`, minWidth: `${col.minWidth || 70}px` } : {}}
-                    className={`py-3.5 px-3 relative group transition-colors whitespace-nowrap ${alignClass} ${
+                    className={`py-3.5 px-3 relative group transition-colors whitespace-nowrap bg-inherit ${alignClass} ${
                       col.sortable ? 'cursor-pointer hover:text-cyan-400' : ''
-                    } ${isCurrentSort ? (isDark ? 'text-cyan-400 bg-cyan-950/20' : 'text-blue-600 bg-blue-50/50') : ''}`}
+                    } ${isCurrentSort ? (isDark ? '!text-cyan-400 !bg-cyan-950/40' : '!text-blue-600 !bg-blue-50/70') : ''}`}
                     onClick={() => handleSortClick(col)}
                   >
                     <div className={`inline-flex items-center space-x-1.5 whitespace-nowrap ${col.align === 'right' ? 'justify-end' : col.align === 'center' ? 'justify-center' : 'justify-start'}`}>

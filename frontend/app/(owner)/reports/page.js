@@ -13,6 +13,7 @@ import reportService from '../../../services/reportService';
 import branchClosureService from '../../../services/branchClosureService';
 import DateRangeFilter from '../../../components/ui/DateRangeFilter';
 import DataTable from '../../../components/ui/DataTable';
+import BranchFilterDropdown from '../../../components/ui/BranchFilterDropdown';
 import {
   BarChart3,
   FileSpreadsheet,
@@ -45,8 +46,10 @@ import {
   Eye,
   UploadCloud,
   X,
+  Trash2,
   AlertTriangle,
   ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 
 const REGISTERS = [
@@ -67,13 +70,48 @@ const POD_STATUS_OPTIONS = [
   { value: 'ALL', label: 'All Deliveries & PODs', desc: 'Complete register view', dotColor: 'bg-slate-400', ringColor: 'ring-slate-400/25' },
 ];
 
+const AGEING_FREIGHT_OPTIONS = [
+  { value: 'ALL', label: 'All Freight Modes (TBB, To-Pay, Paid)', desc: 'Consolidated commercial ledger', dotColor: 'bg-slate-400', ringColor: 'ring-slate-400/25' },
+  { value: 'TBB', label: 'TBB (Corporate Credit & Invoices)', desc: 'Billed invoices & unbilled credit dockets', dotColor: 'bg-blue-500', ringColor: 'ring-blue-500/25' },
+  { value: 'TO_PAY', label: 'TO-PAY (Destination Delivery Cash)', desc: 'Cash / UPI due upon delivery at branch', dotColor: 'bg-amber-500', ringColor: 'ring-amber-500/25' },
+  { value: 'PAID', label: 'PAID (Booking Dockets)', desc: 'Advance bookings cleared at origin', dotColor: 'bg-emerald-500', ringColor: 'ring-emerald-500/25' },
+];
+
 export default function ReportsPage() {
   const { term, plural } = useTerminology();
-  const { canExport, isAdmin, isAuditor, user } = usePermissions();
-  const canViewAuditCompliance = isAdmin || isAuditor;
+  const {
+    canExport,
+    isAdmin,
+    isAuditor,
+    isAccountant,
+    isBranchManager,
+    canViewFinancialAudit,
+    canViewReportTab,
+    canExportReportTab,
+    user
+  } = usePermissions();
+  // Financial audit & tax registers are strictly restricted to Admin, Auditor, and Accountant roles (unless explicitly permitted)
+  const canViewAuditCompliance = isAdmin || isAuditor || isAccountant || canViewFinancialAudit;
   const { theme } = useTheme();
   const isDark = theme === 'dark';
   const activeBranch = useStore((state) => state.activeBranch);
+
+  // Filter registers based on user role and granular permissions:
+  // - Admin, Auditor, and Accountant see all 6 registers by default
+  // - Branch Managers see Dockets, POD, Bank Remittance, and Customer Ageing by default
+  // - Permissions can be individually granted/revoked by Admin in Roles & Permissions matrix
+  const visibleRegisters = useMemo(() => {
+    return REGISTERS.filter((reg) => {
+      if (canViewReportTab) {
+        return canViewReportTab(reg.id);
+      }
+      if (canViewAuditCompliance) return true;
+      if (isBranchManager) {
+        return ['DOCKETS', 'POD', 'COLLECTIONS', 'AGEING'].includes(reg.id);
+      }
+      return ['DOCKETS', 'POD'].includes(reg.id);
+    });
+  }, [canViewReportTab, canViewAuditCompliance, isBranchManager]);
 
   const userBranchId = useMemo(() => {
     if (user?.branch_id || user?.branchId || user?.branch?.id) {
@@ -98,6 +136,7 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(true);
   const [branches, setBranches] = useState([]);
   const [selectedBranch, setSelectedBranch] = useState('ALL');
+  const branchBreakdownScrollRef = useRef(null);
 
   const currentBranchName = useMemo(() => {
     const bId = !isAdmin ? userBranchId : selectedBranch;
@@ -113,6 +152,13 @@ export default function ReportsPage() {
     }
   }, [isAdmin, userBranchId, selectedBranch]);
 
+  useEffect(() => {
+    // If the active tab is restricted for the current user's role, automatically revert to DOCKETS
+    if (!visibleRegisters.some((r) => r.id === activeTab)) {
+      setActiveTab('DOCKETS');
+    }
+  }, [visibleRegisters, activeTab]);
+
   // Filter state
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -127,12 +173,21 @@ export default function ReportsPage() {
   const [copied, setCopied] = useState(false);
   const [isPodMenuOpen, setIsPodMenuOpen] = useState(false);
   const podDropdownRef = useRef(null);
+  const [isAgeingMenuOpen, setIsAgeingMenuOpen] = useState(false);
+  const ageingDropdownRef = useRef(null);
 
-  // Close POD status dropdown on outside click
+  const activeAgeingOption = useMemo(() => {
+    return AGEING_FREIGHT_OPTIONS.find((opt) => opt.value === ageingPaymentTypeFilter) || AGEING_FREIGHT_OPTIONS[0];
+  }, [ageingPaymentTypeFilter]);
+
+  // Close dropdowns on outside click
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (podDropdownRef.current && !podDropdownRef.current.contains(e.target)) {
         setIsPodMenuOpen(false);
+      }
+      if (ageingDropdownRef.current && !ageingDropdownRef.current.contains(e.target)) {
+        setIsAgeingMenuOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -303,7 +358,7 @@ export default function ReportsPage() {
     setLoading(true);
     try {
       const effectiveBranchParam = !isAdmin
-        ? (userBranchId || undefined)
+        ? (userBranchId || (selectedBranch !== 'ALL' ? selectedBranch : undefined))
         : (selectedBranch && selectedBranch !== 'ALL' ? selectedBranch : 'ALL');
 
       const params = {
@@ -354,7 +409,7 @@ export default function ReportsPage() {
     } finally {
       setLoading(false);
     }
-  }, [activeTab, page, limit, selectedBranch, dateFrom, dateTo, debouncedSearch, paymentTypeFilter, paymentClearanceFilter, podStatusFilter, collectionSubView, ageingPaymentTypeFilter]);
+  }, [activeTab, page, limit, selectedBranch, dateFrom, dateTo, debouncedSearch, paymentTypeFilter, paymentClearanceFilter, podStatusFilter, collectionSubView, ageingPaymentTypeFilter, isAdmin, userBranchId]);
 
   useEffect(() => {
     loadReportData();
@@ -362,6 +417,7 @@ export default function ReportsPage() {
 
   // Tab switch reset
   const handleTabChange = (tabId) => {
+    if (!visibleRegisters.some((r) => r.id === tabId)) return;
     setActiveTab(tabId);
     setDataRows([]);
     setSummary(null);
@@ -718,25 +774,80 @@ export default function ReportsPage() {
         </>
       )}
 
-      {/* Contextual Filter: Freight / Payment Mode for Customer Outstanding & Ageing */}
+      {/* Contextual Filter: Freight / Payment Mode for Customer Outstanding & Ageing (Executive Custom Dropdown) */}
       {activeTab === 'AGEING' && (
-        <select
-          value={ageingPaymentTypeFilter}
-          onChange={(e) => {
-            setAgeingPaymentTypeFilter(e.target.value);
-            setPage(1);
-          }}
-          className={`text-xs font-bold rounded-xl border px-3 py-2 outline-none transition-all cursor-pointer shadow-xs ${
-            isDark
-              ? 'bg-slate-900/90 border-slate-800 text-slate-200 focus:border-cyan-400'
-              : 'bg-white border-slate-200 text-slate-700 focus:border-blue-500'
-          }`}
-        >
-          <option value="ALL">All Freight Modes (TBB, To-Pay, Paid)</option>
-          <option value="TBB">TBB (Corporate Credit & Invoices)</option>
-          <option value="TO_PAY">TO-PAY (Destination Delivery Cash)</option>
-          <option value="PAID">PAID (Booking Dockets)</option>
-        </select>
+        <div className="relative inline-block text-left" ref={ageingDropdownRef}>
+          <button
+            type="button"
+            onClick={() => setIsAgeingMenuOpen((prev) => !prev)}
+            className={`h-9 px-3.5 rounded-xl border text-xs font-semibold flex items-center gap-2.5 transition-all cursor-pointer shadow-xs select-none active:scale-[0.98] ${
+              isDark
+                ? 'bg-slate-900/90 border-slate-800 hover:border-slate-700 text-slate-100 hover:bg-slate-800/60'
+                : 'bg-white border-slate-200 hover:border-slate-300 text-slate-800 hover:bg-slate-50/80'
+            }`}
+          >
+            <span className={`w-2 h-2 rounded-full shrink-0 ${activeAgeingOption.dotColor} ring-2 ${activeAgeingOption.ringColor || 'ring-slate-400/25'}`} />
+            <span className="font-semibold tracking-tight">{activeAgeingOption.label}</span>
+            <ChevronDown className={`w-3.5 h-3.5 text-slate-400 dark:text-slate-500 transition-transform duration-200 ${isAgeingMenuOpen ? 'rotate-180 text-blue-500' : ''}`} />
+          </button>
+
+          {isAgeingMenuOpen && (
+            <div className={`absolute right-0 top-full mt-1.5 w-72 rounded-2xl border shadow-2xl p-1.5 z-50 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150 ${
+              isDark ? 'bg-slate-900/95 border-slate-800 text-white shadow-black/40' : 'bg-white border-slate-200 text-slate-900 shadow-slate-900/10'
+            }`}>
+              <div className="px-3 py-2 text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center justify-between border-b border-slate-100 dark:border-slate-800/60 mb-1">
+                <span>Filter Freight Mode</span>
+                <span className="font-mono text-[9px] text-slate-400">Ageing Ledger</span>
+              </div>
+
+              <div className="space-y-0.5">
+                {AGEING_FREIGHT_OPTIONS.map((opt) => {
+                  const isSelected = ageingPaymentTypeFilter === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => {
+                        setAgeingPaymentTypeFilter(opt.value);
+                        setPage(1);
+                        setIsAgeingMenuOpen(false);
+                      }}
+                      className={`w-full text-left px-3 py-2 rounded-xl flex items-center justify-between text-xs transition-colors cursor-pointer ${
+                        isSelected
+                          ? isDark
+                            ? 'bg-blue-950/60 text-cyan-300 font-bold'
+                            : 'bg-blue-50/90 text-blue-900 font-bold'
+                          : isDark
+                          ? 'hover:bg-slate-800/70 text-slate-200 font-medium'
+                          : 'hover:bg-slate-100/80 text-slate-700 font-medium'
+                      }`}
+                    >
+                      <div className="flex items-center space-x-2.5 min-w-0 pr-2">
+                        <span className={`w-2 h-2 rounded-full shrink-0 ${opt.dotColor}`} />
+                        <div className="truncate">
+                          <div className="truncate leading-snug">{opt.label}</div>
+                          {opt.desc && (
+                            <div className={`text-[10px] truncate leading-tight font-normal ${
+                              isSelected
+                                ? isDark ? 'text-cyan-400/80' : 'text-blue-700/80'
+                                : 'text-slate-400 dark:text-slate-500'
+                            }`}>
+                              {opt.desc}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {isSelected && (
+                        <Check className="w-4 h-4 text-blue-600 dark:text-cyan-400 shrink-0" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Contextual Filter: POD & Delivery Compliance Tab (Executive Custom Dropdown) */}
@@ -815,28 +926,6 @@ export default function ReportsPage() {
         </div>
       )}
 
-      {/* Branch Selector: Admin can toggle between specific branches and All Branches; Non-admin has branch context already */}
-      {isAdmin && (
-        <select
-          value={selectedBranch}
-          onChange={(e) => {
-            setSelectedBranch(e.target.value);
-            setPage(1);
-          }}
-          className={`text-xs font-bold rounded-xl border px-3 py-2 outline-none transition-all cursor-pointer ${
-            isDark
-              ? 'bg-slate-900/90 border-slate-800 text-slate-200 focus:border-cyan-400'
-              : 'bg-white border-slate-200 text-slate-700 focus:border-blue-500 shadow-xs'
-          }`}
-        >
-          <option value="ALL">All Branches (All Network Hubs)</option>
-          {branches.map((b) => (
-            <option key={b.id} value={b.id}>
-              {b.name || b.branch_name} ({b.code || b.branch_code || 'HUB'})
-            </option>
-          ))}
-        </select>
-      )}
 
       {/* Sub-view Switcher for Bank Deposits & Daily Collections */}
       {activeTab === 'COLLECTIONS' && (
@@ -861,7 +950,7 @@ export default function ReportsPage() {
         </select>
       )}
     </>
-  ), [activeTab, paymentTypeFilter, paymentClearanceFilter, podStatusFilter, isAdmin, selectedBranch, branches, currentBranchName, isDark, isPodMenuOpen, activePodOption, availablePodOptions, collectionSubView, summary]);
+  ), [activeTab, paymentTypeFilter, paymentClearanceFilter, podStatusFilter, isAdmin, selectedBranch, branches, currentBranchName, isDark, isPodMenuOpen, activePodOption, availablePodOptions, collectionSubView, summary, isAgeingMenuOpen, activeAgeingOption, ageingPaymentTypeFilter]);
 
   // Enterprise DataTable Column Specifications for all 6 Registers
   const columns = useMemo(() => {
@@ -1149,13 +1238,28 @@ export default function ReportsPage() {
         {
           key: 'branch',
           header: 'Branch',
-          width: 130,
-          minWidth: 100,
+          width: 140,
+          minWidth: 120,
           render: (val, row) => (
-            <span className="font-medium text-xs text-slate-800 dark:text-slate-200">
-              {typeof row.branch === 'object' ? (row.branch?.name || row.branch?.branch_name || 'Head Office') : (row.branch || 'Head Office')}
+            <span className="font-semibold text-xs text-slate-800 dark:text-slate-200 truncate" title={row.branchName || row.branch}>
+              {row.branchName || (typeof row.branch === 'object' ? (row.branch?.name || row.branch?.branch_name || 'Head Office') : (row.branch || 'Head Office'))}
             </span>
           ),
+        },
+        {
+          key: 'branchCode',
+          header: 'Branch Code',
+          width: 110,
+          minWidth: 95,
+          align: 'center',
+          render: (val, row) => {
+            const code = row.branchCode || (row.branch && typeof row.branch === 'object' ? row.branch.code || row.branch.branch_code : null) || '-';
+            return (
+              <span className="font-mono text-xs font-black px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200/90 dark:border-slate-700 shadow-2xs">
+                {code}
+              </span>
+            );
+          },
         },
         {
           key: 'primaryMode',
@@ -2415,7 +2519,14 @@ export default function ReportsPage() {
       ];
     }
     return [];
-  }, [activeTab, isDark, canViewAuditCompliance, collectionSubView]);
+  }, [activeTab, isDark, canViewAuditCompliance, collectionSubView, userBranchId]);
+
+  const canExportCurrentTab = useMemo(() => {
+    if (canExportReportTab) {
+      return canExportReportTab(activeTab);
+    }
+    return canExport;
+  }, [canExportReportTab, activeTab, canExport]);
 
   return (
     <div className={`flex min-h-screen ${isDark ? 'bg-[#090D18]' : 'bg-[#F6F8FB]'}`}>
@@ -2440,44 +2551,38 @@ export default function ReportsPage() {
                     Reports &amp; Operational Analytics
                   </h1>
                   <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                    Audited commercial registers, receivables ageing, vehicle profitability, cash ledgers, and tax statements.
+                    {canViewAuditCompliance
+                      ? 'Audited commercial registers, receivables ageing, vehicle profitability, cash ledgers, and tax statements.'
+                      : isBranchManager
+                      ? 'Station operational registers, bank remittance deposits, customer ageing, and delivery compliance.'
+                      : 'Station operational registers, consignment delivery compliance, and verified proofs of delivery.'}
                   </p>
                 </div>
               </div>
             </div>
 
-            {/* Quick Export Actions */}
+            {/* Quick Export & Branch Actions */}
             <div className="flex items-center space-x-2.5 print:hidden">
-              <button
-                onClick={handleCopyClipboard}
-                className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
-                  isDark
-                    ? 'border-slate-800 bg-slate-900 text-slate-300 hover:bg-slate-800'
-                    : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-xs'
-                }`}
-                title="Copy rows to clipboard"
-              >
-                {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>{copied ? 'Copied!' : 'Copy'}</span>
-              </button>
+              {isAdmin && (
+                <BranchFilterDropdown
+                  selectedBranchId={selectedBranch}
+                  onChange={(newBranchId) => {
+                    setSelectedBranch(newBranchId);
+                    setPage(1);
+                  }}
+                  branches={branches}
+                  allLabel="All Branches (Network-wide)"
+                  allSubtitle="Consolidated Analytics & Audit"
+                  label="Branch:"
+                  showLabel={true}
+                  align="right"
+                />
+              )}
 
-              <button
-                onClick={handlePrint}
-                className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
-                  isDark
-                    ? 'border-slate-800 bg-slate-900 text-slate-300 hover:bg-slate-800'
-                    : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-xs'
-                }`}
-                title="Print or export to PDF"
-              >
-                <Printer className="w-3.5 h-3.5 text-slate-400" />
-                <span>Print PDF</span>
-              </button>
-
-              {canExport ? (
+              {canExportCurrentTab ? (
                 <button
                   onClick={handleExportCsv}
-                  className="inline-flex items-center space-x-1.5 bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold shadow-md shadow-blue-500/20 transition-all hover:scale-[1.02]"
+                  className="inline-flex items-center space-x-1.5 bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold shadow-md shadow-blue-500/20 transition-all hover:scale-[1.02] shrink-0"
                 >
                   <Download className="w-3.5 h-3.5" />
                   <span>Download CSV</span>
@@ -2490,7 +2595,7 @@ export default function ReportsPage() {
 
           {/* Navigation Tabs */}
           <div className="print:hidden flex items-center space-x-1.5 overflow-x-auto pb-1 scrollbar-none border-b border-slate-200/80 dark:border-slate-800">
-            {REGISTERS.map((reg) => {
+            {visibleRegisters.map((reg) => {
               const Icon = reg.icon;
               const isActive = activeTab === reg.id;
               return (
@@ -2859,22 +2964,47 @@ export default function ReportsPage() {
                     </p>
                   </div>
                 </div>
-                {selectedBranch !== 'ALL' && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedBranch('ALL');
-                      setPage(1);
-                    }}
-                    className="inline-flex items-center gap-1 text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer self-start sm:self-auto"
-                  >
-                    <span>View All Network Branches</span>
-                    <ChevronRight className="w-3 h-3" />
-                  </button>
-                )}
+                <div className="flex items-center gap-2 self-start sm:self-auto">
+                  {selectedBranch !== 'ALL' && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedBranch('ALL');
+                        setPage(1);
+                      }}
+                      className="inline-flex items-center gap-1 text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer mr-1"
+                    >
+                      <span>View All Network Branches</span>
+                      <ChevronRight className="w-3 h-3" />
+                    </button>
+                  )}
+                  {summary.branchBreakdown.length > 4 && (
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => branchBreakdownScrollRef.current?.scrollBy({ top: -160, behavior: 'smooth' })}
+                        className="p-1 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 transition-all cursor-pointer shadow-2xs"
+                        title="Scroll up"
+                      >
+                        <ChevronUp className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => branchBreakdownScrollRef.current?.scrollBy({ top: 160, behavior: 'smooth' })}
+                        className="p-1 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 transition-all cursor-pointer shadow-2xs"
+                        title="Scroll down"
+                      >
+                        <ChevronDown className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+              <div
+                ref={branchBreakdownScrollRef}
+                className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 max-h-[175px] overflow-y-auto pr-1.5 scroll-smooth scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700"
+              >
                 {summary.branchBreakdown.map((b) => {
                   const isSelected = selectedBranch === String(b.branchId);
                   return (
@@ -2886,7 +3016,7 @@ export default function ReportsPage() {
                           setPage(1);
                         }
                       }}
-                      className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
+                      className={`p-3.5 rounded-xl border transition-all cursor-pointer flex flex-col justify-between select-none ${
                         isSelected
                           ? 'border-blue-500 bg-blue-50/60 dark:bg-blue-950/40 ring-2 ring-blue-500/30 shadow-xs'
                           : isDark
@@ -3039,225 +3169,300 @@ export default function ReportsPage() {
 
       {/* Modal 1: Deposit Branch Cash to Bank & Close Daybook */}
       {isRemitModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className={`w-full max-w-lg rounded-2xl border shadow-2xl overflow-hidden ${
-            isDark ? 'bg-[#0B1020] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className={`relative w-full max-w-2xl max-h-[92vh] flex flex-col rounded-3xl border shadow-2xl overflow-hidden transition-all ${
+            isDark ? 'bg-[#0B1020] border-slate-800 text-white shadow-amber-500/5' : 'bg-white border-slate-200/90 text-slate-900 shadow-slate-900/10'
           }`}>
-            <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <Landmark className="w-5 h-5 text-amber-500" />
-                <h3 className="text-base font-bold">Deposit Branch Cash to Bank</h3>
+            {/* Modal Header */}
+            <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800/80 flex items-center justify-between shrink-0 bg-slate-50/50 dark:bg-slate-950/30">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-500 shadow-xs">
+                  <Landmark className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold tracking-tight text-slate-900 dark:text-white">
+                    Deposit Branch Cash to Bank
+                  </h3>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Settle branch cash daybook, update bank ledger &amp; archive deposit challan
+                  </p>
+                </div>
               </div>
               <button
+                type="button"
                 onClick={() => setIsRemitModalOpen(false)}
-                className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-white"
+                className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleRemitSubmit} className="p-5 space-y-4 text-xs">
-              {/* Summary Banner */}
-              <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between">
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-amber-600 dark:text-amber-400">Branch Cash Daybook</span>
-                  <div className="font-bold text-slate-800 dark:text-slate-200 text-sm">{remitFormData.branchName}</div>
-                </div>
-                <div className="text-right">
-                  <span className="text-[10px] uppercase font-bold text-slate-400">Unclosed Collection</span>
-                  <div className="font-mono text-base font-black text-amber-600 dark:text-amber-400">
-                    {formatINR(remitFormData.remittedAmount || 0)}
-                  </div>
-                </div>
-              </div>
-
-              {/* Form Inputs Grid */}
-              <div className="grid grid-cols-2 gap-3">
-                {isAdmin && (
-                  <div className="col-span-2">
-                    <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">
-                      Remitting Branch Hub *
-                    </label>
-                    <select
-                      value={remitFormData.branchId}
-                      onChange={(e) => {
-                        const sel = branches.find((b) => String(b.id) === String(e.target.value));
-                        setRemitFormData({
-                          ...remitFormData,
-                          branchId: e.target.value,
-                          branchName: sel?.name || sel?.branch_name || 'Selected Branch',
-                        });
-                      }}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 font-bold text-slate-900 dark:text-white outline-none focus:border-amber-500 cursor-pointer"
-                    >
-                      {branches.map((b) => (
-                        <option key={b.id} value={b.id}>
-                          {b.name || b.branch_name} ({b.code || b.branch_code || 'HUB'})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">
-                    Remitted Amount (₹) *
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    required
-                    value={remitFormData.remittedAmount}
-                    onChange={(e) => setRemitFormData({ ...remitFormData, remittedAmount: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 font-mono font-bold text-slate-900 dark:text-white outline-none focus:border-amber-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">
-                    Deposit Date *
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    value={remitFormData.closureDate}
-                    onChange={(e) => setRemitFormData({ ...remitFormData, closureDate: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 font-bold text-slate-900 dark:text-white outline-none focus:border-amber-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">
-                    Bank Name *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={remitFormData.bankName}
-                    placeholder="e.g. State Bank of India, HDFC"
-                    onChange={(e) => setRemitFormData({ ...remitFormData, bankName: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:border-amber-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">
-                    Bank Account # (Optional)
-                  </label>
-                  <input
-                    type="text"
-                    value={remitFormData.bankAccountNo}
-                    placeholder="e.g. 302910293810"
-                    onChange={(e) => setRemitFormData({ ...remitFormData, bankAccountNo: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 font-mono text-slate-900 dark:text-white outline-none focus:border-amber-500"
-                  />
-                </div>
-
-                <div className="col-span-2">
-                  <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">
-                    Deposit Mode
-                  </label>
-                  <select
-                    value={remitFormData.depositMode}
-                    onChange={(e) => setRemitFormData({ ...remitFormData, depositMode: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 font-bold text-slate-900 dark:text-white outline-none focus:border-amber-500 cursor-pointer"
-                  >
-                    <option value="CASH_DEPOSIT">Cash Deposit at Counter</option>
-                    <option value="CDM">Cash Deposit Machine (CDM)</option>
-                    <option value="UPI">UPI / QR Transfer</option>
-                    <option value="NEFT">NEFT / RTGS</option>
-                    <option value="CHEQUE">Bank Cheque</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">
-                  Bank UTR / Transaction / Challan Reference # *
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. UTR3928109382 / Challan #10492"
-                  value={remitFormData.utrReferenceNo}
-                  onChange={(e) => setRemitFormData({ ...remitFormData, utrReferenceNo: e.target.value })}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 font-mono text-slate-900 dark:text-white outline-none focus:border-amber-500"
-                />
-              </div>
-
-              {/* Upload Stamped Bank Slip / Receipt */}
-              <div>
-                <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">
-                  Upload Bank Slip / Stamped Challan Photo
-                </label>
-                <div className="border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-xl p-3 text-center hover:border-amber-500 transition-colors">
-                  {remitFormData.receiptPreview ? (
-                    <div className="relative inline-block">
-                      <img
-                        src={remitFormData.receiptPreview}
-                        alt="Receipt preview"
-                        className="max-h-36 rounded-lg object-contain mx-auto shadow-sm"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setRemitFormData({ ...remitFormData, receiptSlip: '', receiptPreview: '' })}
-                        className="absolute -top-2 -right-2 bg-rose-500 text-white rounded-full p-1 shadow-md hover:bg-rose-600"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
+            {/* Scrollable Form Body */}
+            <form onSubmit={handleRemitSubmit} className="flex-1 overflow-y-auto custom-scrollbar flex flex-col">
+              <div className="p-6 space-y-5 text-xs">
+                {/* Executive Summary Banner */}
+                <div className={`p-4 rounded-2xl border transition-all ${
+                  isDark
+                    ? 'bg-gradient-to-r from-amber-500/15 via-amber-500/5 to-slate-900/50 border-amber-500/30'
+                    : 'bg-gradient-to-r from-amber-50 via-amber-50/50 to-orange-50/30 border-amber-200 shadow-xs'
+                }`}>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                          Branch Cash Daybook
+                        </span>
+                        <span className="text-[11px] text-slate-400 font-medium">Ready for Ledger Settlement</span>
+                      </div>
+                      <div className="flex items-center gap-2 mt-1">
+                        <Building2 className="w-4 h-4 text-amber-500 shrink-0" />
+                        <span className="font-extrabold text-sm sm:text-base text-slate-900 dark:text-white">
+                          {remitFormData.branchName}
+                        </span>
+                      </div>
                     </div>
-                  ) : (
-                    <label className="cursor-pointer block py-2">
-                      <UploadCloud className="w-6 h-6 text-slate-400 mx-auto mb-1" />
-                      <span className="text-blue-500 font-bold hover:underline">Click to upload deposit slip</span>
-                      <span className="block text-[10px] text-slate-400 mt-0.5">JPEG, PNG, WebP photo of receipt</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={handleRemitFileChange}
-                        className="hidden"
-                      />
-                    </label>
+                    <div className="sm:text-right border-t sm:border-t-0 pt-2 sm:pt-0 border-amber-500/20">
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">
+                        Unclosed Cash Holdings
+                      </span>
+                      <div className="font-mono text-xl sm:text-2xl font-black text-amber-600 dark:text-amber-400 tracking-tight">
+                        {formatINR(remitFormData.remittedAmount || 0)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Form Inputs Grid */}
+                <div className="space-y-4">
+                  {isAdmin && (
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                        Remitting Branch Hub <span className="text-amber-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <select
+                          value={remitFormData.branchId}
+                          onChange={(e) => {
+                            const sel = branches.find((b) => String(b.id) === String(e.target.value));
+                            setRemitFormData({
+                              ...remitFormData,
+                              branchId: e.target.value,
+                              branchName: sel?.name || sel?.branch_name || 'Selected Branch',
+                            });
+                          }}
+                          className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/80 font-bold text-slate-900 dark:text-white outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 cursor-pointer appearance-none text-xs"
+                        >
+                          {branches.map((b) => (
+                            <option key={b.id} value={b.id} className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>
+                              {b.name || b.branch_name} ({b.code || b.branch_code || 'HUB'})
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      </div>
+                    </div>
                   )}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                        Remitted Amount (₹) <span className="text-amber-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-bold text-slate-400 text-sm">₹</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          required
+                          value={remitFormData.remittedAmount}
+                          onChange={(e) => setRemitFormData({ ...remitFormData, remittedAmount: e.target.value })}
+                          className="w-full pl-8 pr-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/80 font-mono font-bold text-slate-900 dark:text-white outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 text-xs"
+                          placeholder="0.00"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                        Deposit Date <span className="text-amber-500">*</span>
+                      </label>
+                      <input
+                        type="date"
+                        required
+                        value={remitFormData.closureDate}
+                        onChange={(e) => setRemitFormData({ ...remitFormData, closureDate: e.target.value })}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/80 font-bold text-slate-900 dark:text-white outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 text-xs"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                        Bank Name <span className="text-amber-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={remitFormData.bankName}
+                        placeholder="e.g. State Bank of India, HDFC Bank"
+                        onChange={(e) => setRemitFormData({ ...remitFormData, bankName: e.target.value })}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/80 text-slate-900 dark:text-white font-medium outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 text-xs"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                        Bank Account # <span className="text-slate-400 font-normal text-[10px]">(Optional)</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={remitFormData.bankAccountNo}
+                        placeholder="e.g. 302910293810"
+                        onChange={(e) => setRemitFormData({ ...remitFormData, bankAccountNo: e.target.value })}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/80 font-mono text-slate-900 dark:text-white outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 text-xs"
+                      />
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                        Deposit Mode <span className="text-amber-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <select
+                          value={remitFormData.depositMode}
+                          onChange={(e) => setRemitFormData({ ...remitFormData, depositMode: e.target.value })}
+                          className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/80 font-bold text-slate-900 dark:text-white outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 cursor-pointer appearance-none text-xs"
+                        >
+                          <option value="CASH_DEPOSIT" className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>💵 Counter Cash Deposit at Branch</option>
+                          <option value="CDM" className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>🏧 Cash Deposit Machine (CDM)</option>
+                          <option value="UPI" className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>⚡ UPI / QR Merchant Transfer</option>
+                          <option value="NEFT" className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>🏦 NEFT / RTGS Online Clearance</option>
+                          <option value="CHEQUE" className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>📝 Bank Cheque / Pay Order</option>
+                        </select>
+                        <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      </div>
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                        Bank UTR / Transaction / Challan Reference # <span className="text-amber-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. UTR3928109382 / Challan #10492"
+                        value={remitFormData.utrReferenceNo}
+                        onChange={(e) => setRemitFormData({ ...remitFormData, utrReferenceNo: e.target.value })}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/80 font-mono font-bold text-slate-900 dark:text-white outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 text-xs placeholder:font-normal placeholder:text-slate-400"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Upload Stamped Bank Slip / Receipt */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                        Upload Bank Slip / Stamped Challan Photo
+                      </label>
+                      <span className="text-[10px] text-slate-400 font-medium">Recommended for Audit Verification</span>
+                    </div>
+
+                    <div className="border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl p-4 text-center hover:border-amber-500/60 hover:bg-amber-500/5 transition-all">
+                      {remitFormData.receiptPreview ? (
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-2 bg-slate-50 dark:bg-slate-900/90 rounded-xl border border-slate-200 dark:border-slate-800">
+                          <div className="flex items-center space-x-3">
+                            <img
+                              src={remitFormData.receiptPreview}
+                              alt="Receipt preview"
+                              className="w-14 h-14 rounded-lg object-cover border border-slate-200 dark:border-slate-700 shadow-xs"
+                            />
+                            <div className="text-left">
+                              <span className="text-xs font-bold text-slate-800 dark:text-slate-200 block">Bank Slip Attached</span>
+                              <span className="text-[10px] text-emerald-500 font-semibold flex items-center gap-1 mt-0.5">
+                                <CheckCircle2 className="w-3 h-3" /> Ready for verification
+                              </span>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setRemitFormData({ ...remitFormData, receiptSlip: '', receiptPreview: '' })}
+                            className="px-3 py-1.5 rounded-lg text-xs font-bold text-rose-500 hover:bg-rose-500/10 border border-rose-500/20 transition-colors flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>Remove</span>
+                          </button>
+                        </div>
+                      ) : (
+                        <label className="cursor-pointer block py-3 group">
+                          <div className="w-12 h-12 rounded-2xl bg-amber-500/10 group-hover:bg-amber-500/20 text-amber-500 flex items-center justify-center mx-auto mb-2 transition-transform group-hover:scale-105">
+                            <UploadCloud className="w-6 h-6" />
+                          </div>
+                          <span className="text-xs font-bold text-blue-600 dark:text-cyan-400 group-hover:underline block">
+                            Click to upload deposit slip or challan
+                          </span>
+                          <span className="text-[10px] text-slate-400 mt-1 block">
+                            Supports JPG, PNG, WebP photo of stamped teller receipt (Max 10MB)
+                          </span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleRemitFileChange}
+                            className="hidden"
+                          />
+                        </label>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                      Remarks / Notes <span className="text-slate-400 font-normal text-[10px]">(Optional)</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Deposited morning counter collections to SBI Current Account"
+                      value={remitFormData.remarks}
+                      onChange={(e) => setRemitFormData({ ...remitFormData, remarks: e.target.value })}
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/80 text-slate-900 dark:text-white font-medium outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 text-xs"
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div>
-                <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">
-                  Remarks / Notes
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Deposited morning counter cash"
-                  value={remitFormData.remarks}
-                  onChange={(e) => setRemitFormData({ ...remitFormData, remarks: e.target.value })}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:border-amber-500"
-                />
-              </div>
+              {/* Pinned Modal Footer */}
+              <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-800/80 flex items-center justify-between shrink-0 bg-slate-50/80 dark:bg-slate-950/60 backdrop-blur-xs">
+                <div className="flex items-center gap-1.5 text-slate-400">
+                  <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0" />
+                  <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 hidden sm:inline">
+                    Daybook balance settled upon confirmation
+                  </span>
+                </div>
 
-              {/* Action Buttons */}
-              <div className="pt-2 flex items-center justify-end space-x-2">
-                <button
-                  type="button"
-                  onClick={() => setIsRemitModalOpen(false)}
-                  className="px-4 py-2 rounded-xl font-bold border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmittingRemit}
-                  className="px-5 py-2 rounded-xl font-bold bg-amber-500 hover:bg-amber-600 text-white shadow-md disabled:opacity-50 cursor-pointer flex items-center space-x-1.5"
-                >
-                  {isSubmittingRemit ? (
-                    <span>Submitting...</span>
-                  ) : (
-                    <>
-                      <Landmark className="w-3.5 h-3.5" />
-                      <span>Confirm Deposit &amp; Close</span>
-                    </>
-                  )}
-                </button>
+                <div className="flex items-center space-x-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setIsRemitModalOpen(false)}
+                    className="px-4 py-2.5 rounded-xl font-bold border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs cursor-pointer transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmittingRemit}
+                    className="px-5 py-2.5 rounded-xl font-bold bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white shadow-lg shadow-amber-500/25 active:scale-95 disabled:opacity-50 cursor-pointer flex items-center space-x-2 text-xs transition-all"
+                  >
+                    {isSubmittingRemit ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>Confirming Deposit...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Landmark className="w-4 h-4" />
+                        <span>Confirm Deposit &amp; Close</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             </form>
           </div>
@@ -3783,7 +3988,7 @@ export default function ReportsPage() {
                     <span>•</span>
                     <span>Phone: <strong className="font-mono text-slate-600 dark:text-slate-300">{selectedPartyDetails.phone}</strong></span>
                     <span>•</span>
-                    <span>Branch: <strong className="text-slate-600 dark:text-slate-300">{selectedPartyDetails.branch}</strong></span>
+                    <span>Branch: <strong className="text-slate-600 dark:text-slate-300">{selectedPartyDetails.branchName || selectedPartyDetails.branch} {selectedPartyDetails.branchCode ? `(${selectedPartyDetails.branchCode})` : ''}</strong></span>
                   </p>
                 </div>
               </div>

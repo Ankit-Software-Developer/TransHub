@@ -74,7 +74,7 @@ module.exports = (sequelize) => {
     tableName: 'gps_integrations',
     indexes: [
       { fields: ['tenant_id', 'organization_id'] },
-      { fields: ['provider_code'] },
+      { unique: true, fields: ['organization_id', 'provider_code'] },
       { fields: ['is_active'] },
     ],
   });

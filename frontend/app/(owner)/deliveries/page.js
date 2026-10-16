@@ -9,6 +9,7 @@ import Sidebar from '../../../components/layout/Sidebar';
 import Navbar from '../../../components/layout/Navbar';
 import DataTable from '../../../components/ui/DataTable';
 import Badge from '../../../components/ui/Badge';
+import BranchFilterDropdown from '../../../components/ui/BranchFilterDropdown';
 import { useTheme } from '../../../components/ThemeProvider';
 import { usePermissions } from '../../../hooks/usePermissions';
 import { useStore } from '../../../store/useStore';
@@ -1448,30 +1449,19 @@ export default function DeliveriesPage() {
             {/* Top Action Controls: Branch Switcher & Quick DRS in a single non-wrapping row */}
             <div className="flex items-center gap-2 shrink-0 flex-nowrap">
               {isAdmin && (
-                <div className={`flex items-center gap-1.5 p-1 rounded-xl border shadow-xs transition-colors shrink-0 ${
-                  isDark ? 'bg-slate-900/80 border-slate-800' : 'bg-white border-slate-200'
-                }`}>
-                  <Building2 className={`w-4 h-4 ml-2 shrink-0 ${isDark ? 'text-slate-400' : 'text-slate-500'}`} />
-                  <select
-                    value={selectedBranchId}
-                    onChange={(e) => {
-                      setSelectedBranchId(e.target.value);
-                      setPage(1);
-                    }}
-                    className={`bg-transparent text-xs font-semibold px-2 py-1.5 rounded-lg border-0 focus:ring-0 cursor-pointer ${
-                      isDark ? 'text-white' : 'text-slate-800'
-                    }`}
-                  >
-                    <option value="ALL" className={isDark ? 'bg-[#0B1020] text-white' : 'bg-white text-slate-900'}>
-                      🏢 All Destination Hubs
-                    </option>
-                    {branches.map((b) => (
-                      <option key={b.id} value={b.id} className={isDark ? 'bg-[#0B1020] text-white' : 'bg-white text-slate-900'}>
-                        {b.branch_name} ({b.city || 'Hub'})
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <BranchFilterDropdown
+                  selectedBranchId={selectedBranchId}
+                  onChange={(newBranchId) => {
+                    setSelectedBranchId(newBranchId);
+                    setPage(1);
+                  }}
+                  branches={branches}
+                  allLabel="All Destination Hubs"
+                  allSubtitle="Network-wide Delivery Operations"
+                  label="Hub:"
+                  showLabel={false}
+                  align="right"
+                />
               )}
 
               {activeTab === 'READY' && (

@@ -48,6 +48,7 @@ const defineSaaSSubscription = require('./SaaSSubscription');
 const defineDailyBrief = require('./DailyBrief');
 const defineApprovalRequest = require('./ApprovalRequest');
 const defineGpsIntegration = require('./GpsIntegration');
+const defineGpsLocationLog = require('./GpsLocationLog');
 const defineTicket = require('./Ticket');
 const defineTicketMessage = require('./TicketMessage');
 const defineBranchCashClosure = require('./BranchCashClosure');
@@ -167,6 +168,7 @@ const initTenantModels = (targetSequelize) => {
     DailyBrief: defineDailyBrief(targetSequelize),
     ApprovalRequest: defineApprovalRequest(targetSequelize),
     GpsIntegration: defineGpsIntegration(targetSequelize),
+    GpsLocationLog: defineGpsLocationLog(targetSequelize),
     Ticket: defineTicket(targetSequelize),
     TicketMessage: defineTicketMessage(targetSequelize),
     BranchCashClosure: defineBranchCashClosure(targetSequelize),

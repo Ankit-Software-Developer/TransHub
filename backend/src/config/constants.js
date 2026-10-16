@@ -57,6 +57,20 @@ const PERMISSIONS = {
   ORGANIZATION_MANAGE: 'organization.manage',
   SETTINGS_MANAGE: 'settings.manage',
 
+  // Report Registers & Tabs
+  REPORTS_DOCKETS_VIEW: 'reports.dockets.view',
+  REPORTS_DOCKETS_EXPORT: 'reports.dockets.export',
+  REPORTS_POD_VIEW: 'reports.pod.view',
+  REPORTS_POD_EXPORT: 'reports.pod.export',
+  REPORTS_COLLECTIONS_VIEW: 'reports.collections.view',
+  REPORTS_COLLECTIONS_EXPORT: 'reports.collections.export',
+  REPORTS_AGEING_VIEW: 'reports.ageing.view',
+  REPORTS_AGEING_EXPORT: 'reports.ageing.export',
+  REPORTS_TRIPS_PNL_VIEW: 'reports.trips_pnl.view',
+  REPORTS_TRIPS_PNL_EXPORT: 'reports.trips_pnl.export',
+  REPORTS_GST_VIEW: 'reports.gst.view',
+  REPORTS_GST_EXPORT: 'reports.gst.export',
+
   // Audit & Security Logs
   AUDIT_VIEW: 'audit.view',
   AUDIT_EXPORT: 'audit.export',

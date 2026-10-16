@@ -49,6 +49,14 @@ const startServer = async () => {
     console.log(`🚀 TransporterTMS Backend Server running on http://localhost:${PORT}`);
     console.log(`📡 REST API mounted at http://localhost:${PORT}/api/v1`);
     console.log(`🩺 Health check at http://localhost:${PORT}/api/health`);
+
+    // Start background telematics GPS synchronization worker (every 10s)
+    try {
+      const { startGpsPollingWorker } = require('./src/services/gpsSyncWorker');
+      startGpsPollingWorker(app, 10000);
+    } catch (gpsWorkerErr) {
+      console.warn('⚠️ GPS Polling worker startup notice:', gpsWorkerErr.message);
+    }
   });
 };
 

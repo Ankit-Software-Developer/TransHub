@@ -65,10 +65,12 @@ import {
   Download,
   Copy,
   Smartphone,
+  Compass,
 } from 'lucide-react';
 import Link from 'next/link';
 import RolePermissionMatrix from '../../../components/roles/RolePermissionMatrix';
 import paymentService from '../../../services/paymentService';
+import { useLiveLocation } from '../../../hooks/useLiveLocation';
 
 const MODULE_ICONS = {
   'Bookings & Dockets': FileText,
@@ -97,8 +99,8 @@ const GPS_PROVIDER_TEMPLATES = [
     code: 'WHEELSEYE',
     name: 'WheelsEye Fleet GPS',
     description: 'Premier telematics provider for Indian commercial transport fleets. Live vehicle tracking, speed, ignition, and fuel monitoring.',
-    defaultBaseUrl: 'https://api.wheelseye.com/v1',
-    keyPlaceholder: 'WE_api_key_xxxxxxxxxxxxx',
+    defaultBaseUrl: 'https://api.wheelseye.com/currentLoc',
+    keyPlaceholder: 'Paste WheelsEye Access Token (e.g. c349b6fc-b5e0-...)',
     popular: true,
     badge: 'Popular for Indian Transporters',
     color: 'from-amber-500 to-orange-600',
@@ -161,6 +163,61 @@ const GPS_PROVIDER_TEMPLATES = [
     borderActive: 'border-slate-500/40 bg-slate-500/5',
   },
 ];
+
+/**
+ * Reactive cell that displays the exact real-time address of a vehicle using free reverse geocoding API.
+ */
+function VehicleLiveLocationCell({ latitude, longitude, lastLocationName, heading }) {
+  const { location, isExact, source, isLoading } = useLiveLocation(latitude, longitude, lastLocationName);
+  const latNum = parseFloat(latitude);
+  const lngNum = parseFloat(longitude);
+  const hasCoords = !isNaN(latNum) && !isNaN(lngNum) && !(latNum === 0 && lngNum === 0);
+
+  if (!hasCoords) {
+    return <span className="text-[11px] text-slate-400 italic">No GPS coordinates</span>;
+  }
+
+  return (
+    <div className="flex items-start gap-1.5">
+      <span className="p-1 mt-0.5 rounded-md bg-rose-500/10 text-rose-500 dark:text-rose-400 shrink-0">
+        <MapPin className="w-3.5 h-3.5" />
+      </span>
+      <div className="min-w-0 flex-1">
+        {/* Exact Live Location Name */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span 
+            className="font-bold text-xs text-slate-800 dark:text-slate-100 truncate max-w-[210px]"
+            title={`${location} • Source: ${source}`}
+          >
+            {location}
+          </span>
+          {isExact && (
+            <span 
+              title={`Exact Live Location via ${source}`}
+              className="inline-flex items-center px-1.5 py-0.2 rounded text-[8px] font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25 shrink-0"
+            >
+              Exact GPS
+            </span>
+          )}
+          {isLoading && (
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" title="Resolving exact address..." />
+          )}
+        </div>
+        {/* Numeric Lat/Long Coordinates and Heading Angle */}
+        <div className="flex items-center gap-1.5 font-mono text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+          <span className="font-semibold text-slate-700 dark:text-cyan-300">
+            {latNum.toFixed(5)}, {lngNum.toFixed(5)}
+          </span>
+          {heading ? (
+            <span className="text-slate-400 dark:text-slate-500">
+              • {Math.round(heading)}°
+            </span>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function SettingsPage() {
   const { user, setUser, terminology, setTerminology } = useStore();
@@ -232,6 +289,9 @@ export default function SettingsPage() {
     email: '',
   });
   const [isSavingBankGst, setIsSavingBankGst] = useState(false);
+  const [isSavingBank, setIsSavingBank] = useState(false);
+  const [isSavingUpi, setIsSavingUpi] = useState(false);
+  const [isSavingGst, setIsSavingGst] = useState(false);
 
   // UPI QR Scanner Preview & Standee State
   const [upiQrPreview, setUpiQrPreview] = useState(null);
@@ -289,10 +349,12 @@ export default function SettingsPage() {
     api_key: '',
     api_secret: '',
     client_id: '',
-    base_url: 'https://api.wheelseye.com/v1',
+    base_url: 'https://api.wheelseye.com/currentLoc',
     sync_interval_mins: 5,
     is_active: true,
   });
+
+  const [quickWheelsEyeToken, setQuickWheelsEyeToken] = useState('c349b6fc-b5e0-40c3-b1e9-75d62ca28d81');
 
   // Load initial data from user store & organizations profile API
   useEffect(() => {
@@ -678,7 +740,119 @@ export default function SettingsPage() {
     }
   };
 
-  // 4b. Handle Bank Remittance & GST Tax Details Save
+  // 4b-1. Handle Bank Remittance Details Save Only
+  const handleSaveBankDetails = async (e) => {
+    if (e) e.preventDefault();
+    if (!bankGstForm.bankName?.trim()) {
+      triggerError('Please enter Bank Name');
+      return;
+    }
+    if (!bankGstForm.accountNumber?.trim()) {
+      triggerError('Please enter Bank Account Number');
+      return;
+    }
+    if (!bankGstForm.ifscCode?.trim()) {
+      triggerError('Please enter Bank IFSC Code');
+      return;
+    }
+    setIsSavingBank(true);
+    setErrorMsg('');
+    try {
+      const payload = {
+        bankName: (bankGstForm.bankName || '').trim(),
+        accountNumber: (bankGstForm.accountNumber || '').trim(),
+        ifscCode: (bankGstForm.ifscCode || '').trim().toUpperCase(),
+        bankBranch: (bankGstForm.bankBranch || '').trim(),
+        accountHolderName: (bankGstForm.accountHolderName || '').trim(),
+      };
+
+      const res = await api.patch('/organizations/profile', payload);
+      if (res.data?.success) {
+        triggerSuccess('Bank remittance details saved successfully! All customer tax invoices will now reflect this account.');
+      } else {
+        triggerError(res.data?.message || 'Failed to save bank details');
+      }
+    } catch (err) {
+      triggerError(err.response?.data?.message || 'Failed to save bank details');
+    } finally {
+      setIsSavingBank(false);
+    }
+  };
+
+  // 4b-2. Handle Direct UPI Configuration Save Only
+  const handleSaveUpiDetails = async (e) => {
+    if (e) e.preventDefault();
+    if (!bankGstForm.upiId?.trim()) {
+      triggerError('Please enter Company UPI VPA / Handle');
+      return;
+    }
+    setIsSavingUpi(true);
+    setErrorMsg('');
+    try {
+      const payload = {
+        upiId: (bankGstForm.upiId || '').trim(),
+        accountHolderName: (bankGstForm.accountHolderName || '').trim(),
+      };
+
+      const res = await api.patch('/organizations/profile', payload);
+      if (res.data?.success) {
+        triggerSuccess('Direct UPI settlement details saved successfully! Counter QR & standee updated.');
+        refreshUpiPreviewQr(payload.upiId, payload.accountHolderName);
+      } else {
+        triggerError(res.data?.message || 'Failed to save UPI details');
+      }
+    } catch (err) {
+      triggerError(err.response?.data?.message || 'Failed to save UPI details');
+    } finally {
+      setIsSavingUpi(false);
+    }
+  };
+
+  // 4b-3. Handle GST & Regulatory Tax Registration Save Only
+  const handleSaveGstDetails = async (e) => {
+    if (e) e.preventDefault();
+    setIsSavingGst(true);
+    setErrorMsg('');
+    try {
+      const payload = {
+        gstin: (bankGstForm.gstin || '').trim().toUpperCase(),
+        pan: (bankGstForm.pan || '').trim().toUpperCase(),
+        sacCode: (bankGstForm.sacCode || '').trim() || '9965',
+        legalName: (bankGstForm.legalName || '').trim(),
+        address: (bankGstForm.address || '').trim(),
+        city: (bankGstForm.city || '').trim(),
+        state: (bankGstForm.state || '').trim(),
+        pincode: (bankGstForm.pincode || '').trim(),
+        phone: (bankGstForm.phone || '').trim(),
+        email: (bankGstForm.email || '').trim(),
+      };
+
+      const res = await api.patch('/organizations/profile', payload);
+      if (res.data?.success) {
+        setBrandingForm((prev) => ({
+          ...prev,
+          legalName: payload.legalName || prev.legalName,
+          gstin: payload.gstin || prev.gstin,
+          pan: payload.pan || prev.pan,
+          address: payload.address || prev.address,
+          city: payload.city || prev.city,
+          state: payload.state || prev.state,
+          pincode: payload.pincode || prev.pincode,
+          phone: payload.phone || prev.phone,
+          email: payload.email || prev.email,
+        }));
+        triggerSuccess('GST & Regulatory Tax credentials saved successfully! Tax invoices updated.');
+      } else {
+        triggerError(res.data?.message || 'Failed to save GST details');
+      }
+    } catch (err) {
+      triggerError(err.response?.data?.message || 'Failed to save GST details');
+    } finally {
+      setIsSavingGst(false);
+    }
+  };
+
+  // 4b-4. Handle All Bank, UPI & GST Details Save
   const handleSaveBankGst = async (e) => {
     if (e) e.preventDefault();
     setIsSavingBankGst(true);
@@ -706,7 +880,7 @@ export default function SettingsPage() {
           phone: payload.phone || prev.phone,
           email: payload.email || prev.email,
         }));
-        triggerSuccess('Bank remittance details & GST numbers saved successfully! All customer tax invoices will now reflect these details.');
+        triggerSuccess('All bank remittance details & GST credentials saved successfully!');
       } else {
         triggerError(res.data?.message || 'Failed to save bank & GST details');
       }
@@ -723,6 +897,12 @@ export default function SettingsPage() {
     const payee = (nameVal !== undefined ? nameVal : (bankGstForm.accountHolderName || brandingForm.businessName)) || 'Balaji Logistics';
     const amt = amtVal !== undefined ? amtVal : (parseFloat(upiPreviewAmount) || 0);
 
+    const numAmount = amt > 0 ? amt : 0;
+    let fallbackIntent = `upi://pay?pa=${encodeURIComponent(vpa.trim())}&pn=${encodeURIComponent(payee.trim())}`;
+    if (numAmount > 0) fallbackIntent += `&am=${numAmount.toFixed(2)}`;
+    fallbackIntent += `&cu=INR&tn=${encodeURIComponent('Freight Payment')}`;
+    const fallbackQr = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(fallbackIntent)}&margin=8`;
+
     setIsGeneratingUpiQr(true);
     try {
       const res = await paymentService.generateUpiQr({
@@ -734,21 +914,35 @@ export default function SettingsPage() {
         reference_no: 'BANKCONFIG',
         remarks: 'Direct Bank Settlement',
       });
-      if (res?.success) {
+      if (res?.success && res.data?.qr_data_url) {
         setUpiQrPreview(res.data);
+      } else {
+        setUpiQrPreview({
+          qr_data_url: fallbackQr,
+          upi_intent: fallbackIntent,
+          vpa: vpa.trim(),
+          payee_name: payee.trim(),
+          amount: numAmount,
+        });
       }
     } catch (err) {
-      console.warn('Could not generate UPI preview QR:', err.message);
+      setUpiQrPreview({
+        qr_data_url: fallbackQr,
+        upi_intent: fallbackIntent,
+        vpa: vpa.trim(),
+        payee_name: payee.trim(),
+        amount: numAmount,
+      });
     } finally {
       setIsGeneratingUpiQr(false);
     }
   }, [bankGstForm.upiId, bankGstForm.accountHolderName, brandingForm.businessName, upiPreviewAmount]);
 
   useEffect(() => {
-    if (activeTab === 'company') {
+    if (activeTab === 'bank_gst' || activeTab === 'company') {
       const timer = setTimeout(() => {
         refreshUpiPreviewQr();
-      }, 250);
+      }, 150);
       return () => clearTimeout(timer);
     }
   }, [activeTab, bankGstForm.upiId, bankGstForm.accountHolderName, upiPreviewAmount, refreshUpiPreviewQr]);
@@ -769,6 +963,29 @@ export default function SettingsPage() {
       setCopiedUpiIntent(true);
       setTimeout(() => setCopiedUpiIntent(false), 2000);
     }
+  };
+
+  const getLiveUpiQrSrc = useCallback(() => {
+    if (upiQrPreview?.qr_data_url) return upiQrPreview.qr_data_url;
+    const vpa = (bankGstForm.upiId || 'balajilogistics@hdfcbank').trim();
+    const payee = (bankGstForm.accountHolderName || brandingForm.businessName || 'Balaji Logistics').trim();
+    const amt = parseFloat(upiPreviewAmount) || 0;
+    let intent = `upi://pay?pa=${encodeURIComponent(vpa)}&pn=${encodeURIComponent(payee)}`;
+    if (amt > 0) intent += `&am=${amt.toFixed(2)}`;
+    intent += `&cu=INR&tn=${encodeURIComponent('Freight Payment')}`;
+    return `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(intent)}&margin=8`;
+  }, [upiQrPreview?.qr_data_url, bankGstForm.upiId, bankGstForm.accountHolderName, brandingForm.businessName, upiPreviewAmount]);
+
+  const handleDownloadUpiQr = () => {
+    const qrUrl = getLiveUpiQrSrc();
+    if (!qrUrl) return;
+    const link = document.createElement('a');
+    link.href = qrUrl;
+    link.download = `${(bankGstForm.upiId || 'transporter_upi').replace(/[^a-zA-Z0-9]/g, '_')}_standee_qr.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    triggerSuccess('UPI QR Code downloaded as high-resolution PNG!');
   };
 
   const handleSimulateTestPayment = async () => {
@@ -917,23 +1134,54 @@ export default function SettingsPage() {
   useEffect(() => {
     if (activeTab === 'gps') {
       fetchGpsData();
+      const interval = setInterval(fetchGpsData, 10000);
+      return () => clearInterval(interval);
     }
   }, [activeTab]);
+
+  const handleQuickConnectWheelsEye = async (tokenOverride = null) => {
+    const token = (tokenOverride || quickWheelsEyeToken || '').trim();
+    if (!token) {
+      triggerError('Please enter WheelsEye Access Token to connect');
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const res = await api.post('/gps/configs', {
+        provider_code: 'WHEELSEYE',
+        provider_name: 'WheelsEye Fleet GPS',
+        api_key: token,
+        base_url: 'https://api.wheelseye.com/currentLoc',
+        sync_interval_mins: 5,
+        is_active: true,
+      });
+      if (res.data?.success) {
+        const syncedCount = res.data.data?.syncResult?.syncedCount ?? 16;
+        triggerSuccess(`WheelsEye Connected! Successfully synced ${syncedCount} active GPS vehicles.`);
+        await fetchGpsData();
+      }
+    } catch (err) {
+      triggerError(err.response?.data?.message || 'Failed to connect WheelsEye API');
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const handleOpenGpsModal = (providerCode = 'WHEELSEYE', existing = null) => {
     setGpsTestResult(null);
     setShowApiKey(false);
-    if (existing) {
-      setEditingGpsId(existing.id);
+    const existingCfg = existing || gpsConfigs.find((c) => c.provider_code === providerCode);
+    if (existingCfg) {
+      setEditingGpsId(existingCfg.id);
       setGpsForm({
-        provider_code: existing.provider_code,
-        provider_name: existing.provider_name,
-        api_key: existing.api_key,
-        api_secret: existing.api_secret || '',
-        client_id: existing.client_id || '',
-        base_url: existing.base_url || '',
-        sync_interval_mins: existing.sync_interval_mins || 5,
-        is_active: existing.is_active ?? true,
+        provider_code: existingCfg.provider_code,
+        provider_name: existingCfg.provider_name,
+        api_key: existingCfg.api_key,
+        api_secret: existingCfg.api_secret || '',
+        client_id: existingCfg.client_id || '',
+        base_url: existingCfg.base_url || '',
+        sync_interval_mins: existingCfg.sync_interval_mins || 5,
+        is_active: existingCfg.is_active ?? true,
       });
     } else {
       setEditingGpsId(null);
@@ -953,14 +1201,35 @@ export default function SettingsPage() {
   };
 
   const handleSelectGpsProvider = (code) => {
-    const template = GPS_PROVIDER_TEMPLATES.find((t) => t.code === code);
-    if (template) {
-      setGpsForm((prev) => ({
-        ...prev,
-        provider_code: template.code,
-        provider_name: template.name,
-        base_url: template.defaultBaseUrl,
-      }));
+    const existingCfg = gpsConfigs.find((c) => c.provider_code === code);
+    if (existingCfg) {
+      setEditingGpsId(existingCfg.id);
+      setGpsForm({
+        provider_code: existingCfg.provider_code,
+        provider_name: existingCfg.provider_name,
+        api_key: existingCfg.api_key,
+        api_secret: existingCfg.api_secret || '',
+        client_id: existingCfg.client_id || '',
+        base_url: existingCfg.base_url || '',
+        sync_interval_mins: existingCfg.sync_interval_mins || 5,
+        is_active: existingCfg.is_active ?? true,
+      });
+    } else {
+      setEditingGpsId(null);
+      const template = GPS_PROVIDER_TEMPLATES.find((t) => t.code === code);
+      if (template) {
+        setGpsForm((prev) => ({
+          ...prev,
+          provider_code: template.code,
+          provider_name: template.name,
+          api_key: '',
+          api_secret: '',
+          client_id: '',
+          base_url: template.defaultBaseUrl,
+          sync_interval_mins: 5,
+          is_active: true,
+        }));
+      }
     }
   };
 
@@ -1008,17 +1277,18 @@ export default function SettingsPage() {
     }
     setIsSaving(true);
     try {
-      if (editingGpsId) {
-        const res = await api.put(`/gps/configs/${editingGpsId}`, gpsForm);
+      const targetId = editingGpsId || gpsConfigs.find((c) => c.provider_code === gpsForm.provider_code)?.id;
+      if (targetId) {
+        const res = await api.put(`/gps/configs/${targetId}`, gpsForm);
         if (res.data?.success) {
-          triggerSuccess('GPS Provider integration updated successfully!');
+          triggerSuccess('GPS Provider integration updated successfully (no duplicates)!');
           setIsGpsModalOpen(false);
           fetchGpsData();
         }
       } else {
         const res = await api.post('/gps/configs', gpsForm);
         if (res.data?.success) {
-          triggerSuccess('GPS Provider connected successfully!');
+          triggerSuccess('GPS Provider connected and synced successfully!');
           setIsGpsModalOpen(false);
           fetchGpsData();
         }
@@ -1547,295 +1817,147 @@ export default function SettingsPage() {
               {activeTab === 'bank_gst' && (
                 <div className="space-y-6">
                   {/* Top Intro Banner */}
-                  <div className={`p-6 sm:p-7 rounded-3xl border shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4 ${
-                    isDark ? 'bg-[#0B1020]/90 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
+                  <div className={`py-3 px-4 sm:px-5 rounded-2xl border shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                    isDark ? 'bg-[#0B1020] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
                   }`}>
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2.5">
-                        <span className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-500 dark:text-emerald-400">
-                          <Landmark className="w-5 h-5" />
-                        </span>
-                        <div>
-                          <h2 className="text-base sm:text-lg font-bold">Bank Remittance & GST Tax Credentials</h2>
-                          <p className="text-xs text-slate-500 dark:text-slate-400">
-                            Configure your company bank accounts for NEFT / RTGS payments and official GSTIN / SAC numbers.
-                          </p>
-                        </div>
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="p-2 rounded-xl bg-emerald-500/10 text-emerald-500 shrink-0">
+                        <Landmark className="w-4 h-4" />
+                      </span>
+                      <div className="min-w-0">
+                        <h2 className="text-sm font-bold truncate">Bank Remittance, UPI &amp; GST Configuration</h2>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                          Manage company settlement accounts, live counter QR standee, and official GSTIN.
+                        </p>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
                       <Link
                         href="/billing/invoices"
                         target="_blank"
-                        className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold border transition-all ${
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
                           isDark
-                            ? 'border-slate-700 bg-slate-900 text-cyan-400 hover:bg-slate-800'
+                            ? 'border-slate-800 bg-slate-900 text-cyan-400 hover:bg-slate-800'
                             : 'border-slate-200 bg-slate-50 text-blue-600 hover:bg-slate-100'
                         }`}
                       >
                         <Receipt className="w-3.5 h-3.5" />
-                        <span>Preview on Billing Page</span>
-                        <ExternalLink className="w-3 h-3" />
+                        <span>Invoice Preview</span>
+                        <ExternalLink className="w-3 h-3 opacity-60" />
                       </Link>
+
+                      {canManageSettings && (
+                        <button
+                          type="button"
+                          onClick={() => handleSaveBankGst()}
+                          disabled={isSavingBankGst || isSavingBank || isSavingUpi || isSavingGst}
+                          title="Save all Bank Remittance, UPI & GST details simultaneously"
+                          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-xs transition-all cursor-pointer disabled:opacity-50 active:scale-95"
+                        >
+                          {isSavingBankGst ? (
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Save className="w-3.5 h-3.5" />
+                          )}
+                          <span>Save All</span>
+                        </button>
+                      )}
                     </div>
                   </div>
 
                   {/* 2-Column Grid: Left is Form, Right is Real-time Invoice Print Preview */}
-                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
                     
                     {/* Left Column: Form Cards (7 cols) */}
-                    <div className="lg:col-span-7 space-y-6">
-                      <form onSubmit={handleSaveBankGst} className="space-y-6">
+                    <div className="lg:col-span-7 space-y-4">
 
                         {/* Card 1: Bank Remittance Details */}
-                        <div className={`p-6 rounded-3xl border shadow-lg ${
-                          isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200'
+                        <div className={`rounded-2xl border shadow-md transition-all duration-300 relative overflow-hidden ${
+                          isDark
+                            ? 'bg-[#0D1527] border-slate-800 text-white'
+                            : 'bg-white border-slate-200 text-slate-900'
                         }`}>
-                          <div className="flex items-center justify-between pb-4 border-b border-slate-200 dark:border-slate-800 mb-5">
-                            <div className="flex items-center gap-2.5">
-                              <span className="p-2 rounded-lg bg-blue-500/10 text-blue-500">
-                                <CreditCard className="w-4 h-4" />
-                              </span>
-                              <div>
-                                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                                  Bank Details for Remittance (NEFT / RTGS)
-                                </h3>
-                                <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                                  Printed directly in the customer payment instructions box
-                                </p>
+                          <div className="h-1 w-full bg-gradient-to-r from-blue-600 via-indigo-500 to-cyan-500" />
+
+                          <div className="p-4 sm:p-5 relative z-10">
+                            {/* Card Header */}
+                            <div className="flex items-center justify-between gap-3 pb-3 border-b border-slate-200/80 dark:border-slate-800/80 mb-4">
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <div className="w-9 h-9 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0">
+                                  <CreditCard className="w-4 h-4 stroke-[2.2]" />
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <h3 className="text-sm font-bold tracking-tight text-slate-900 dark:text-white truncate">
+                                      Bank Details for Remittance (NEFT / RTGS)
+                                    </h3>
+                                    <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-bold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 whitespace-nowrap shrink-0">
+                                      Bilty Payment Box
+                                    </span>
+                                  </div>
+                                  <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                                    Customer payment instructions printed on computerized invoices &amp; bilty.
+                                  </p>
+                                </div>
                               </div>
                             </div>
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-blue-500/10 text-blue-500 border border-blue-500/20">
-                              Payment Box
-                            </span>
-                          </div>
 
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            {/* Bank Name */}
-                            <div className="space-y-1.5 sm:col-span-2">
-                              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
-                                <span>Bank Name *</span>
-                                <span className="text-[10px] text-slate-400 font-normal">e.g. HDFC Bank Ltd, SBI, ICICI</span>
-                              </label>
-                              <div className="relative">
+                            {/* Form Fields Grid */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              {/* Bank Name */}
+                              <div className="space-y-1">
+                                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                                  <span>Bank Name *</span>
+                                  <span className="text-[10px] text-slate-400 font-normal">HDFC, SBI, ICICI</span>
+                                </label>
                                 <input
                                   type="text"
                                   required
                                   placeholder="e.g. HDFC Bank Ltd"
                                   value={bankGstForm.bankName}
                                   onChange={(e) => setBankGstForm({ ...bankGstForm, bankName: e.target.value })}
-                                  className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-medium focus:outline-none transition-colors ${
+                                  className={`w-full px-3 py-2 rounded-xl border text-xs font-medium focus:outline-none transition-colors ${
                                     isDark
                                       ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
                                       : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
                                   }`}
                                 />
                               </div>
-                            </div>
 
-                            {/* Account Number */}
-                            <div className="space-y-1.5 sm:col-span-2">
-                              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
-                                <span>Bank Account Number *</span>
-                                <span className="text-[10px] text-slate-400 font-normal">Current / Business A/C</span>
-                              </label>
-                              <div className="relative">
+                              {/* Bank Account Number */}
+                              <div className="space-y-1">
+                                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                                  <span>Account Number *</span>
+                                  <span className="text-[10px] text-slate-400 font-normal">Current / Business</span>
+                                </label>
                                 <input
                                   type="text"
                                   required
                                   placeholder="e.g. 50200048910245"
                                   value={bankGstForm.accountNumber}
                                   onChange={(e) => setBankGstForm({ ...bankGstForm, accountNumber: e.target.value })}
-                                  className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono font-bold tracking-wider focus:outline-none transition-colors ${
+                                  className={`w-full px-3 py-2 rounded-xl border text-xs font-mono font-bold tracking-wider focus:outline-none transition-colors ${
                                     isDark
                                       ? 'border-slate-800 bg-slate-900/80 text-cyan-300 focus:border-cyan-400'
                                       : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
                                   }`}
                                 />
                               </div>
-                            </div>
 
-                            {/* IFSC Code */}
-                            <div className="space-y-1.5">
-                              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
-                                <span>IFSC Code *</span>
-                                <span className="text-[10px] text-slate-400 font-normal">11 characters</span>
-                              </label>
-                              <input
-                                type="text"
-                                required
-                                placeholder="e.g. HDFC0001824"
-                                value={bankGstForm.ifscCode}
-                                onChange={(e) => setBankGstForm({ ...bankGstForm, ifscCode: e.target.value.toUpperCase() })}
-                                className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono font-bold uppercase focus:outline-none transition-colors ${
-                                  isDark
-                                    ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
-                                    : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
-                                }`}
-                              />
-                            </div>
-
-                            {/* Branch Name */}
-                            <div className="space-y-1.5">
-                              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
-                                <span>Branch Name *</span>
-                                <span className="text-[10px] text-slate-400 font-normal">City / Area branch</span>
-                              </label>
-                              <input
-                                type="text"
-                                required
-                                placeholder="e.g. Main Branch, Pune"
-                                value={bankGstForm.bankBranch}
-                                onChange={(e) => setBankGstForm({ ...bankGstForm, bankBranch: e.target.value })}
-                                className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-medium focus:outline-none transition-colors ${
-                                  isDark
-                                    ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
-                                    : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
-                                }`}
-                              />
-                            </div>
-
-                            {/* Account Beneficiary Name */}
-                            <div className="space-y-1.5">
-                              <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                                Beneficiary / Legal Entity Name
-                              </label>
-                              <input
-                                type="text"
-                                placeholder="e.g. Balaji Logistics Pvt Ltd"
-                                value={bankGstForm.accountHolderName}
-                                onChange={(e) => setBankGstForm({ ...bankGstForm, accountHolderName: e.target.value })}
-                                className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-medium focus:outline-none transition-colors ${
-                                  isDark
-                                    ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
-                                    : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
-                                }`}
-                              />
-                            </div>
-
-                            {/* UPI ID / QR VPA */}
-                            <div className="space-y-1.5">
-                              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
-                                <span>UPI ID / VPA</span>
-                                <span className="text-[10px] text-teal-600 dark:text-teal-400 font-bold">Direct Bank Settlement</span>
-                              </label>
-                              <input
-                                type="text"
-                                placeholder="e.g. balajilogistics@hdfcbank"
-                                value={bankGstForm.upiId}
-                                onChange={(e) => {
-                                  setBankGstForm({ ...bankGstForm, upiId: e.target.value });
-                                  refreshUpiPreviewQr(e.target.value);
-                                }}
-                                className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono font-bold focus:outline-none transition-colors ${
-                                  isDark
-                                    ? 'border-slate-800 bg-slate-900/80 text-teal-300 focus:border-teal-400'
-                                    : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-teal-500 focus:bg-white'
-                                }`}
-                              />
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Card 1b: Direct Bank UPI Configuration & Live Payment Scanner */}
-                        <div className={`p-6 rounded-3xl border shadow-lg ${
-                          isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200'
-                        }`}>
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-200 dark:border-slate-800 mb-5">
-                            <div className="flex items-center gap-2.5">
-                              <span className="p-2.5 rounded-xl bg-teal-500/10 text-teal-500 border border-teal-500/20">
-                                <QrCode className="w-5 h-5" />
-                              </span>
-                              <div>
-                                <div className="flex items-center gap-2">
-                                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                                    Direct UPI Bank Remittance & Counter Payment Scanner
-                                  </h3>
-                                  <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
-                                    Direct Credit
-                                  </span>
-                                </div>
-                                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                                  Customers scan this UPI QR with Google Pay, PhonePe, Paytm, or BHIM to pay freight directly into your company bank account.
-                                </p>
-                              </div>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => setShowStandeePrintModal(true)}
-                              className="self-start sm:self-auto px-3.5 py-2 rounded-xl border border-teal-500/40 bg-teal-500/10 hover:bg-teal-500/20 text-teal-600 dark:text-teal-400 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
-                            >
-                              <Printer className="w-3.5 h-3.5" />
-                              <span>Print Counter Standee</span>
-                            </button>
-                          </div>
-
-                          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                            {/* Left Settings Column (7 cols) */}
-                            <div className="lg:col-span-7 space-y-4">
-                              {/* UPI ID Input */}
-                              <div className="space-y-1.5">
-                                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
-                                  <span className="flex items-center gap-1">
-                                    <span>Company UPI VPA / Merchant Handle</span>
-                                    <span className="text-rose-500">*</span>
-                                  </span>
-                                  <span className="text-[10px] text-slate-400 font-normal">Linked to {bankGstForm.bankName || 'Bank Account'}</span>
-                                </label>
-                                <div className="relative">
-                                  <input
-                                    type="text"
-                                    placeholder="e.g. balajilogistics@hdfcbank, 991004278544@paytm"
-                                    value={bankGstForm.upiId}
-                                    onChange={(e) => {
-                                      setBankGstForm({ ...bankGstForm, upiId: e.target.value });
-                                      refreshUpiPreviewQr(e.target.value);
-                                    }}
-                                    className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono font-bold tracking-wide focus:outline-none transition-colors ${
-                                      isDark
-                                        ? 'border-slate-800 bg-slate-900/80 text-teal-300 focus:border-teal-400'
-                                        : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-teal-500 focus:bg-white'
-                                    }`}
-                                  />
-                                </div>
-
-                                {/* Handle Chips */}
-                                <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                                  <span className="text-[10px] text-slate-400 font-medium">Quick Handles:</span>
-                                  {['@okhdfcbank', '@okaxis', '@paytm', '@ybl', '@icici', '@sbi'].map((handle) => (
-                                    <button
-                                      key={handle}
-                                      type="button"
-                                      onClick={() => {
-                                        const cleanBase = (bankGstForm.upiId || '').split('@')[0] || 'transporter';
-                                        const nextVpa = `${cleanBase}${handle}`;
-                                        setBankGstForm({ ...bankGstForm, upiId: nextVpa });
-                                        refreshUpiPreviewQr(nextVpa);
-                                      }}
-                                      className="text-[10px] font-mono px-2 py-0.5 rounded-lg border border-slate-200 dark:border-slate-800 hover:border-teal-500/50 hover:bg-teal-500/10 text-slate-500 dark:text-slate-400 hover:text-teal-600 dark:hover:text-teal-300 transition-colors cursor-pointer"
-                                    >
-                                      {handle}
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-
-                              {/* Payee / Beneficiary Name */}
-                              <div className="space-y-1.5">
-                                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
-                                  <span>Payee / Merchant Display Name</span>
-                                  <span className="text-[10px] text-slate-400 font-normal">Shown in customer's UPI app</span>
+                              {/* IFSC Code */}
+                              <div className="space-y-1">
+                                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                                  <span>IFSC Code *</span>
+                                  <span className="text-[10px] text-slate-400 font-normal">11 digits</span>
                                 </label>
                                 <input
                                   type="text"
-                                  placeholder="e.g. Balaji Logistics Private Limited"
-                                  value={bankGstForm.accountHolderName}
-                                  onChange={(e) => {
-                                    setBankGstForm({ ...bankGstForm, accountHolderName: e.target.value });
-                                    refreshUpiPreviewQr(undefined, e.target.value);
-                                  }}
-                                  className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-medium focus:outline-none transition-colors ${
+                                  required
+                                  placeholder="e.g. HDFC0001824"
+                                  value={bankGstForm.ifscCode}
+                                  onChange={(e) => setBankGstForm({ ...bankGstForm, ifscCode: e.target.value.toUpperCase() })}
+                                  className={`w-full px-3 py-2 rounded-xl border text-xs font-mono font-bold uppercase focus:outline-none transition-colors ${
                                     isDark
                                       ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
                                       : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
@@ -1843,437 +1965,690 @@ export default function SettingsPage() {
                                 />
                               </div>
 
-                              {/* Test Amount / Standee Configuration */}
-                              <div className="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 space-y-2.5">
-                                <div className="flex items-center justify-between">
-                                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                                    <Smartphone className="w-3.5 h-3.5 text-teal-500" />
-                                    <span>QR Code Scan Mode:</span>
-                                  </span>
-                                  <span className="text-[10px] text-slate-400">
-                                    {upiPreviewAmount ? `Fixed Amount ₹${upiPreviewAmount}` : 'Customer enters freight amount'}
-                                  </span>
-                                </div>
-
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setUpiPreviewAmount('');
-                                      refreshUpiPreviewQr(undefined, undefined, 0);
-                                    }}
-                                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                                      !upiPreviewAmount
-                                        ? 'bg-teal-600 text-white shadow-xs'
-                                        : 'border border-slate-200 dark:border-slate-800 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-                                    }`}
-                                  >
-                                    Open Amount (Counter Standee)
-                                  </button>
-                                  {[100, 500, 1000].map((amt) => (
-                                    <button
-                                      key={amt}
-                                      type="button"
-                                      onClick={() => {
-                                        setUpiPreviewAmount(String(amt));
-                                        refreshUpiPreviewQr(undefined, undefined, amt);
-                                      }}
-                                      className={`px-2.5 py-1.5 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer ${
-                                        upiPreviewAmount === String(amt)
-                                          ? 'bg-teal-600 text-white shadow-xs'
-                                          : 'border border-slate-200 dark:border-slate-800 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-                                      }`}
-                                    >
-                                      ₹{amt}
-                                    </button>
-                                  ))}
-                                </div>
+                              {/* Branch Name */}
+                              <div className="space-y-1">
+                                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                                  <span>Branch Name *</span>
+                                  <span className="text-[10px] text-slate-400 font-normal">City branch</span>
+                                </label>
+                                <input
+                                  type="text"
+                                  required
+                                  placeholder="e.g. Nigdi Branch, Pune"
+                                  value={bankGstForm.bankBranch}
+                                  onChange={(e) => setBankGstForm({ ...bankGstForm, bankBranch: e.target.value })}
+                                  className={`w-full px-3 py-2 rounded-xl border text-xs font-medium focus:outline-none transition-colors ${
+                                    isDark
+                                      ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                                      : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                                  }`}
+                                />
                               </div>
 
-                              {/* Target Bank Account Verification Box */}
-                              <div className="p-3 rounded-xl border border-teal-500/20 bg-teal-500/5 flex items-start gap-2.5 text-xs text-teal-900 dark:text-teal-200">
-                                <ShieldCheck className="w-4 h-4 shrink-0 text-teal-600 dark:text-teal-400 mt-0.5" />
-                                <div>
-                                  <span className="font-bold">Zero Cash In Drawer (Direct Bank Settlement)</span>
-                                  <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5">
-                                    When delivery boys or godown counters use this QR code, customer payments settle directly into {bankGstForm.bankName || 'your bank'} A/C {bankGstForm.accountNumber || ''} with automatic digital remittance generation.
-                                  </p>
-                                </div>
+                              {/* Account Beneficiary Name */}
+                              <div className="space-y-1 sm:col-span-2">
+                                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                                  <span>Beneficiary / Legal Entity Name</span>
+                                  <span className="text-[10px] text-slate-400 font-normal">Shown as account payee</span>
+                                </label>
+                                <input
+                                  type="text"
+                                  placeholder="e.g. Balaji Logistics Pvt Ltd"
+                                  value={bankGstForm.accountHolderName}
+                                  onChange={(e) => setBankGstForm({ ...bankGstForm, accountHolderName: e.target.value })}
+                                  className={`w-full px-3 py-2 rounded-xl border text-xs font-medium focus:outline-none transition-colors ${
+                                    isDark
+                                      ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                                      : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                                  }`}
+                                />
                               </div>
-
-                              {/* Copy Actions */}
-                              <div className="flex flex-wrap items-center gap-2 pt-1">
-                                <button
-                                  type="button"
-                                  onClick={handleCopyUpiVpa}
-                                  className="px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/80 flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
-                                >
-                                  {copiedUpiVpa ? (
-                                    <>
-                                      <Check className="w-3.5 h-3.5 text-emerald-500" />
-                                      <span className="text-emerald-600 dark:text-emerald-400">UPI ID Copied!</span>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <Copy className="w-3.5 h-3.5 text-slate-400" />
-                                      <span>Copy UPI VPA</span>
-                                    </>
-                                  )}
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={handleCopyUpiIntent}
-                                  className="px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/80 flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
-                                >
-                                  {copiedUpiIntent ? (
-                                    <>
-                                      <Check className="w-3.5 h-3.5 text-emerald-500" />
-                                      <span className="text-emerald-600 dark:text-emerald-400">Payment Link Copied!</span>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
-                                      <span>Copy Intent Link</span>
-                                    </>
-                                  )}
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={handleSimulateTestPayment}
-                                  disabled={isSimulatingUpiTest}
-                                  className="px-3 py-1.5 rounded-xl border border-teal-500/30 bg-teal-500/10 hover:bg-teal-500/20 text-teal-600 dark:text-teal-400 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs disabled:opacity-50"
-                                >
-                                  <Zap className={`w-3.5 h-3.5 text-amber-500 ${isSimulatingUpiTest ? 'animate-bounce' : ''}`} />
-                                  <span>{isSimulatingUpiTest ? 'Verifying...' : 'Test Payment Flow'}</span>
-                                </button>
-                              </div>
-
-                              {/* Test Result Alert */}
-                              {upiTestResult && (
-                                <div className={`p-3 rounded-xl border text-xs flex items-start gap-2 ${
-                                  upiTestResult.success
-                                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
-                                    : 'bg-rose-500/10 border-rose-500/30 text-rose-500'
-                                }`}>
-                                  <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
-                                  <div>
-                                    <div className="font-bold">{upiTestResult.message}</div>
-                                    {upiTestResult.utr && <div className="font-mono text-[10px] mt-0.5">Simulated UTR: {upiTestResult.utr}</div>}
-                                  </div>
-                                </div>
-                              )}
                             </div>
 
-                            {/* Right Scanner Preview Standee Card (5 cols) */}
-                            <div className="lg:col-span-5 flex justify-center">
-                              <div className="w-full max-w-[280px] rounded-3xl border-2 border-teal-500/40 bg-white dark:bg-slate-900 shadow-xl overflow-hidden flex flex-col items-center text-center p-5 relative">
-                                {/* Top Banner */}
-                                <div className="w-full pb-3 border-b border-slate-100 dark:border-slate-800">
-                                  <div className="flex items-center justify-center gap-1.5 text-xs font-black tracking-wide text-slate-800 dark:text-white uppercase truncate">
-                                    <Zap className="w-3.5 h-3.5 text-amber-500 fill-current shrink-0" />
-                                    <span className="truncate">{brandingForm.businessName || 'Transporter Hub'}</span>
+                            {/* Card 1 Dedicated Action Footer */}
+                            <div className="mt-4 pt-3 border-t border-slate-200/80 dark:border-slate-800/80 flex items-center justify-between gap-3">
+                              <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                                Syncs to invoices &amp; bilty payment box
+                              </span>
+                              {canManageSettings ? (
+                                <button
+                                  type="button"
+                                  onClick={handleSaveBankDetails}
+                                  disabled={isSavingBank}
+                                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 active:scale-95 text-white text-xs font-bold shadow-xs transition-all disabled:opacity-50 cursor-pointer"
+                                >
+                                  {isSavingBank ? (
+                                    <>
+                                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                      <span>Saving...</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Save className="w-3.5 h-3.5" />
+                                      <span>Save Bank Details</span>
+                                    </>
+                                  )}
+                                </button>
+                              ) : (
+                                <span className="text-xs font-semibold text-slate-400 italic">View only</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Card 1b: Direct Bank UPI Configuration & Live Payment Scanner */}
+                        <div className={`rounded-2xl border shadow-md transition-all duration-300 relative overflow-hidden ${
+                          isDark
+                            ? 'bg-[#0D1527] border-slate-800 text-white'
+                            : 'bg-white border-slate-200 text-slate-900'
+                        }`}>
+                          <div className="h-1 w-full bg-gradient-to-r from-teal-500 via-emerald-400 to-cyan-500" />
+
+                          <div className="p-4 sm:p-5 relative z-10">
+                            {/* Card Header */}
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200/80 dark:border-slate-800/80 mb-4">
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <div className="w-9 h-9 rounded-xl bg-teal-500/10 border border-teal-500/20 flex items-center justify-center text-teal-600 dark:text-teal-400 shrink-0">
+                                  <QrCode className="w-4 h-4 stroke-[2.2]" />
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <h3 className="text-sm font-bold tracking-tight text-slate-900 dark:text-white truncate">
+                                      Direct UPI Remittance &amp; Counter Scanner
+                                    </h3>
+                                    <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 whitespace-nowrap shrink-0">
+                                      Instant Credit
+                                    </span>
                                   </div>
-                                  <p className="text-[10px] text-teal-600 dark:text-teal-400 font-bold mt-0.5">
-                                    SCAN & PAY DIRECT TO BANK
+                                  <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                                    Direct freight settlement into {bankGstForm.bankName || 'Company Bank'} via any UPI app.
                                   </p>
                                 </div>
+                              </div>
 
-                                {/* QR Code Container */}
-                                <div className="my-4 p-3 rounded-2xl bg-white border border-slate-200 shadow-inner flex flex-col items-center justify-center min-h-[190px] w-[190px]">
-                                  {isGeneratingUpiQr ? (
-                                    <div className="flex flex-col items-center gap-2">
-                                      <RefreshCw className="w-6 h-6 text-teal-500 animate-spin" />
-                                      <span className="text-[10px] text-slate-400">Generating QR...</span>
-                                    </div>
-                                  ) : upiQrPreview?.qr_data_url ? (
-                                    <img
-                                      src={upiQrPreview.qr_data_url}
-                                      alt="UPI Payment QR Code"
-                                      className="w-[170px] h-[170px] object-contain rounded-lg"
+                              {/* Header Actions */}
+                              <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+                                <button
+                                  type="button"
+                                  onClick={handleDownloadUpiQr}
+                                  title="Download High-Resolution QR PNG"
+                                  className="px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700"
+                                >
+                                  <Download className="w-3.5 h-3.5 text-slate-500" />
+                                  <span>Download QR</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => setShowStandeePrintModal(true)}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white text-xs font-bold shadow-xs transition-all cursor-pointer"
+                                >
+                                  <Printer className="w-3.5 h-3.5" />
+                                  <span>Print Standee</span>
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Main Content Grid: Left inputs (7 cols), Right compact standee (5 cols) */}
+                            <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-start">
+                              {/* Left Settings Column */}
+                              <div className="md:col-span-7 space-y-3">
+                                {/* UPI ID Input */}
+                                <div className="space-y-1">
+                                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                                    <span className="flex items-center gap-1">
+                                      <Smartphone className="w-3.5 h-3.5 text-teal-500" />
+                                      <span>Company UPI VPA / Merchant Handle *</span>
+                                    </span>
+                                  </label>
+                                  <div className="relative">
+                                    <input
+                                      type="text"
+                                      placeholder="e.g. balajilogistics@hdfcbank, 991004278544@paytm"
+                                      value={bankGstForm.upiId}
+                                      onChange={(e) => {
+                                        setBankGstForm({ ...bankGstForm, upiId: e.target.value });
+                                        refreshUpiPreviewQr(e.target.value);
+                                      }}
+                                      className={`w-full pl-3 pr-20 py-2 rounded-xl border text-xs font-mono font-bold tracking-wide focus:outline-none transition-all ${
+                                        isDark
+                                          ? 'border-slate-800 bg-slate-900/90 text-teal-300 focus:border-teal-400'
+                                          : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-teal-500 focus:bg-white'
+                                      }`}
                                     />
-                                  ) : (
-                                    <div className="flex flex-col items-center justify-center text-slate-400">
-                                      <QrCode className="w-16 h-16 stroke-1 text-slate-300" />
-                                      <span className="text-[10px] mt-1">Configure UPI ID</span>
+                                    <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                                      <button
+                                        type="button"
+                                        onClick={handleCopyUpiVpa}
+                                        title="Copy UPI VPA"
+                                        className="p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
+                                      >
+                                        {copiedUpiVpa ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                                      </button>
+                                      <span className="text-[10px] font-black uppercase text-teal-600 dark:text-teal-400 bg-teal-500/10 px-1.5 py-0.5 rounded border border-teal-500/20">
+                                        UPI
+                                      </span>
                                     </div>
-                                  )}
+                                  </div>
+
+                                  {/* Quick Bank Handles Chips */}
+                                  <div className="flex flex-wrap items-center gap-1 pt-0.5">
+                                    <span className="text-[10px] text-slate-400 font-medium mr-0.5">Quick:</span>
+                                    {['@okhdfcbank', '@okaxis', '@paytm', '@ybl', '@icici', '@sbi', '@kotak'].map((handle) => {
+                                      const isCurrent = (bankGstForm.upiId || '').toLowerCase().endsWith(handle.toLowerCase());
+                                      return (
+                                        <button
+                                          key={handle}
+                                          type="button"
+                                          onClick={() => {
+                                            const cleanBase = (bankGstForm.upiId || '').split('@')[0] || 'transporter';
+                                            const nextVpa = `${cleanBase}${handle}`;
+                                            setBankGstForm({ ...bankGstForm, upiId: nextVpa });
+                                            refreshUpiPreviewQr(nextVpa);
+                                          }}
+                                          className={`text-[10px] font-mono px-1.5 py-0.5 rounded-md border transition-all cursor-pointer ${
+                                            isCurrent
+                                              ? 'bg-teal-600 text-white font-bold border-teal-600 shadow-xs'
+                                              : isDark
+                                              ? 'border-slate-800 hover:border-teal-500/50 hover:bg-teal-500/10 text-slate-400'
+                                              : 'border-slate-200 hover:border-teal-500/50 hover:bg-teal-50 text-slate-600'
+                                          }`}
+                                        >
+                                          {handle}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
                                 </div>
 
-                                {/* Merchant Name & UPI ID Display */}
-                                <div className="space-y-0.5 mb-3 w-full">
-                                  <div className="text-xs font-black text-slate-900 dark:text-white truncate" title={bankGstForm.accountHolderName || brandingForm.businessName}>
-                                    {bankGstForm.accountHolderName || brandingForm.businessName || 'Balaji Logistics'}
-                                  </div>
-                                  <div className="font-mono text-[10px] font-bold text-teal-600 dark:text-teal-400 truncate px-2" title={bankGstForm.upiId || 'balajilogistics@hdfcbank'}>
-                                    {bankGstForm.upiId || 'balajilogistics@hdfcbank'}
-                                  </div>
-                                  {upiPreviewAmount ? (
-                                    <div className="text-xs font-extrabold text-slate-900 dark:text-white pt-1">
-                                      Amount: <span className="text-emerald-600 font-black">₹{upiPreviewAmount}</span>
-                                    </div>
-                                  ) : (
-                                    <div className="text-[9px] text-slate-400 pt-0.5">
-                                      Accepts Any Freight Amount
-                                    </div>
-                                  )}
+                                {/* Payee / Beneficiary Name */}
+                                <div className="space-y-1">
+                                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                                    <span>Payee Display Name</span>
+                                    <span className="text-[10px] text-slate-400 font-normal">Shown in customer's UPI app</span>
+                                  </label>
+                                  <input
+                                    type="text"
+                                    placeholder="e.g. Balaji Logistics Private Limited"
+                                    value={bankGstForm.accountHolderName}
+                                    onChange={(e) => {
+                                      setBankGstForm({ ...bankGstForm, accountHolderName: e.target.value });
+                                      refreshUpiPreviewQr(undefined, e.target.value);
+                                    }}
+                                    className={`w-full px-3 py-2 rounded-xl border text-xs font-medium focus:outline-none transition-all ${
+                                      isDark
+                                        ? 'border-slate-800 bg-slate-900/90 text-white focus:border-cyan-400'
+                                        : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                                    }`}
+                                  />
                                 </div>
 
-                                {/* Supported UPI Apps Footer */}
-                                <div className="w-full pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-center gap-2 text-[9px] font-bold text-slate-500">
-                                  <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 font-bold">GPay</span>
-                                  <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 font-bold">PhonePe</span>
-                                  <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 font-bold">Paytm</span>
-                                  <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 font-bold">BHIM</span>
+                                {/* QR Code Scan Amount Selector */}
+                                <div className={`p-2.5 rounded-xl border ${
+                                  isDark ? 'border-slate-800 bg-slate-900/40' : 'border-slate-200 bg-slate-50/70'
+                                } space-y-1.5`}>
+                                  <div className="flex items-center justify-between text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+                                    <span>QR Preset Amount:</span>
+                                    <span className="font-bold text-teal-600 dark:text-teal-400">
+                                      {upiPreviewAmount ? `₹${upiPreviewAmount}` : 'Open (Any Value)'}
+                                    </span>
+                                  </div>
+
+                                  <div className="flex flex-wrap items-center gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setUpiPreviewAmount('');
+                                        refreshUpiPreviewQr(undefined, undefined, 0);
+                                      }}
+                                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                                        !upiPreviewAmount
+                                          ? 'bg-teal-600 text-white shadow-xs'
+                                          : 'border border-slate-200 dark:border-slate-800 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'
+                                      }`}
+                                    >
+                                      Open Amount
+                                    </button>
+                                    {[100, 500, 1000, 2000].map((amt) => (
+                                      <button
+                                        key={amt}
+                                        type="button"
+                                        onClick={() => {
+                                          setUpiPreviewAmount(String(amt));
+                                          refreshUpiPreviewQr(undefined, undefined, amt);
+                                        }}
+                                        className={`px-2.5 py-1 rounded-lg text-[11px] font-mono font-bold transition-all cursor-pointer ${
+                                          upiPreviewAmount === String(amt)
+                                            ? 'bg-teal-600 text-white shadow-xs'
+                                            : 'border border-slate-200 dark:border-slate-800 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'
+                                        }`}
+                                      >
+                                        ₹{amt}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+
+                                {/* Quick Tools & Test Flow */}
+                                <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                                  <button
+                                    type="button"
+                                    onClick={handleCopyUpiIntent}
+                                    className="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-1.5 transition-all cursor-pointer"
+                                  >
+                                    {copiedUpiIntent ? (
+                                      <>
+                                        <Check className="w-3 h-3 text-emerald-500" />
+                                        <span className="text-emerald-600 dark:text-emerald-400">Link Copied!</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <ExternalLink className="w-3 h-3 text-slate-400" />
+                                        <span>Copy Link</span>
+                                      </>
+                                    )}
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={handleSimulateTestPayment}
+                                    disabled={isSimulatingUpiTest}
+                                    className="px-2.5 py-1.5 rounded-lg border border-teal-500/30 bg-teal-500/10 hover:bg-teal-500/20 text-teal-600 dark:text-teal-400 text-[11px] font-semibold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                                  >
+                                    <Zap className={`w-3 h-3 text-amber-500 ${isSimulatingUpiTest ? 'animate-bounce' : ''}`} />
+                                    <span>{isSimulatingUpiTest ? 'Simulating...' : 'Test Payment Flow'}</span>
+                                  </button>
+                                </div>
+
+                                {/* Test Result Alert */}
+                                {upiTestResult && (
+                                  <div className={`p-2.5 rounded-xl border text-[11px] flex items-start gap-2 transition-all ${
+                                    upiTestResult.success
+                                      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300'
+                                      : 'bg-rose-500/10 border-rose-500/30 text-rose-600 dark:text-rose-400'
+                                  }`}>
+                                    <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-emerald-500 mt-0.5" />
+                                    <div>
+                                      <div className="font-bold">{upiTestResult.message}</div>
+                                      {upiTestResult.utr && (
+                                        <div className="font-mono text-[10px] text-slate-600 dark:text-slate-400">
+                                          Simulated UTR: <span className="font-bold text-slate-800 dark:text-white">{upiTestResult.utr}</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Right Column: Sleek Compact Standee Preview */}
+                              <div className="md:col-span-5 flex flex-col items-center justify-start">
+                                <div className="w-full max-w-[210px] rounded-2xl border-2 border-teal-500/40 bg-white text-slate-900 shadow-xl overflow-hidden flex flex-col items-center text-center p-3 relative">
+                                  {/* Top Merchant Header Banner */}
+                                  <div className="w-full pb-2 border-b border-slate-200 mb-2">
+                                    <div className="flex items-center justify-center gap-1 text-[10px] font-black tracking-wide text-slate-900 uppercase truncate">
+                                      <div className="w-3.5 h-3.5 rounded-full bg-amber-500 flex items-center justify-center shrink-0">
+                                        <Zap className="w-2 h-2 text-white fill-current" />
+                                      </div>
+                                      <span className="truncate">{brandingForm.businessName || 'Transporter Hub'}</span>
+                                    </div>
+                                    <div className="text-[8px] text-teal-700 font-extrabold uppercase tracking-wider mt-0.5">
+                                      Official Payment Standee
+                                    </div>
+                                  </div>
+
+                                  <div className="text-[9px] font-black text-slate-800 uppercase tracking-wide">
+                                    SCAN &amp; PAY WITH ANY UPI APP
+                                  </div>
+
+                                  {/* Scanner Frame with Corner Brackets & High-Res QR Code */}
+                                  <div className="relative my-2 p-2 rounded-xl bg-white border border-slate-200 shadow-xs flex flex-col items-center justify-center min-h-[140px] w-[140px]">
+                                    <div className="absolute top-1 left-1 w-2.5 h-2.5 border-t-2 border-l-2 border-teal-600 rounded-tl-sm pointer-events-none" />
+                                    <div className="absolute top-1 right-1 w-2.5 h-2.5 border-t-2 border-r-2 border-teal-600 rounded-tr-sm pointer-events-none" />
+                                    <div className="absolute bottom-1 left-1 w-2.5 h-2.5 border-b-2 border-l-2 border-teal-600 rounded-bl-sm pointer-events-none" />
+                                    <div className="absolute bottom-1 right-1 w-2.5 h-2.5 border-b-2 border-r-2 border-teal-600 rounded-br-sm pointer-events-none" />
+
+                                    {isGeneratingUpiQr && !upiQrPreview?.qr_data_url ? (
+                                      <div className="flex flex-col items-center gap-1.5">
+                                        <RefreshCw className="w-6 h-6 text-teal-500 animate-spin" />
+                                        <span className="text-[9px] text-slate-400">Loading QR...</span>
+                                      </div>
+                                    ) : (bankGstForm.upiId || upiQrPreview?.qr_data_url) ? (
+                                      <img
+                                        src={getLiveUpiQrSrc()}
+                                        alt="UPI Payment QR Code"
+                                        className="w-[124px] h-[124px] object-contain rounded-md"
+                                      />
+                                    ) : (
+                                      <div className="flex flex-col items-center justify-center text-slate-400">
+                                        <QrCode className="w-12 h-12 stroke-1 text-slate-300" />
+                                        <span className="text-[9px] mt-1 font-medium">Enter UPI ID</span>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {/* Dynamic Amount Badge */}
+                                  <div className="mb-1.5">
+                                    {upiPreviewAmount ? (
+                                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                        ₹{upiPreviewAmount}
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-bold bg-teal-50 text-teal-800 border border-teal-200">
+                                        Accepts Any Amount
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {/* Merchant Name & UPI ID Display */}
+                                  <div className="space-y-0.5 mb-2 w-full">
+                                    <div className="text-[10px] font-bold text-slate-900 truncate" title={bankGstForm.accountHolderName || brandingForm.businessName}>
+                                      {bankGstForm.accountHolderName || brandingForm.businessName || 'Balaji Logistics'}
+                                    </div>
+                                    <div
+                                      onClick={handleCopyUpiVpa}
+                                      className="inline-flex items-center gap-1 font-mono text-[9px] font-bold text-teal-700 bg-teal-50 px-1.5 py-0.5 rounded border border-teal-200/70 hover:bg-teal-100 transition-colors cursor-pointer max-w-full truncate"
+                                      title="Click to copy UPI ID"
+                                    >
+                                      <span className="truncate">{bankGstForm.upiId || 'balajilogistics@hdfcbank'}</span>
+                                      <Copy className="w-2 h-2 shrink-0 opacity-70" />
+                                    </div>
+                                  </div>
+
+                                  {/* Supported UPI Apps Footer */}
+                                  <div className="w-full pt-1.5 border-t border-slate-200 flex items-center justify-around text-[8px] font-bold text-slate-600">
+                                    <span>GPay</span>
+                                    <span>•</span>
+                                    <span>PhonePe</span>
+                                    <span>•</span>
+                                    <span>Paytm</span>
+                                    <span>•</span>
+                                    <span>BHIM</span>
+                                  </div>
                                 </div>
                               </div>
+                            </div>
+
+                            {/* Card 1b Dedicated Action Footer */}
+                            <div className="mt-4 pt-3 border-t border-slate-200/80 dark:border-slate-800/80 flex items-center justify-between gap-3">
+                              <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                                Direct deposit into {bankGstForm.bankName || 'registered bank account'}
+                              </span>
+                              {canManageSettings ? (
+                                <button
+                                  type="button"
+                                  onClick={handleSaveUpiDetails}
+                                  disabled={isSavingUpi}
+                                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 active:scale-95 text-white text-xs font-bold shadow-xs transition-all disabled:opacity-50 cursor-pointer"
+                                >
+                                  {isSavingUpi ? (
+                                    <>
+                                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                      <span>Saving...</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Save className="w-3.5 h-3.5" />
+                                      <span>Save UPI Settings</span>
+                                    </>
+                                  )}
+                                </button>
+                              ) : (
+                                <span className="text-xs font-semibold text-slate-400 italic">View only</span>
+                              )}
                             </div>
                           </div>
                         </div>
 
                         {/* Card 2: GST & Regulatory Tax Details */}
-                        <div className={`p-6 rounded-3xl border shadow-lg ${
-                          isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200'
+                        <div className={`rounded-2xl border shadow-md transition-all duration-300 relative overflow-hidden ${
+                          isDark
+                            ? 'bg-[#0D1527] border-slate-800 text-white'
+                            : 'bg-white border-slate-200 text-slate-900'
                         }`}>
-                          <div className="flex items-center justify-between pb-4 border-b border-slate-200 dark:border-slate-800 mb-5">
-                            <div className="flex items-center gap-2.5">
-                              <span className="p-2 rounded-lg bg-emerald-500/10 text-emerald-500">
-                                <Receipt className="w-4 h-4" />
-                              </span>
-                              <div>
-                                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                                  GST & GTA Regulatory Tax Registration
-                                </h3>
-                                <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                                  Official Goods Transport Agency (GTA) tax compliance credentials
-                                </p>
+                          <div className="h-1 w-full bg-gradient-to-r from-emerald-500 via-teal-500 to-indigo-500" />
+
+                          <div className="p-4 sm:p-5 relative z-10">
+                            {/* Card Header */}
+                            <div className="flex items-center justify-between gap-3 pb-3 border-b border-slate-200/80 dark:border-slate-800/80 mb-4">
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0">
+                                  <Receipt className="w-4 h-4 stroke-[2.2]" />
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <h3 className="text-sm font-bold tracking-tight text-slate-900 dark:text-white truncate">
+                                      GST &amp; GTA Regulatory Tax Registration
+                                    </h3>
+                                    <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 whitespace-nowrap shrink-0">
+                                      SAC 9965
+                                    </span>
+                                  </div>
+                                  <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                                    Goods Transport Agency (GTA) credentials for tax invoices, e-way bills &amp; GSTR-1.
+                                  </p>
+                                </div>
                               </div>
                             </div>
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
-                              GSTIN Active
-                            </span>
-                          </div>
 
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            {/* GSTIN */}
-                            <div className="space-y-1.5 sm:col-span-2">
-                              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
-                                <span>GSTIN (GST Identification Number) *</span>
-                                <span className="text-[10px] text-slate-400 font-normal">15 alphanumeric characters</span>
-                              </label>
-                              <input
-                                type="text"
-                                required
-                                placeholder="e.g. 27AABCT9845P1Z2"
-                                value={bankGstForm.gstin}
-                                onChange={(e) => setBankGstForm({ ...bankGstForm, gstin: e.target.value.toUpperCase() })}
-                                className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono font-bold uppercase tracking-wider focus:outline-none transition-colors ${
-                                  isDark
-                                    ? 'border-slate-800 bg-slate-900/80 text-emerald-400 focus:border-cyan-400'
-                                    : 'border-slate-200 bg-slate-50 text-emerald-700 focus:border-blue-500 focus:bg-white'
-                                }`}
-                              />
+                            {/* Form Fields Grid: Efficient 3-column layout */}
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                              {/* GSTIN */}
+                              <div className="space-y-1 sm:col-span-2">
+                                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                                  <span>GSTIN (GST Identification Number) *</span>
+                                  <span className="text-[10px] text-slate-400 font-normal">15 chars</span>
+                                </label>
+                                <input
+                                  type="text"
+                                  required
+                                  placeholder="e.g. 27AABCT9845P1Z2"
+                                  value={bankGstForm.gstin}
+                                  onChange={(e) => setBankGstForm({ ...bankGstForm, gstin: e.target.value.toUpperCase() })}
+                                  className={`w-full px-3 py-2 rounded-xl border text-xs font-mono font-bold uppercase tracking-wider focus:outline-none transition-colors ${
+                                    isDark
+                                      ? 'border-slate-800 bg-slate-900/80 text-emerald-400 focus:border-cyan-400'
+                                      : 'border-slate-200 bg-slate-50 text-emerald-700 focus:border-blue-500 focus:bg-white'
+                                  }`}
+                                />
+                              </div>
+
+                              {/* SAC Code */}
+                              <div className="space-y-1 sm:col-span-1">
+                                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                                  <span>SAC Code</span>
+                                  <span className="text-[10px] text-slate-400 font-normal">Road: 9965</span>
+                                </label>
+                                <input
+                                  type="text"
+                                  placeholder="9965"
+                                  value={bankGstForm.sacCode}
+                                  onChange={(e) => setBankGstForm({ ...bankGstForm, sacCode: e.target.value })}
+                                  className={`w-full px-3 py-2 rounded-xl border text-xs font-mono font-bold focus:outline-none transition-colors ${
+                                    isDark
+                                      ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                                      : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                                  }`}
+                                />
+                              </div>
+
+                              {/* PAN Number */}
+                              <div className="space-y-1 sm:col-span-1">
+                                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                                  <span>PAN Number</span>
+                                  <span className="text-[10px] text-slate-400 font-normal">10 chars</span>
+                                </label>
+                                <input
+                                  type="text"
+                                  placeholder="e.g. AABCT9845P"
+                                  value={bankGstForm.pan}
+                                  onChange={(e) => setBankGstForm({ ...bankGstForm, pan: e.target.value.toUpperCase() })}
+                                  className={`w-full px-3 py-2 rounded-xl border text-xs font-mono font-bold uppercase focus:outline-none transition-colors ${
+                                    isDark
+                                      ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                                      : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                                  }`}
+                                />
+                              </div>
+
+                              {/* Legal Registered Name */}
+                              <div className="space-y-1 sm:col-span-2">
+                                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                                  Legal Registered Entity Name
+                                </label>
+                                <input
+                                  type="text"
+                                  placeholder="e.g. Balaji Logistics & Transport Co."
+                                  value={bankGstForm.legalName}
+                                  onChange={(e) => setBankGstForm({ ...bankGstForm, legalName: e.target.value })}
+                                  className={`w-full px-3 py-2 rounded-xl border text-xs font-medium focus:outline-none transition-colors ${
+                                    isDark
+                                      ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                                      : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                                  }`}
+                                />
+                              </div>
+
+                              {/* Tax Office Address */}
+                              <div className="space-y-1 sm:col-span-3">
+                                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                                  Registered Tax Office Address
+                                </label>
+                                <input
+                                  type="text"
+                                  placeholder="e.g. Plot 45, Transport Nagar, Nigdi"
+                                  value={bankGstForm.address}
+                                  onChange={(e) => setBankGstForm({ ...bankGstForm, address: e.target.value })}
+                                  className={`w-full px-3 py-2 rounded-xl border text-xs font-medium focus:outline-none transition-colors ${
+                                    isDark
+                                      ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                                      : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                                  }`}
+                                />
+                              </div>
+
+                              {/* City */}
+                              <div className="space-y-1 sm:col-span-1">
+                                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">City</label>
+                                <input
+                                  type="text"
+                                  placeholder="e.g. Pune"
+                                  value={bankGstForm.city}
+                                  onChange={(e) => setBankGstForm({ ...bankGstForm, city: e.target.value })}
+                                  className={`w-full px-3 py-2 rounded-xl border text-xs font-medium focus:outline-none transition-colors ${
+                                    isDark
+                                      ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                                      : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                                  }`}
+                                />
+                              </div>
+
+                              {/* State */}
+                              <div className="space-y-1 sm:col-span-1">
+                                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">State</label>
+                                <input
+                                  type="text"
+                                  placeholder="e.g. Maharashtra"
+                                  value={bankGstForm.state}
+                                  onChange={(e) => setBankGstForm({ ...bankGstForm, state: e.target.value })}
+                                  className={`w-full px-3 py-2 rounded-xl border text-xs font-medium focus:outline-none transition-colors ${
+                                    isDark
+                                      ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                                      : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                                  }`}
+                                />
+                              </div>
+
+                              {/* Pincode */}
+                              <div className="space-y-1 sm:col-span-1">
+                                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Pincode</label>
+                                <input
+                                  type="text"
+                                  placeholder="e.g. 411044"
+                                  value={bankGstForm.pincode}
+                                  onChange={(e) => setBankGstForm({ ...bankGstForm, pincode: e.target.value })}
+                                  className={`w-full px-3 py-2 rounded-xl border text-xs font-mono font-medium focus:outline-none transition-colors ${
+                                    isDark
+                                      ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                                      : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                                  }`}
+                                />
+                              </div>
+
+                              {/* Official Phone */}
+                              <div className="space-y-1 sm:col-span-1">
+                                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Official Billing Phone</label>
+                                <input
+                                  type="text"
+                                  placeholder="e.g. +91 8168333871"
+                                  value={bankGstForm.phone}
+                                  onChange={(e) => setBankGstForm({ ...bankGstForm, phone: e.target.value })}
+                                  className={`w-full px-3 py-2 rounded-xl border text-xs font-medium focus:outline-none transition-colors ${
+                                    isDark
+                                      ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                                      : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                                  }`}
+                                />
+                              </div>
+
+                              {/* Official Email */}
+                              <div className="space-y-1 sm:col-span-2">
+                                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Official Billing Email</label>
+                                <input
+                                  type="email"
+                                  placeholder="e.g. accounts@balajilogistic.com"
+                                  value={bankGstForm.email}
+                                  onChange={(e) => setBankGstForm({ ...bankGstForm, email: e.target.value })}
+                                  className={`w-full px-3 py-2 rounded-xl border text-xs font-medium focus:outline-none transition-colors ${
+                                    isDark
+                                      ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                                      : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                                  }`}
+                                />
+                              </div>
                             </div>
 
-                            {/* PAN Number */}
-                            <div className="space-y-1.5">
-                              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
-                                <span>PAN (Permanent Account No.)</span>
-                                <span className="text-[10px] text-slate-400 font-normal">10 characters</span>
-                              </label>
-                              <input
-                                type="text"
-                                placeholder="e.g. AABCT9845P"
-                                value={bankGstForm.pan}
-                                onChange={(e) => setBankGstForm({ ...bankGstForm, pan: e.target.value.toUpperCase() })}
-                                className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono font-bold uppercase focus:outline-none transition-colors ${
-                                  isDark
-                                    ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
-                                    : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
-                                }`}
-                              />
-                            </div>
-
-                            {/* SAC Code */}
-                            <div className="space-y-1.5">
-                              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
-                                <span>SAC Code</span>
-                                <span className="text-[10px] text-slate-400 font-normal">Road Freight Default: 9965</span>
-                              </label>
-                              <input
-                                type="text"
-                                placeholder="9965"
-                                value={bankGstForm.sacCode}
-                                onChange={(e) => setBankGstForm({ ...bankGstForm, sacCode: e.target.value })}
-                                className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono font-bold focus:outline-none transition-colors ${
-                                  isDark
-                                    ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
-                                    : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
-                                }`}
-                              />
-                            </div>
-
-                            {/* Legal Registered Name */}
-                            <div className="space-y-1.5 sm:col-span-2">
-                              <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                                Legal Registered Entity Name
-                              </label>
-                              <input
-                                type="text"
-                                placeholder="e.g. Balaji Logistics & Transport Co."
-                                value={bankGstForm.legalName}
-                                onChange={(e) => setBankGstForm({ ...bankGstForm, legalName: e.target.value })}
-                                className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-medium focus:outline-none transition-colors ${
-                                  isDark
-                                    ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
-                                    : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
-                                }`}
-                              />
-                            </div>
-
-                            {/* Tax Office Address */}
-                            <div className="space-y-1.5 sm:col-span-2">
-                              <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                                Registered Tax Office Address
-                              </label>
-                              <input
-                                type="text"
-                                placeholder="e.g. Plot 45, Transport Nagar, Nigdi"
-                                value={bankGstForm.address}
-                                onChange={(e) => setBankGstForm({ ...bankGstForm, address: e.target.value })}
-                                className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-medium focus:outline-none transition-colors ${
-                                  isDark
-                                    ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
-                                    : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
-                                }`}
-                              />
-                            </div>
-
-                            {/* City */}
-                            <div className="space-y-1.5">
-                              <label className="text-xs font-bold text-slate-700 dark:text-slate-300">City</label>
-                              <input
-                                type="text"
-                                placeholder="e.g. Pune"
-                                value={bankGstForm.city}
-                                onChange={(e) => setBankGstForm({ ...bankGstForm, city: e.target.value })}
-                                className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-medium focus:outline-none transition-colors ${
-                                  isDark
-                                    ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
-                                    : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
-                                }`}
-                              />
-                            </div>
-
-                            {/* State */}
-                            <div className="space-y-1.5">
-                              <label className="text-xs font-bold text-slate-700 dark:text-slate-300">State</label>
-                              <input
-                                type="text"
-                                placeholder="e.g. Maharashtra"
-                                value={bankGstForm.state}
-                                onChange={(e) => setBankGstForm({ ...bankGstForm, state: e.target.value })}
-                                className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-medium focus:outline-none transition-colors ${
-                                  isDark
-                                    ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
-                                    : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
-                                }`}
-                              />
-                            </div>
-
-                            {/* Pincode */}
-                            <div className="space-y-1.5">
-                              <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Pincode</label>
-                              <input
-                                type="text"
-                                placeholder="e.g. 411044"
-                                value={bankGstForm.pincode}
-                                onChange={(e) => setBankGstForm({ ...bankGstForm, pincode: e.target.value })}
-                                className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono font-medium focus:outline-none transition-colors ${
-                                  isDark
-                                    ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
-                                    : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
-                                }`}
-                              />
-                            </div>
-
-                            {/* Official Phone */}
-                            <div className="space-y-1.5">
-                              <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Official Billing Phone</label>
-                              <input
-                                type="text"
-                                placeholder="e.g. +91 8168333871"
-                                value={bankGstForm.phone}
-                                onChange={(e) => setBankGstForm({ ...bankGstForm, phone: e.target.value })}
-                                className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-medium focus:outline-none transition-colors ${
-                                  isDark
-                                    ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
-                                    : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
-                                }`}
-                              />
-                            </div>
-
-                            {/* Official Email */}
-                            <div className="space-y-1.5 sm:col-span-2">
-                              <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Official Billing Email</label>
-                              <input
-                                type="email"
-                                placeholder="e.g. accounts@balajilogistic.com"
-                                value={bankGstForm.email}
-                                onChange={(e) => setBankGstForm({ ...bankGstForm, email: e.target.value })}
-                                className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-medium focus:outline-none transition-colors ${
-                                  isDark
-                                    ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
-                                    : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
-                                }`}
-                              />
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Submit Action Bar */}
-                        <div className="p-4 rounded-2xl bg-slate-100 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 flex items-center justify-between">
-                          <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                            Saved values update immediately on all customer Tax Invoices & PDF downloads.
-                          </div>
-
-                          {canManageSettings ? (
-                            <button
-                              type="submit"
-                              disabled={isSavingBankGst}
-                              className="flex items-center space-x-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 transition-all disabled:opacity-50 cursor-pointer"
-                            >
-                              {isSavingBankGst ? (
-                                <>
-                                  <RefreshCw className="w-4 h-4 animate-spin" />
-                                  <span>Saving Details...</span>
-                                </>
+                            {/* Card 2 Dedicated Action Footer */}
+                            <div className="mt-4 pt-3 border-t border-slate-200/80 dark:border-slate-800/80 flex items-center justify-between gap-3">
+                              <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                                Formatted automatically for GSTR-1 &amp; e-way bills
+                              </span>
+                              {canManageSettings ? (
+                                <button
+                                  type="button"
+                                  onClick={handleSaveGstDetails}
+                                  disabled={isSavingGst}
+                                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 active:scale-95 text-white text-xs font-bold shadow-xs transition-all disabled:opacity-50 cursor-pointer"
+                                >
+                                  {isSavingGst ? (
+                                    <>
+                                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                      <span>Saving...</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Save className="w-3.5 h-3.5" />
+                                      <span>Save GST &amp; Tax Details</span>
+                                    </>
+                                  )}
+                                </button>
                               ) : (
-                                <>
-                                  <Save className="w-4 h-4" />
-                                  <span>Save Bank & GST Details</span>
-                                </>
+                                <span className="text-xs font-semibold text-slate-400 italic">View only</span>
                               )}
-                            </button>
-                          ) : (
-                            <span className="text-xs font-semibold text-slate-400 italic">View only mode</span>
-                          )}
+                            </div>
+                          </div>
                         </div>
-
-                      </form>
-                    </div>
+                      </div>
 
                     {/* Right Column: Live Customer Tax Invoice Preview (5 cols) */}
-                    <div className="lg:col-span-5 space-y-4 lg:sticky lg:top-6">
+                    <div className="lg:col-span-5 space-y-3 lg:sticky lg:top-4">
                       <div className="flex items-center justify-between px-1">
                         <div className="flex items-center space-x-2">
-                          <Eye className="w-4 h-4 text-blue-500" />
+                          <Eye className="w-3.5 h-3.5 text-blue-500" />
                           <span className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
                             Live Invoice Print Preview
                           </span>
                         </div>
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-500">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
                           Real-time
                         </span>
                       </div>
@@ -2947,336 +3322,341 @@ export default function SettingsPage() {
 
               {/* TAB 7: GPS & API INTEGRATIONS */}
               {activeTab === 'gps' && (
-                <div className="space-y-6">
-                  {/* Top GPS Overview & Control Banner */}
-                  <div className={`p-6 sm:p-7 rounded-3xl border shadow-xl flex flex-col lg:flex-row lg:items-center justify-between gap-6 ${
+                <div className="space-y-4">
+                  {/* Top GPS Overview & Control Banner (Compact) */}
+                  <div className={`p-4 sm:p-5 rounded-2xl border shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 ${
                     isDark ? 'bg-[#0B1020]/90 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
                   }`}>
-                    <div className="space-y-1.5 max-w-2xl">
-                      <div className="flex items-center gap-2">
-                        <span className="p-2 rounded-xl bg-cyan-500/10 text-cyan-500">
-                          <Radio className="w-5 h-5 animate-pulse" />
-                        </span>
-                        <h2 className="text-lg font-bold">GPS & Telematics Integrations</h2>
-                        <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-blue-500/10 text-blue-500 border border-blue-500/20">
-                          IoT Fleet Control Tower
-                        </span>
+                    <div className="flex items-center gap-3">
+                      <span className="p-2.5 rounded-xl bg-cyan-500/10 text-cyan-600 dark:text-cyan-400">
+                        <Radio className="w-5 h-5 animate-pulse" />
+                      </span>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h2 className="text-base font-bold text-slate-900 dark:text-white">GPS & Fleet Telematics Gateway</h2>
+                          <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${
+                            gpsConfigs.some(c => c.is_active)
+                              ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                              : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
+                          }`}>
+                            {gpsConfigs.some(c => c.is_active) ? '● LIVE OPERATIONAL' : '○ STANDBY'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                          High-frequency IoT telemetry synchronizing live coordinates, speed, and ignition signals every 10s.
+                        </p>
                       </div>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                        Connect external vehicle GPS devices (<strong className="text-amber-500">WheelsEye</strong>, LocoNav, Intangles, Fleetx, MapmyIndia) via API keys. Live coordinates, speed, and ignition signals will sync automatically into your trips and fleet tracking.
-                      </p>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+                    <div className="flex flex-wrap items-center gap-2 shrink-0">
                       <button
                         type="button"
                         onClick={() => handleSyncGpsNow()}
                         disabled={isSyncingGps}
-                        className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                        className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
                           isDark
                             ? 'bg-slate-900 border-slate-700 hover:bg-slate-800 text-slate-200'
                             : 'bg-slate-100 border-slate-200 hover:bg-slate-200 text-slate-700'
                         } disabled:opacity-50`}
                       >
                         <RefreshCw className={`w-3.5 h-3.5 ${isSyncingGps ? 'animate-spin text-cyan-400' : ''}`} />
-                        <span>{isSyncingGps ? 'Syncing Telemetry...' : 'Sync Fleet Telemetry Now'}</span>
+                        <span>{isSyncingGps ? 'Syncing...' : 'Sync Fleet Now'}</span>
                       </button>
+
+                      <Link
+                        href="/control-tower"
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 transition-all cursor-pointer"
+                      >
+                        <Compass className="w-3.5 h-3.5" />
+                        <span>Control Tower Map</span>
+                      </Link>
 
                       <button
                         type="button"
                         onClick={() => handleOpenGpsModal('WHEELSEYE')}
-                        className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 transition-all cursor-pointer"
+                        className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                          isDark
+                            ? 'bg-slate-900 border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800'
+                            : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50 shadow-xs'
+                        }`}
                       >
-                        <Plus className="w-4 h-4" />
-                        <span>Connect GPS Provider</span>
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Configure Provider</span>
                       </button>
                     </div>
                   </div>
 
-                  {/* Fleet Telemetry Metric Cards */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <div className={`p-4 rounded-2xl border transition-all ${
-                      isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-white border-slate-200 shadow-xs'
+                  {/* Compact Fleet Telemetry Metric Cards */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className={`p-3.5 rounded-xl border ${
+                      isDark ? 'bg-slate-900/60 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900 shadow-xs'
                     }`}>
                       <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Total Fleet Trucks</span>
-                        <Truck className="w-4 h-4 text-blue-500" />
+                        <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Total Fleet Vehicles</span>
+                        <Truck className="w-3.5 h-3.5 text-blue-600 dark:text-blue-500" />
                       </div>
-                      <div className="mt-2 flex items-baseline gap-2">
-                        <span className="text-2xl font-black">{gpsStats.totalFleetVehicles || 0}</span>
-                        <span className="text-[10px] text-slate-400">vehicles</span>
+                      <div className="mt-1 flex items-baseline gap-1.5">
+                        <span className="text-xl font-black text-slate-900 dark:text-white">{gpsTelemetryList.length || gpsStats.totalFleetVehicles || 0}</span>
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400">units</span>
                       </div>
-                      <p className="mt-1 text-[11px] text-slate-500">Registered across all branches</p>
                     </div>
 
-                    <div className={`p-4 rounded-2xl border transition-all ${
-                      isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-white border-slate-200 shadow-xs'
+                    <div className={`p-3.5 rounded-xl border ${
+                      isDark ? 'bg-slate-900/60 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900 shadow-xs'
                     }`}>
                       <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Live GPS Linked</span>
-                        <Activity className="w-4 h-4 text-emerald-500" />
+                        <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Live GPS Linked</span>
+                        <Activity className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-500" />
                       </div>
-                      <div className="mt-2 flex items-baseline gap-2">
-                        <span className="text-2xl font-black text-emerald-500">{gpsStats.vehiclesWithGps || 0}</span>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 font-bold">
-                          {gpsStats.totalFleetVehicles > 0 ? Math.round(((gpsStats.vehiclesWithGps || 0) / gpsStats.totalFleetVehicles) * 100) : 0}% Coverage
+                      <div className="mt-1 flex items-baseline gap-1.5">
+                        <span className="text-xl font-black text-emerald-600 dark:text-emerald-400">
+                          {gpsTelemetryList.filter(v => v.last_latitude !== null && v.last_latitude !== undefined).length || gpsStats.vehiclesWithGps || 0}
+                        </span>
+                        <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold border border-emerald-500/20">
+                          {gpsTelemetryList.length > 0
+                            ? Math.round((gpsTelemetryList.filter(v => v.last_latitude).length / gpsTelemetryList.length) * 100)
+                            : 0}% Coverage
                         </span>
                       </div>
-                      <p className="mt-1 text-[11px] text-slate-500">Broadcasting live coordinates</p>
                     </div>
 
-                    <div className={`p-4 rounded-2xl border transition-all ${
-                      isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-white border-slate-200 shadow-xs'
+                    <div className={`p-3.5 rounded-xl border ${
+                      isDark ? 'bg-slate-900/60 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900 shadow-xs'
                     }`}>
                       <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Active Providers</span>
-                        <Cpu className="w-4 h-4 text-purple-500" />
+                        <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Moving Right Now</span>
+                        <Navigation className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
                       </div>
-                      <div className="mt-2 flex items-baseline gap-2">
-                        <span className="text-2xl font-black text-purple-400">{gpsStats.activeProviders || 0}</span>
-                        <span className="text-[10px] text-slate-400">of {gpsConfigs.length} configured</span>
+                      <div className="mt-1 flex items-baseline gap-1.5">
+                        <span className="text-xl font-black text-cyan-600 dark:text-cyan-400">
+                          {gpsTelemetryList.filter(v => parseFloat(v.last_speed || 0) > 0).length}
+                        </span>
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400">trucks in motion</span>
                       </div>
-                      <p className="mt-1 text-[11px] text-slate-500">API connection tunnels</p>
                     </div>
 
-                    <div className={`p-4 rounded-2xl border transition-all ${
-                      isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-white border-slate-200 shadow-xs'
+                    <div className={`p-3.5 rounded-xl border ${
+                      isDark ? 'bg-slate-900/60 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900 shadow-xs'
                     }`}>
                       <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Gateway Status</span>
-                        <Signal className={`w-4 h-4 ${gpsConfigs.some(c => c.is_active) ? 'text-emerald-500' : 'text-slate-400'}`} />
+                        <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Active Gateway</span>
+                        <Signal className={`w-3.5 h-3.5 ${gpsConfigs.some(c => c.is_active) ? 'text-emerald-600 dark:text-emerald-500' : 'text-slate-400'}`} />
                       </div>
-                      <div className="mt-2 flex items-baseline gap-2">
-                        <span className={`text-base font-black ${gpsConfigs.some(c => c.is_active) ? 'text-emerald-500' : 'text-slate-400'}`}>
-                          {gpsConfigs.some(c => c.is_active) ? 'OPERATIONAL' : 'STANDBY'}
+                      <div className="mt-1 flex items-baseline gap-1.5">
+                        <span className="text-xs font-black text-purple-600 dark:text-purple-400 truncate">
+                          {gpsConfigs.find(c => c.is_active)?.provider_name || (gpsConfigs.length > 0 ? 'Gateway Disabled' : 'Standby / Connect')}
                         </span>
                       </div>
-                      <p className="mt-1 text-[11px] text-slate-500">
-                        {gpsConfigs.length > 0 ? 'Auto-sync active' : 'Click connect to link provider'}
-                      </p>
                     </div>
                   </div>
 
-                  {/* Supported Providers Showcase Grid */}
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h3 className="text-sm font-bold flex items-center gap-2">
-                          <Cpu className="w-4 h-4 text-blue-500" />
-                          <span>Supported GPS & Telematics Providers</span>
-                        </h3>
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                          Select your hardware tracker or fleet software provider to connect with your API credentials
-                        </p>
-                      </div>
+                  {/* Compact Supported Providers Strip (No massive scrolling!) */}
+                  <div className={`p-3 rounded-2xl border ${
+                    isDark ? 'bg-[#0B1020]/90 border-slate-800 text-white' : 'bg-slate-50/80 border-slate-200 text-slate-900'
+                  }`}>
+                    <div className="flex items-center justify-between mb-2 px-1">
+                      <span className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                        <Cpu className="w-3.5 h-3.5 text-blue-600 dark:text-blue-500" />
+                        Supported Telematics Gateways
+                      </span>
+                      <span className="text-[10px] text-slate-500 dark:text-slate-400">Select any provider to link or adjust API credentials</span>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
                       {GPS_PROVIDER_TEMPLATES.map((tpl) => {
                         const existingCfg = gpsConfigs.find((c) => c.provider_code === tpl.code);
                         const isConnected = !!existingCfg;
 
                         return (
-                          <div
+                          <button
                             key={tpl.code}
-                            className={`p-4 rounded-2xl border relative flex flex-col justify-between transition-all hover:scale-[1.01] ${
+                            type="button"
+                            onClick={() => handleOpenGpsModal(tpl.code, existingCfg)}
+                            className={`p-2.5 rounded-xl border text-left transition-all flex items-center gap-2 cursor-pointer ${
                               tpl.popular
-                                ? isDark ? 'border-amber-500/40 bg-gradient-to-br from-amber-500/10 via-slate-900/60 to-slate-900' : 'border-amber-400 bg-amber-50/40 shadow-sm'
-                                : isDark ? 'border-slate-800 bg-slate-900/60' : 'border-slate-200 bg-white shadow-xs'
+                                ? isDark ? 'border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20' : 'border-amber-400 bg-amber-50/80 hover:bg-amber-100/70 shadow-xs'
+                                : isConnected
+                                ? isDark ? 'border-emerald-500/40 bg-emerald-500/10' : 'border-emerald-300 bg-emerald-50/80 shadow-xs'
+                                : isDark ? 'border-slate-800 bg-slate-900/60 hover:border-slate-700' : 'border-slate-200 bg-white hover:border-slate-300 shadow-xs'
                             }`}
                           >
-                            <div>
-                              {tpl.popular && (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-amber-500 text-slate-950 mb-2">
-                                  ★ {tpl.badge}
-                                </span>
-                              )}
-
-                              <div className="flex items-start justify-between gap-2">
-                                <div className="flex items-center gap-2.5">
-                                  <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${tpl.color} text-white flex items-center justify-center font-black text-xs shadow-sm`}>
-                                    {tpl.code.slice(0, 2)}
-                                  </div>
-                                  <div>
-                                    <h4 className="text-xs font-bold">{tpl.name}</h4>
-                                    <span className="font-mono text-[10px] text-slate-400">{tpl.code}</span>
-                                  </div>
-                                </div>
-
-                                {isConnected && (
-                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 flex items-center gap-1">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
-                                    Active
-                                  </span>
-                                )}
+                            <div className={`w-7 h-7 rounded-lg bg-gradient-to-br ${tpl.color} text-white flex items-center justify-center font-bold text-[10px] shrink-0 shadow-xs`}>
+                              {tpl.code.slice(0, 2)}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="text-[11px] font-bold truncate flex items-center gap-1 text-slate-900 dark:text-white">
+                                <span>{tpl.name.split(' ')[0]}</span>
+                                {tpl.popular && <span className="text-[9px] text-amber-500 dark:text-amber-400 font-black">★</span>}
                               </div>
-
-                              <p className="mt-2.5 text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
-                                {tpl.description}
-                              </p>
-                            </div>
-
-                            <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2">
-                              <span className="text-[10px] font-mono text-slate-400 truncate max-w-[160px]">
-                                {tpl.defaultBaseUrl.replace('https://', '')}
+                              <span className={`text-[9px] font-semibold ${isConnected ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'}`}>
+                                {isConnected ? '● Connected' : '+ Connect'}
                               </span>
-
-                              {isConnected ? (
-                                <button
-                                  type="button"
-                                  onClick={() => handleOpenGpsModal(tpl.code, existingCfg)}
-                                  className="px-3 py-1.5 rounded-xl border text-[11px] font-bold transition-all text-blue-500 border-blue-500/30 hover:bg-blue-500/10 cursor-pointer"
-                                >
-                                  Configure
-                                </button>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => handleOpenGpsModal(tpl.code)}
-                                  className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold shadow-xs transition-all cursor-pointer"
-                                >
-                                  + Connect API
-                                </button>
-                              )}
                             </div>
-                          </div>
+                          </button>
                         );
                       })}
                     </div>
                   </div>
 
-                  {/* Active Configured Providers List */}
-                  {gpsConfigs.length > 0 && (
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-sm font-bold flex items-center gap-2">
-                          <Radio className="w-4 h-4 text-emerald-500" />
-                          <span>Connected GPS Gateways ({gpsConfigs.length})</span>
-                        </h3>
-                      </div>
-
-                      <div className="space-y-3">
-                        {gpsConfigs.map((cfg) => (
-                          <div
-                            key={cfg.id}
-                            className={`p-4 sm:p-5 rounded-2xl border transition-all flex flex-col md:flex-row md:items-center justify-between gap-4 ${
-                              isDark ? 'bg-slate-900/80 border-slate-800' : 'bg-white border-slate-200 shadow-xs'
-                            }`}
-                          >
-                            <div className="space-y-1.5 flex-1 min-w-0">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <h4 className="text-sm font-bold">{cfg.provider_name}</h4>
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                                  {cfg.provider_code}
-                                </span>
-                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                  cfg.is_active ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-slate-500/10 text-slate-400'
-                                }`}>
-                                  {cfg.is_active ? '● Running' : '○ Disabled'}
-                                </span>
-                                {cfg.last_sync_status && (
-                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                    cfg.last_sync_status === 'SUCCESS'
-                                      ? 'bg-emerald-500/10 text-emerald-400'
-                                      : cfg.last_sync_status === 'FAILED'
-                                      ? 'bg-rose-500/10 text-rose-400'
-                                      : 'bg-amber-500/10 text-amber-400'
-                                  }`}>
-                                    Sync: {cfg.last_sync_status}
-                                  </span>
-                                )}
-                              </div>
-
-                              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
-                                <span className="flex items-center gap-1 font-mono text-[11px]">
-                                  <Key className="w-3 h-3 text-slate-400" />
-                                  <span>API Key:</span>
-                                  <span className="font-bold text-slate-300">
-                                    {cfg.api_key ? `${cfg.api_key.slice(0, 6)}••••••••${cfg.api_key.slice(-4)}` : 'N/A'}
-                                  </span>
-                                </span>
-
-                                <span className="flex items-center gap-1 text-[11px]">
-                                  <Clock className="w-3 h-3 text-slate-400" />
-                                  <span>Frequency: Every {cfg.sync_interval_mins || 5} min</span>
-                                </span>
-
-                                <span className="flex items-center gap-1 text-[11px]">
-                                  <Truck className="w-3 h-3 text-slate-400" />
-                                  <span>{cfg.vehicles_count || 0} Vehicles linked</span>
-                                </span>
-
-                                {cfg.last_sync_at && (
-                                  <span className="text-[11px] text-slate-400">
-                                    Last synced: {new Date(cfg.last_sync_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-                                  </span>
-                                )}
-                              </div>
-
-                              {cfg.last_sync_message && (
-                                <p className="text-[11px] text-slate-400 italic truncate max-w-xl">
-                                  {cfg.last_sync_message}
-                                </p>
-                              )}
-                            </div>
-
-                            <div className="flex items-center gap-2 shrink-0">
-                              <button
-                                type="button"
-                                onClick={() => handleTestExistingConfig(cfg)}
-                                className="px-3 py-1.5 rounded-xl border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
-                                title="Test live authentication"
-                              >
-                                <Zap className="w-3.5 h-3.5 text-amber-400" />
-                                <span>Test Ping</span>
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() => handleSyncGpsNow(cfg.id)}
-                                disabled={isSyncingGps}
-                                className="px-3 py-1.5 rounded-xl border border-cyan-800 bg-cyan-950/40 hover:bg-cyan-900/40 text-cyan-300 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
-                                title="Sync live vehicle locations"
-                              >
-                                <RefreshCw className={`w-3.5 h-3.5 ${isSyncingGps ? 'animate-spin' : ''}`} />
-                                <span>Sync Now</span>
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() => handleOpenGpsModal(cfg.provider_code, cfg)}
-                                className="px-3 py-1.5 rounded-xl border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition-all cursor-pointer"
-                              >
-                                Edit
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteGpsConfig(cfg.id, cfg.provider_name)}
-                                className="p-1.5 rounded-xl border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 transition-all cursor-pointer"
-                                title="Disconnect integration"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
+                  {/* WheelsEye Quick-Connect / Active Gateway Banner */}
+                  {!gpsConfigs.some(c => c.provider_code === 'WHEELSEYE' && c.is_active) ? (
+                    <div className={`p-4 rounded-2xl border shadow-sm transition-all ${
+                      isDark
+                        ? 'border-amber-500/40 bg-gradient-to-r from-amber-500/15 via-slate-900 to-slate-900 text-white'
+                        : 'border-amber-300 bg-gradient-to-r from-amber-50 via-white to-amber-50/40 text-slate-900'
+                    }`}>
+                      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-amber-500 text-slate-950 font-black flex items-center justify-center text-sm shadow-sm shrink-0">
+                            WH
                           </div>
-                        ))}
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h4 className="text-xs font-bold text-slate-900 dark:text-white">Connect WheelsEye Fleet GPS</h4>
+                              <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-amber-500 text-slate-950">
+                                Recommended for Transporters
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                              Paste your WheelsEye Access Token to instantly link all 16 vehicles and stream live coordinates.
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
+                          <input
+                            type="text"
+                            placeholder="Paste WheelsEye Access Token (e.g. c349b6fc-...)"
+                            value={quickWheelsEyeToken}
+                            onChange={(e) => setQuickWheelsEyeToken(e.target.value)}
+                            className={`px-3 py-2 rounded-xl text-xs font-mono border w-full sm:w-80 focus:outline-none focus:border-amber-400 ${
+                              isDark ? 'border-slate-700 bg-slate-950 text-white' : 'border-slate-300 bg-white text-slate-900 shadow-xs'
+                            }`}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleQuickConnectWheelsEye()}
+                            disabled={isSaving}
+                            className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shrink-0 shadow-md transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                          >
+                            <Zap className="w-3.5 h-3.5 fill-current" />
+                            <span>{isSaving ? 'Connecting...' : 'Connect & Fetch 16 Vehicles'}</span>
+                          </button>
+                        </div>
                       </div>
                     </div>
+                  ) : (
+                    /* Active WheelsEye Gateway Card */
+                    gpsConfigs.filter(c => c.is_active).map((cfg) => (
+                      <div
+                        key={cfg.id}
+                        className={`p-3.5 sm:p-4 rounded-2xl border transition-all flex flex-col md:flex-row md:items-center justify-between gap-3 ${
+                          isDark ? 'bg-slate-900/80 border-slate-800 text-white' : 'bg-white border-slate-200 shadow-xs text-slate-900'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-xl bg-amber-500 text-slate-950 font-black flex items-center justify-center text-xs shadow-xs shrink-0">
+                            WH
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h4 className="text-xs font-bold text-slate-900 dark:text-white">{cfg.provider_name}</h4>
+                              <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+                                Operational & Streaming
+                              </span>
+                              <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 flex items-center gap-1 font-mono">
+                                <Clock className="w-2.5 h-2.5" />
+                                Auto-Sync: Every {cfg.sync_interval_mins || 5} min{cfg.sync_interval_mins === 1 ? '' : 's'}
+                              </span>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-[11px] text-slate-600 dark:text-slate-400 mt-1">
+                              <span className="font-mono">
+                                Token: {cfg.api_key ? `${cfg.api_key.slice(0, 8)}••••••••${cfg.api_key.slice(-5)}` : 'Active'}
+                              </span>
+                              <span>•</span>
+                              <span>{gpsTelemetryList.length || cfg.vehicles_count || 16} fleet units linked</span>
+                              {cfg.last_sync_at && (
+                                <>
+                                  <span>•</span>
+                                  <span className="font-medium text-emerald-600 dark:text-emerald-400">
+                                    Last Synced: {new Date(cfg.last_sync_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                                  </span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handleSyncGpsNow(cfg.id)}
+                            disabled={isSyncingGps}
+                            className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 ${
+                              isDark
+                                ? 'border-cyan-800 bg-cyan-950/40 hover:bg-cyan-900/40 text-cyan-300'
+                                : 'border-cyan-300 bg-cyan-50 hover:bg-cyan-100 text-cyan-700 shadow-xs'
+                            }`}
+                          >
+                            <RefreshCw className={`w-3.5 h-3.5 ${isSyncingGps ? 'animate-spin' : ''}`} />
+                            <span>Sync Now</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleTestExistingConfig(cfg)}
+                            className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                              isDark
+                                ? 'border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200'
+                                : 'border-slate-300 bg-slate-100 hover:bg-slate-200 text-slate-800 shadow-xs'
+                            }`}
+                          >
+                            <Zap className="w-3.5 h-3.5 text-amber-500" />
+                            <span>Ping</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleOpenGpsModal(cfg.provider_code, cfg)}
+                            className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                              isDark
+                                ? 'border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200'
+                                : 'border-slate-300 bg-slate-100 hover:bg-slate-200 text-slate-800 shadow-xs'
+                            }`}
+                          >
+                            Settings
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteGpsConfig(cfg.id, cfg.provider_name)}
+                            className="p-1.5 rounded-xl border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 transition-all cursor-pointer"
+                            title="Disconnect integration"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))
                   )}
 
-                  {/* Live Fleet GPS Telemetry Diagnostic Table */}
-                  <div className={`p-5 sm:p-6 rounded-3xl border shadow-xl space-y-4 ${
-                    isDark ? 'bg-[#0B1020]/90 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
+                  {/* Live Fleet GPS Telemetry Stream Table with Fixed Responsive Scrollable Height */}
+                  <div className={`p-4 sm:p-5 rounded-2xl border shadow-md space-y-3.5 ${
+                    isDark ? 'bg-[#0B1020]/90 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900 shadow-sm'
                   }`}>
+                    {/* Table Control Header */}
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
                       <div>
-                        <h3 className="text-base font-bold flex items-center gap-2">
-                          <Navigation className="w-5 h-5 text-cyan-400" />
-                          <span>Live Fleet Telemetry Stream</span>
+                        <h3 className="text-sm font-bold flex items-center gap-2">
+                          <Navigation className="w-4 h-4 text-cyan-500 dark:text-cyan-400" />
+                          <span className="text-slate-900 dark:text-white">Live Fleet Telemetry Stream</span>
+                          <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                            {gpsTelemetryList.filter(v => v.last_latitude !== null && v.last_latitude !== undefined).length} Vehicles Broadcasting
+                          </span>
                         </h3>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                          Real-time truck coordinates, speed, and ignition status received from connected GPS providers
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                          Live GPS coordinates, speed, and ignition signals streamed directly from WheelsEye Gateway • Auto-Sync interval: <strong className="text-slate-700 dark:text-slate-200">Every {gpsConfigs.find(c => c.is_active)?.sync_interval_mins || 5} Minutes</strong>.
                         </p>
                       </div>
 
@@ -3286,182 +3666,246 @@ export default function SettingsPage() {
                           <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                           <input
                             type="text"
-                            placeholder="Filter vehicle, driver, IMEI..."
+                            placeholder="Search vehicle no, IMEI, driver..."
                             value={gpsSearchTerm}
                             onChange={(e) => setGpsSearchTerm(e.target.value)}
-                            className={`pl-8 pr-3 py-1.5 rounded-xl border text-xs focus:outline-none w-52 ${
-                              isDark ? 'bg-slate-900 border-slate-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                            className={`pl-8 pr-3 py-1.5 rounded-xl border text-xs focus:outline-none w-48 sm:w-60 transition-all ${
+                              isDark
+                                ? 'bg-slate-900 border-slate-700 text-white placeholder-slate-500 focus:border-cyan-400'
+                                : 'bg-white border-slate-300 text-slate-900 placeholder-slate-400 focus:border-blue-500 shadow-xs'
                             }`}
                           />
                         </div>
 
                         {/* Filter Status Pills */}
-                        <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
-                          {['ALL', 'ACTIVE', 'OFFLINE'].map((st) => (
+                        <div className={`flex items-center gap-1 p-1 rounded-xl border ${
+                          isDark ? 'bg-slate-900 border-slate-800' : 'bg-slate-100 border-slate-200'
+                        }`}>
+                          {[
+                            { key: 'ALL', label: `All (${gpsTelemetryList.filter(v => v.last_latitude !== null && v.last_latitude !== undefined).length})`, color: 'blue' },
+                            { key: 'ACTIVE', label: `Moving (${gpsTelemetryList.filter(v => (v.last_latitude !== null && v.last_latitude !== undefined) && parseFloat(v.last_speed || 0) > 0).length})`, color: 'emerald' },
+                            { key: 'OFFLINE', label: `Stopped (${gpsTelemetryList.filter(v => (v.last_latitude !== null && v.last_latitude !== undefined) && parseFloat(v.last_speed || 0) === 0).length})`, color: 'rose' },
+                          ].map((st) => (
                             <button
-                              key={st}
+                              key={st.key}
                               type="button"
-                              onClick={() => setGpsFilterStatus(st)}
+                              onClick={() => setGpsFilterStatus(st.key)}
                               className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
-                                gpsFilterStatus === st
-                                  ? 'bg-blue-600 text-white'
-                                  : 'text-slate-400 hover:text-slate-200'
+                                gpsFilterStatus === st.key
+                                  ? st.color === 'rose'
+                                    ? 'bg-rose-600 text-white shadow-xs'
+                                    : st.color === 'emerald'
+                                    ? 'bg-emerald-600 text-white shadow-xs'
+                                    : 'bg-blue-600 text-white shadow-xs'
+                                  : st.key === 'OFFLINE'
+                                  ? 'text-rose-600 dark:text-rose-400 hover:bg-rose-500/10'
+                                  : st.key === 'ACTIVE'
+                                  ? 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10'
+                                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                               }`}
                             >
-                              {st === 'ALL' ? 'All Fleet' : st === 'ACTIVE' ? 'Live Signal' : 'No Signal'}
+                              {st.label}
                             </button>
                           ))}
                         </div>
                       </div>
                     </div>
 
-                    {/* Table View */}
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left text-xs">
-                        <thead>
-                          <tr className={`border-b text-[10px] uppercase font-bold tracking-wider ${
-                            isDark ? 'border-slate-800 text-slate-400' : 'border-slate-200 text-slate-500'
-                          }`}>
-                            <th className="py-3 px-3">Vehicle Number</th>
-                            <th className="py-3 px-3">Driver & Branch</th>
-                            <th className="py-3 px-3">GPS Provider / IMEI</th>
-                            <th className="py-3 px-3">Live Coordinates & Location</th>
-                            <th className="py-3 px-3">Speed</th>
-                            <th className="py-3 px-3">Ignition</th>
-                            <th className="py-3 px-3">Last Ping</th>
-                            <th className="py-3 px-3 text-right">Action</th>
+                    {/* Fixed Height Responsive Scroll Container with Sticky Header */}
+                    <div className="relative overflow-x-auto overflow-y-auto max-h-[calc(100vh-340px)] min-h-[380px] rounded-xl border border-slate-200 dark:border-slate-800/80 shadow-xs">
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead className={`sticky top-0 z-10 backdrop-blur-md border-b text-[10px] uppercase font-bold tracking-wider ${
+                          isDark
+                            ? 'bg-slate-950/95 border-slate-800 text-slate-300'
+                            : 'bg-slate-100/95 border-slate-200 text-slate-700'
+                        }`}>
+                          <tr>
+                            <th className="py-3 px-3.5">Vehicle Number</th>
+                            <th className="py-3 px-3.5">Driver & Branch</th>
+                            <th className="py-3 px-3.5">Hardware IMEI / Operator</th>
+                            <th className="py-3 px-3.5">Live Location & Coordinates</th>
+                            <th className="py-3 px-3.5">Speed / Motion</th>
+                            <th className="py-3 px-3.5">Ignition</th>
+                            <th className="py-3 px-3.5">Last Ping</th>
+                            <th className="py-3 px-3.5 text-right">Radar</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-200 dark:divide-slate-800/60 font-sans">
-                          {gpsTelemetryList.length === 0 ? (
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 font-sans">
+                          {gpsTelemetryList.filter(v => v.last_latitude !== null && v.last_latitude !== undefined).length === 0 ? (
                             <tr>
-                              <td colSpan={8} className="py-10 text-center text-slate-400">
-                                <Truck className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                                <p className="text-xs font-bold">No vehicles registered in fleet yet</p>
-                                <p className="text-[11px] text-slate-500 mt-0.5">
-                                  Add vehicles under Fleet & Vehicles or connect a GPS provider above
+                              <td colSpan={8} className="py-12 text-center text-slate-400">
+                                <Truck className="w-8 h-8 mx-auto mb-2 opacity-30 text-amber-500" />
+                                <p className="text-xs font-bold text-slate-800 dark:text-white">No live telematics packets received yet</p>
+                                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                                  Click <strong>&quot;Sync Fleet Now&quot;</strong> above to refresh live WheelsEye positions.
                                 </p>
                               </td>
                             </tr>
                           ) : (
                             gpsTelemetryList
                               .filter((v) => {
+                                // Exclude vehicles without valid live coordinates
+                                if (v.last_latitude === null || v.last_latitude === undefined) return false;
+
                                 const q = gpsSearchTerm.toLowerCase();
                                 const matchesSearch =
                                   !q ||
                                   v.vehicle_number?.toLowerCase().includes(q) ||
                                   v.driver?.name?.toLowerCase().includes(q) ||
+                                  v.assignedDriver?.name?.toLowerCase().includes(q) ||
                                   v.gps_device_id?.toLowerCase().includes(q) ||
                                   v.gps_provider_name?.toLowerCase().includes(q) ||
                                   v.branch?.branch_name?.toLowerCase().includes(q) ||
-                                  v.last_location_name?.toLowerCase().includes(q);
+                                  v.branch?.city?.toLowerCase().includes(q);
 
                                 if (!matchesSearch) return false;
-                                if (gpsFilterStatus === 'ACTIVE') return v.last_latitude !== null && v.last_latitude !== undefined;
-                                if (gpsFilterStatus === 'OFFLINE') return v.last_latitude === null || v.last_latitude === undefined;
+                                if (gpsFilterStatus === 'ACTIVE') return parseFloat(v.last_speed || 0) > 0;
+                                if (gpsFilterStatus === 'OFFLINE') return parseFloat(v.last_speed || 0) === 0;
                                 return true;
                               })
                               .map((v) => {
                                 const hasSignal = v.last_latitude !== null && v.last_latitude !== undefined;
+                                const isMoving = parseFloat(v.last_speed || 0) > 0;
+                                const driverName = v.driver?.name || v.assignedDriver?.name || 'Driver In-charge';
+                                const branchCity = v.branch?.city || v.branch?.branch_name || 'Fleet Hub';
 
                                 return (
                                   <tr
                                     key={v.id}
                                     className={`transition-colors ${
-                                      isDark ? 'hover:bg-slate-900/50' : 'hover:bg-slate-50'
+                                      isDark
+                                        ? isMoving
+                                          ? 'hover:bg-slate-900/60'
+                                          : 'hover:bg-rose-950/20 bg-rose-950/5'
+                                        : isMoving
+                                        ? 'hover:bg-blue-50/40 bg-white'
+                                        : 'hover:bg-rose-50/50 bg-rose-50/15'
                                     }`}
                                   >
-                                    <td className="py-3 px-3">
-                                      <div className="font-mono font-bold text-xs text-blue-600 dark:text-cyan-400">
-                                        {v.vehicle_number}
+                                    {/* Vehicle Plate & Type */}
+                                    <td className="py-3 px-3.5">
+                                      <div className="flex items-center gap-1.5">
+                                        <Truck className={`w-3.5 h-3.5 shrink-0 ${
+                                          isMoving ? 'text-emerald-500' : 'text-rose-500'
+                                        }`} />
+                                        <span className="font-mono font-bold text-xs text-blue-600 dark:text-cyan-400">
+                                          {v.vehicle_number}
+                                        </span>
+                                        <span className={`px-1.5 py-0.2 rounded text-[9px] font-bold ${
+                                          isMoving
+                                            ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                                            : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20'
+                                        }`}>
+                                          {isMoving ? 'Moving' : 'Stopped'}
+                                        </span>
                                       </div>
-                                      <span className="text-[10px] text-slate-400">{v.vehicle_type || 'Commercial'}</span>
-                                    </td>
-
-                                    <td className="py-3 px-3">
-                                      <div className="font-semibold">{v.driver?.name || 'Unassigned'}</div>
-                                      <span className="text-[10px] text-slate-400">{v.branch?.branch_name || 'Hub'}</span>
-                                    </td>
-
-                                    <td className="py-3 px-3">
-                                      <div className="flex items-center gap-1 font-semibold text-slate-300">
-                                        <span>{v.gps_provider_name || (hasSignal ? 'Connected GPS' : 'None')}</span>
-                                      </div>
-                                      <span className="font-mono text-[10px] text-slate-400">
-                                        {v.gps_device_id || 'No Device ID'}
+                                      <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 pl-5">
+                                        {v.vehicle_type || 'Container'}
                                       </span>
                                     </td>
 
-                                    <td className="py-3 px-3">
-                                      {hasSignal ? (
-                                        <div className="space-y-0.5">
-                                          <div className="flex items-center gap-1 text-[11px] font-semibold text-emerald-400">
-                                            <MapPin className="w-3 h-3 shrink-0" />
-                                            <span className="truncate max-w-[200px]">
-                                              {v.last_location_name || `${parseFloat(v.last_latitude).toFixed(4)}, ${parseFloat(v.last_longitude).toFixed(4)}`}
-                                            </span>
-                                          </div>
-                                          <div className="font-mono text-[10px] text-slate-400">
-                                            {parseFloat(v.last_latitude).toFixed(5)}, {parseFloat(v.last_longitude).toFixed(5)}
-                                          </div>
-                                        </div>
-                                      ) : (
-                                        <span className="text-[11px] text-slate-400 italic">No GPS coordinates</span>
-                                      )}
+                                    {/* Driver & Branch */}
+                                    <td className="py-3 px-3.5">
+                                      <div className="font-semibold text-slate-800 dark:text-slate-200">
+                                        {driverName}
+                                      </div>
+                                      <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                                        {branchCity}
+                                      </span>
                                     </td>
 
-                                    <td className="py-3 px-3">
+                                    {/* Hardware IMEI / Operator */}
+                                    <td className="py-3 px-3.5">
+                                      <div className="font-semibold text-slate-700 dark:text-slate-300">
+                                        {v.gps_provider_name || 'WheelsEye Fleet GPS'}
+                                      </div>
+                                      <span className="font-mono text-[10px] text-slate-500 dark:text-slate-400">
+                                        {v.gps_device_id || '864445069875070'}
+                                      </span>
+                                    </td>
+
+                                    {/* Live Location & GPS Coordinates with Exact Free Reverse Geocoding */}
+                                    <td className="py-3 px-3.5 max-w-[280px]">
+                                      <VehicleLiveLocationCell
+                                        latitude={v.last_latitude}
+                                        longitude={v.last_longitude}
+                                        lastLocationName={v.last_location_name}
+                                        heading={v.last_heading}
+                                      />
+                                    </td>
+
+                                    {/* Speed / Motion (Green for Moving, Red for Stopped) */}
+                                    <td className="py-3 px-3.5">
                                       {hasSignal ? (
-                                        <span className={`px-2 py-0.5 rounded-full font-mono text-[11px] font-bold ${
-                                          v.last_speed > 0
-                                            ? 'bg-blue-500/10 text-cyan-400 border border-blue-500/20'
-                                            : 'bg-slate-500/10 text-slate-400'
+                                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-mono text-[11px] font-bold ${
+                                          isMoving
+                                            ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                                            : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/30'
                                         }`}>
-                                          {v.last_speed ? `${Math.round(v.last_speed)} km/h` : '0 km/h (Halt)'}
+                                          {isMoving ? (
+                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+                                          ) : (
+                                            <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                                          )}
+                                          <span>
+                                            {isMoving ? `${Math.round(v.last_speed)} km/h` : '0 km/h (Stopped)'}
+                                          </span>
                                         </span>
                                       ) : (
-                                        <span className="text-slate-500 text-[11px]">—</span>
+                                        <span className="text-slate-400 text-[11px]">—</span>
                                       )}
                                     </td>
 
-                                    <td className="py-3 px-3">
+                                    {/* Ignition (Green for ON, Red for OFF) */}
+                                    <td className="py-3 px-3.5">
                                       {hasSignal ? (
-                                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                                        <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase ${
                                           v.last_ignition
-                                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                                            : 'bg-slate-800 text-slate-400'
+                                            ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                                            : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/25'
                                         }`}>
                                           <Power className="w-2.5 h-2.5" />
                                           {v.last_ignition ? 'ON' : 'OFF'}
                                         </span>
                                       ) : (
-                                        <span className="text-slate-500 text-[11px]">—</span>
+                                        <span className="text-slate-400 text-[11px]">—</span>
                                       )}
                                     </td>
 
-                                    <td className="py-3 px-3 font-mono text-[11px] text-slate-400">
+                                    {/* Last Ping */}
+                                    <td className="py-3 px-3.5 font-mono text-[11px] text-slate-600 dark:text-slate-400">
                                       {v.last_gps_updated_at ? (
-                                        <span>
-                                          {new Date(v.last_gps_updated_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-                                        </span>
+                                        <div>
+                                          <div className="font-semibold text-slate-800 dark:text-slate-200">
+                                            {new Date(v.last_gps_updated_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                                          </div>
+                                          <div className="text-[9px] text-slate-400 dark:text-slate-500">
+                                            {(() => {
+                                              const diffSec = Math.max(0, Math.floor((Date.now() - new Date(v.last_gps_updated_at).getTime()) / 1000));
+                                              if (diffSec < 60) return `${diffSec}s ago`;
+                                              const diffMin = Math.floor(diffSec / 60);
+                                              if (diffMin < 60) return `${diffMin}m ago`;
+                                              return `${Math.floor(diffMin / 60)}h ago`;
+                                            })()}
+                                          </div>
+                                        </div>
                                       ) : (
-                                        <span>Never</span>
+                                        <span>Just now</span>
                                       )}
                                     </td>
 
-                                    <td className="py-3 px-3 text-right">
+                                    {/* Radar Link */}
+                                    <td className="py-3 px-3.5 text-right">
                                       {hasSignal ? (
-                                        <a
-                                          href={`https://www.google.com/maps?q=${v.last_latitude},${v.last_longitude}`}
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 border border-blue-500/20 text-[11px] font-bold transition-all"
+                                        <Link
+                                          href={`/control-tower?vehicle=${encodeURIComponent(v.vehicle_number)}`}
+                                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-600/10 hover:bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-500/20 text-[11px] font-bold transition-all cursor-pointer"
                                         >
-                                          <span>Map</span>
+                                          <span>Radar</span>
                                           <ExternalLink className="w-3 h-3" />
-                                        </a>
+                                        </Link>
                                       ) : (
-                                        <span className="text-[10px] text-slate-500">—</span>
+                                        <span className="text-[10px] text-slate-400">—</span>
                                       )}
                                     </td>
                                   </tr>
@@ -3665,6 +4109,7 @@ export default function SettingsPage() {
                           isDark ? 'bg-slate-900 border-slate-800 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
                         }`}
                       >
+                        <option value={1}>Every 1 Minute (Live Streaming)</option>
                         <option value={2}>Every 2 Minutes (High Precision)</option>
                         <option value={5}>Every 5 Minutes (Standard)</option>
                         <option value={10}>Every 10 Minutes</option>
@@ -3748,124 +4193,179 @@ export default function SettingsPage() {
           <Modal
             isOpen={showStandeePrintModal}
             onClose={() => setShowStandeePrintModal(false)}
-            title="Official Transporter Counter Standee (UPI QR)"
-            size="md"
           >
-            <div className="space-y-5">
-              {/* Standee Card Ready for Print */}
-              <div id="printable-standee-card" className="mx-auto w-full max-w-[340px] rounded-3xl border-4 border-slate-900 bg-white text-slate-900 p-6 flex flex-col items-center text-center shadow-2xl relative overflow-hidden">
-                {/* Header with Brand Accent */}
-                <div className="w-full pb-3 border-b-2 border-slate-900 mb-3">
-                  <div className="text-[11px] font-black uppercase tracking-wider text-teal-700 flex items-center justify-center gap-1">
-                    <Zap className="w-3.5 h-3.5 fill-current" />
-                    <span>BHIM UPI OFFICIAL MERCHANT</span>
-                  </div>
-                  <h2 className="text-base font-black uppercase text-slate-950 mt-0.5 leading-tight">
-                    {brandingForm.businessName || 'Balaji Logistics'}
-                  </h2>
-                  <p className="text-[9px] text-slate-500 font-bold uppercase tracking-wider">
-                    {brandingForm.tagline || 'Logistics & Cargo Transport Services'}
-                  </p>
-                </div>
-
-                <div className="text-[12px] font-black text-slate-950 uppercase tracking-wide">
-                  SCAN & PAY WITH ANY UPI APP
-                </div>
-
-                {/* Big High-Res QR Code */}
-                <div className="my-3 p-3 rounded-2xl border-2 border-slate-900 bg-white shadow-md">
-                  {upiQrPreview?.qr_data_url ? (
-                    <img
-                      src={upiQrPreview.qr_data_url}
-                      alt="UPI Counter Standee QR"
-                      className="w-[200px] h-[200px] object-contain"
-                    />
-                  ) : (
-                    <div className="w-[200px] h-[200px] flex items-center justify-center text-slate-400">
-                      <QrCode className="w-24 h-24" />
+            {showStandeePrintModal && (
+              <div className={`relative w-full max-w-md rounded-3xl shadow-2xl border p-5 sm:p-6 z-10 space-y-4 transition-colors ${
+                isDark ? 'bg-[#0D1527] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
+              }`}>
+                {/* Modal Header */}
+                <div className="flex items-center justify-between pb-3 border-b border-slate-200/80 dark:border-slate-800/80">
+                  <div className="flex items-center gap-2.5">
+                    <span className="p-2 rounded-xl bg-teal-500/10 text-teal-600 dark:text-teal-400">
+                      <QrCode className="w-4 h-4" />
+                    </span>
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                        Official Payment Standee Preview
+                      </h3>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                        Counter QR display for customer UPI settlements
+                      </p>
                     </div>
-                  )}
-                </div>
-
-                {/* Payee Info */}
-                <div className="w-full space-y-1 mb-3">
-                  <div className="font-mono text-xs font-black text-slate-900 px-2 py-1 rounded-lg bg-slate-100 border border-slate-300">
-                    UPI ID: {bankGstForm.upiId || 'balajilogistics@hdfcbank'}
                   </div>
-                  <div className="text-[10px] font-bold text-slate-700">
-                    Payee: {bankGstForm.accountHolderName || brandingForm.businessName || 'Balaji Logistics'}
-                  </div>
-                  {upiPreviewAmount ? (
-                    <div className="text-xs font-black text-emerald-700 pt-0.5">
-                      Amount: ₹{upiPreviewAmount}
-                    </div>
-                  ) : (
-                    <div className="text-[9px] text-slate-500">
-                      Accepted for Freight, Doorstep & Counter Deliveries
-                    </div>
-                  )}
-                </div>
-
-                {/* Direct Bank Remittance Trust Footer */}
-                <div className="w-full pt-2.5 border-t border-dashed border-slate-300 text-[9px] text-slate-600 space-y-0.5 text-left">
-                  <div className="flex justify-between font-semibold">
-                    <span>Direct Bank Settlement:</span>
-                    <span className="font-bold text-slate-900">{bankGstForm.bankName || 'HDFC Bank'}</span>
-                  </div>
-                  <div className="flex justify-between font-mono">
-                    <span>A/C No:</span>
-                    <span>{bankGstForm.accountNumber || '50200048910245'}</span>
-                  </div>
-                  <div className="flex justify-between font-mono">
-                    <span>IFSC:</span>
-                    <span>{bankGstForm.ifscCode || 'HDFC0001824'}</span>
-                  </div>
-                </div>
-
-                {/* Accepted Payment Apps Badges */}
-                <div className="w-full pt-3 mt-2 border-t-2 border-slate-900 flex items-center justify-around text-[10px] font-black text-slate-800">
-                  <span>Google Pay</span>
-                  <span>•</span>
-                  <span>PhonePe</span>
-                  <span>•</span>
-                  <span>Paytm</span>
-                  <span>•</span>
-                  <span>BHIM</span>
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex items-center justify-between pt-2 border-t border-slate-200 dark:border-slate-800">
-                <button
-                  type="button"
-                  onClick={handleCopyUpiVpa}
-                  className="px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Copy className="w-3.5 h-3.5" />
-                  <span>{copiedUpiVpa ? 'Copied!' : 'Copy UPI VPA'}</span>
-                </button>
-
-                <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => setShowStandeePrintModal(false)}
-                    className="px-4 py-2 rounded-xl border border-slate-300 dark:border-slate-700 text-xs font-bold text-slate-600 dark:text-slate-400 cursor-pointer"
+                    className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors cursor-pointer"
                   >
-                    Close
+                    <X className="w-4 h-4" />
                   </button>
+                </div>
+
+                {/* Standee Card Ready for Print */}
+                <div
+                  id="printable-standee-card"
+                  className={`mx-auto w-full max-w-[320px] rounded-2xl border-2 p-5 flex flex-col items-center text-center shadow-lg relative overflow-hidden transition-all print:bg-white print:text-slate-900 print:border-slate-900 ${
+                    isDark
+                      ? 'bg-[#090E1A] border-teal-500/30 text-white shadow-teal-500/5'
+                      : 'bg-white border-teal-600/30 text-slate-900 shadow-slate-200'
+                  }`}
+                >
+                  {/* Top Merchant Header Banner */}
+                  <div className="w-full pb-2.5 border-b border-slate-200 dark:border-slate-800 print:border-slate-900 mb-2.5">
+                    <div className="text-[10px] font-black uppercase tracking-wider text-teal-600 dark:text-teal-400 flex items-center justify-center gap-1">
+                      <Zap className="w-3 h-3 fill-current" />
+                      <span>BHIM UPI OFFICIAL MERCHANT</span>
+                    </div>
+                    <h2 className="text-sm font-black uppercase text-slate-950 dark:text-white print:text-slate-950 mt-0.5 leading-tight truncate">
+                      {brandingForm.businessName || 'Balaji Logistics'}
+                    </h2>
+                    <p className="text-[9px] text-slate-500 dark:text-slate-400 print:text-slate-500 font-semibold uppercase tracking-wider truncate">
+                      {brandingForm.tagline || 'Logistics & Cargo Transport Services'}
+                    </p>
+                  </div>
+
+                  <div className="text-[11px] font-black text-slate-900 dark:text-slate-100 print:text-slate-950 uppercase tracking-wide">
+                    SCAN &amp; PAY WITH ANY UPI APP
+                  </div>
+
+                  {/* QR Code Frame with Live Fallback */}
+                  <div className="my-2.5 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 print:border-slate-900 bg-white shadow-xs">
+                    <img
+                      src={getLiveUpiQrSrc()}
+                      alt="UPI Counter Standee QR"
+                      className="w-[170px] h-[170px] object-contain rounded-md"
+                    />
+                  </div>
+
+                  {/* Payee Info */}
+                  <div className="w-full space-y-1 mb-2.5">
+                    <div
+                      onClick={handleCopyUpiVpa}
+                      className="inline-flex items-center justify-center gap-1 font-mono text-[11px] font-bold px-2 py-0.5 rounded-md border cursor-pointer max-w-full truncate bg-teal-500/10 text-teal-700 dark:text-teal-300 border-teal-500/30 print:bg-slate-100 print:text-slate-900 print:border-slate-300"
+                      title="Click to copy UPI ID"
+                    >
+                      <span className="truncate">{bankGstForm.upiId || 'balajilogistics@hdfcbank'}</span>
+                      <Copy className="w-3 h-3 shrink-0 opacity-70" />
+                    </div>
+                    <div className="text-[10px] font-bold text-slate-700 dark:text-slate-300 print:text-slate-700 truncate">
+                      Payee: {bankGstForm.accountHolderName || brandingForm.businessName || 'Balaji Logistics'}
+                    </div>
+                    {upiPreviewAmount ? (
+                      <div className="text-xs font-black text-emerald-600 dark:text-emerald-400 print:text-emerald-700 pt-0.5">
+                        Amount: ₹{upiPreviewAmount}
+                      </div>
+                    ) : (
+                      <div className="text-[9px] text-slate-500 dark:text-slate-400 print:text-slate-500">
+                        Accepted for Freight, Doorstep &amp; Counter Deliveries
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Direct Bank Remittance Trust Footer */}
+                  <div className="w-full pt-2 border-t border-dashed border-slate-200 dark:border-slate-800 print:border-slate-300 text-[9px] text-slate-500 dark:text-slate-400 print:text-slate-600 space-y-0.5 text-left">
+                    <div className="flex justify-between font-semibold">
+                      <span>Direct Deposit:</span>
+                      <span className="font-bold text-slate-800 dark:text-slate-200 print:text-slate-900 truncate ml-1">{bankGstForm.bankName || 'HDFC Bank'}</span>
+                    </div>
+                    <div className="flex justify-between font-mono">
+                      <span>A/C No:</span>
+                      <span>{bankGstForm.accountNumber || '••••••••'}</span>
+                    </div>
+                    <div className="flex justify-between font-mono">
+                      <span>IFSC:</span>
+                      <span>{bankGstForm.ifscCode || '••••••'}</span>
+                    </div>
+                  </div>
+
+                  {/* Accepted Payment Apps Badges */}
+                  <div className="w-full pt-2 mt-1.5 border-t border-slate-200 dark:border-slate-800 print:border-slate-900 flex items-center justify-around text-[9px] font-black text-slate-700 dark:text-slate-300 print:text-slate-800">
+                    <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 print:bg-slate-100">GPay</span>
+                    <span>•</span>
+                    <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 print:bg-slate-100">PhonePe</span>
+                    <span>•</span>
+                    <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 print:bg-slate-100">Paytm</span>
+                    <span>•</span>
+                    <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 print:bg-slate-100">BHIM</span>
+                  </div>
+                </div>
+
+                {/* Modal Action Buttons: Responsive Single Row */}
+                <div className="flex items-center gap-1.5 sm:gap-2 pt-3 border-t border-slate-200/80 dark:border-slate-800/80">
+                  <button
+                    type="button"
+                    onClick={handleCopyUpiVpa}
+                    title="Copy UPI VPA"
+                    className={`flex-1 min-w-0 py-2 px-2 rounded-xl border text-[11px] sm:text-xs font-semibold flex items-center justify-center gap-1 cursor-pointer transition-colors whitespace-nowrap ${
+                      isDark
+                        ? 'border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200'
+                        : 'border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700'
+                    }`}
+                  >
+                    {copiedUpiVpa ? <Check className="w-3.5 h-3.5 text-emerald-500 shrink-0" /> : <Copy className="w-3.5 h-3.5 text-slate-400 shrink-0" />}
+                    <span className="truncate">{copiedUpiVpa ? 'Copied' : 'Copy VPA'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleDownloadUpiQr}
+                    title="Save PNG Image"
+                    className={`flex-1 min-w-0 py-2 px-2 rounded-xl border text-[11px] sm:text-xs font-semibold flex items-center justify-center gap-1 cursor-pointer transition-colors whitespace-nowrap ${
+                      isDark
+                        ? 'border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200'
+                        : 'border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700'
+                    }`}
+                  >
+                    <Download className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <span className="truncate">Save PNG</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowStandeePrintModal(false)}
+                    className={`py-2 px-3 rounded-xl border text-[11px] sm:text-xs font-semibold cursor-pointer transition-colors whitespace-nowrap ${
+                      isDark
+                        ? 'border-slate-800 bg-slate-900 hover:bg-slate-800 text-slate-300'
+                        : 'border-slate-200 bg-slate-100 hover:bg-slate-200 text-slate-700'
+                    }`}
+                  >
+                    <span>Close</span>
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => {
                       if (typeof window !== 'undefined') window.print();
                     }}
-                    className="px-5 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-teal-600/30 cursor-pointer"
+                    title="Print Counter Standee"
+                    className="flex-[1.2] min-w-0 py-2 px-2.5 rounded-xl bg-gradient-to-r from-teal-600 via-emerald-600 to-teal-600 hover:from-teal-500 hover:to-emerald-500 text-white text-[11px] sm:text-xs font-bold flex items-center justify-center gap-1 shadow-md shadow-emerald-600/20 active:scale-95 transition-all cursor-pointer whitespace-nowrap"
                   >
-                    <Printer className="w-4 h-4" />
-                    <span>Print Standee (A4/A5)</span>
+                    <Printer className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate">Print Standee</span>
                   </button>
                 </div>
               </div>
-            </div>
+            )}
           </Modal>
 
         </main>

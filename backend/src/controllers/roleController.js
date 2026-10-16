@@ -79,12 +79,31 @@ const MODULE_PERMISSIONS_DEF = [
   { code: 'reports.create', module: 'Analytics & Reports', action: 'create', description: 'Configure custom operational KPI views' },
   { code: 'data.export', module: 'Analytics & Reports', action: 'export', description: 'Download Excel, CSV, and audit datasets' },
 
-  // 11. Settings & Administration
+  // 11. Report Registers & Ledgers
+  { code: 'reports.dockets.view', module: 'Report: Dockets & Freight', action: 'view', description: 'View Docket & Freight sales register' },
+  { code: 'reports.dockets.export', module: 'Report: Dockets & Freight', action: 'export', description: 'Export Docket & Freight register to Excel / CSV' },
+
+  { code: 'reports.pod.view', module: 'Report: POD Compliance', action: 'view', description: 'View POD & delivery compliance register' },
+  { code: 'reports.pod.export', module: 'Report: POD Compliance', action: 'export', description: 'Export POD compliance records to Excel / CSV' },
+
+  { code: 'reports.collections.view', module: 'Report: Bank Remittance', action: 'view', description: 'View bank deposits & remittance register' },
+  { code: 'reports.collections.export', module: 'Report: Bank Remittance', action: 'export', description: 'Export bank remittance records to Excel / CSV' },
+
+  { code: 'reports.ageing.view', module: 'Report: Customer Ageing', action: 'view', description: 'View customer outstanding balances & ageing ledger' },
+  { code: 'reports.ageing.export', module: 'Report: Customer Ageing', action: 'export', description: 'Export customer outstanding ageing report' },
+
+  { code: 'reports.trips_pnl.view', module: 'Report: Trip P&L Audit', action: 'view', description: 'View line-haul trip profitability & vehicle P&L audit' },
+  { code: 'reports.trips_pnl.export', module: 'Report: Trip P&L Audit', action: 'export', description: 'Export trip profitability & vehicle P&L statements' },
+
+  { code: 'reports.gst.view', module: 'Report: GST Tax Register', action: 'view', description: 'View GST SAC 9965 sales & tax liability register' },
+  { code: 'reports.gst.export', module: 'Report: GST Tax Register', action: 'export', description: 'Export GST B2B/B2C tax register for GST return filing' },
+
+  // 12. Settings & Administration
   { code: 'settings.view', module: 'Settings & Administration', action: 'view', description: 'View organization profile and terminology' },
   { code: 'settings.manage', module: 'Settings & Administration', action: 'edit', description: 'Configure branding, password, and terminology' },
   { code: 'role.manage', module: 'Settings & Administration', action: 'approve', description: 'Modify roles and page access matrix' },
 
-  // 12. Audit & System Logs
+  // 13. Audit & System Logs
   { code: 'audit.view', module: 'Audit & System Logs', action: 'view', description: 'View immutable system audit logs, user activity & security trails' },
   { code: 'audit.export', module: 'Audit & System Logs', action: 'export', description: 'Export tamper-evident audit trail logs to CSV/Excel' },
 ];
@@ -93,7 +112,7 @@ const MODULE_PERMISSIONS_DEF = [
 const ensurePermissions = async (Permission) => {
   if (!Permission) return [];
   for (const def of MODULE_PERMISSIONS_DEF) {
-    await Permission.findOrCreate({
+    const [perm, created] = await Permission.findOrCreate({
       where: { code: def.code },
       defaults: {
         code: def.code,
@@ -101,6 +120,9 @@ const ensurePermissions = async (Permission) => {
         description: def.description,
       },
     });
+    if (!created && (perm.module !== def.module || perm.description !== def.description)) {
+      await perm.update({ module: def.module, description: def.description });
+    }
   }
   return await Permission.findAll({ order: [['module', 'ASC'], ['code', 'ASC']] });
 };
@@ -172,6 +194,10 @@ const ensureStandardRoles = async (Role, Permission, RolePermission, tenantId, U
         'invoice.view', 'invoice.create', 'payment.create', 'invoice.export',
         'expense.view', 'expense.create', 'expense.update', 'expense.approve', 'expense.export',
         'reports.view', 'data.export',
+        'reports.dockets.view', 'reports.dockets.export',
+        'reports.pod.view', 'reports.pod.export',
+        'reports.collections.view', 'reports.collections.export',
+        'reports.ageing.view', 'reports.ageing.export',
         'settings.view',
       ],
     },
@@ -192,6 +218,12 @@ const ensureStandardRoles = async (Role, Permission, RolePermission, tenantId, U
         'invoice.view', 'invoice.export',
         'expense.view', 'expense.export',
         'reports.view', 'data.export',
+        'reports.dockets.view', 'reports.dockets.export',
+        'reports.pod.view', 'reports.pod.export',
+        'reports.collections.view', 'reports.collections.export',
+        'reports.ageing.view', 'reports.ageing.export',
+        'reports.trips_pnl.view', 'reports.trips_pnl.export',
+        'reports.gst.view', 'reports.gst.export',
         'settings.view',
       ],
     },
@@ -281,14 +313,28 @@ const ensureStandardRoles = async (Role, Permission, RolePermission, tenantId, U
         }
       }
     } else if (!created && (rDef.name === 'AUDITOR' || rDef.name === 'BRANCH_MANAGER')) {
-      const existingPerms = await role.getPermissions?.();
-      if (!existingPerms || existingPerms.length === 0) {
+      const existingPerms = (await role.getPermissions?.()) || [];
+      const existingCodes = existingPerms.map((p) => p.code);
+      if (existingPerms.length === 0) {
         const matchedPerms = rDef.perms.map((code) => permMap[code]).filter(Boolean);
         if (role.setPermissions) {
           await role.setPermissions(matchedPerms);
         } else if (RolePermission) {
           for (const p of matchedPerms) {
             await RolePermission.create({ role_id: role.id, permission_id: p.id }).catch(() => {});
+          }
+        }
+      } else {
+        // Auto-seed newly added standard report permissions if role has not been customized with them
+        const newReportPerms = rDef.perms.filter((c) => c.startsWith('reports.') && !existingCodes.includes(c));
+        if (newReportPerms.length > 0) {
+          const matchedNew = newReportPerms.map((code) => permMap[code]).filter(Boolean);
+          if (role.addPermissions) {
+            await role.addPermissions(matchedNew);
+          } else if (RolePermission) {
+            for (const p of matchedNew) {
+              await RolePermission.findOrCreate({ where: { role_id: role.id, permission_id: p.id } }).catch(() => {});
+            }
           }
         }
       }

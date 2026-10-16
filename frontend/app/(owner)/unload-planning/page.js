@@ -9,6 +9,7 @@ import Navbar from '../../../components/layout/Navbar';
 import { useTheme } from '../../../components/ThemeProvider';
 import { usePermissions } from '../../../hooks/usePermissions';
 import { useStore } from '../../../store/useStore';
+import BranchFilterDropdown from '../../../components/ui/BranchFilterDropdown';
 import api from '../../../services/api';
 import {
   PackageCheck,
@@ -618,25 +619,16 @@ function UnloadPlanningContent() {
                   </div>
 
                   {/* Destination Branch Filter */}
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-slate-500 dark:text-slate-400 font-medium whitespace-nowrap flex items-center gap-1">
-                      <Building2 className="w-3.5 h-3.5 text-slate-400" />
-                      Receiving Hub:
-                    </span>
-                    <select
-                      value={selectedDestBranchId}
-                      onChange={(e) => setSelectedDestBranchId(e.target.value)}
-                      disabled={isBranchManager && userBranchId}
-                      className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
-                    >
-                      {isAdmin && <option value="ALL">🌐 All Company Hubs</option>}
-                      {branches.map((b) => (
-                        <option key={b.id} value={b.id}>
-                          [{b.branch_code || 'CODE'}] {b.branch_name} • {b.city}{b.pincode ? ` (${b.pincode})` : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  <BranchFilterDropdown
+                    selectedBranchId={selectedDestBranchId}
+                    onChange={(newBranchId) => setSelectedDestBranchId(newBranchId)}
+                    branches={branches}
+                    allLabel="All Company Hubs"
+                    allSubtitle="Inbound Inflow Across All Terminals"
+                    label="Receiving Hub:"
+                    showLabel={true}
+                    align="right"
+                  />
                 </div>
 
                 {/* Inbound Trip Selector Dropdown */}
@@ -1146,9 +1138,9 @@ function UnloadPlanningContent() {
 
                     {/* Dockets Table / Checklist */}
                     <div className="rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
-                      <div className="overflow-x-auto">
+                      <div className="overflow-x-auto overflow-y-auto max-h-[480px] sm:max-h-[540px] lg:max-h-[calc(100vh-290px)] min-h-[280px] scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700">
                         <table className="w-full text-left text-xs whitespace-nowrap">
-                          <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 font-bold border-b border-slate-200 dark:border-slate-700 uppercase tracking-wider text-[10px]">
+                          <thead className="sticky top-0 z-20 shadow-xs bg-slate-50 dark:bg-slate-900 text-slate-500 dark:text-slate-400 font-bold border-b border-slate-200 dark:border-slate-700 uppercase tracking-wider text-[10px]">
                             <tr>
                               <th className="px-4 py-3">LR / Docket #</th>
                               <th className="px-4 py-3">Shipper → Consignee</th>

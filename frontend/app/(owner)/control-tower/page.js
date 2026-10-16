@@ -8,6 +8,7 @@ import Sidebar from '../../../components/layout/Sidebar';
 import Navbar from '../../../components/layout/Navbar';
 import DataTable from '../../../components/ui/DataTable';
 import Badge from '../../../components/ui/Badge';
+import BranchFilterDropdown from '../../../components/ui/BranchFilterDropdown';
 import { useTheme } from '../../../components/ThemeProvider';
 import { useStore } from '../../../store/useStore';
 import { usePermissions } from '../../../hooks/usePermissions';
@@ -35,6 +36,7 @@ import {
   Search,
   SlidersHorizontal,
   ChevronRight,
+  ChevronDown,
   ExternalLink,
   Flame,
   ArrowUpRight,
@@ -42,7 +44,8 @@ import {
   Package,
   Boxes,
   Plus,
-  Building2
+  Building2,
+  RotateCcw
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -85,6 +88,7 @@ export default function ControlTowerPage() {
   }, [user, isBranchManager, isAdmin, userBranchId]);
 
   const [branches, setBranches] = useState([]);
+  const [telemetryVehicles, setTelemetryVehicles] = useState([]);
   const [selectedBranchId, setSelectedBranchId] = useState(() => {
     if (isRestrictedBranchUser && userBranchId) return userBranchId;
     if (activeBranch?.id && activeBranch.id !== 'ALL') return activeBranch.id;
@@ -136,10 +140,11 @@ export default function ControlTowerPage() {
         tripsUrl += `&branch_id=${selectedBranchId}`;
       }
 
-      const [tripsRes, dashRes, branchRes] = await Promise.allSettled([
+      const [tripsRes, dashRes, branchRes, teleRes] = await Promise.allSettled([
         api.get(tripsUrl),
         api.get('/dashboard/owner'),
         api.get('/branches').catch(() => ({ data: { data: [] } })),
+        api.get('/gps/telemetry').catch(() => ({ data: { data: [] } })),
       ]);
 
       let loadedTrips = [];
@@ -156,6 +161,11 @@ export default function ControlTowerPage() {
         const bList = branchRes.value.data?.data?.branches || branchRes.value.data?.data || [];
         setBranches(Array.isArray(bList) ? bList : []);
       }
+
+      if (teleRes.status === 'fulfilled' && teleRes.value?.data?.success) {
+        const tList = teleRes.value.data.data || [];
+        setTelemetryVehicles(Array.isArray(tList) ? tList : []);
+      }
     } catch (err) {
       console.error('Failed to load live control tower data', err);
     } finally {
@@ -167,102 +177,201 @@ export default function ControlTowerPage() {
     fetchControlTowerData();
   }, [fetchControlTowerData]);
 
-  // Transform trips from DB to include all ACTIVE/RUNNING trips
-  // (Stopped / idle vehicles without a trip sheet are strictly excluded)
-  const runningTrips = useMemo(() => {
-    return tripsData
-      .filter((t) => {
-        // Must be in active movement / transit / dispatch / running status
-        const status = (t.status || '').toUpperCase();
-        const isRunning = ['RUNNING', 'IN_TRANSIT', 'DISPATCHED', 'LOADING', 'CREATED', 'PLANNED', 'READY'].includes(status)
-          || (!['COMPLETED', 'CANCELLED', 'SETTLED'].includes(status) && Boolean(status));
-
-        if (!isRunning) return false;
-
-        // If specific branch is selected, ensure trip originates or terminates at this branch
-        if (selectedBranchId && selectedBranchId !== 'ALL') {
-          const matchOrigin = t.origin_branch_id === selectedBranchId;
-          const matchDest = t.dest_branch_id === selectedBranchId;
-          if (!matchOrigin && !matchDest) return false;
+  // Recurring 10-second high-precision GPS telematics polling
+  useEffect(() => {
+    const fetchTelemetry = async () => {
+      try {
+        const res = await api.get('/gps/telemetry');
+        if (res.data?.success && Array.isArray(res.data.data)) {
+          setTelemetryVehicles(res.data.data);
         }
+      } catch (teleErr) {
+        // quiet catch
+      }
+    };
+    const interval = setInterval(fetchTelemetry, 10000);
+    return () => clearInterval(interval);
+  }, []);
 
-        return true;
-      })
-      .map((t, idx) => {
-        const oCity = t.origin_city || t.originBranch?.city || t.originBranch?.branch_name || 'Origin Hub';
-        const dCity = t.destination_city || t.destBranch?.city || t.destBranch?.branch_name || 'Destination Hub';
-        const speedVal = t.status === 'IN_TRANSIT' ? 62 + (idx * 9) % 22 : (t.status === 'RUNNING' || t.status === 'DISPATCHED') ? 48 : 10;
-        const vNum = t.vehicle?.vehicle_number || t.vehicle_number || (t.vehicle_id ? `Truck (${t.vehicle_id.slice(0, 6)})` : `TRUCK-${1000 + idx}`);
-        const vModel = t.vehicle?.vehicle_type || 'Commercial Truck (16T)';
-        const dName = t.driver?.name || t.driver_name || 'Driver In-charge';
-        const dPhone = t.driver?.phone || t.driver_phone || '+91 98000 00000';
+  const normalizePlate = (str) => String(str || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 
-        return {
-          id: t.id || t.trip_number,
-          rawId: t.id,
-          trip_number: t.trip_number,
-          vehicleNumber: vNum,
-          vehicle_model: vModel,
+  // Combined fleet: Real WheelsEye fleet vehicles with live GPS + Any active trips merged
+  const allFleetVehicles = useMemo(() => {
+    // 1. Index active trips by normalized vehicle plate or vehicle id
+    const tripByPlate = new Map();
+    const tripByVehicleId = new Map();
+
+    (tripsData || []).forEach((t) => {
+      const status = (t.status || '').toUpperCase();
+      const isActive = ['RUNNING', 'IN_TRANSIT', 'DISPATCHED', 'LOADING', 'CREATED', 'PLANNED', 'READY'].includes(status)
+        || (!['COMPLETED', 'CANCELLED', 'SETTLED'].includes(status) && Boolean(status));
+      if (!isActive) return;
+
+      if (t.vehicle?.vehicle_number) {
+        tripByPlate.set(normalizePlate(t.vehicle.vehicle_number), t);
+      }
+      if (t.vehicle_number) {
+        tripByPlate.set(normalizePlate(t.vehicle_number), t);
+      }
+      if (t.vehicle_id) {
+        tripByVehicleId.set(t.vehicle_id, t);
+      }
+    });
+
+    // 2. Base list is derived strictly from real fleet vehicles with active GPS telemetry
+    const result = [];
+    const seenPlates = new Set();
+
+    (telemetryVehicles || []).forEach((tv, idx) => {
+      const norm = normalizePlate(tv.vehicle_number);
+      if (!norm || seenPlates.has(norm)) return;
+      seenPlates.add(norm);
+
+      const realLat = parseFloat(tv.last_latitude);
+      const realLng = parseFloat(tv.last_longitude);
+      const hasRealGps = !isNaN(realLat) && !isNaN(realLng) && realLat > 0 && realLng > 0;
+      if (!hasRealGps) return; // Only include real vehicles with valid coordinates
+
+      const liveSpeed = parseFloat(tv.last_speed || 0);
+      const isMoving = liveSpeed > 0;
+      const liveIgnition = Boolean(tv.last_ignition);
+      const locName = tv.last_location_name || tv.branch?.city || 'Depot Yard';
+
+      // Check if this vehicle is currently assigned to an active trip
+      const matchingTrip = tripByPlate.get(norm) || (tv.id ? tripByVehicleId.get(tv.id) : null);
+
+      if (matchingTrip) {
+        const oCity = matchingTrip.origin_city || matchingTrip.originBranch?.city || matchingTrip.originBranch?.branch_name || 'Origin Hub';
+        const dCity = matchingTrip.destination_city || matchingTrip.destBranch?.city || matchingTrip.destBranch?.branch_name || 'Destination Hub';
+        const dName = matchingTrip.driver?.name || matchingTrip.driver_name || tv.driver?.name || 'Driver In-charge';
+        const dPhone = matchingTrip.driver?.phone || matchingTrip.driver_phone || tv.driver?.phone || '+91 98000 00000';
+        const isTransit = ['IN_TRANSIT', 'RUNNING', 'DISPATCHED'].includes((matchingTrip.status || '').toUpperCase());
+
+        result.push({
+          id: tv.id || matchingTrip.id,
+          rawId: tv.id,
+          tripId: matchingTrip.id,
+          trip_number: matchingTrip.trip_number || `TRP-${tv.vehicle_number}`,
+          vehicleNumber: tv.vehicle_number,
+          vehicle_model: tv.vehicle_type || matchingTrip.vehicle?.vehicle_type || 'Commercial Truck (16T)',
           driver: dName,
           driver_phone: dPhone,
-          rating: '4.8 ★',
+          rating: '4.9 ★',
           origin: oCity,
           destination: dCity,
           originCity: oCity,
           destCity: dCity,
-          origin_branch_id: t.origin_branch_id,
-          dest_branch_id: t.dest_branch_id,
-          origin_branch_name: t.originBranch?.branch_name,
-          dest_branch_name: t.destBranch?.branch_name,
-          route: `${oCity} ➔ ${dCity}`,
-          status: t.status,
-          status_label:
-            t.status === 'IN_TRANSIT'
-              ? 'On Schedule'
-              : t.status === 'RUNNING'
-              ? 'In Transit'
-              : t.status === 'DISPATCHED'
-              ? 'Dispatched'
-              : t.status === 'LOADING'
-              ? 'Dock Loading'
-              : t.status === 'READY'
-              ? 'Ready for Transit'
-              : 'Trip Created',
-          isTransit: true, // Marker for Leaflet IndiaFleetMap
-          speed: `${speedVal} km/h`,
-          fuel: `${68 - (idx * 5) % 35}%`,
-          remaining_km: `${450 + (idx * 120) % 800} km`,
-          eta: t.trip_date ? `${new Date(t.trip_date).toLocaleDateString()} Arrival` : 'Tomorrow',
+          origin_branch_name: matchingTrip.originBranch?.branch_name,
+          dest_branch_name: matchingTrip.destBranch?.branch_name,
+          route: isTransit && oCity !== dCity ? `${oCity} ➔ ${dCity}` : `${locName} Corridor`,
+          status: matchingTrip.status || (isMoving ? 'IN_TRANSIT' : 'IDLE'),
+          status_label: matchingTrip.status === 'IN_TRANSIT'
+            ? 'In Transit (On Road)'
+            : matchingTrip.status === 'RUNNING'
+            ? 'Running'
+            : matchingTrip.status === 'DISPATCHED'
+            ? 'Dispatched'
+            : isMoving
+            ? 'Moving on Highway'
+            : liveIgnition
+            ? 'Engine Idle (Ignition ON)'
+            : 'Stationed at Yard',
+          isTransit,
+          isMoving,
+          latitude: realLat,
+          longitude: realLng,
+          angle: parseFloat(tv.last_heading || 0),
+          speed: `${liveSpeed} km/h`,
+          ignition: liveIgnition,
+          fuel: tv.fuel_level ? `${tv.fuel_level}%` : '74%',
+          remaining_km: isTransit ? '320 km' : '0 km',
+          eta: matchingTrip.trip_date ? `${new Date(matchingTrip.trip_date).toLocaleDateString()} Arrival` : 'On Schedule',
           on_time_buffer: '+1h 45m',
-          progress: t.status === 'IN_TRANSIT' ? 55 + (idx * 12) % 35 : t.status === 'RUNNING' ? 45 : 15,
-          cargo: `${Number(t.total_weight || 0).toLocaleString()} KG • ${t.total_packages || 0} Pkgs`,
-          location: `${oCity} Highway Corridor`,
-          total_weight: t.total_weight || 0,
-          total_packages: t.total_packages || 0,
-          driver_advance: t.driver_advance || 0,
-          total_expenses: t.total_expenses || 0,
-          raw: t
-        };
-      });
-  }, [tripsData, selectedBranchId]);
+          progress: isTransit ? 55 : 0,
+          cargo: matchingTrip.total_weight ? `${Number(matchingTrip.total_weight).toLocaleString()} KG • ${matchingTrip.total_packages || 0} Pkgs` : 'General Freight Cargo',
+          location: locName,
+          total_weight: matchingTrip.total_weight || 0,
+          total_packages: matchingTrip.total_packages || 0,
+          driver_advance: matchingTrip.driver_advance || 0,
+          total_expenses: matchingTrip.total_expenses || 0,
+          hasRealGps: true,
+          gps_provider_name: tv.gps_provider_name || 'WheelsEye Fleet GPS',
+          provider: tv.gps_provider_name || 'WheelsEye Fleet GPS',
+          hasActiveTrip: true,
+          rawTrip: matchingTrip,
+        });
+      } else {
+        // Vehicle has NO active trip: It is in Yard or Standby
+        result.push({
+          id: tv.id,
+          rawId: tv.id,
+          tripId: null,
+          trip_number: `GPS-${tv.vehicle_number}`,
+          vehicleNumber: tv.vehicle_number,
+          vehicle_model: tv.vehicle_type || 'Commercial Truck (16T)',
+          driver: tv.driver?.name || 'Driver Standby',
+          driver_phone: tv.driver?.phone || '+91 98000 00000',
+          rating: '4.9 ★',
+          origin: locName,
+          destination: locName,
+          originCity: locName,
+          destCity: locName,
+          route: `${locName} (Yard Available)`,
+          status: liveIgnition ? (isMoving ? 'MOVING_LOCAL' : 'IDLE') : 'PARKED',
+          status_label: isMoving
+            ? 'Moving (Local Transit)'
+            : liveIgnition
+            ? 'Engine Idle (Ignition ON)'
+            : 'Stationed at Yard',
+          isTransit: false,
+          isMoving,
+          latitude: realLat,
+          longitude: realLng,
+          angle: parseFloat(tv.last_heading || 0),
+          speed: `${liveSpeed} km/h`,
+          ignition: liveIgnition,
+          fuel: tv.fuel_level ? `${tv.fuel_level}%` : '78%',
+          remaining_km: '0 km',
+          eta: 'Standby / Ready',
+          on_time_buffer: 'Ready',
+          progress: 0,
+          cargo: 'Available for Dispatch',
+          location: locName,
+          total_weight: 0,
+          total_packages: 0,
+          driver_advance: 0,
+          total_expenses: 0,
+          hasRealGps: true,
+          gps_provider_name: tv.gps_provider_name || 'WheelsEye Fleet GPS',
+          provider: tv.gps_provider_name || 'WheelsEye Fleet GPS',
+          hasActiveTrip: false,
+          rawTrip: null,
+        });
+      }
+    });
 
-  // Set default selected trip once loaded
-  useEffect(() => {
-    if (runningTrips.length > 0 && !selectedTrip) {
-      setSelectedTrip(runningTrips[0]);
-    }
-  }, [runningTrips, selectedTrip]);
+    return result;
+  }, [tripsData, telemetryVehicles]);
+
+  // Real Active Running Trips (Trips assigned to vehicles in transit)
+  const runningTrips = useMemo(() => {
+    return allFleetVehicles.filter((v) => v.hasActiveTrip && v.isTransit);
+  }, [allFleetVehicles]);
+
+  // Moving and Parked splits
+  const movingVehicles = useMemo(() => allFleetVehicles.filter((v) => parseFloat(v.speed || 0) > 0), [allFleetVehicles]);
+  const parkedVehicles = useMemo(() => allFleetVehicles.filter((v) => parseFloat(v.speed || 0) === 0), [allFleetVehicles]);
 
   // Filtered trips based on active layer
   const displayedTrips = useMemo(() => {
     if (activeLayer === 'CORRIDORS') {
-      return runningTrips.filter((t) => t.status === 'IN_TRANSIT' || t.status === 'RUNNING' || t.status === 'DISPATCHED');
+      return allFleetVehicles.filter((t) => t.isTransit || t.hasActiveTrip);
     }
     if (activeLayer === 'GEOFENCE') {
-      return runningTrips.filter((t) => t.speed !== '0 km/h');
+      return allFleetVehicles.filter((t) => parseFloat(t.speed || 0) > 0);
     }
-    return runningTrips;
-  }, [runningTrips, activeLayer]);
+    return allFleetVehicles;
+  }, [allFleetVehicles, activeLayer]);
 
   // Real KPI metrics from database
   const activeCount = runningTrips.length;
@@ -301,6 +410,21 @@ export default function ControlTowerPage() {
       minWidth: 130,
       sortable: true,
       render: (val) => <span className="font-mono font-bold text-slate-700 dark:text-slate-300 text-[11px]">{val}</span>
+    },
+    {
+      key: 'location',
+      label: 'Live GPS Location',
+      width: 200,
+      minWidth: 160,
+      sortable: true,
+      render: (val) => (
+        <div className="flex items-center gap-1.5 text-xs">
+          <span className="text-cyan-400 shrink-0">📍</span>
+          <span className="font-medium text-slate-800 dark:text-slate-200 truncate max-w-[190px]">
+            {val || 'Live Telematics'}
+          </span>
+        </div>
+      )
     },
     {
       key: 'driver',
@@ -354,6 +478,7 @@ export default function ControlTowerPage() {
             onClick={(e) => {
               e.stopPropagation();
               setSelectedTrip(row);
+              window.scrollTo({ top: 350, behavior: 'smooth' });
             }}
             className={`px-3 py-1 rounded-lg text-[10px] font-bold shadow-xs transition-all ${
               isCurrent
@@ -361,7 +486,7 @@ export default function ControlTowerPage() {
                 : 'bg-blue-600 hover:bg-blue-500 text-white'
             }`}
           >
-            {isCurrent ? '● On Map' : 'Locate'}
+            {isCurrent ? '● On Radar' : 'Locate'}
           </button>
         );
       }
@@ -398,30 +523,16 @@ export default function ControlTowerPage() {
             <div className="flex items-center gap-2 overflow-x-auto sm:overflow-visible pb-1 sm:pb-0 shrink-0">
               {/* Branch / Transporter Scope Selector: only for multi-branch admins */}
               {!isRestrictedBranchUser && (
-                <div className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-bold shrink-0 ${
-                  isDark ? 'bg-slate-900/90 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-800 shadow-xs'
-                }`}>
-                  <Building2 className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[11px] text-slate-400 shrink-0">Branch:</span>
-                    <select
-                      value={selectedBranchId}
-                      onChange={(e) => setSelectedBranchId(e.target.value)}
-                      className={`bg-transparent font-bold focus:outline-none cursor-pointer text-xs max-w-[150px] sm:max-w-[190px] truncate ${
-                        isDark ? 'text-white' : 'text-slate-900'
-                      }`}
-                    >
-                      <option value="ALL" className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>
-                        🌐 All Branches
-                      </option>
-                      {branches.map((b) => (
-                        <option key={b.id} value={b.id} className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>
-                          {b.branch_name} {b.city ? `• ${b.city}` : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
+                <BranchFilterDropdown
+                  selectedBranchId={selectedBranchId}
+                  onChange={(newBranchId) => setSelectedBranchId(newBranchId)}
+                  branches={branches}
+                  allLabel="All Branches"
+                  allSubtitle="Nationwide Fleet Telemetry"
+                  label="Branch:"
+                  showLabel={true}
+                  align="right"
+                />
               )}
 
               {/* Live IST Radar Time */}
@@ -504,72 +615,137 @@ export default function ControlTowerPage() {
           </div>
 
           {/* Main Cockpit: Real Leaflet Map & Queue (8 Cols) + Telemetry & Exceptions (4 Cols) */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
             
             {/* Left Column: Full GPS Leaflet Map & Active Dispatch Queue (8 Columns) */}
-            <div className="lg:col-span-8 space-y-5">
+            <div className="lg:col-span-8 flex flex-col h-full space-y-5">
               
               {/* Real Interactive Leaflet India Map (Same as Dashboard, Showing only Running Trips) */}
-              <div className={`p-5 rounded-3xl border shadow-xl relative overflow-hidden flex flex-col justify-between ${
+              <div className={`p-5 rounded-3xl border shadow-xl relative overflow-hidden flex flex-col justify-between flex-1 h-full ${
                 isDark ? 'bg-[#070B14] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
               }`}>
                 {/* Map Toolbar */}
-                <div className={`flex flex-wrap items-center justify-between gap-3 z-10 pb-3 border-b ${
+                <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 z-10 pb-3 border-b min-w-0 ${
                   isDark ? 'border-slate-800/80' : 'border-slate-200'
                 }`}>
-                  <div className="flex items-center space-x-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
-                    <span className={`text-sm font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                      Live Highway Corridor Map (Running Trips Only)
-                    </span>
-                    <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold border ${
-                      isDark 
-                        ? 'text-cyan-400 bg-cyan-950/80 border-cyan-500/30' 
-                        : 'text-blue-700 bg-blue-50 border-blue-200'
-                    }`}>
-                      GPS REFRESH 5S
-                    </span>
+                  <div className="flex items-center space-x-2.5 min-w-0 shrink">
+                    <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping shrink-0" />
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-nowrap">
+                        <span className={`text-sm font-black truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                          All-India Live Fleet Radar
+                        </span>
+                        <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-black border shrink-0 ${
+                          isDark 
+                            ? 'text-cyan-400 bg-cyan-950/80 border-cyan-500/30' 
+                            : 'text-blue-700 bg-blue-50 border-blue-200'
+                        }`}>
+                          {allFleetVehicles.length} TRUCKS LIVE
+                        </span>
+                      </div>
+                      <div className={`text-[11px] truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                        {selectedTrip ? `Focused on ${selectedTrip.vehicleNumber} • ${selectedTrip.location}` : 'Pan-India Real-Time GPS Tracking'}
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="flex items-center gap-1.5">
-                    <div className={`flex items-center gap-1 text-[11px] font-semibold p-1 rounded-xl border ${
+                  <div className="flex items-center gap-2 flex-nowrap shrink-0 overflow-x-auto scrollbar-none">
+                    {/* Top Vehicle Quick-Selector */}
+                    <div className="relative w-44 sm:w-52 md:w-56 shrink-0">
+                      <select
+                        id="control-tower-vehicle-picker"
+                        value={selectedTrip ? (selectedTrip.vehicleNumber || selectedTrip.id) : 'ALL'}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === 'ALL') {
+                            setSelectedTrip(null);
+                          } else {
+                            const found = allFleetVehicles.find((v) => (v.vehicleNumber || v.id) === val);
+                            if (found) setSelectedTrip(found);
+                          }
+                        }}
+                        className={`w-full text-xs font-bold py-1.5 pl-2.5 pr-7 rounded-xl border appearance-none cursor-pointer transition-all shadow-xs truncate ${
+                          isDark
+                            ? 'bg-slate-900/90 border-slate-700 text-cyan-300 hover:border-cyan-400'
+                            : 'bg-white border-slate-300 text-slate-800 hover:border-blue-500'
+                        }`}
+                      >
+                        <option value="ALL">🌐 All India ({allFleetVehicles.length} Trucks)</option>
+                        {movingVehicles.length > 0 && (
+                          <optgroup label="⚡ In Transit / Moving">
+                            {movingVehicles.map((v) => (
+                              <option key={v.id} value={v.vehicleNumber}>
+                                🟢 {v.vehicleNumber} • {v.speed} • {v.location}
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+                        <optgroup label="🅿️ Stationed at Yard / Depots">
+                          {parkedVehicles.map((v) => (
+                            <option key={v.id} value={v.vehicleNumber}>
+                              🅿️ {v.vehicleNumber} • 0 km/h • {v.location}
+                            </option>
+                          ))}
+                        </optgroup>
+                      </select>
+                      <ChevronDown className="w-3.5 h-3.5 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none opacity-60" />
+                    </div>
+
+                    {/* Layer Filter Pills */}
+                    <div className={`flex items-center gap-1 text-[11px] font-semibold p-1 rounded-xl border shrink-0 ${
                       isDark ? 'bg-slate-950/80 border-slate-800' : 'bg-slate-100 border-slate-200'
                     }`}>
                       <button
                         onClick={() => setActiveLayer('ALL')}
-                        className={`px-2.5 py-1 rounded-lg transition-colors ${
+                        className={`px-2.5 py-1 rounded-lg transition-colors whitespace-nowrap ${
                           activeLayer === 'ALL' 
                             ? 'bg-blue-600 text-white shadow-xs' 
                             : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
                         }`}
                       >
-                        All Running ({runningTrips.length})
+                        All Fleet ({allFleetVehicles.length})
                       </button>
                       <button
                         onClick={() => setActiveLayer('CORRIDORS')}
-                        className={`px-2.5 py-1 rounded-lg transition-colors ${
+                        className={`px-2.5 py-1 rounded-lg transition-colors whitespace-nowrap ${
                           activeLayer === 'CORRIDORS' 
                             ? 'bg-blue-600 text-white shadow-xs' 
                             : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
                         }`}
                       >
-                        In Transit
+                        Corridors ({runningTrips.length})
                       </button>
                       <button
                         onClick={() => setActiveLayer('GEOFENCE')}
-                        className={`px-2.5 py-1 rounded-lg transition-colors ${
+                        className={`px-2.5 py-1 rounded-lg transition-colors whitespace-nowrap ${
                           activeLayer === 'GEOFENCE' 
                             ? 'bg-blue-600 text-white shadow-xs' 
                             : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
                         }`}
                       >
-                        Moving
+                        Moving ({movingVehicles.length})
                       </button>
                     </div>
 
+                    {/* Reset to Full India Overview Button */}
+                    {selectedTrip && (
+                      <button
+                        onClick={() => setSelectedTrip(null)}
+                        className={`px-2.5 py-1.5 rounded-xl border text-[11px] font-bold transition-all flex items-center gap-1 shrink-0 ${
+                          isDark
+                            ? 'bg-slate-900 border-slate-700 text-slate-300 hover:text-white hover:border-slate-500'
+                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-xs'
+                        }`}
+                        title="Reset radar to full country view"
+                      >
+                        <RotateCcw className="w-3 h-3 text-cyan-400" />
+                        <span className="whitespace-nowrap">All India</span>
+                      </button>
+                    )}
+
                     <button
                       onClick={() => setIsMapModalOpen(true)}
-                      className={`p-1.5 rounded-xl border transition-colors ${
+                      className={`p-1.5 rounded-xl border transition-colors shrink-0 ${
                         isDark 
                           ? 'border-slate-800 bg-slate-900 text-slate-300 hover:text-white hover:border-slate-700' 
                           : 'border-slate-200 bg-slate-100 text-slate-600 hover:text-slate-900 hover:bg-slate-200'
@@ -582,9 +758,9 @@ export default function ControlTowerPage() {
                 </div>
 
                 {/* Leaflet Map Body */}
-                <div className="w-full mt-3">
-                  {runningTrips.length === 0 ? (
-                    <div className={`w-full h-[460px] rounded-2xl border flex flex-col items-center justify-center p-6 text-center transition-colors ${
+                <div className="w-full mt-3 flex-1 flex flex-col min-h-0">
+                  {allFleetVehicles.length === 0 ? (
+                    <div className={`w-full flex-1 min-h-[460px] lg:min-h-[550px] rounded-2xl border flex flex-col items-center justify-center p-6 text-center transition-colors ${
                       isDark 
                         ? 'bg-[#070B14] border-slate-800 text-slate-400' 
                         : 'bg-slate-50 border-slate-200 text-slate-600'
@@ -631,31 +807,34 @@ export default function ControlTowerPage() {
                     <IndiaFleetMap
                       selectedTrip={selectedTrip}
                       allTrips={displayedTrips}
-                      onSelectTrip={(trip) => setSelectedTrip(trip)}
+                      onSelectTrip={(trip) => setSelectedTrip(selectedTrip?.id === trip?.id || selectedTrip?.vehicleNumber === trip?.vehicleNumber ? null : trip)}
                       activeTripsCount={runningTrips.length}
                       onTimeCount={onScheduleCount}
                       delayedCount={delayedCount}
                       isDark={isDark}
                       onOpenModal={() => setIsMapModalOpen(true)}
+                      className="flex-1 w-full h-full min-h-[460px] lg:min-h-[550px]"
                     />
                   )}
                 </div>
 
                 {/* Map Bottom Status Bar */}
                 <div className={`flex items-center justify-between text-[11px] pt-3 mt-2 border-t ${
-                  isDark ? 'border-slate-800/80' : 'border-slate-200'
+                  isDark ? 'border-slate-800/80 text-slate-400' : 'border-slate-200 text-slate-600'
                 }`}>
-                  <div className={`flex items-center space-x-3 font-mono text-[10px] ${
-                    isDark ? 'text-slate-400' : 'text-slate-600'
-                  }`}>
-                    <span className="flex items-center gap-1">
+                  <div className="flex items-center space-x-3 font-mono text-[10px]">
+                    <span className="flex items-center gap-1.5">
                       <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-                      Running Vehicles: {runningTrips.length} Units
+                      <span>Total Fleet: {allFleetVehicles.length} Commercial Trucks</span>
                     </span>
-                    <span>• Stationary / Idle vehicles excluded</span>
+                    <span>•</span>
+                    <span className="text-emerald-500 font-bold">{movingVehicles.length} Moving</span>
+                    <span>•</span>
+                    <span>{parkedVehicles.length} Stationed at Yard</span>
                   </div>
-                  <div className={`text-[10px] font-mono ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-                    Real-time GIS Coordinates (WGS-84)
+                  <div className="text-[10px] font-mono flex items-center gap-1.5">
+                    <span>WheelsEye GIS WGS-84 Telematics</span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
                   </div>
                 </div>
               </div>
@@ -663,10 +842,10 @@ export default function ControlTowerPage() {
             </div>
 
             {/* Right Column: Live Telemetry HUD & Exception Center (4 Columns) */}
-            <div className="lg:col-span-4 space-y-5">
+            <div className="lg:col-span-4 flex flex-col justify-between space-y-5 h-full">
               
-              {/* Selected Vehicle Telemetry HUD (Live from DB) */}
-              <div className={`p-5 rounded-3xl border shadow-xl ${
+              {/* Selected Vehicle Telemetry HUD (Live from DB & WheelsEye) */}
+              <div className={`p-5 rounded-3xl border shadow-xl flex-1 flex flex-col justify-between ${
                 isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200'
               }`}>
                 <div className={`flex items-center justify-between pb-3 border-b mb-3.5 ${
@@ -675,29 +854,68 @@ export default function ControlTowerPage() {
                   <div className="flex items-center space-x-2">
                     <Radio className="w-4 h-4 text-cyan-400 animate-pulse" />
                     <h3 className={`text-sm font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                      Vehicle Telemetry HUD
+                      {selectedTrip ? 'Vehicle Telemetry HUD' : 'Fleet Telematics Command'}
                     </h3>
                   </div>
-                  <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
-                    isDark 
-                      ? 'bg-cyan-950 text-cyan-300 border-cyan-500/30' 
-                      : 'bg-slate-100 text-slate-700 border-slate-200'
-                  }`}>
-                    {selectedTrip ? selectedTrip.vehicleNumber : 'No Selection'}
-                  </span>
+                  {selectedTrip ? (
+                    <div className="flex items-center gap-1.5">
+                      <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-black border ${
+                        isDark 
+                          ? 'bg-cyan-950 text-cyan-300 border-cyan-500/30' 
+                          : 'bg-slate-100 text-slate-700 border-slate-200'
+                      }`}>
+                        {selectedTrip.vehicleNumber}
+                      </span>
+                      <button
+                        onClick={() => setSelectedTrip(null)}
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded transition-colors ${
+                          isDark ? 'text-slate-400 hover:text-white bg-slate-900' : 'text-slate-600 hover:text-slate-900 bg-slate-100'
+                        }`}
+                        title="Return to All Fleet Overview"
+                      >
+                        ✕ Close
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-bold">
+                      {allFleetVehicles.length} Trucks Live
+                    </span>
+                  )}
                 </div>
 
                 {selectedTrip ? (
                   <div className="space-y-4">
+                    {/* Vehicle Identity & Real Location */}
                     <div>
-                      <div className={`text-base font-black ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                      <div className="flex items-center justify-between">
+                        <div className={`text-base font-black ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                          {selectedTrip.vehicleNumber}
+                        </div>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          parseFloat(selectedTrip.speed || 0) > 0
+                            ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                            : 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                        }`}>
+                          {parseFloat(selectedTrip.speed || 0) > 0 ? `Moving • ${selectedTrip.speed}` : 'Stationed at Yard'}
+                        </span>
+                      </div>
+                      <div className={`text-xs mt-0.5 font-medium ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                         {selectedTrip.vehicle_model}
                       </div>
-                      <div className="text-xs text-cyan-400 font-mono mt-0.5 font-bold">
-                        {selectedTrip.trip_number} • {selectedTrip.route}
-                      </div>
-                      <div className={`text-xs mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-                        Payload: {selectedTrip.cargo}
+                      
+                      {/* Real Location Pill */}
+                      <div className={`mt-2 p-2.5 rounded-xl border flex items-center gap-2 ${
+                        isDark ? 'bg-slate-900/70 border-slate-800' : 'bg-slate-50 border-slate-200'
+                      }`}>
+                        <MapPin className="w-4 h-4 text-cyan-400 shrink-0" />
+                        <div className="text-xs">
+                          <div className={`font-semibold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
+                            {selectedTrip.location}
+                          </div>
+                          <div className={`text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                            GPS Lat: {selectedTrip.latitude?.toFixed(4)}, Lng: {selectedTrip.longitude?.toFixed(4)}
+                          </div>
+                        </div>
                       </div>
                     </div>
 
@@ -708,21 +926,21 @@ export default function ControlTowerPage() {
                         <div className={`font-mono font-black text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>
                           {selectedTrip.speed}
                         </div>
-                        <div className={`text-[9px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Current Speed</div>
+                        <div className={`text-[9px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Speed</div>
                       </div>
                       <div className={`p-2.5 rounded-2xl border ${isDark ? 'bg-slate-900/80 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
-                        <Fuel className="w-4 h-4 text-amber-400 mx-auto mb-1" />
-                        <div className={`font-mono font-black text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                          {selectedTrip.fuel}
+                        <Radio className={`w-4 h-4 mx-auto mb-1 ${selectedTrip.ignition ? 'text-emerald-400' : 'text-slate-500'}`} />
+                        <div className={`font-mono font-bold text-xs mt-0.5 ${selectedTrip.ignition ? 'text-emerald-400' : (isDark ? 'text-slate-400' : 'text-slate-500')}`}>
+                          {selectedTrip.ignition ? 'Ignition ON' : 'Engine OFF'}
                         </div>
-                        <div className={`text-[9px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Fuel Level</div>
+                        <div className={`text-[9px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Ignition</div>
                       </div>
                       <div className={`p-2.5 rounded-2xl border ${isDark ? 'bg-slate-900/80 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
-                        <Clock className="w-4 h-4 text-emerald-400 mx-auto mb-1" />
-                        <div className={`font-mono font-black text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                          {selectedTrip.on_time_buffer}
+                        <ShieldCheck className="w-4 h-4 text-emerald-400 mx-auto mb-1" />
+                        <div className={`font-mono font-black text-xs mt-0.5 ${isDark ? 'text-cyan-300' : 'text-blue-600'}`}>
+                          WheelsEye
                         </div>
-                        <div className={`text-[9px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>ETA Buffer</div>
+                        <div className={`text-[9px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>GPS Fix</div>
                       </div>
                     </div>
 
@@ -758,52 +976,146 @@ export default function ControlTowerPage() {
                       </div>
                     </div>
 
-                    {/* Financial Snapshot */}
-                    <div className={`p-3 rounded-2xl border text-xs space-y-1.5 ${
-                      isDark ? 'bg-slate-900/40 border-slate-800' : 'bg-slate-50 border-slate-200'
-                    }`}>
-                      <div className="flex justify-between">
-                        <span className={isDark ? 'text-slate-400' : 'text-slate-600'}>Driver Cash Advance:</span>
-                        <span className="font-mono font-bold text-cyan-500 dark:text-cyan-400">
-                          ₹{Number(selectedTrip.driver_advance || 0).toLocaleString('en-IN')}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className={isDark ? 'text-slate-400' : 'text-slate-600'}>Reported Expenses:</span>
-                        <span className="font-mono font-bold text-amber-500 dark:text-amber-400">
-                          ₹{Number(selectedTrip.total_expenses || 0).toLocaleString('en-IN')}
-                        </span>
-                      </div>
-                    </div>
+                    {/* Trip Status or Yard Standby Details */}
+                    {selectedTrip.hasActiveTrip && selectedTrip.isTransit ? (
+                      <>
+                        {/* Financial Snapshot */}
+                        <div className={`p-3 rounded-2xl border text-xs space-y-1.5 ${
+                          isDark ? 'bg-slate-900/40 border-slate-800' : 'bg-slate-50 border-slate-200'
+                        }`}>
+                          <div className="flex justify-between">
+                            <span className={isDark ? 'text-slate-400' : 'text-slate-600'}>Trip Sheet ID:</span>
+                            <span className="font-mono font-bold text-cyan-400">
+                              {selectedTrip.trip_number}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className={isDark ? 'text-slate-400' : 'text-slate-600'}>Payload:</span>
+                            <span className="font-semibold text-slate-200">
+                              {selectedTrip.cargo}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className={isDark ? 'text-slate-400' : 'text-slate-600'}>Driver Advance:</span>
+                            <span className="font-mono font-bold text-cyan-500 dark:text-cyan-400">
+                              ₹{Number(selectedTrip.driver_advance || 0).toLocaleString('en-IN')}
+                            </span>
+                          </div>
+                        </div>
 
-                    {/* Journey Milestone Tracker */}
-                    <div className={`space-y-2 pt-2 border-t ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
-                      <div className={`text-[11px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                        Journey Corridor Pipeline
+                        {/* Journey Milestone Tracker */}
+                        <div className={`space-y-2 pt-2 border-t ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
+                          <div className={`text-[11px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                            Journey Corridor Pipeline
+                          </div>
+                          <div className="space-y-2 text-xs">
+                            <div className="flex items-center gap-2 text-emerald-500 dark:text-emerald-400">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>Origin Hub: {selectedTrip.originCity}</span>
+                              <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500 ml-auto">Departed</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-blue-600 dark:text-cyan-400 font-bold">
+                              <div className="w-3.5 h-3.5 rounded-full border-2 border-blue-600 dark:border-cyan-400 flex items-center justify-center animate-ping" />
+                              <span>Transit Corridor: {selectedTrip.route}</span>
+                              <span className="text-[10px] font-mono text-blue-600 dark:text-cyan-300 ml-auto">{selectedTrip.speed}</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-slate-400 dark:text-slate-500">
+                              <div className={`w-3.5 h-3.5 rounded-full border ${isDark ? 'border-slate-700' : 'border-slate-300'}`} />
+                              <span>Destination: {selectedTrip.destCity}</span>
+                              <span className="text-[10px] font-mono text-slate-400 dark:text-slate-600 ml-auto">Inbound</span>
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      /* Standby at Depot Card */
+                      <div className={`p-3.5 rounded-2xl border space-y-2.5 ${
+                        isDark ? 'bg-slate-900/40 border-slate-800' : 'bg-slate-50 border-slate-200'
+                      }`}>
+                        <div className="flex items-center justify-between text-xs">
+                          <span className={isDark ? 'text-slate-400' : 'text-slate-600'}>Operational Status:</span>
+                          <span className="font-bold text-emerald-400">Available at Yard</span>
+                        </div>
+                        <div className="flex items-center justify-between text-xs">
+                          <span className={isDark ? 'text-slate-400' : 'text-slate-600'}>Current Location:</span>
+                          <span className="font-semibold text-slate-200 truncate max-w-[140px]">
+                            {selectedTrip.location}
+                          </span>
+                        </div>
+                        <Link
+                          href="/load-planning"
+                          className="flex items-center justify-center gap-1.5 w-full py-2 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 transition-all active:scale-95 mt-1"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Dispatch from this Depot</span>
+                        </Link>
                       </div>
-                      <div className="space-y-2 text-xs">
-                        <div className="flex items-center gap-2 text-emerald-500 dark:text-emerald-400">
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          <span>Origin Hub: {selectedTrip.originCity}</span>
-                          <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500 ml-auto">Dispatched</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-blue-600 dark:text-cyan-400 font-bold">
-                          <div className="w-3.5 h-3.5 rounded-full border-2 border-blue-600 dark:border-cyan-400 flex items-center justify-center animate-ping" />
-                          <span>Highway Transit: {selectedTrip.route}</span>
-                          <span className="text-[10px] font-mono text-blue-600 dark:text-cyan-300 ml-auto">{selectedTrip.speed}</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-slate-400 dark:text-slate-500">
-                          <div className={`w-3.5 h-3.5 rounded-full border ${isDark ? 'border-slate-700' : 'border-slate-300'}`} />
-                          <span>Destination Hub: {selectedTrip.destCity}</span>
-                          <span className="text-[10px] font-mono text-slate-400 dark:text-slate-600 ml-auto">Pending Arrival</span>
-                        </div>
-                      </div>
-                    </div>
+                    )}
 
                   </div>
                 ) : (
-                  <div className={`py-12 text-center text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                    Select a running trip from the queue or map to inspect cabin telemetry.
+                  /* When NO vehicle is selected: Executive All-Fleet HUD */
+                  <div className="space-y-4">
+                    {/* Quick Stats Grid */}
+                    <div className="grid grid-cols-2 gap-2 text-center">
+                      <div className={`p-2.5 rounded-2xl border ${isDark ? 'bg-slate-900/80 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
+                        <div className="text-xl font-black text-emerald-400 font-mono">
+                          {movingVehicles.length}
+                        </div>
+                        <div className={`text-[10px] font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Moving on Road</div>
+                      </div>
+                      <div className={`p-2.5 rounded-2xl border ${isDark ? 'bg-slate-900/80 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
+                        <div className="text-xl font-black text-blue-400 font-mono">
+                          {parkedVehicles.length}
+                        </div>
+                        <div className={`text-[10px] font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>At Yard / Depots</div>
+                      </div>
+                    </div>
+
+                    {/* Quick Select Fleet List */}
+                    <div className="flex-1 flex flex-col min-h-0">
+                      <div className={`text-[11px] font-bold uppercase tracking-wider mb-2 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                        Live Trucks Directory ({allFleetVehicles.length})
+                      </div>
+                      <div className="flex-1 max-h-[350px] overflow-y-auto space-y-1.5 pr-1 custom-scrollbar">
+                        {allFleetVehicles.map((v) => {
+                          const isMoving = parseFloat(v.speed || 0) > 0;
+                          return (
+                            <button
+                              key={v.id}
+                              onClick={() => {
+                                setSelectedTrip(selectedTrip?.id === v.id || selectedTrip?.vehicleNumber === v.vehicleNumber ? null : v);
+                                window.scrollTo({ top: 350, behavior: 'smooth' });
+                              }}
+                              className={`w-full p-2.5 rounded-xl border text-left flex items-center justify-between transition-all group ${
+                                isDark
+                                  ? 'bg-slate-900/60 border-slate-800 hover:border-cyan-400 hover:bg-slate-800'
+                                  : 'bg-slate-50 border-slate-200 hover:border-blue-400 hover:bg-white shadow-xs'
+                              }`}
+                            >
+                              <div className="min-w-0 pr-2">
+                                <div className="flex items-center gap-1.5 font-mono font-bold text-xs">
+                                  <span className={`w-1.5 h-1.5 rounded-full ${isMoving ? 'bg-emerald-400 animate-pulse' : 'bg-sky-400'}`} />
+                                  <span className={isDark ? 'text-white group-hover:text-cyan-300' : 'text-slate-900 group-hover:text-blue-600'}>
+                                    {v.vehicleNumber}
+                                  </span>
+                                </div>
+                                <div className={`text-[10px] truncate max-w-[170px] mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                                  📍 {v.location}
+                                </div>
+                              </div>
+                              <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold shrink-0 ${
+                                isMoving
+                                  ? 'bg-emerald-500/20 text-emerald-400'
+                                  : (isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-200 text-slate-600')
+                              }`}>
+                                {isMoving ? v.speed : 'Parked'}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
@@ -877,7 +1189,7 @@ export default function ControlTowerPage() {
               <div className="flex items-center space-x-2">
                 <Activity className="w-4 h-4 text-cyan-400" />
                 <h3 className={`text-base font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                  Active Running Dispatch Queue ({runningTrips.length} Active Trips)
+                  Live Commercial Fleet Telematics Register ({allFleetVehicles.length} Units)
                 </h3>
               </div>
               <Link href="/trips" className="text-xs text-cyan-400 hover:underline font-bold flex items-center gap-1">
@@ -889,13 +1201,19 @@ export default function ControlTowerPage() {
             <DataTable
               columns={queueColumns}
               data={displayedTrips}
-              pageSizeOptions={[5, 10, 15, 25]}
+              pageSize={16}
+              pageSizeOptions={[5, 10, 16, 25, 50]}
               searchable={true}
-              searchPlaceholder="Search running trips by vehicle, route, driver..."
+              searchPlaceholder="Search fleet by vehicle plate, location, route, driver..."
               exportable={true}
-              exportFileName="Active_Running_Trips_Queue"
-              emptyMessage="No active running trips found. Create a dispatch to track on highway radar."
-              onRowClick={(row) => setSelectedTrip(row)}
+              exportFileName="Live_Fleet_Telematics_Register"
+              emptyMessage="No commercial vehicles found in this filter."
+              onRowClick={(row) => {
+                setSelectedTrip(row);
+                window.scrollTo({ top: 350, behavior: 'smooth' });
+              }}
+              tableContainerClassName="max-h-[360px] sm:max-h-[420px] lg:max-h-[460px] xl:max-h-[500px]"
+              stickyHeader={true}
             />
           </div>
 
@@ -917,7 +1235,7 @@ export default function ControlTowerPage() {
                   Full-Screen Highway Corridor Radar
                 </h3>
                 <span className={`text-xs font-mono ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                  ({runningTrips.length} Running Trips)
+                  ({allFleetVehicles.length} Commercial Trucks Live)
                 </span>
               </div>
               <button
@@ -940,6 +1258,7 @@ export default function ControlTowerPage() {
                 onTimeCount={onScheduleCount}
                 delayedCount={delayedCount}
                 isDark={isDark}
+                isModal={true}
               />
             </div>
           </div>

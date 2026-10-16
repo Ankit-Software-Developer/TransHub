@@ -49,6 +49,20 @@ const getEffectiveBranch = (req, requestedBranchId) => {
 };
 
 /**
+ * Helper to verify financial & tax audit authority:
+ * Restricts Trip & Vehicle P&L, GST register, etc. to Admin, Auditor, and Accountant roles.
+ */
+const canAccessFinancialAudit = (req) => {
+  return Boolean(
+    req.user?.is_owner ||
+    req.user?.isAdmin ||
+    ['SUPER_ADMIN', 'TRANSPORT_OWNER', 'ADMIN', 'OWNER', 'AUDITOR', 'ACCOUNTANT', 'FINANCE'].includes(req.user?.role) ||
+    (req.userRoles && req.userRoles.some((r) => ['SUPER_ADMIN', 'TRANSPORT_OWNER', 'ADMIN', 'OWNER', 'AUDITOR', 'AUDIT', 'ACCOUNTANT', 'ACCOUNTS', 'FINANCE', 'FINANCE_MANAGER'].includes(r))) ||
+    (req.userPermissions && req.userPermissions.some((p) => ['*', 'reports.audit', 'audit.view', 'finance.view', 'reports.trips_pnl.view', 'reports.trips.view', 'reports.gst.view'].includes(p)))
+  );
+};
+
+/**
  * 1. Docket & Freight Sales Register
  */
 const getDocketFreightReport = async (req, res) => {
@@ -377,20 +391,43 @@ const getCustomerAgeingReport = async (req, res) => {
 
     const effectiveBranchId = getEffectiveBranch(req, branch_id);
 
+    let effectiveBranchObj = null;
+    if (effectiveBranchId) {
+      effectiveBranchObj = await Branch.findByPk(effectiveBranchId, {
+        attributes: ['id', 'branch_name', 'branch_code', ['branch_name', 'name']],
+      });
+    }
+
     // 1. Fetch Customers
     const customerWhere = {
       ...tenantFilter,
       status: 'ACTIVE',
     };
 
+    if (effectiveBranchId) {
+      customerWhere[Op.or] = [
+        { branch_id: effectiveBranchId },
+        { branch_id: null },
+      ];
+    }
+
     if (search && search.trim()) {
       const q = `%${search.trim()}%`;
-      customerWhere[Op.or] = [
+      const searchCond = [
         { name: { [Op.like]: q } },
         { customer_code: { [Op.like]: q } },
         { phone: { [Op.like]: q } },
         { gstin: { [Op.like]: q } },
       ];
+      if (customerWhere[Op.or]) {
+        customerWhere[Op.and] = [
+          { [Op.or]: customerWhere[Op.or] },
+          { [Op.or]: searchCond },
+        ];
+        delete customerWhere[Op.or];
+      } else {
+        customerWhere[Op.or] = searchCond;
+      }
     }
 
     const customers = await Customer.findAll({
@@ -423,40 +460,64 @@ const getCustomerAgeingReport = async (req, res) => {
       ],
     });
 
-    // 3. Fetch Consignments (Unbilled TBB & Pending To-Pay)
+    // 3. Fetch Consignments (Unbilled TBB booked at this branch & Pending To-Pay delivered at this branch)
     const consignmentWhere = {
       ...tenantFilter,
     };
-    if (effectiveBranchId) {
-      consignmentWhere[Op.or] = [
-        { origin_branch_id: effectiveBranchId },
-        { dest_branch_id: effectiveBranchId },
-        { current_branch_id: effectiveBranchId },
-      ];
-    }
 
-    if (payment_type === 'TBB') {
-      consignmentWhere.payment_type = 'TBB';
-      consignmentWhere[Op.and] = [
-        { [Op.or]: [{ is_billed: false }, { invoice_id: null }] },
-      ];
-    } else if (payment_type === 'TO_PAY') {
-      consignmentWhere.payment_type = 'TO_PAY';
-      consignmentWhere.status = { [Op.in]: ['POD_UPLOADED', 'DELIVERED', 'REACHED_DESTINATION', 'COMPLETED', 'RECEIVED_AT_HUB'] };
-    } else if (payment_type === 'PAID') {
-      consignmentWhere.payment_type = 'PAID';
+    if (effectiveBranchId) {
+      if (payment_type === 'TBB') {
+        consignmentWhere.origin_branch_id = effectiveBranchId;
+        consignmentWhere.payment_type = 'TBB';
+        consignmentWhere[Op.and] = [
+          { [Op.or]: [{ is_billed: false }, { invoice_id: null }] },
+        ];
+      } else if (payment_type === 'TO_PAY') {
+        consignmentWhere.dest_branch_id = effectiveBranchId;
+        consignmentWhere.payment_type = 'TO_PAY';
+        consignmentWhere.status = { [Op.in]: ['POD_UPLOADED', 'DELIVERED', 'REACHED_DESTINATION', 'COMPLETED', 'RECEIVED_AT_HUB'] };
+      } else if (payment_type === 'PAID') {
+        consignmentWhere.origin_branch_id = effectiveBranchId;
+        consignmentWhere.payment_type = 'PAID';
+      } else {
+        // ALL
+        consignmentWhere[Op.or] = [
+          {
+            origin_branch_id: effectiveBranchId,
+            payment_type: 'TBB',
+            [Op.or]: [{ is_billed: false }, { invoice_id: null }],
+          },
+          {
+            dest_branch_id: effectiveBranchId,
+            payment_type: 'TO_PAY',
+            status: { [Op.in]: ['POD_UPLOADED', 'DELIVERED', 'REACHED_DESTINATION', 'COMPLETED', 'RECEIVED_AT_HUB'] },
+          },
+        ];
+      }
     } else {
-      // ALL
-      consignmentWhere[Op.or] = [
-        {
-          payment_type: 'TBB',
-          [Op.or]: [{ is_billed: false }, { invoice_id: null }],
-        },
-        {
-          payment_type: 'TO_PAY',
-          status: { [Op.in]: ['POD_UPLOADED', 'DELIVERED', 'REACHED_DESTINATION', 'COMPLETED', 'RECEIVED_AT_HUB'] },
-        },
-      ];
+      if (payment_type === 'TBB') {
+        consignmentWhere.payment_type = 'TBB';
+        consignmentWhere[Op.and] = [
+          { [Op.or]: [{ is_billed: false }, { invoice_id: null }] },
+        ];
+      } else if (payment_type === 'TO_PAY') {
+        consignmentWhere.payment_type = 'TO_PAY';
+        consignmentWhere.status = { [Op.in]: ['POD_UPLOADED', 'DELIVERED', 'REACHED_DESTINATION', 'COMPLETED', 'RECEIVED_AT_HUB'] };
+      } else if (payment_type === 'PAID') {
+        consignmentWhere.payment_type = 'PAID';
+      } else {
+        // ALL
+        consignmentWhere[Op.or] = [
+          {
+            payment_type: 'TBB',
+            [Op.or]: [{ is_billed: false }, { invoice_id: null }],
+          },
+          {
+            payment_type: 'TO_PAY',
+            status: { [Op.in]: ['POD_UPLOADED', 'DELIVERED', 'REACHED_DESTINATION', 'COMPLETED', 'RECEIVED_AT_HUB'] },
+          },
+        ];
+      }
     }
 
     const pendingConsignments = await Consignment.findAll({
@@ -485,23 +546,37 @@ const getCustomerAgeingReport = async (req, res) => {
       // Match invoices
       const custInvs = pendingInvoices.filter((i) => i.customer_id === cust.id);
 
-      // Match unbilled TBB (Consignor is billed)
+      // Match unbilled TBB (Consignor is billed, origin branch is effectiveBranchId)
       const custTbb = (payment_type === 'TO_PAY')
         ? []
-        : pendingConsignments.filter((c) => c.payment_type === 'TBB' && c.consignor_id === cust.id);
+        : pendingConsignments.filter((c) =>
+            c.payment_type === 'TBB' &&
+            c.consignor_id === cust.id &&
+            (!effectiveBranchId || c.origin_branch_id === effectiveBranchId)
+          );
 
-      // Match pending To-Pay (Consignee pays at delivery, or consignor if specified)
+      // Match pending To-Pay (Consignee pays upon arrival/delivery at destination branch)
       const custToPay = (payment_type === 'TBB')
         ? []
-        : pendingConsignments.filter((c) => c.payment_type === 'TO_PAY' && (c.consignee_id === cust.id || c.consignor_id === cust.id));
+        : pendingConsignments.filter((c) =>
+            c.payment_type === 'TO_PAY' &&
+            c.consignee_id === cust.id &&
+            (!effectiveBranchId || c.dest_branch_id === effectiveBranchId)
+          );
 
-      // Skip if branch filter is applied and customer has no connection to this branch
+      // Strictly enforce branch boundaries when filtering by branch
       if (effectiveBranchId) {
-        const matchesBranch = cust.branch_id === effectiveBranchId ||
-          custInvs.length > 0 ||
-          custTbb.length > 0 ||
-          custToPay.length > 0;
-        if (!matchesBranch) return;
+        const isAssignedToThisBranch = cust.branch_id === effectiveBranchId;
+        const hasBranchActivity = custInvs.length > 0 || custTbb.length > 0 || custToPay.length > 0;
+
+        // If customer is explicitly assigned to another branch, strictly exclude
+        if (cust.branch_id && !isAssignedToThisBranch) {
+          return;
+        }
+        // If customer is unassigned (walk-in/null branch), only include if they have transactions at this branch
+        if (!isAssignedToThisBranch && !hasBranchActivity) {
+          return;
+        }
       }
 
       let b0_30 = 0;
@@ -644,7 +719,20 @@ const getCustomerAgeingReport = async (req, res) => {
           customerCode: cust.customer_code || 'NA',
           phone: cust.phone || 'NA',
           gstin: cust.gstin || 'Unregistered',
-          branch: cust.branch ? (cust.branch.branch_name || cust.branch.name || 'Head Office') : 'Head Office',
+          branchId: cust.branch_id || cust.branch?.id || null,
+          branchName: cust.branch
+            ? (cust.branch.branch_name || cust.branch.name || 'Direct / Walk-in')
+            : (effectiveBranchObj ? (effectiveBranchObj.branch_name || effectiveBranchObj.name) : 'Direct / Walk-in'),
+          branchCode: cust.branch
+            ? (cust.branch.branch_code || cust.branch.code || 'MAIN')
+            : (effectiveBranchObj ? (effectiveBranchObj.branch_code || effectiveBranchObj.code || 'MAIN') : 'WALKIN'),
+          branch: cust.branch
+            ? (cust.branch.branch_name || cust.branch.name || 'Direct / Walk-in')
+            : (effectiveBranchObj ? (effectiveBranchObj.branch_name || effectiveBranchObj.name) : 'Direct / Walk-in'),
+          isLoginBranch: effectiveBranchId ? (cust.branch_id === effectiveBranchId) : null,
+          branchRelation: !effectiveBranchId
+            ? 'ALL_VIEW'
+            : (cust.branch_id === effectiveBranchId ? 'LOGIN_BRANCH' : (cust.branch_id ? 'OTHER_BRANCH' : 'WALKIN_RELATION')),
           primaryMode,
           creditPeriodDays: cust.credit_days || 30,
           creditLimit: Number(cust.credit_limit || 0),
@@ -706,6 +794,10 @@ const getCustomerAgeingReport = async (req, res) => {
  */
 const getTripProfitabilityReport = async (req, res) => {
   try {
+    if (!canAccessFinancialAudit(req)) {
+      return errorResponse(res, 'Access denied. Trip & Vehicle P&L Audit is restricted to Audit & Accounting roles.', null, 403);
+    }
+
     const m = req.tenantDb || defaultModels;
     const { Trip, Vehicle, Driver, Branch, Consignment, Expense, DriverAdvance, TripSettlement } = m;
     const { branch_id, date_from, date_to, vehicle_id, search, page = 1, limit = 25 } = req.query;
@@ -734,7 +826,7 @@ const getTripProfitabilityReport = async (req, res) => {
       const matchedVehicles = await Vehicle.findAll({
         where: {
           tenant_id: req.tenant.tenantId,
-          registration_number: { [Op.like]: q },
+          vehicle_number: { [Op.like]: q },
         },
         attributes: ['id'],
       });
@@ -766,7 +858,7 @@ const getTripProfitabilityReport = async (req, res) => {
     const { count, rows } = await Trip.findAndCountAll({
       where,
       include: [
-        { model: Vehicle, as: 'vehicle', attributes: ['id', 'registration_number', 'truck_type'], required: false },
+        { model: Vehicle, as: 'vehicle', attributes: ['id', 'vehicle_number', 'vehicle_type'], required: false },
         { model: Driver, as: 'driver', attributes: ['id', 'name', 'phone'], required: false },
         {
           model: Branch,
@@ -781,9 +873,9 @@ const getTripProfitabilityReport = async (req, res) => {
           required: false,
         },
         { model: Consignment, as: 'consignments', attributes: ['id', 'total_amount', 'charged_weight'], required: false },
-        { model: Expense, as: 'expenses', attributes: ['id', 'amount', 'title'], required: false },
-        { model: DriverAdvance, as: 'advances', attributes: ['id', 'amount', 'status'], required: false },
-        { model: TripSettlement, as: 'settlement', attributes: ['id', 'settlement_status', 'net_profit', 'total_revenue', 'total_expense'], required: false },
+        { model: Expense, as: 'expenses', attributes: ['id', 'amount'], required: false },
+        { model: DriverAdvance, as: 'advances', attributes: ['id', 'amount'], required: false },
+        { model: TripSettlement, as: 'settlement', attributes: ['id', 'status', 'total_advance', 'total_expenses', 'driver_allowance', 'balance_payable_or_receivable'], required: false },
       ],
       order: [['start_time', 'DESC'], ['created_at', 'DESC']],
       limit: parseInt(limit, 10),
@@ -791,14 +883,14 @@ const getTripProfitabilityReport = async (req, res) => {
     });
 
     const enrichedRows = rows.map((trip) => {
-      // Trip revenue from loaded consignments or settlement
+      // Trip revenue from loaded consignments or expected_revenue
       const consignmentRevenue = (trip.consignments || []).reduce(
         (acc, c) => acc + Number(c.total_amount || 0),
         0
       );
-      const totalRevenue = Number(trip.settlement?.total_revenue || consignmentRevenue);
+      const totalRevenue = Number(trip.expected_revenue) > 0 ? Number(trip.expected_revenue) : consignmentRevenue;
 
-      // Expenses
+      // Expenses from expense vouchers and driver advances
       const fuelAndMiscExpense = (trip.expenses || []).reduce(
         (acc, e) => acc + Number(e.amount || 0),
         0
@@ -807,9 +899,10 @@ const getTripProfitabilityReport = async (req, res) => {
         (acc, a) => acc + Number(a.amount || 0),
         0
       );
-      const totalOperatingCost = Number(trip.settlement?.total_expense || (fuelAndMiscExpense + advances));
+      const recordedExpenses = Number(trip.total_expenses || 0) + Number(trip.driver_advance || 0);
+      const totalOperatingCost = (fuelAndMiscExpense + advances) > 0 ? (fuelAndMiscExpense + advances) : recordedExpenses;
 
-      const netProfit = Number(trip.settlement?.net_profit || (totalRevenue - totalOperatingCost));
+      const netProfit = totalRevenue - totalOperatingCost;
       const marginPct = totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : '0.0';
 
       const totalWeightKg = (trip.consignments || []).reduce(
@@ -820,10 +913,10 @@ const getTripProfitabilityReport = async (req, res) => {
       return {
         id: trip.id,
         tripNumber: trip.trip_number,
-        startDate: trip.start_time ? trip.start_time.toISOString().split('T')[0] : 'N/A',
+        startDate: trip.start_time ? trip.start_time.toISOString().split('T')[0] : (trip.trip_date || 'N/A'),
         status: trip.status,
-        route: `${trip.origin_city || trip.originBranch?.city || 'Origin'} -> ${trip.destination_city || trip.destBranch?.city || 'Dest'}`,
-        vehicleNumber: trip.vehicle ? trip.vehicle.registration_number : 'Unassigned',
+        route: `${trip.origin_city || trip.originBranch?.city || trip.originBranch?.branch_name || 'Origin'} -> ${trip.destination_city || trip.destBranch?.city || trip.destBranch?.branch_name || 'Dest'}`,
+        vehicleNumber: trip.vehicle ? (trip.vehicle.vehicle_number || trip.vehicle.registration_number) : 'Unassigned',
         driverName: trip.driver ? trip.driver.name : 'Unassigned',
         docketCount: (trip.consignments || []).length,
         totalWeightTonnes: parseFloat((totalWeightKg / 1000).toFixed(2)),
@@ -833,7 +926,7 @@ const getTripProfitabilityReport = async (req, res) => {
         totalCost: parseFloat(totalOperatingCost.toFixed(2)),
         netProfit: parseFloat(netProfit.toFixed(2)),
         marginPct: parseFloat(marginPct),
-        isSettled: trip.settlement?.settlement_status === 'SETTLED',
+        isSettled: trip.settlement_status === 'SETTLED' || trip.settlement?.status === 'SETTLED' || trip.status === 'SETTLED',
       };
     });
 
@@ -1871,6 +1964,10 @@ const getDailyCollectionReport = async (req, res) => {
  */
 const getGstTaxReport = async (req, res) => {
   try {
+    if (!canAccessFinancialAudit(req)) {
+      return errorResponse(res, 'Access denied. GST Tax Register is restricted to Audit & Accounting roles.', null, 403);
+    }
+
     const m = req.tenantDb || defaultModels;
     const { Consignment, Customer, Branch } = m;
     const { branch_id, date_from, date_to, page = 1, limit = 25, search } = req.query;
