@@ -60,8 +60,8 @@ const resolveCityAndSiblingBranches = async (branchId, Branch, organizationId) =
 
 const listTrips = async (req, res) => {
   try {
-    const { status, page = 1, limit = 20, search, sort_by, sort_order, from_date, to_date, branch_id, origin_branch_id, dest_branch_id } = req.query;
-    const { Trip, Vehicle, Driver, Branch, Dispatch } = req.tenantDb || defaultModels;
+    const { status, page = 1, limit = 20, search, sort_by, sort_order, from_date, to_date, branch_id, origin_branch_id, dest_branch_id, load_type } = req.query;
+    const { Trip, Vehicle, Driver, Branch, Dispatch, Consignment } = req.tenantDb || defaultModels;
     const where = {
       tenant_id: req.tenant.tenantId,
       organization_id: req.tenant.organizationId,
@@ -72,6 +72,9 @@ const listTrips = async (req, res) => {
       } else {
         where.status = status;
       }
+    }
+    if (load_type && ['FTL', 'PTL'].includes(load_type.toUpperCase())) {
+      where.load_type = load_type.toUpperCase();
     }
 
     if (from_date && to_date) {
@@ -169,6 +172,13 @@ const listTrips = async (req, res) => {
         { model: Branch, as: 'originBranch', attributes: ['id', 'branch_code', 'branch_name', 'city', 'is_hub'], required: false },
         { model: Branch, as: 'destBranch', attributes: ['id', 'branch_code', 'branch_name', 'city', 'is_hub'], required: false },
         { model: Dispatch, as: 'dispatches', attributes: ['id', 'dispatch_number', 'seal_number'], required: false },
+        {
+          model: Consignment,
+          as: 'consignments',
+          attributes: ['id', 'docket_number', 'load_type'],
+          through: { attributes: [] },
+          required: false,
+        },
       ],
     };
 
@@ -178,7 +188,17 @@ const listTrips = async (req, res) => {
 
     const { count, rows } = await Trip.findAndCountAll(findOptions);
 
-    return paginatedResponse(res, 'Trips fetched successfully', rows, {
+    const formattedRows = rows.map((trip) => {
+      const tripJson = trip.toJSON ? trip.toJSON() : { ...trip };
+      const hasFtlConsignment = Array.isArray(tripJson.consignments) && tripJson.consignments.some((c) => (c.load_type || '').toUpperCase() === 'FTL');
+      const tripLoadType = (tripJson.load_type || (hasFtlConsignment ? 'FTL' : 'PTL')).toUpperCase();
+      return {
+        ...tripJson,
+        load_type: tripLoadType,
+      };
+    });
+
+    return paginatedResponse(res, 'Trips fetched successfully', formattedRows, {
       total: count,
       page: parseInt(page, 10),
       limit: parseInt(limit, 10),
@@ -192,7 +212,7 @@ const listTrips = async (req, res) => {
 const getTripDetail = async (req, res) => {
   try {
     const { id } = req.params;
-    const { Trip, Vehicle, Driver, Branch, Consignment, Dispatch, Expense, DriverAdvance, TripSettlement } = req.tenantDb || defaultModels;
+    const { Trip, Vehicle, Driver, Branch, Consignment, Dispatch, Expense, ExpenseCategory, DriverAdvance, TripSettlement } = req.tenantDb || defaultModels;
     const include = [
       { model: Vehicle, as: 'vehicle' },
       { model: Driver, as: 'driver' },
@@ -205,7 +225,13 @@ const getTripDetail = async (req, res) => {
       },
       { model: Dispatch, as: 'dispatches' },
     ];
-    if (Expense) include.push({ model: Expense, as: 'expenses' });
+    if (Expense) {
+      include.push({
+        model: Expense,
+        as: 'expenses',
+        include: ExpenseCategory ? [{ model: ExpenseCategory, as: 'category' }] : [],
+      });
+    }
     if (DriverAdvance) include.push({ model: DriverAdvance, as: 'advances' });
     if (TripSettlement) include.push({ model: TripSettlement, as: 'settlement' });
 
@@ -218,7 +244,28 @@ const getTripDetail = async (req, res) => {
       return errorResponse(res, 'Trip not found', null, 404);
     }
 
-    return successResponse(res, 'Trip detail retrieved', trip);
+    const tripJson = trip.toJSON ? trip.toJSON() : { ...trip };
+    const consignmentRevenue = (tripJson.consignments || []).reduce((acc, c) => acc + Number(c.total_amount || 0), 0);
+    const grossRevenue = Number(tripJson.expected_revenue) > 0 ? Number(tripJson.expected_revenue) : consignmentRevenue;
+    const totalExpenses = (tripJson.expenses || []).reduce((acc, e) => acc + Number(e.amount || 0), 0);
+    const totalAdvances = (tripJson.advances || []).reduce((acc, a) => acc + Number(a.amount || 0), 0);
+    const recordedExpenses = Number(tripJson.total_expenses || 0) + Number(tripJson.driver_advance || 0);
+    const totalCost = (totalExpenses + totalAdvances) > 0 ? (totalExpenses + totalAdvances) : recordedExpenses;
+    const netProfit = grossRevenue - totalCost;
+    const marginPct = grossRevenue > 0 ? Number(((netProfit / grossRevenue) * 100).toFixed(1)) : 0;
+
+    tripJson.financial_summary = {
+      grossRevenue,
+      totalExpenses,
+      totalAdvances,
+      totalCost,
+      netProfit,
+      marginPct,
+      isProfit: netProfit >= 0,
+      balancePayableOrRefund: tripJson.settlement ? tripJson.settlement.balance_payable_or_receivable : (totalAdvances - totalExpenses),
+    };
+
+    return successResponse(res, 'Trip detail retrieved', tripJson);
   } catch (error) {
     return errorResponse(res, error.message, null, 500);
   }
@@ -240,7 +287,11 @@ const createTripAndDispatch = async (req, res) => {
       remarks,
       driver_advance = 0,
       advance_mode = 'CASH',
+      vehicle_charge = 0,
+      hire_charges = 0,
     } = req.body;
+
+    const parsedVehicleCharge = parseFloat(vehicle_charge !== undefined ? vehicle_charge : (hire_charges || 0)) || 0;
 
     if (!origin_branch_id || !dest_branch_id || !vehicle_id || !driver_id) {
       return errorResponse(res, 'Origin, destination, vehicle, and driver are required', null, 400);
@@ -269,6 +320,7 @@ const createTripAndDispatch = async (req, res) => {
       branchId: null,
       documentType: 'TRIP',
       transaction,
+      models: req.tenantDb || defaultModels,
     });
 
     // Generate atomic Dispatch Number
@@ -278,6 +330,7 @@ const createTripAndDispatch = async (req, res) => {
       branchId: origin_branch_id,
       documentType: 'DISPATCH',
       transaction,
+      models: req.tenantDb || defaultModels,
     });
 
     // Fetch consignments to calculate totals
@@ -299,6 +352,10 @@ const createTripAndDispatch = async (req, res) => {
     const originBranch = await Branch.findByPk(origin_branch_id, { transaction });
     const destBranch = await Branch.findByPk(dest_branch_id, { transaction });
 
+    // Determine load type: FTL if explicitly passed or if any consignment is FTL
+    const isFtl = (req.body.load_type || '').toUpperCase() === 'FTL' || consignments.some((c) => (c.load_type || '').toUpperCase() === 'FTL');
+    const resolvedLoadType = isFtl ? 'FTL' : 'PTL';
+
     // Create Trip
     const trip = await Trip.create({
       tenant_id: req.tenant.tenantId,
@@ -312,11 +369,13 @@ const createTripAndDispatch = async (req, res) => {
       vehicle_id,
       driver_id,
       trip_type: 'DIRECT',
+      load_type: resolvedLoadType,
       start_odometer: parseInt(start_odometer || 0, 10),
       driver_advance: parseFloat(driver_advance) || 0,
       total_packages: totalPkgs,
       total_weight: totalWeight,
       expected_revenue: totalFreight,
+      vehicle_charge: parsedVehicleCharge,
       status: 'RUNNING',
       created_by: req.user.id,
     }, { transaction });
@@ -403,6 +462,8 @@ const createTripAndDispatch = async (req, res) => {
     return successResponse(res, 'Trip & Dispatch Challan generated successfully', {
       trip,
       dispatch,
+      trip_number: trip.trip_number,
+      dispatch_number: dispatch.dispatch_number,
     }, 201);
   } catch (error) {
     await transaction.rollback();
@@ -449,6 +510,7 @@ const createTrip = async (req, res) => {
       organizationId: req.tenant.organizationId,
       branchId: origin_branch_id || null,
       documentType: 'TRIP',
+      models: req.tenantDb || defaultModels,
     });
 
     const originBranch = origin_branch_id ? await Branch.findByPk(origin_branch_id) : null;
@@ -918,6 +980,200 @@ const recordTripArrival = async (req, res) => {
   }
 };
 
+const completeFtlDelivery = async (req, res) => {
+  const activeSequelize = req.tenantSequelize || defaultModels.sequelize;
+  const transaction = await activeSequelize.transaction();
+  try {
+    const { id } = req.params;
+    const {
+      end_odometer,
+      receiver_name,
+      receiver_phone,
+      delivery_date,
+      pod_file_url,
+      pod_number,
+      pod_doc_type,
+      delivery_remarks,
+      received_seal_number,
+      seal_status,
+      discrepancy_reason,
+      cargo_condition,
+    } = req.body;
+
+    const { Trip, TripConsignment, Consignment, Vehicle, Driver, Branch, ConsignmentStatusHistory, DeliveryRecord, Pod } = req.tenantDb || defaultModels;
+
+    const trip = await Trip.findOne({
+      where: { id, tenant_id: req.tenant.tenantId },
+      include: [
+        { model: Vehicle, as: 'vehicle' },
+        { model: Driver, as: 'driver' },
+        { model: Branch, as: 'destBranch' },
+        { model: Consignment, as: 'consignments' },
+      ],
+      transaction,
+    });
+
+    if (!trip) {
+      await transaction.rollback();
+      return errorResponse(res, 'Trip not found', null, 404);
+    }
+
+    if (trip.status === 'COMPLETED') {
+      await transaction.rollback();
+      return errorResponse(res, 'Trip is already marked as completed', null, 400);
+    }
+
+    const endOdo = end_odometer !== undefined && end_odometer !== null && end_odometer !== ''
+      ? parseInt(end_odometer, 10)
+      : trip.start_odometer;
+
+    if (endOdo < trip.start_odometer) {
+      await transaction.rollback();
+      return errorResponse(res, `Delivery odometer (${endOdo} KM) cannot be less than departure odometer (${trip.start_odometer} KM)`, null, 400);
+    }
+
+    const deliveryTime = delivery_date ? new Date(delivery_date) : new Date();
+    const kmRun = endOdo - (trip.start_odometer || 0);
+
+    const sealFlag = seal_status === 'BROKEN' ? '(BROKEN)' : seal_status === 'MISMATCH' ? '(MISMATCH)' : '';
+    const sealNote = `Seal: ${received_seal_number || 'N/A'} [${seal_status || 'INTACT'}]${sealFlag ? ` ${sealFlag}` : ''}${discrepancy_reason ? ` | Discrepancy: ${discrepancy_reason}` : ''}${cargo_condition && cargo_condition !== 'INTACT' ? ` | Cargo Condition: ${cargo_condition}` : ''}`;
+
+    const completionNotes = [
+      trip.remarks,
+      `[DIRECT FTL CLIENT DELIVERY] ${sealNote}`,
+      `Delivered to: ${receiver_name || 'Customer'} (${receiver_phone || 'N/A'}). End Odo: ${endOdo} KM (+${kmRun} KM). POD Ref: ${pod_number || 'Signed Copy'}${pod_doc_type ? ` [${pod_doc_type}]` : ''}. Notes: ${delivery_remarks || 'Material handed over in good condition.'}`,
+    ].filter(Boolean).join('\n');
+
+    // 1. Complete Trip
+    await trip.update({
+      status: 'COMPLETED',
+      end_odometer: endOdo,
+      end_time: deliveryTime,
+      remarks: completionNotes,
+    }, { transaction });
+
+    // 2. Free up Vehicle
+    if (trip.vehicle_id) {
+      await Vehicle.update({
+        status: 'AVAILABLE',
+        current_odometer: endOdo,
+      }, {
+        where: { id: trip.vehicle_id },
+        transaction,
+      });
+    }
+
+    // 3. Free up Driver
+    if (trip.driver_id) {
+      await Driver.update({ status: 'ACTIVE' }, {
+        where: { id: trip.driver_id },
+        transaction,
+      });
+    }
+
+    // 4. Update TripConsignment unload timestamp
+    await TripConsignment.update({
+      unloaded_at: deliveryTime,
+    }, {
+      where: { trip_id: trip.id },
+      transaction,
+    });
+
+    // 5. Update loaded FTL consignments directly to DELIVERED or POD_UPLOADED
+    const consignments = trip.consignments || [];
+    const consignmentFinalStatus = pod_file_url ? 'POD_UPLOADED' : 'DELIVERED';
+
+    for (const c of consignments) {
+      await c.update({
+        status: consignmentFinalStatus,
+        delivered_at: deliveryTime,
+      }, { transaction });
+
+      // Create Delivery Record
+      if (DeliveryRecord) {
+        await DeliveryRecord.create({
+          tenant_id: req.tenant.tenantId,
+          organization_id: req.tenant.organizationId,
+          consignment_id: c.id,
+          branch_id: c.dest_branch_id || trip.dest_branch_id || trip.origin_branch_id,
+          delivery_date: deliveryTime,
+          receiver_name: receiver_name || 'Client Representative',
+          receiver_phone: receiver_phone || '',
+          delivered_packages: c.packages_count,
+          damaged_packages: (cargo_condition === 'SEVERE_DAMAGE' || cargo_condition === 'MINOR_DAMAGE') ? 1 : 0,
+          short_packages: 0,
+          delivery_photo_url: pod_file_url || null,
+          remarks: `[DIRECT FTL CLIENT DELIVERY] ${sealNote}. ${delivery_remarks || 'Delivered directly to client destination.'}`,
+          delivered_by: req.user?.id,
+        }, { transaction }).catch(() => {});
+      }
+
+      // Create or update POD record if file attached
+      if (Pod && pod_file_url) {
+        try {
+          const isPdf = typeof pod_file_url === 'string' && pod_file_url.includes('application/pdf');
+          await Pod.create({
+            tenant_id: req.tenant.tenantId,
+            organization_id: req.tenant.organizationId,
+            consignment_id: c.id,
+            file_url: pod_file_url,
+            file_type: isPdf ? 'application/pdf' : 'image/jpeg',
+            receiver_name: (receiver_name || 'Consignee').trim(),
+            status: 'POD_UPLOADED',
+            uploaded_at: deliveryTime,
+            uploaded_by: req.user?.id || null,
+            document_type: pod_doc_type || 'SIGNED_BILTY',
+            remarks: `Direct FTL Delivery POD for Trip #${trip.trip_number}. Ref: ${pod_number || 'N/A'}`,
+          }, { transaction }).catch((err) => console.warn('FTL Pod creation error', err));
+        } catch (e) {
+          console.warn('FTL Pod error', e);
+        }
+      }
+
+      if (ConsignmentStatusHistory) {
+        await ConsignmentStatusHistory.create({
+          consignment_id: c.id,
+          status: consignmentFinalStatus,
+          location: trip.destination_city || (trip.destBranch ? trip.destBranch.city : 'Client Destination Site'),
+          branch_id: trip.dest_branch_id || trip.origin_branch_id,
+          user_id: req.user?.id || null,
+          remarks: `Direct FTL delivery completed to ${receiver_name || 'Customer'}. End Odo: ${endOdo} KM (+${kmRun} KM run). ${sealNote}`,
+          timestamp: deliveryTime,
+        }, { transaction });
+      }
+    }
+
+    await transaction.commit();
+
+    logAudit({
+      req,
+      action: 'COMPLETE_FTL_DELIVERY',
+      entityType: 'TRIP',
+      entityId: trip.trip_number,
+      entityName: `Trip ${trip.trip_number}`,
+      summary: `Completed Direct FTL Delivery for Trip #${trip.trip_number} to ${receiver_name || 'Consignee'} (${consignments.length} dockets, End Odo: ${endOdo} KM)`,
+      newValues: {
+        trip_number: trip.trip_number,
+        end_odometer: endOdo,
+        km_run: kmRun,
+        receiver_name,
+        receiver_phone,
+      },
+    });
+
+    return successResponse(res, 'Direct FTL delivery completed successfully', {
+      trip_id: trip.id,
+      trip_number: trip.trip_number,
+      km_run: kmRun,
+      completed_at: deliveryTime,
+      delivered_consignments_count: consignments.length,
+    });
+  } catch (error) {
+    await transaction.rollback();
+    return errorResponse(res, error.message, null, 500);
+  }
+};
+
 module.exports = {
   listTrips,
   getTripDetail,
@@ -927,4 +1183,5 @@ module.exports = {
   getTripUnloadManifest,
   completeTripAndUnload,
   recordTripArrival,
+  completeFtlDelivery,
 };

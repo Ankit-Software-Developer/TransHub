@@ -15,5 +15,6 @@ router.patch('/:id/assign-vehicle', tripController.assignVehicleToTrip);
 router.post('/dispatch', tripController.createTripAndDispatch);
 router.post('/:id/record-arrival', tripController.recordTripArrival);
 router.post('/:id/complete-unload', tripController.completeTripAndUnload);
+router.post('/:id/complete-ftl-delivery', tripController.completeFtlDelivery);
 
 module.exports = router;

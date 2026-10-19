@@ -84,8 +84,7 @@ const generateNextNumber = async ({
           document_type: 'TRIP',
         },
         order: [['created_at', 'DESC']],
-        lock: transaction.LOCK.UPDATE,
-        transaction,
+        ...(transaction ? { lock: transaction.LOCK?.UPDATE, transaction } : {}),
       });
     } else {
       sequence = await NumberSequenceModel.findOne({
@@ -95,8 +94,7 @@ const generateNextNumber = async ({
           financial_year: fy,
           ...(isOrgWide ? {} : (branchId ? { branch_id: branchId } : {})),
         },
-        lock: transaction.LOCK.UPDATE,
-        transaction,
+        ...(transaction ? { lock: transaction.LOCK?.UPDATE, transaction } : {}),
       });
     }
   }
@@ -248,6 +246,30 @@ const generateNextNumber = async ({
     .replace('{YEAR}', currentYear)
     .replace('{SEQ}', paddedSeq)
     .replace('{PREFIX}', sequence.prefix || '');
+
+  // Absolute uniqueness guarantee for TRIP: loop until no conflicting trip exists
+  if (isTrip && TripModel && organizationId) {
+    try {
+      let collision = await TripModel.findOne({
+        where: { organization_id: organizationId, trip_number: generated },
+        ...(transaction ? { transaction } : {}),
+      });
+      while (collision) {
+        nextNum += 1;
+        paddedSeq = String(nextNum).padStart(seqLength, '0');
+        generated = sequence.template
+          .replace('{BRANCH}', branchCode)
+          .replace('{FY}', fy)
+          .replace('{YEAR}', currentYear)
+          .replace('{SEQ}', paddedSeq)
+          .replace('{PREFIX}', sequence.prefix || '');
+        collision = await TripModel.findOne({
+          where: { organization_id: organizationId, trip_number: generated },
+          ...(transaction ? { transaction } : {}),
+        });
+      }
+    } catch (_) {}
+  }
 
   // Absolute uniqueness guarantee for INVOICE: loop until no conflicting invoice exists
   if (isInvoice && InvoiceModel && organizationId) {

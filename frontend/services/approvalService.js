@@ -44,6 +44,14 @@ export const approvalService = {
     });
     return response.data;
   },
+
+  /**
+   * Resubmit a returned approval request with revisions
+   */
+  async resubmitApproval(id, data) {
+    const response = await api.put(`/approvals/${id}/resubmit`, data);
+    return response.data;
+  },
 };
 
 export default approvalService;

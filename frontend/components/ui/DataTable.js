@@ -332,7 +332,7 @@ export default function DataTable({
         initialWidths[col.key] = col.width;
       }
     });
-    setColumnWidths((prev) => ({ ...initialWidths, ...prev }));
+    setColumnWidths((prev) => ({ ...prev, ...initialWidths }));
   }, [columns]);
 
   // Handle Column Resize Dragging

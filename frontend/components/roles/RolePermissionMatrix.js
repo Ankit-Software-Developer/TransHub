@@ -77,8 +77,16 @@ export default function RolePermissionMatrix() {
       const fetchedRoles = rolesRes.data?.data || [];
       const fetchedPerms = permsRes.data?.data?.definitions || permsRes.data?.data?.raw || [];
 
-      // Sort roles: ADMIN -> BRANCH_MANAGER -> AUDITOR -> DRIVER -> other custom roles
-      const rolePriority = { 'ADMIN': 1, 'BRANCH_MANAGER': 2, 'AUDITOR': 3, 'AUDIT': 3, 'DRIVER': 4 };
+      // Sort roles: ADMIN -> BRANCH_MANAGER -> AUDITOR -> BRANCH_ASSISTANT -> BUSINESS_ASSOCIATE -> DRIVER -> other custom roles
+      const rolePriority = {
+        ADMIN: 1,
+        BRANCH_MANAGER: 2,
+        AUDITOR: 3,
+        AUDIT: 3,
+        BRANCH_ASSISTANT: 4,
+        BUSINESS_ASSOCIATE: 5,
+        DRIVER: 6,
+      };
       const sortedRoles = [...fetchedRoles].sort((a, b) => {
         const pA = rolePriority[a.name] || (a.is_system ? 10 : 20);
         const pB = rolePriority[b.name] || (b.is_system ? 10 : 20);

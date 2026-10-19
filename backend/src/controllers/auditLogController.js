@@ -50,7 +50,9 @@ const autoSeedAuditIfEmpty = async ({ AuditLogModel, models, tenantId, organizat
 
     if (existingCount > 0) return;
 
-    const performerName = user?.name || 'Ankit Sharma (Admin)';
+    const performerName = (user?.first_name || user?.last_name)
+      ? `${user.first_name || ''} ${user.last_name || ''}`.trim()
+      : (user?.name || 'Administrator');
     const performerEmail = user?.email || 'admin@balajilogistic.com';
     const performerRole = 'ADMIN';
     const performerMeta = { id: user?.id || null, name: performerName, email: performerEmail, role: performerRole };
@@ -328,6 +330,14 @@ const listAuditLogs = async (req, res) => {
         { entity_id: { [Op.like]: q } },
         { ip_address: { [Op.like]: q } },
       ];
+      try {
+        const seq = req.tenantSequelize || AuditLog.sequelize;
+        if (seq) {
+          searchConditions.push(
+            seq.where(seq.cast(seq.col('AuditLog.new_values'), 'CHAR'), { [Op.like]: q })
+          );
+        }
+      } catch (err) {}
       if (where[Op.or]) {
         where[Op.and] = [{ [Op.or]: where[Op.or] }, { [Op.or]: searchConditions }];
         delete where[Op.or];
@@ -349,7 +359,7 @@ const listAuditLogs = async (req, res) => {
       include.push({
         model: User,
         as: 'performer',
-        attributes: ['id', 'name', 'email', 'phone'],
+        attributes: ['id', 'first_name', 'last_name', 'email', 'phone'],
         required: false,
       });
     }
@@ -373,6 +383,10 @@ const listAuditLogs = async (req, res) => {
     const mapped = rows.map((log) => {
       const newVals = log.new_values || {};
       const fallbackPerformer = newVals._performer || {};
+      const resolvedPerformerName = log.performer
+        ? `${log.performer.first_name || ''} ${log.performer.last_name || ''}`.trim() || log.performer.first_name || log.performer.email
+        : (fallbackPerformer.name || 'Staff User');
+
       return {
         id: log.id,
         action: log.action,
@@ -382,7 +396,7 @@ const listAuditLogs = async (req, res) => {
         summary: newVals._summary || `${log.action} on ${log.entity_type} #${log.entity_id}`,
         performer: {
           id: log.performer?.id || log.user_id,
-          name: log.performer?.name || fallbackPerformer.name || 'Staff User',
+          name: resolvedPerformerName,
           email: log.performer?.email || fallbackPerformer.email || '',
           role: fallbackPerformer.role || 'Staff',
         },
@@ -513,7 +527,7 @@ const getAuditLogDetail = async (req, res) => {
 
     const include = [];
     if (AuditLog.associations?.performer && User) {
-      include.push({ model: User, as: 'performer', attributes: ['id', 'name', 'email', 'phone'] });
+      include.push({ model: User, as: 'performer', attributes: ['id', 'first_name', 'last_name', 'email', 'phone'] });
     }
     if (AuditLog.associations?.branch && Branch) {
       include.push({ model: Branch, as: 'branch', attributes: ['id', 'branch_name', 'branch_code', 'city'] });
@@ -530,6 +544,9 @@ const getAuditLogDetail = async (req, res) => {
 
     const newVals = log.new_values || {};
     const fallbackPerformer = newVals._performer || {};
+    const resolvedPerformerName = log.performer
+      ? `${log.performer.first_name || ''} ${log.performer.last_name || ''}`.trim() || log.performer.first_name || log.performer.email
+      : (fallbackPerformer.name || 'Staff User');
 
     return successResponse(res, 'Audit log detail retrieved', {
       id: log.id,
@@ -540,7 +557,7 @@ const getAuditLogDetail = async (req, res) => {
       summary: newVals._summary || `${log.action} on ${log.entity_type} #${log.entity_id}`,
       performer: {
         id: log.performer?.id || log.user_id,
-        name: log.performer?.name || fallbackPerformer.name || 'Staff User',
+        name: resolvedPerformerName,
         email: log.performer?.email || fallbackPerformer.email || '',
         role: fallbackPerformer.role || 'Staff',
       },

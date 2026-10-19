@@ -69,6 +69,7 @@ export default function FleetManagementPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState('ALL');
+  const [ownershipFilter, setOwnershipFilter] = useState('ALL');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingVehicle, setEditingVehicle] = useState(null);
@@ -354,17 +355,18 @@ export default function FleetManagementPage() {
               status,
               status_label,
               location,
-              driver: v.assignedDriver?.name || 'Assigned Driver',
-              driver_rating: '4.9 ★',
-              fuel_level: 82,
-              mileage_mtd: `${(v.current_odometer || 11840).toLocaleString()} km`,
-              avg_fuel_economy: '4.8 km/L',
-              insurance_expiry: v.insurance_expiry || '15 Nov 2026',
-              insurance_days: 90,
-              fitness_expiry: v.fitness_expiry || '18 Jan 2027',
-              fitness_days: 120,
-              puc_expiry: v.puc_expiry || '08 Dec 2026',
-              puc_days: 60,
+              driver: v.assignedDriver?.name || 'Unassigned',
+              driver_phone: v.assignedDriver?.phone || '',
+              is_driver_assigned: Boolean(v.assignedDriver?.name),
+              fuel_level: v.fuel_level ?? null,
+              mileage_mtd: v.current_odometer ? `${v.current_odometer.toLocaleString()} km` : '0 km',
+              avg_fuel_economy: v.avg_fuel_economy || null,
+              insurance_expiry: v.insurance_expiry || null,
+              insurance_days: v.insurance_expiry ? Math.ceil((new Date(v.insurance_expiry).setHours(0,0,0,0) - new Date().setHours(0,0,0,0)) / 86400000) : null,
+              fitness_expiry: v.fitness_expiry || null,
+              fitness_days: v.fitness_expiry ? Math.ceil((new Date(v.fitness_expiry).setHours(0,0,0,0) - new Date().setHours(0,0,0,0)) / 86400000) : null,
+              puc_expiry: v.puc_expiry || null,
+              puc_days: v.puc_expiry ? Math.ceil((new Date(v.puc_expiry).setHours(0,0,0,0) - new Date().setHours(0,0,0,0)) / 86400000) : null,
               maintenance_status: 'HEALTHY',
               gps_device_id: v.gps_device_id,
               rawVehicle: v,
@@ -664,7 +666,14 @@ export default function FleetManagementPage() {
         v.plate.toLowerCase().includes(search.toLowerCase()) ||
         v.model.toLowerCase().includes(search.toLowerCase()) ||
         v.driver.toLowerCase().includes(search.toLowerCase()) ||
-        v.location.toLowerCase().includes(search.toLowerCase());
+        v.location.toLowerCase().includes(search.toLowerCase()) ||
+        (v.ownership || '').toLowerCase().includes(search.toLowerCase()) ||
+        (v.owner_name || '').toLowerCase().includes(search.toLowerCase());
+
+      if (ownershipFilter !== 'ALL') {
+        const own = (v.ownership || 'OWN').toUpperCase();
+        if (own !== ownershipFilter) return false;
+      }
 
       if (filterType === 'ALL') return match;
       if (filterType === 'ON_ROAD') return match && v.status === 'ON_ROAD';
@@ -673,7 +682,7 @@ export default function FleetManagementPage() {
       if (filterType === 'INACTIVE') return match && v.status === 'INACTIVE';
       return match;
     });
-  }, [vehicles, search, filterType]);
+  }, [vehicles, search, filterType, ownershipFilter]);
 
   const sortedVehicles = useMemo(() => {
     const list = [...filteredVehicles];
@@ -718,6 +727,87 @@ export default function FleetManagementPage() {
         ),
       },
       {
+        key: 'ownership',
+        header: 'Fleet Ownership',
+        sortable: true,
+        width: 175,
+        minWidth: 145,
+        exportValue: (row) => {
+          const type = (row.ownership || 'OWN').toUpperCase();
+          if (type === 'ATTACHED') return `Vendor Attached (${row.owner_name || 'Vendor'})`;
+          if (type === 'MARKET') return `Market Hired (${row.owner_name || 'Market'})`;
+          return 'Company Owned';
+        },
+        render: (val, row) => {
+          const type = (row.ownership || 'OWN').toUpperCase();
+          if (type === 'ATTACHED') {
+            return (
+              <div className="flex flex-col items-start gap-1">
+                <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wide border shadow-xs ${
+                  isDark
+                    ? 'bg-purple-950/60 text-purple-300 border-purple-800/80'
+                    : 'bg-purple-50 text-purple-700 border-purple-200'
+                }`}>
+                  <span className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse" />
+                  Vendor Attached
+                </span>
+                {row.owner_name ? (
+                  <span className={`text-[11px] font-semibold truncate max-w-[150px] ${
+                    isDark ? 'text-slate-300' : 'text-slate-700'
+                  }`} title={row.owner_name}>
+                    {row.owner_name}
+                  </span>
+                ) : (
+                  <span className={`text-[10px] italic ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                    Partner Transporter
+                  </span>
+                )}
+              </div>
+            );
+          }
+          if (type === 'MARKET') {
+            return (
+              <div className="flex flex-col items-start gap-1">
+                <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wide border shadow-xs ${
+                  isDark
+                    ? 'bg-amber-950/60 text-amber-300 border-amber-800/80'
+                    : 'bg-amber-50 text-amber-700 border-amber-200'
+                }`}>
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                  Market Hired
+                </span>
+                {row.owner_name ? (
+                  <span className={`text-[11px] font-semibold truncate max-w-[150px] ${
+                    isDark ? 'text-slate-300' : 'text-slate-700'
+                  }`} title={row.owner_name}>
+                    {row.owner_name}
+                  </span>
+                ) : (
+                  <span className={`text-[10px] italic ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                    Broker / Ad-hoc
+                  </span>
+                )}
+              </div>
+            );
+          }
+          return (
+            <div className="flex flex-col items-start gap-1">
+              <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wide border shadow-xs ${
+                isDark
+                  ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800/80'
+                  : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+              }`}>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                Company Owned
+              </span>
+              <span className={`text-[10px] font-medium ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                Own Fleet Asset
+              </span>
+            </div>
+          );
+        },
+      },
+      {
         key: 'type',
         header: 'Type & Capacity',
         sortable: true,
@@ -760,13 +850,17 @@ export default function FleetManagementPage() {
         sortable: true,
         width: 170,
         minWidth: 130,
-        exportValue: (row) => `${row.driver} (${row.driver_rating})`,
+        exportValue: (row) => row.is_driver_assigned ? `${row.driver} (${row.driver_phone || 'Assigned'})` : 'Unassigned',
         render: (val, row) => (
           <div>
-            <div className={`font-bold text-xs ${isDark ? 'text-white' : 'text-slate-900'}`}>
+            <div className={`font-bold text-xs ${row.is_driver_assigned ? (isDark ? 'text-white' : 'text-slate-900') : (isDark ? 'text-slate-500 italic' : 'text-slate-400 italic')}`}>
               {row.driver}
             </div>
-            <span className="text-[10px] text-amber-500 font-bold">{row.driver_rating}</span>
+            {row.is_driver_assigned && row.driver_phone ? (
+              <span className={`text-[10px] font-mono ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{row.driver_phone}</span>
+            ) : !row.is_driver_assigned ? (
+              <span className={`text-[10px] ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>No driver attached</span>
+            ) : null}
           </div>
         ),
       },
@@ -776,22 +870,32 @@ export default function FleetManagementPage() {
         sortable: true,
         width: 130,
         minWidth: 100,
-        exportValue: (row) => `${row.fuel_level}%`,
+        exportValue: (row) => row.fuel_level !== null ? `${row.fuel_level}%` : 'No Sensor',
         render: (val, row) => (
           <div className="whitespace-nowrap">
-            <div className="flex items-center gap-1.5">
-              <Fuel className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-              <span className={`font-mono font-bold text-xs ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                {row.fuel_level}%
-              </span>
-            </div>
-            <div className={`w-16 h-1 rounded-full mt-1 overflow-hidden ${isDark ? 'bg-slate-800' : 'bg-slate-200'
-              }`}>
-              <div
-                style={{ width: `${row.fuel_level}%` }}
-                className={`h-full ${row.fuel_level > 30 ? (isDark ? 'bg-cyan-400' : 'bg-blue-600') : 'bg-rose-500'}`}
-              />
-            </div>
+            {row.fuel_level !== null && row.fuel_level !== undefined ? (
+              <>
+                <div className="flex items-center gap-1.5">
+                  <Fuel className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                  <span className={`font-mono font-bold text-xs ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                    {row.fuel_level}%
+                  </span>
+                </div>
+                <div className={`w-16 h-1 rounded-full mt-1 overflow-hidden ${isDark ? 'bg-slate-800' : 'bg-slate-200'}`}>
+                  <div
+                    style={{ width: `${row.fuel_level}%` }}
+                    className={`h-full ${row.fuel_level > 30 ? (isDark ? 'bg-cyan-400' : 'bg-blue-600') : 'bg-rose-500'}`}
+                  />
+                </div>
+              </>
+            ) : (
+              <div className="flex items-center gap-1.5">
+                <Fuel className="w-3.5 h-3.5 text-slate-400 shrink-0 opacity-40" />
+                <span className={`font-mono text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                  No Sensor
+                </span>
+              </div>
+            )}
           </div>
         ),
       },
@@ -801,14 +905,14 @@ export default function FleetManagementPage() {
         sortable: true,
         width: 130,
         minWidth: 100,
-        exportValue: (row) => `${row.avg_fuel_economy}, ${row.mileage_mtd}`,
+        exportValue: (row) => `${row.avg_fuel_economy || 'N/A'}, ${row.mileage_mtd}`,
         render: (val, row) => (
           <div className="whitespace-nowrap">
             <span className={`font-mono font-bold text-xs ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-              {row.avg_fuel_economy}
+              {row.avg_fuel_economy ? `${row.avg_fuel_economy} km/L` : '—'}
             </span>
             <div className={`text-[10px] font-mono ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-              {row.mileage_mtd} MTD
+              {row.mileage_mtd} Odo
             </div>
           </div>
         ),
@@ -819,24 +923,41 @@ export default function FleetManagementPage() {
         sortable: true,
         width: 180,
         minWidth: 140,
-        exportValue: (row) => `INS:${row.insurance_days}d, FIT:${row.fitness_days}d, PUC:${row.puc_days}d`,
+        exportValue: (row) => `INS:${row.insurance_days ?? 'N/A'}, FIT:${row.fitness_days ?? 'N/A'}, PUC:${row.puc_days ?? 'N/A'}`,
         render: (val, row) => (
           <div className="flex items-center gap-1.5 text-[10px] font-mono whitespace-nowrap">
-            <span className={`px-1.5 py-0.5 rounded border ${row.insurance_days < 30
+            <span className={`px-1.5 py-0.5 rounded border ${
+              row.insurance_days === null
+                ? isDark ? 'bg-slate-900 text-slate-500 border-slate-800' : 'bg-slate-50 text-slate-400 border-slate-200'
+                : row.insurance_days < 0
+                ? 'bg-rose-500/20 text-rose-500 border-rose-500/30 font-bold'
+                : row.insurance_days < 30
                 ? 'bg-amber-500/10 text-amber-500 border-amber-500/20'
                 : isDark ? 'bg-slate-900 text-slate-300 border-slate-800' : 'bg-slate-100 text-slate-700 border-slate-200'
-              }`}>
-              INS: {row.insurance_days}d
+            }`}>
+              INS: {row.insurance_days === null ? 'N/A' : row.insurance_days < 0 ? 'EXP' : `${row.insurance_days}d`}
             </span>
-            <span className={`px-1.5 py-0.5 rounded border ${isDark ? 'bg-slate-900 text-slate-300 border-slate-800' : 'bg-slate-100 text-slate-700 border-slate-200'
-              }`}>
-              FIT: {row.fitness_days}d
-            </span>
-            <span className={`px-1.5 py-0.5 rounded border ${row.puc_days < 0
-                ? 'bg-rose-500/20 text-rose-500 border-rose-500/30'
+            <span className={`px-1.5 py-0.5 rounded border ${
+              row.fitness_days === null
+                ? isDark ? 'bg-slate-900 text-slate-500 border-slate-800' : 'bg-slate-50 text-slate-400 border-slate-200'
+                : row.fitness_days < 0
+                ? 'bg-rose-500/20 text-rose-500 border-rose-500/30 font-bold'
+                : row.fitness_days < 30
+                ? 'bg-amber-500/10 text-amber-500 border-amber-500/20'
                 : isDark ? 'bg-slate-900 text-slate-300 border-slate-800' : 'bg-slate-100 text-slate-700 border-slate-200'
-              }`}>
-              PUC: {row.puc_days < 0 ? 'EXP' : `${row.puc_days}d`}
+            }`}>
+              FIT: {row.fitness_days === null ? 'N/A' : row.fitness_days < 0 ? 'EXP' : `${row.fitness_days}d`}
+            </span>
+            <span className={`px-1.5 py-0.5 rounded border ${
+              row.puc_days === null
+                ? isDark ? 'bg-slate-900 text-slate-500 border-slate-800' : 'bg-slate-50 text-slate-400 border-slate-200'
+                : row.puc_days < 0
+                ? 'bg-rose-500/20 text-rose-500 border-rose-500/30 font-bold'
+                : row.puc_days < 30
+                ? 'bg-amber-500/10 text-amber-500 border-amber-500/20'
+                : isDark ? 'bg-slate-900 text-slate-300 border-slate-800' : 'bg-slate-100 text-slate-700 border-slate-200'
+            }`}>
+              PUC: {row.puc_days === null ? 'N/A' : row.puc_days < 0 ? 'EXP' : `${row.puc_days}d`}
             </span>
           </div>
         ),
@@ -1161,6 +1282,40 @@ export default function FleetManagementPage() {
                     >
                       Inactive ({vehicles.filter((v) => v.status === 'INACTIVE').length})
                     </button>
+
+                    <div className="h-4 w-px bg-slate-200 dark:bg-slate-800 mx-1 hidden sm:block" />
+
+                    {/* Ownership Filter Dropdown */}
+                    <div className="flex items-center gap-1.5">
+                      <select
+                        id="fleet-ownership-filter"
+                        value={ownershipFilter}
+                        onChange={(e) => {
+                          setOwnershipFilter(e.target.value);
+                          setPage(1);
+                        }}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer outline-none ${
+                          ownershipFilter !== 'ALL'
+                            ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
+                            : isDark
+                            ? 'bg-slate-900 text-slate-300 border-slate-700 hover:border-slate-600'
+                            : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300 shadow-xs'
+                        }`}
+                      >
+                        <option value="ALL" className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-800'}>
+                          🏢 All Ownership ({vehicles.length})
+                        </option>
+                        <option value="OWN" className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-800'}>
+                          🏢 Company Owned ({vehicles.filter((v) => (v.ownership || 'OWN').toUpperCase() === 'OWN').length})
+                        </option>
+                        <option value="ATTACHED" className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-800'}>
+                          🤝 Vendor Attached ({vehicles.filter((v) => (v.ownership || '').toUpperCase() === 'ATTACHED').length})
+                        </option>
+                        <option value="MARKET" className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-800'}>
+                          🚛 Market Hired ({vehicles.filter((v) => (v.ownership || '').toUpperCase() === 'MARKET').length})
+                        </option>
+                      </select>
+                    </div>
                   </div>
                 }
               />

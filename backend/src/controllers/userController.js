@@ -1,7 +1,7 @@
-// src/controllers/userController.js
 const bcrypt = require('bcryptjs');
 const defaultModels = require('../models');
 const { successResponse, errorResponse } = require('../utils/apiResponse');
+const { logAudit } = require('../middleware/auditLogger');
 
 const getTenantModels = (req) => {
   return req.tenantDb?.models || req.tenantDb || null;
@@ -272,6 +272,24 @@ const createUser = async (req, res) => {
     responsePayload.designation = designation || null;
     responsePayload.roles = [{ name: targetRoleName, display_name: targetRoleName.replace('_', ' ') }];
 
+    logAudit({
+      req,
+      action: 'CREATE',
+      entityType: 'STAFF',
+      entityId: finalStaffCode || masterUser.id,
+      entityName: `${masterUser.first_name} ${masterUser.last_name || ''}`.trim(),
+      summary: `Registered staff member ${masterUser.first_name} ${masterUser.last_name || ''} (${targetRoleName.replace('_', ' ')}, Code: ${finalStaffCode})`,
+      newValues: {
+        staff_code: finalStaffCode,
+        name: `${masterUser.first_name} ${masterUser.last_name || ''}`.trim(),
+        email: cleanEmail,
+        phone: phone || null,
+        role: targetRoleName,
+        designation: designation || null,
+        branch_id: branch_id || null,
+      },
+    });
+
     return successResponse(res, 'Staff member registered successfully', responsePayload, 201);
   } catch (error) {
     return errorResponse(res, error.message, null, 500);
@@ -413,6 +431,16 @@ const updateUser = async (req, res) => {
       result.roles = [{ name: targetRoleName, display_name: targetRoleName.replace('_', ' ') }];
     }
 
+    logAudit({
+      req,
+      action: 'UPDATE',
+      entityType: 'STAFF',
+      entityId: result.staff_code || masterUser.id,
+      entityName: `${result.first_name || ''} ${result.last_name || ''}`.trim(),
+      summary: `Updated profile details for staff member "${result.first_name || ''} ${result.last_name || ''}" (${targetRoleName || 'Staff'})`,
+      newValues: result,
+    });
+
     return successResponse(res, 'User updated successfully', result);
   } catch (error) {
     return errorResponse(res, error.message, null, 500);
@@ -454,6 +482,16 @@ const toggleUserStatus = async (req, res) => {
       } catch (e) {}
     }
 
+    logAudit({
+      req,
+      action: 'UPDATE',
+      entityType: 'STAFF',
+      entityId: id,
+      entityName: `${masterUser.first_name} ${masterUser.last_name || ''}`.trim(),
+      summary: `Changed staff status of "${masterUser.first_name} ${masterUser.last_name || ''}" to ${newStatus}`,
+      newValues: { status: newStatus },
+    });
+
     return successResponse(res, `User status updated to ${newStatus}`, { id, status: newStatus });
   } catch (error) {
     return errorResponse(res, error.message, null, 500);
@@ -489,6 +527,7 @@ const deleteUser = async (req, res) => {
       await UserRole.destroy({ where: { user_id: id } }).catch(() => {});
     }
 
+    const staffName = `${masterUser.first_name} ${masterUser.last_name || ''}`.trim();
     await masterUser.destroy();
 
     if (tModels?.User) {
@@ -499,6 +538,16 @@ const deleteUser = async (req, res) => {
         await tModels.User.destroy({ where: { id } }).catch(() => {});
       } catch (e) {}
     }
+
+    logAudit({
+      req,
+      action: 'DELETE',
+      entityType: 'STAFF',
+      entityId: id,
+      entityName: staffName,
+      summary: `Permanently removed staff account for "${staffName}"`,
+      oldValues: { id, name: staffName, email: masterUser.email },
+    });
 
     return successResponse(res, 'User deleted successfully');
   } catch (error) {

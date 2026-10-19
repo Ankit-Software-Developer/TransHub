@@ -41,7 +41,7 @@ export default function Sidebar() {
   const { plural } = useTerminology();
   const user = useStore((state) => state.user);
   const { theme } = useTheme();
-  const { isAdmin, canAccessRoute, canViewAudit, hasRole, hasPermission } = usePermissions();
+  const { isAdmin, isSuperAdmin, isBranchAssistant, isBA, isAuditor, canAccessRoute, canViewAudit, hasRole, hasPermission } = usePermissions();
   const [collapsed, setCollapsed] = useState(false);
   const [pendingApprovals, setPendingApprovals] = useState(0);
   const [pendingTickets, setPendingTickets] = useState(0);
@@ -77,7 +77,24 @@ export default function Sidebar() {
     };
   }, [user]);
 
-  const navItems = [
+  const navItems = isBA ? [
+    { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+    { label: plural || 'Bookings', href: '/bookings', icon: FileText },
+    { label: 'Deliveries & POD', href: '/deliveries', icon: CheckCircle2 },
+    { label: 'Support & Helpdesk', href: '/support', icon: LifeBuoy, badge: pendingTickets },
+  ] : (isBranchAssistant && !isAdmin) ? [
+    { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+    { label: plural || 'Bookings', href: '/bookings', icon: FileText },
+    { label: 'Load Planning', href: '/load-planning', icon: Boxes },
+    { label: 'Unload Planning', href: '/unload-planning', icon: PackageCheck },
+    { label: 'Dispatches', href: '/dispatches', icon: Route },
+    { label: 'Deliveries & POD', href: '/deliveries', icon: CheckCircle2 },
+    { label: 'Support & Helpdesk', href: '/support', icon: LifeBuoy, badge: pendingTickets },
+  ] : (isAuditor && !isAdmin) ? [
+    { label: 'Audit & Activity Logs', href: '/audit-logs', icon: History },
+    { label: 'Reports', href: '/reports', icon: BarChart3 },
+    { label: 'Support & Helpdesk', href: '/support', icon: LifeBuoy, badge: pendingTickets },
+  ] : [
     { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     { label: 'Control Tower', href: '/control-tower', icon: Compass },
     { label: 'Branches & Hubs', href: '/branches', icon: Warehouse },
@@ -92,9 +109,9 @@ export default function Sidebar() {
     { label: 'Invoices', href: '/billing/invoices', icon: Receipt },
     { label: 'Expenses', href: '/expenses', icon: Wallet },
     { label: 'Reports', href: '/reports', icon: BarChart3 },
-    { label: 'Approvals', href: '/approvals', icon: ShieldCheck, badge: pendingApprovals },
-    { label: 'Support & Helpdesk', href: '/support', icon: LifeBuoy, badge: pendingTickets },
+    ...(!isSuperAdmin ? [{ label: 'Approvals', href: '/approvals', icon: ShieldCheck, badge: pendingApprovals }] : []),
     ...((isAdmin || canViewAudit || hasRole('AUDITOR') || hasRole('AUDIT') || hasPermission('audit.view')) ? [{ label: 'Audit & Activity Logs', href: '/audit-logs', icon: History }] : []),
+    { label: 'Support & Helpdesk', href: '/support', icon: LifeBuoy, badge: pendingTickets },
     { label: 'Settings', href: '/settings', icon: Settings },
   ];
 
@@ -207,12 +224,14 @@ export default function Sidebar() {
               }`} />
               {!collapsed && <span className="truncate flex-1">{item.label}</span>}
               {item.badge > 0 && (
-                <span className={`text-[10px] font-bold rounded-full flex items-center justify-center ${
+                <span className={`text-[10px] rounded-full flex items-center justify-center shrink-0 ${
                   collapsed
-                    ? 'absolute top-1 right-1 w-4 h-4 bg-amber-500 text-white'
-                    : 'px-1.5 py-0.2 min-w-5 h-5 bg-amber-500 text-white ml-auto shadow-sm shadow-amber-500/40'
+                    ? 'absolute top-1 right-1 w-4 h-4'
+                    : 'px-1.5 py-0.5 min-w-[20px] h-5 ml-auto shadow-sm'
                 } ${
-                  isActive ? 'bg-white text-blue-700' : ''
+                  isActive
+                    ? 'bg-white text-blue-700 font-extrabold'
+                    : 'bg-amber-500 text-white font-bold shadow-amber-500/40'
                 }`}>
                   {item.badge > 99 ? '99+' : item.badge}
                 </span>
@@ -225,32 +244,50 @@ export default function Sidebar() {
       {/* Bottom Promo & Version Footer */}
       {!collapsed && (
         <div className="p-4 border-t border-slate-800/80 space-y-3">
-          <div className={`p-3 rounded-2xl border relative overflow-hidden ${
-            isDark
-              ? 'bg-gradient-to-br from-blue-950/60 via-slate-900 to-cyan-950/40 border-cyan-500/30'
-              : 'bg-gradient-to-br from-blue-50 to-indigo-50/60 border-blue-200'
-          }`}>
-            <div className="flex items-center gap-2 mb-1">
-              <div className="w-6 h-6 rounded-lg bg-blue-500/20 text-cyan-400 flex items-center justify-center">
-                <Crown className="w-3.5 h-3.5" />
+          {isBA ? (
+            <div className={`p-3 rounded-2xl border ${
+              isDark
+                ? 'bg-blue-950/40 border-blue-800/50 text-blue-300'
+                : 'bg-blue-50 border-blue-200 text-blue-800'
+            }`}>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span className={`text-xs font-bold ${isDark ? 'text-white' : 'text-blue-900'}`}>
+                  Associate Agent Portal
+                </span>
               </div>
-              <span className={`text-xs font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                Upgrade to Enterprise
-              </span>
+              <p className={`text-[10px] leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                Streamlined docket booking and instant POD delivery upload.
+              </p>
             </div>
-            <p className={`text-[10px] leading-relaxed mb-2.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-              Unlock advanced telemetry, multi-branch control & live radar.
-            </p>
-            <button
-              onClick={() => alert('Enterprise upgrade modal')}
-              className="w-full py-1.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-bold shadow-md shadow-blue-600/25 transition-all text-center block"
-            >
-              Learn More ➔
-            </button>
-          </div>
+          ) : (
+            <div className={`p-3 rounded-2xl border relative overflow-hidden ${
+              isDark
+                ? 'bg-gradient-to-br from-blue-950/60 via-slate-900 to-cyan-950/40 border-cyan-500/30'
+                : 'bg-gradient-to-br from-blue-50 to-indigo-50/60 border-blue-200'
+            }`}>
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-6 h-6 rounded-lg bg-blue-500/20 text-cyan-400 flex items-center justify-center">
+                  <Crown className="w-3.5 h-3.5" />
+                </div>
+                <span className={`text-xs font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                  Upgrade to Enterprise
+                </span>
+              </div>
+              <p className={`text-[10px] leading-relaxed mb-2.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                Unlock advanced telemetry, multi-branch control & live radar.
+              </p>
+              <button
+                onClick={() => alert('Enterprise upgrade modal')}
+                className="w-full py-1.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-bold shadow-md shadow-blue-600/25 transition-all text-center block"
+              >
+                Learn More ➔
+              </button>
+            </div>
+          )}
 
           <div className="flex items-center justify-between text-[10px] text-slate-500 font-mono px-1">
-            <span>TransHub</span>
+            <span>{isBA ? 'TransHub BA' : 'TransHub'}</span>
             <span>v2.4.0</span>
           </div>
         </div>

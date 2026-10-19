@@ -1177,6 +1177,8 @@ const getPodComplianceReport = async (req, res) => {
         receiverName: c.deliveryRecord?.receiver_name || (c.pod?.receiver_name) || 'NA',
         hasPhysicalPod: Boolean(rawPodStatus === 'POD_VERIFIED' || rawPodStatus === 'VERIFIED' || c.deliveryRecord?.receiver_signature_url),
         verifiedAt: c.pod?.verified_at ? (typeof c.pod.verified_at === 'string' ? c.pod.verified_at.split('T')[0] : new Date(c.pod.verified_at).toISOString().split('T')[0]) : null,
+        load_type: c.load_type || 'PTL',
+        loadType: c.load_type || 'PTL',
       };
     });
 
@@ -1537,9 +1539,11 @@ const getDailyCollectionReport = async (req, res) => {
                 status: found.status,
                 consignorName: typeof found.consignor === 'object' ? found.consignor?.name : (found.consignor_name || 'Shipper'),
                 consigneeName: typeof found.consignee === 'object' ? found.consignee?.name : (found.consignee_name || 'Consignee'),
+                load_type: found.load_type || 'PTL',
+                loadType: found.load_type || 'PTL',
               });
             } else {
-              coveredList.push({ docketNumber: dNo });
+              coveredList.push({ docketNumber: dNo, load_type: 'PTL' });
             }
           });
         } else if (linkedCg) {
@@ -1554,6 +1558,8 @@ const getDailyCollectionReport = async (req, res) => {
             status: linkedCg.status,
             consignorName: typeof linkedCg.consignor === 'object' ? linkedCg.consignor?.name : (linkedCg.consignor_name || 'Shipper'),
             consigneeName: typeof linkedCg.consignee === 'object' ? linkedCg.consignee?.name : (linkedCg.consignee_name || 'Consignee'),
+            load_type: linkedCg.load_type || 'PTL',
+            loadType: linkedCg.load_type || 'PTL',
           });
         }
 
@@ -1961,7 +1967,97 @@ const getDailyCollectionReport = async (req, res) => {
 
 /**
  * 6. GST Sales & Tax Liability Register (SAC 9965)
+ * Indian GTA (Goods Transport Agency) Compliance:
+ * - SAC Code 9965 / 996511 (Transport of goods by road)
+ * - RCM (Reverse Charge): Recipient pays 5% GST directly if recipient/consignor is registered taxpayer.
+ * - Forward Charge: Transporter pays GST when recipient is unregistered retail consumer (B2C) or opted for 12% ITC.
+ * - Place of Supply (POS): Location of registered recipient or destination state under Sec 12(8) IGST Act.
  */
+const GST_STATE_CODES = {
+  '01': 'Jammu & Kashmir',
+  '02': 'Himachal Pradesh',
+  '03': 'Punjab',
+  '04': 'Chandigarh',
+  '05': 'Uttarakhand',
+  '06': 'Haryana',
+  '07': 'Delhi',
+  '08': 'Rajasthan',
+  '09': 'Uttar Pradesh',
+  '10': 'Bihar',
+  '11': 'Sikkim',
+  '12': 'Arunachal Pradesh',
+  '13': 'Nagaland',
+  '14': 'Manipur',
+  '15': 'Mizoram',
+  '16': 'Tripura',
+  '17': 'Meghalaya',
+  '18': 'Assam',
+  '19': 'West Bengal',
+  '20': 'Jharkhand',
+  '21': 'Odisha',
+  '22': 'Chhattisgarh',
+  '23': 'Madhya Pradesh',
+  '24': 'Gujarat',
+  '26': 'Dadra & Nagar Haveli and Daman & Diu',
+  '27': 'Maharashtra',
+  '29': 'Karnataka',
+  '30': 'Goa',
+  '31': 'Lakshadweep',
+  '32': 'Kerala',
+  '33': 'Tamil Nadu',
+  '34': 'Puducherry',
+  '36': 'Telangana',
+  '37': 'Andhra Pradesh',
+  '38': 'Ladakh',
+};
+
+const STATE_NAME_TO_CODE = {
+  'jammu and kashmir': '01',
+  'jammu & kashmir': '01',
+  'himachal pradesh': '02',
+  'punjab': '03',
+  'chandigarh': '04',
+  'uttarakhand': '05',
+  'haryana': '06',
+  'delhi': '07',
+  'rajasthan': '08',
+  'uttar pradesh': '09',
+  'up': '09',
+  'bihar': '10',
+  'sikkim': '11',
+  'arunachal pradesh': '12',
+  'nagaland': '13',
+  'manipur': '14',
+  'mizoram': '15',
+  'tripura': '16',
+  'meghalaya': '17',
+  'assam': '18',
+  'west bengal': '19',
+  'wb': '19',
+  'jharkhand': '20',
+  'odisha': '21',
+  'orissa': '21',
+  'chhattisgarh': '22',
+  'madhya pradesh': '23',
+  'mp': '23',
+  'gujarat': '24',
+  'maharashtra': '27',
+  'mh': '27',
+  'karnataka': '29',
+  'ka': '29',
+  'goa': '30',
+  'kerala': '32',
+  'kl': '32',
+  'tamil nadu': '33',
+  'tn': '33',
+  'puducherry': '34',
+  'telangana': '36',
+  'ts': '36',
+  'andhra pradesh': '37',
+  'ap': '37',
+  'ladakh': '38',
+};
+
 const getGstTaxReport = async (req, res) => {
   try {
     if (!canAccessFinancialAudit(req)) {
@@ -1969,9 +2065,93 @@ const getGstTaxReport = async (req, res) => {
     }
 
     const m = req.tenantDb || defaultModels;
-    const { Consignment, Customer, Branch } = m;
-    const { branch_id, date_from, date_to, page = 1, limit = 25, search } = req.query;
+    const { Consignment, Customer, Branch, Organization } = m;
+    const { branch_id, date_from, date_to, page = 1, limit = 25, search, tax_type = 'ALL' } = req.query;
 
+    // 1. Fetch Transporter's Organization Details for GSTIN & Supplier State
+    let orgGstin = '27AABCT9845P1Z2';
+    let orgLegalName = 'TransHub Logistics Ltd';
+    let orgState = 'Maharashtra';
+    let orgStateCode = '27';
+
+    if (Organization && req.tenant?.organizationId) {
+      const org = await Organization.findByPk(req.tenant.organizationId, {
+        attributes: ['id', 'business_name', 'legal_name', 'gstin', 'state', 'city'],
+      });
+      if (org) {
+        if (org.gstin && org.gstin.trim()) {
+          orgGstin = org.gstin.trim().toUpperCase();
+          if (orgGstin.length >= 2 && !isNaN(orgGstin.substring(0, 2))) {
+            orgStateCode = orgGstin.substring(0, 2);
+          }
+        }
+        if (org.legal_name || org.business_name) {
+          orgLegalName = org.legal_name || org.business_name;
+        }
+        if (org.state) {
+          orgState = org.state;
+          const matchedCode = STATE_NAME_TO_CODE[org.state.toLowerCase().trim()];
+          if (matchedCode && (!org.gstin || org.gstin.length < 2)) {
+            orgStateCode = matchedCode;
+          }
+        }
+      }
+    }
+
+    // Helper: Determine Place of Supply State Code & Name
+    const resolvePlaceOfSupply = (recipientGst, recipientState, destBranchState, destCity) => {
+      let code = orgStateCode;
+      let name = orgState;
+
+      if (recipientGst && recipientGst.length >= 2 && !isNaN(recipientGst.substring(0, 2))) {
+        code = recipientGst.substring(0, 2);
+        name = GST_STATE_CODES[code] || recipientState || orgState;
+      } else if (recipientState && recipientState.trim()) {
+        const norm = recipientState.toLowerCase().trim();
+        if (STATE_NAME_TO_CODE[norm]) {
+          code = STATE_NAME_TO_CODE[norm];
+          name = GST_STATE_CODES[code] || recipientState;
+        } else {
+          name = recipientState;
+        }
+      } else if (destBranchState && destBranchState.trim()) {
+        const norm = destBranchState.toLowerCase().trim();
+        if (STATE_NAME_TO_CODE[norm]) {
+          code = STATE_NAME_TO_CODE[norm];
+          name = GST_STATE_CODES[code] || destBranchState;
+        } else {
+          name = destBranchState;
+        }
+      } else if (destCity && destCity.trim()) {
+        const norm = destCity.toLowerCase().trim();
+        if (STATE_NAME_TO_CODE[norm]) {
+          code = STATE_NAME_TO_CODE[norm];
+          name = GST_STATE_CODES[code] || destCity;
+        }
+      }
+
+      return {
+        posCode: code,
+        posStateName: name,
+        placeOfSupply: `${code}-${name}`,
+        isInterState: code !== orgStateCode,
+      };
+    };
+
+    // 2. Fetch list of customers with valid GSTINs for B2B vs B2C classification
+    const registeredCustomers = await Customer.findAll({
+      where: {
+        tenant_id: req.tenant.tenantId,
+        [Op.and]: [
+          { gstin: { [Op.ne]: null } },
+          { gstin: { [Op.ne]: '' } },
+        ],
+      },
+      attributes: ['id', 'gstin'],
+    });
+    const regCustomerIds = registeredCustomers.map((c) => c.id);
+
+    // 3. Base Query Filter
     const where = {
       tenant_id: req.tenant.tenantId,
       ...(req.tenant.organizationId ? { organization_id: req.tenant.organizationId } : {}),
@@ -1979,11 +2159,17 @@ const getGstTaxReport = async (req, res) => {
     };
 
     const effectiveBranchId = getEffectiveBranch(req, branch_id);
-
     if (effectiveBranchId) {
-      where.origin_branch_id = effectiveBranchId;
+      where[Op.and] = where[Op.and] || [];
+      where[Op.and].push({
+        [Op.or]: [
+          { origin_branch_id: effectiveBranchId },
+          { dest_branch_id: effectiveBranchId },
+        ],
+      });
     }
 
+    // 4. Search Filter
     if (search && search.trim()) {
       const q = `%${search.trim()}%`;
       const matchedCustomers = await Customer.findAll({
@@ -2010,21 +2196,86 @@ const getGstTaxReport = async (req, res) => {
       });
     }
 
+    // 5. Tax Type Segment Filter (ALL | RCM | FORWARD | B2B | B2C)
+    const upperTaxType = (tax_type || 'ALL').toUpperCase();
+    if (upperTaxType === 'B2B') {
+      if (regCustomerIds.length > 0) {
+        where[Op.and] = where[Op.and] || [];
+        where[Op.and].push({
+          [Op.or]: [
+            { consignor_id: { [Op.in]: regCustomerIds } },
+            { consignee_id: { [Op.in]: regCustomerIds } },
+          ],
+        });
+      } else {
+        where.id = '00000000-0000-0000-0000-000000000000';
+      }
+    } else if (upperTaxType === 'B2C') {
+      where[Op.and] = where[Op.and] || [];
+      if (regCustomerIds.length > 0) {
+        where[Op.and].push({
+          [Op.and]: [
+            { consignor_id: { [Op.notIn]: regCustomerIds } },
+            { consignee_id: { [Op.notIn]: regCustomerIds } },
+          ],
+        });
+      }
+    } else if (upperTaxType === 'RCM') {
+      // In GTA SAC 9965, RCM applies if party is registered AND tax rate is <= 5%
+      if (regCustomerIds.length > 0) {
+        where[Op.and] = where[Op.and] || [];
+        where[Op.and].push({
+          [Op.or]: [
+            { consignor_id: { [Op.in]: regCustomerIds } },
+            { consignee_id: { [Op.in]: regCustomerIds } },
+          ],
+          [Op.or]: [
+            { tax_percent: { [Op.eq]: null } },
+            { tax_percent: { [Op.lte]: 5 } },
+          ],
+        });
+      } else {
+        where.id = '00000000-0000-0000-0000-000000000000';
+      }
+    } else if (upperTaxType === 'FORWARD') {
+      // Forward Charge: Unregistered parties OR tax_percent > 5 (e.g. 12% Forward Charge)
+      where[Op.and] = where[Op.and] || [];
+      if (regCustomerIds.length > 0) {
+        where[Op.and].push({
+          [Op.or]: [
+            {
+              [Op.and]: [
+                { consignor_id: { [Op.notIn]: regCustomerIds } },
+                { consignee_id: { [Op.notIn]: regCustomerIds } },
+              ],
+            },
+            { tax_percent: { [Op.gt]: 5 } },
+          ],
+        });
+      }
+    }
+
     const offset = (parseInt(page, 10) - 1) * parseInt(limit, 10);
 
     const { count, rows } = await Consignment.findAndCountAll({
       where,
       include: [
-        { model: Customer, as: 'consignor', attributes: ['id', 'name', 'gstin'], required: false },
-        { model: Customer, as: 'consignee', attributes: ['id', 'name', 'gstin'], required: false },
+        { model: Customer, as: 'consignor', attributes: ['id', 'name', 'gstin', 'city', 'state'], required: false },
+        { model: Customer, as: 'consignee', attributes: ['id', 'name', 'gstin', 'city', 'state'], required: false },
         {
           model: Branch,
           as: 'originBranch',
-          attributes: ['id', 'branch_name', 'branch_code', ['branch_name', 'name'], ['branch_code', 'code'], 'city'],
+          attributes: ['id', 'branch_name', 'branch_code', ['branch_name', 'name'], ['branch_code', 'code'], 'city', 'state'],
+          required: false,
+        },
+        {
+          model: Branch,
+          as: 'destBranch',
+          attributes: ['id', 'branch_name', 'branch_code', ['branch_name', 'name'], ['branch_code', 'code'], 'city', 'state'],
           required: false,
         },
       ],
-      order: [['booking_date', 'DESC']],
+      order: [['booking_date', 'DESC'], ['id', 'DESC']],
       limit: parseInt(limit, 10),
       offset,
     });
@@ -2032,14 +2283,45 @@ const getGstTaxReport = async (req, res) => {
     const enrichedRows = rows.map((c) => {
       const taxableValue = Number(c.freight_amount || 0);
       const taxAmount = Number(c.tax_amount || 0);
-      const taxRate = Number(c.tax_percent || 5);
+      const taxRate = Number(c.tax_percent !== null && c.tax_percent !== undefined ? c.tax_percent : 5);
 
-      // Check RCM eligibility: In India GTA, if consignor/consignee has GSTIN, RCM applies
-      const isRegisteredParty = Boolean(c.consignor?.gstin || c.consignee?.gstin);
-      const isRcm = isRegisteredParty && (c.payment_type === 'TBB' || taxRate === 5);
+      const consignorGst = (c.consignor?.gstin || '').trim().toUpperCase();
+      const consigneeGst = (c.consignee?.gstin || '').trim().toUpperCase();
+      const isConsignorReg = consignorGst.length >= 15;
+      const isConsigneeReg = consigneeGst.length >= 15;
+      const isB2B = isConsignorReg || isConsigneeReg;
 
-      // Determine CGST + SGST vs IGST (intra-state vs inter-state)
-      const isInterState = c.origin_city !== c.destination_city;
+      // Primary Recipient for GSTR-1 Table 4 (B2B) or Table 7 (B2C)
+      let recipientName = c.consignee?.name || 'Cash Consignee';
+      let recipientGst = consigneeGst || 'URP';
+      let recipientState = c.consignee?.state || c.destBranch?.state || c.destination_city || '';
+
+      if (c.payment_type === 'PAID' && isConsignorReg) {
+        recipientName = c.consignor?.name || 'Cash Consignor';
+        recipientGst = consignorGst;
+        recipientState = c.consignor?.state || c.originBranch?.state || c.origin_city || '';
+      } else if (!isConsigneeReg && isConsignorReg) {
+        recipientName = c.consignor?.name || 'Cash Consignor';
+        recipientGst = consignorGst;
+        recipientState = c.consignor?.state || c.originBranch?.state || c.origin_city || '';
+      }
+
+      // Reverse Charge Logic (GTA SAC 9965):
+      // If supply is to a registered person (B2B) and tax rate is 5%, Recipient pays under RCM.
+      // If supply is to unregistered person (B2C) or taxRate === 12%, Forward Charge applies.
+      const isRcm = isB2B && taxRate <= 5;
+      const taxType = isRcm ? 'RCM (Reverse Charge)' : 'Forward Charge';
+      const reverseChargeFlag = isRcm ? 'Y' : 'N';
+
+      // Place of Supply Resolution
+      const { posCode, posStateName, placeOfSupply, isInterState } = resolvePlaceOfSupply(
+        recipientGst !== 'URP' ? recipientGst : (isConsignorReg ? consignorGst : ''),
+        recipientState,
+        c.destBranch?.state,
+        c.destination_city
+      );
+
+      // Tax breakdown: Intra-state (CGST + SGST) vs Inter-state (IGST)
       const cgst = isInterState ? 0 : parseFloat((taxAmount / 2).toFixed(2));
       const sgst = isInterState ? 0 : parseFloat((taxAmount / 2).toFixed(2));
       const igst = isInterState ? parseFloat(taxAmount.toFixed(2)) : 0;
@@ -2047,59 +2329,234 @@ const getGstTaxReport = async (req, res) => {
       return {
         id: c.id,
         lrNumber: c.lr_number,
+        docketNumber: c.docket_number || c.lr_number,
         bookingDate: c.booking_date,
         branch: c.originBranch?.branch_name || c.originBranch?.name || c.origin_city || 'Head Office',
+        destBranch: c.destBranch?.branch_name || c.destBranch?.name || c.destination_city || 'Destination Hub',
+        originCity: c.origin_city,
+        destCity: c.destination_city,
         sacCode: '9965', // GTA SAC Code
+        sacDescription: 'Road freight transportation services',
+        // Consignor & Consignee details
         consignorName: c.consignor?.name || 'Cash Party',
-        consignorGst: c.consignor?.gstin || 'URP',
+        consignorGst: consignorGst || 'URP',
+        consignorState: c.consignor?.state || c.originBranch?.state || c.origin_city || '',
         consigneeName: c.consignee?.name || 'Cash Party',
-        consigneeGst: c.consignee?.gstin || 'URP',
+        consigneeGst: consigneeGst || 'URP',
+        consigneeState: c.consignee?.state || c.destBranch?.state || c.destination_city || '',
+        // Primary Recipient & Classification
+        recipientName,
+        recipientGst,
+        isB2B,
+        supplyCategory: isB2B ? 'B2B (Registered)' : 'B2C (Unregistered)',
+        posCode,
+        posStateName,
+        placeOfSupply,
+        isInterState,
+        // Consignment Cargo Details
+        load_type: c.load_type || 'PTL',
+        loadType: c.load_type || 'PTL',
+        paymentType: c.payment_type || 'TO_PAY',
+        chargedWeight: Number(c.charged_weight || c.actual_weight || 0),
+        packagesCount: Number(c.packages_count || 1),
+        materialDescription: c.material_description || 'General Goods',
+        ewayBillNo: c.eway_bill_no || null,
+        invoiceNo: c.invoice_no || null,
+        invoiceDate: c.invoice_date || null,
+        // Tax values
         taxableValue: parseFloat(taxableValue.toFixed(2)),
         taxRatePct: taxRate,
-        taxType: isRcm ? 'RCM (Reverse Charge)' : 'Forward Charge',
+        isRcm,
+        taxType,
+        reverseChargeFlag,
         cgst,
         sgst,
         igst,
+        cess: 0,
         totalGst: parseFloat(taxAmount.toFixed(2)),
         totalInvoiceValue: parseFloat((taxableValue + taxAmount).toFixed(2)),
       };
     });
 
-    // Global GST summary
+    // 6. Comprehensive Global GST Summary across entire filtered date range
+    // (Build base query without pagination to compute statutory Table 4, 7, 12, 13 metrics)
+    const baseSummaryWhere = {
+      tenant_id: req.tenant.tenantId,
+      ...(req.tenant.organizationId ? { organization_id: req.tenant.organizationId } : {}),
+      ...buildDateRange(date_from, date_to, 'booking_date'),
+    };
+    if (effectiveBranchId) {
+      baseSummaryWhere[Op.and] = baseSummaryWhere[Op.and] || [];
+      baseSummaryWhere[Op.and].push({
+        [Op.or]: [
+          { origin_branch_id: effectiveBranchId },
+          { dest_branch_id: effectiveBranchId },
+        ],
+      });
+    }
+
     const allMatches = await Consignment.findAll({
-      where,
+      where: baseSummaryWhere,
       include: [
-        { model: Customer, as: 'consignor', attributes: ['gstin'] },
-        { model: Customer, as: 'consignee', attributes: ['gstin'] },
+        { model: Customer, as: 'consignor', attributes: ['id', 'gstin', 'state'] },
+        { model: Customer, as: 'consignee', attributes: ['id', 'gstin', 'state'] },
       ],
-      attributes: ['freight_amount', 'tax_amount', 'tax_percent', 'payment_type'],
+      attributes: [
+        'id',
+        'lr_number',
+        'booking_date',
+        'freight_amount',
+        'tax_amount',
+        'tax_percent',
+        'payment_type',
+        'charged_weight',
+        'actual_weight',
+        'origin_city',
+        'destination_city',
+      ],
+      order: [['lr_number', 'ASC']],
     });
 
     let gTaxable = 0;
     let gTax = 0;
+    let gCgst = 0;
+    let gSgst = 0;
+    let gIgst = 0;
+    let totalWeightKg = 0;
+
+    let rcmCount = 0;
     let rcmTaxable = 0;
+    let rcmTax = 0;
+
+    let forwardCount = 0;
     let forwardTaxable = 0;
+    let forwardTax = 0;
+
+    let b2bCount = 0;
+    let b2bTaxable = 0;
+    let b2bTax = 0;
+
+    let b2cCount = 0;
+    let b2cTaxable = 0;
+    let b2cTax = 0;
+
+    const lrNumbers = [];
 
     allMatches.forEach((c) => {
       const val = Number(c.freight_amount || 0);
       const tax = Number(c.tax_amount || 0);
+      const rate = Number(c.tax_percent !== null && c.tax_percent !== undefined ? c.tax_percent : 5);
+      const wt = Number(c.charged_weight || c.actual_weight || 0);
+
       gTaxable += val;
       gTax += tax;
+      totalWeightKg += wt;
 
-      const isReg = Boolean(c.consignor?.gstin || c.consignee?.gstin);
-      if (isReg && (c.payment_type === 'TBB' || Number(c.tax_percent) === 5)) {
-        rcmTaxable += val;
+      if (c.lr_number) {
+        lrNumbers.push(c.lr_number);
+      }
+
+      const cGst = (c.consignor?.gstin || '').trim();
+      const eGst = (c.consignee?.gstin || '').trim();
+      const isReg = cGst.length >= 15 || eGst.length >= 15;
+
+      const posInfo = resolvePlaceOfSupply(
+        eGst || cGst,
+        c.consignee?.state || c.consignor?.state || '',
+        null,
+        c.destination_city
+      );
+
+      if (posInfo.isInterState) {
+        gIgst += tax;
       } else {
+        gCgst += tax / 2;
+        gSgst += tax / 2;
+      }
+
+      // B2B vs B2C
+      if (isReg) {
+        b2bCount++;
+        b2bTaxable += val;
+        b2bTax += tax;
+      } else {
+        b2cCount++;
+        b2cTaxable += val;
+        b2cTax += tax;
+      }
+
+      // RCM vs Forward Charge
+      if (isReg && rate <= 5) {
+        rcmCount++;
+        rcmTaxable += val;
+        rcmTax += tax;
+      } else {
+        forwardCount++;
         forwardTaxable += val;
+        forwardTax += tax;
       }
     });
 
+    const docSeriesSummary = {
+      docType: 'Consignment Note / Bilty (LR)',
+      fromDocNo: lrNumbers.length > 0 ? lrNumbers[0] : 'N/A',
+      toDocNo: lrNumbers.length > 0 ? lrNumbers[lrNumbers.length - 1] : 'N/A',
+      totalIssued: allMatches.length,
+      cancelled: 0,
+      netIssued: allMatches.length,
+    };
+
+    const hsnSummary = {
+      sacCode: '9965',
+      description: 'Road Freight Transportation Services',
+      uqc: 'KGS',
+      totalQuantityKg: parseFloat(totalWeightKg.toFixed(2)),
+      totalQuantityTonnes: parseFloat((totalWeightKg / 1000).toFixed(3)),
+      taxableValue: parseFloat(gTaxable.toFixed(2)),
+      taxRate: '5% (RCM) / 12%',
+      cgst: parseFloat(gCgst.toFixed(2)),
+      sgst: parseFloat(gSgst.toFixed(2)),
+      igst: parseFloat(gIgst.toFixed(2)),
+      totalTax: parseFloat(gTax.toFixed(2)),
+    };
+
     const summary = {
       totalConsignments: count,
+      filteredConsignments: count,
       totalTaxableValue: parseFloat(gTaxable.toFixed(2)),
       totalTaxLiability: parseFloat(gTax.toFixed(2)),
+      totalCgst: parseFloat(gCgst.toFixed(2)),
+      totalSgst: parseFloat(gSgst.toFixed(2)),
+      totalIgst: parseFloat(gIgst.toFixed(2)),
+      totalInvoiceValue: parseFloat((gTaxable + gTax).toFixed(2)),
+
+      // RCM vs Forward
+      rcmCount,
       rcmTaxableTurnover: parseFloat(rcmTaxable.toFixed(2)),
+      rcmTaxAmount: parseFloat(rcmTax.toFixed(2)),
+
+      forwardCount,
       forwardChargeTurnover: parseFloat(forwardTaxable.toFixed(2)),
+      forwardTaxAmount: parseFloat(forwardTax.toFixed(2)),
+
+      // B2B vs B2C
+      b2bCount,
+      b2bTaxableTurnover: parseFloat(b2bTaxable.toFixed(2)),
+      b2bTaxAmount: parseFloat(b2bTax.toFixed(2)),
+
+      b2cCount,
+      b2cTaxableTurnover: parseFloat(b2cTaxable.toFixed(2)),
+      b2cTaxAmount: parseFloat(b2cTax.toFixed(2)),
+
+      // Organization & SAC Details
+      transporterGstin: orgGstin,
+      transporterLegalName: orgLegalName,
+      transporterState: `${orgStateCode}-${orgState}`,
+      sacCode: '9965',
+
+      // Statutory Tables
+      hsnSummary,
+      docSeriesSummary,
     };
 
     return paginatedResponse(
@@ -2110,7 +2567,7 @@ const getGstTaxReport = async (req, res) => {
         page: parseInt(page, 10),
         limit: parseInt(limit, 10),
         total: count,
-        pages: Math.ceil(count / parseInt(limit, 10)),
+        pages: Math.ceil(count / parseInt(limit, 10)) || 1,
         summary,
       }
     );

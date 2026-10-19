@@ -49,6 +49,38 @@ module.exports = (sequelize) => {
       type: DataTypes.UUID,
       allowNull: false,
     },
+    consignor_name: {
+      type: DataTypes.STRING(200),
+      allowNull: true,
+    },
+    consignee_name: {
+      type: DataTypes.STRING(200),
+      allowNull: true,
+    },
+    consignor_phone: {
+      type: DataTypes.STRING(30),
+      allowNull: true,
+    },
+    consignee_phone: {
+      type: DataTypes.STRING(30),
+      allowNull: true,
+    },
+    consignor_address: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    consignee_address: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    consignor_gstin: {
+      type: DataTypes.STRING(20),
+      allowNull: true,
+    },
+    consignee_gstin: {
+      type: DataTypes.STRING(20),
+      allowNull: true,
+    },
     origin_city: {
       type: DataTypes.STRING(100),
       allowNull: false,
@@ -141,6 +173,12 @@ module.exports = (sequelize) => {
       allowNull: true,
       defaultValue: 'ROAD',
       comment: 'Mode of transport: ROAD, RAIL, AIR',
+    },
+    load_type: {
+      type: DataTypes.ENUM('PTL', 'FTL'),
+      allowNull: false,
+      defaultValue: 'PTL',
+      comment: 'Consignment load type: PTL (Part Truck Load / Sundry) or FTL (Full Truck Load)',
     },
     rate_type: {
       type: DataTypes.STRING(30),

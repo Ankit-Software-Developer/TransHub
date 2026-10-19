@@ -131,6 +131,14 @@ const applyEssentialPatches = async (sequelize) => {
     'ALTER TABLE delivery_records MODIFY COLUMN receiver_signature_url LONGTEXT;',
     'ALTER TABLE pods MODIFY COLUMN file_url LONGTEXT;',
     "ALTER TABLE consignments ADD COLUMN transport_mode VARCHAR(30) DEFAULT 'ROAD';",
+    "ALTER TABLE consignments ADD COLUMN consignor_name VARCHAR(200);",
+    "ALTER TABLE consignments ADD COLUMN consignee_name VARCHAR(200);",
+    "ALTER TABLE consignments ADD COLUMN consignor_phone VARCHAR(30);",
+    "ALTER TABLE consignments ADD COLUMN consignee_phone VARCHAR(30);",
+    "ALTER TABLE consignments ADD COLUMN consignor_address TEXT;",
+    "ALTER TABLE consignments ADD COLUMN consignee_address TEXT;",
+    "ALTER TABLE consignments ADD COLUMN consignor_gstin VARCHAR(20);",
+    "ALTER TABLE consignments ADD COLUMN consignee_gstin VARCHAR(20);",
     "ALTER TABLE consignments MODIFY COLUMN status ENUM('BOOKED','MATERIAL_RECEIVED','READY_FOR_DISPATCH','LOADED','DISPATCHED','IN_TRANSIT','RECEIVED_AT_HUB','REACHED_DESTINATION','OUT_FOR_DELIVERY','DELIVERED','POD_PENDING','POD_UPLOADED','COMPLETED','DELAYED','DAMAGED','SHORT_MATERIAL','HOLD','REJECTED','RETURNED') DEFAULT 'BOOKED';",
     'ALTER TABLE vehicles ADD COLUMN make_model VARCHAR(100);',
     'ALTER TABLE vehicles ADD COLUMN fastag_id VARCHAR(50);',
@@ -155,6 +163,12 @@ const applyEssentialPatches = async (sequelize) => {
     'ALTER TABLE customers ADD COLUMN branch_id VARCHAR(36);',
     'ALTER TABLE customers ADD COLUMN is_walkin TINYINT(1) DEFAULT 0;',
     'ALTER TABLE branches ADD COLUMN is_head_office TINYINT(1) DEFAULT 0;',
+    'ALTER TABLE trips ADD COLUMN vehicle_charge DECIMAL(12, 2) DEFAULT 0.00;',
+    'ALTER TABLE trip_settlements ADD COLUMN vehicle_charge DECIMAL(12, 2) DEFAULT 0.00;',
+    "ALTER TABLE trip_settlements ADD COLUMN vehicle_ownership VARCHAR(20) DEFAULT 'OWN';",
+    'ALTER TABLE trip_settlements ADD COLUMN net_payable_to_vendor DECIMAL(12, 2) DEFAULT 0.00;',
+    'ALTER TABLE trip_settlements ADD COLUMN profit_margin DECIMAL(12, 2) DEFAULT 0.00;',
+    "ALTER TABLE trip_settlements MODIFY COLUMN settlement_type VARCHAR(50) DEFAULT 'BALANCED';",
     "UPDATE branches SET is_head_office = 1 WHERE (is_head_office IS NULL OR is_head_office = 0) AND (branch_code = 'BHQ' OR branch_code = 'HQ' OR branch_code LIKE '%HQ' OR LOWER(branch_name) LIKE '%head office%');",
     `CREATE TABLE IF NOT EXISTS gps_location_logs (
       id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -247,6 +261,7 @@ const applyEssentialPatches = async (sequelize) => {
       INDEX idx_audit_user (user_id),
       INDEX idx_audit_action (action)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`,
+    "ALTER TABLE `approval_requests` MODIFY COLUMN `status` ENUM('PENDING', 'APPROVED', 'REJECTED', 'ESCALATED', 'CANCELLED', 'RETURNED') NOT NULL DEFAULT 'PENDING';",
   ];
 
   if (isMaster) {

@@ -5,9 +5,11 @@
  */
 export const TRUCK_CONFIGS = {
   '11FT': {
-    name: '11 Feet Truck',
+    name: '11ft Tata Ace / Chota Hathi',
+    displayName: '11ft Tata Ace / Chota Hathi (2.5T)',
+    shortName: 'Tata Ace / Chota Hathi',
     feet: 11,
-    tonnage: 3.5,
+    tonnage: 2.5,
     length: 3.4,  // cargo length (meters)
     width: 1.8,   // cargo width
     height: 1.9,  // cargo height
@@ -16,11 +18,13 @@ export const TRUCK_CONFIGS = {
     wheelbase: 2.5,
     rearOverhang: 0.9,
     cabType: 'COE_COMPACT',
-    defaultCapacityKg: 3500,
+    defaultCapacityKg: 2500,
     volumeM3: 11.6,
   },
   '14FT': {
-    name: '14 Feet Truck',
+    name: '14 Feet ICV Truck',
+    displayName: '14ft ICV Truck (5.5T)',
+    shortName: '14ft ICV',
     feet: 14,
     tonnage: 5.5,
     length: 4.3,
@@ -35,7 +39,9 @@ export const TRUCK_CONFIGS = {
     volumeM3: 18.0,
   },
   '19FT': {
-    name: '19 Feet Truck',
+    name: '19 Feet Container Truck',
+    displayName: '19ft Container (9.5T)',
+    shortName: '19ft Container',
     feet: 19,
     tonnage: 9.5,
     length: 5.8,
@@ -50,7 +56,9 @@ export const TRUCK_CONFIGS = {
     volumeM3: 29.3,
   },
   '24FT': {
-    name: '24 Feet Truck',
+    name: '24 Feet Container Truck',
+    displayName: '24ft Container (16T)',
+    shortName: '24ft Container',
     feet: 24,
     tonnage: 16.0,
     length: 7.4,
@@ -65,7 +73,9 @@ export const TRUCK_CONFIGS = {
     volumeM3: 40.8,
   },
   '32FT': {
-    name: '32 Feet Truck',
+    name: '32 Feet Multi-Axle Trailer',
+    displayName: '32ft Multi-Axle Trailer (28T)',
+    shortName: '32ft Trailer',
     feet: 32,
     tonnage: 28.0,
     length: 9.8,
@@ -82,11 +92,53 @@ export const TRUCK_CONFIGS = {
 };
 
 /**
+ * Creates a calibrated custom truck/container configuration from user inputs
+ */
+export function createCustomTruckConfig(feet, tonnage = null, customName = null) {
+  const f = Math.max(8, Math.min(60, parseFloat(feet) || 20));
+  const t = Math.max(0.5, parseFloat(tonnage) || Number((f * 0.65).toFixed(1)));
+  const length = parseFloat((f * 0.3048).toFixed(1));
+  const width = f <= 12 ? 1.8 : f <= 22 ? 2.2 : 2.4;
+  const height = f <= 12 ? 1.9 : f <= 22 ? 2.3 : 2.6;
+  const volumeM3 = parseFloat((length * width * height).toFixed(1));
+  const key = `CUSTOM_${f}FT_${t}T`;
+
+  return {
+    key,
+    name: customName || `Custom ${f}ft Container (${t}T)`,
+    displayName: customName ? `${customName} (${t}T)` : `Custom ${f}ft (${t}T)`,
+    shortName: customName || `Custom ${f}ft`,
+    feet: f,
+    tonnage: t,
+    length,
+    width,
+    height,
+    cabLength: f <= 12 ? 1.3 : f <= 22 ? 1.6 : 2.0,
+    axleCount: f <= 12 ? 2 : f <= 24 ? 3 : 4,
+    wheelbase: parseFloat((f * 0.22).toFixed(1)),
+    rearOverhang: parseFloat((f * 0.06).toFixed(1)),
+    cabType: f <= 12 ? 'COE_COMPACT' : f <= 22 ? 'MEDIUM_DEFLECTOR' : 'HEAVY_DUTY',
+    defaultCapacityKg: Math.round(t * 1000),
+    volumeM3,
+    isCustom: true,
+  };
+}
+
+/**
  * Maps vehicle capacity / type to closest standard truck configuration
  */
 export function getTruckConfigForVehicle(vehicle, explicitFeet = null) {
-  if (explicitFeet && TRUCK_CONFIGS[explicitFeet]) {
-    return { ...TRUCK_CONFIGS[explicitFeet], key: explicitFeet };
+  if (explicitFeet) {
+    if (TRUCK_CONFIGS[explicitFeet]) {
+      return { ...TRUCK_CONFIGS[explicitFeet], key: explicitFeet };
+    }
+    // Handle custom key formatted as CUSTOM_<feet>FT_<tonnage>T
+    if (typeof explicitFeet === 'string' && explicitFeet.startsWith('CUSTOM_')) {
+      const parts = explicitFeet.replace('CUSTOM_', '').split('_');
+      const f = parseFloat(parts[0]) || 20;
+      const t = parseFloat(parts[1]) || Number((f * 0.65).toFixed(1));
+      return createCustomTruckConfig(f, t);
+    }
   }
 
   if (!vehicle) {
@@ -96,6 +148,9 @@ export function getTruckConfigForVehicle(vehicle, explicitFeet = null) {
   const ton = parseFloat(vehicle.capacity_ton || 0);
   const typeStr = (vehicle.vehicle_type || '').toUpperCase();
 
+  if (typeStr.includes('ACE') || typeStr.includes('CHOTA') || typeStr.includes('HATHI') || typeStr.includes('MINI')) {
+    return { ...TRUCK_CONFIGS['11FT'], key: '11FT' };
+  }
   if (ton >= 20 || typeStr.includes('TRAILER') || typeStr.includes('32')) {
     return { ...TRUCK_CONFIGS['32FT'], key: '32FT' };
   }

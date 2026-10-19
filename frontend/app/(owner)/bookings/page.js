@@ -10,6 +10,7 @@ import Navbar from '../../../components/layout/Navbar';
 import { useTheme } from '../../../components/ThemeProvider';
 import { useTerminology } from '../../../hooks/useTerminology';
 import { useStore } from '../../../store/useStore';
+import BuiltyTypeBadge from '../../../components/ui/BuiltyTypeBadge';
 import api from '../../../services/api';
 import {
   FileText,
@@ -60,6 +61,19 @@ import DateRangeFilter from '../../../components/ui/DateRangeFilter';
 import BranchFilterDropdown from '../../../components/ui/BranchFilterDropdown';
 import ExportDateRangeModal from '../../../components/bookings/ExportDateRangeModal';
 import { usePermissions } from '../../../hooks/usePermissions';
+
+const FTL_STANDARD_VEHICLES = [
+  '32 FT Multi-Axle (14-18 Ton)',
+  '32 FT Single Axle (7-9 Ton)',
+  '20 FT Container',
+  '24 FT Container',
+  '32 FT Container (HQ / SXL / MXL)',
+  '14 FT Canter (3.5-4 Ton)',
+  '17 FT Canter (5 Ton)',
+  '19 FT Canter (7 Ton)',
+  '40 FT Trailer (Flatbed / High Bed)',
+  'Tata Ace / Pick-up (1-1.5 Ton)'
+];
 
 const numberToWordsIndian = (num) => {
   if (num === null || num === undefined || isNaN(num) || Number(num) === 0) return 'Zero Rupees Only';
@@ -146,30 +160,94 @@ const mapConsignmentFromApi = (c) => {
   const originCode = originBranchCode || originCity.slice(0, 3).toUpperCase();
   const destCode = destBranchCode || destCity.slice(0, 3).toUpperCase();
 
+  const currentBranch = c.currentBranch || (['REACHED_DESTINATION', 'OUT_FOR_DELIVERY', 'DELIVERED', 'COMPLETED'].includes(status) ? c.destBranch : c.originBranch);
+  const currentBranchCode = c.currentBranch?.branch_code || currentBranch?.branch_code || (['REACHED_DESTINATION', 'OUT_FOR_DELIVERY', 'DELIVERED', 'COMPLETED'].includes(status) ? destCode : originCode);
+  const currentBranchName = c.currentBranch?.branch_name || currentBranch?.branch_name || (['REACHED_DESTINATION', 'OUT_FOR_DELIVERY', 'DELIVERED', 'COMPLETED'].includes(status) ? (c.destBranch?.branch_name || destCity) : (c.originBranch?.branch_name || originCity));
+
+  const resolvedVehicle = c.vehicle_number || (c.active_trip?.vehicle?.vehicle_number) || (c.trips?.[0]?.vehicle?.vehicle_number) || 'Unassigned';
+  const resolvedDriver = c.driver_name || (c.active_trip?.driver?.name) || (c.trips?.[0]?.driver?.name) || 'Pending Allocation';
+  const resolvedDriverPhone = c.driver_phone || (c.active_trip?.driver?.phone) || (c.trips?.[0]?.driver?.phone) || '';
+  const resolvedTripNumber = c.trip_number || (c.active_trip?.trip_number) || (c.trips?.[0]?.trip_number) || null;
+
+  let presentLocationType = 'ORIGIN_GODOWN';
+  let presentLocationTitle = '';
+  let presentLocationDetail = '';
+
+  if (['DELIVERED', 'COMPLETED', 'POD_UPLOADED', 'POD_VERIFIED'].includes(status)) {
+    presentLocationType = 'DELIVERED';
+    presentLocationTitle = `Delivered to Receiver`;
+    presentLocationDetail = `${c.consignee?.name || 'Receiver'} • ${destCity}`;
+  } else if (['OUT_FOR_DELIVERY'].includes(status)) {
+    presentLocationType = 'OUT_FOR_DELIVERY';
+    presentLocationTitle = `Out for Local Delivery`;
+    presentLocationDetail = `${destCity} ${resolvedDriver !== 'Pending Allocation' ? `(Driver: ${resolvedDriver})` : ''}`;
+  } else if (['REACHED_DESTINATION'].includes(status)) {
+    presentLocationType = 'DEST_GODOWN';
+    presentLocationTitle = `At Dest Branch [${destCode}]`;
+    presentLocationDetail = `${c.destBranch?.branch_name || destCity} Godown`;
+  } else if (['IN_TRANSIT', 'DISPATCHED', 'ON_TRIP'].includes(status)) {
+    presentLocationType = 'IN_TRANSIT';
+    presentLocationTitle = `In Transit on Highway`;
+    presentLocationDetail = `${resolvedVehicle !== 'Unassigned' ? `Vehicle: ${resolvedVehicle}` : 'Line-haul Truck'}${resolvedTripNumber ? ` (Trip: ${resolvedTripNumber})` : ''}`;
+  } else if (status === 'RECEIVED_AT_HUB') {
+    presentLocationType = 'TRANSIT_HUB';
+    presentLocationTitle = `At Transit Hub [${currentBranchCode}]`;
+    presentLocationDetail = `${currentBranchName} Dock`;
+  } else {
+    presentLocationType = 'ORIGIN_GODOWN';
+    presentLocationTitle = `At Origin Branch [${originCode}]`;
+    presentLocationDetail = `${c.originBranch?.branch_name || originCity} Godown`;
+  }
+
   return {
     id: c.id,
     booking_id: c.booking_id ? (c.booking_id.startsWith('BKG') ? c.booking_id : `BKG-${c.booking_id.slice(0, 8)}`) : 'BKG-DIRECT',
     lr_number: c.docket_number || c.lr_number || `CSN-${(c.id || '').slice(0, 8).toUpperCase()}`,
+    load_type: (c.load_type || 'PTL').toUpperCase() === 'FTL' ? 'FTL' : 'PTL',
     booking_date: c.booking_date ? new Date(c.booking_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Today',
     raw_booking_date: c.booking_date || new Date().toISOString().slice(0, 10),
     origin_city: originCity,
     destination_city: destCity,
     origin_branch: c.originBranch,
     dest_branch: c.destBranch,
+    current_branch: currentBranch,
     origin_branch_code: originCode,
     dest_branch_code: destCode,
+    current_branch_code: currentBranchCode,
+    origin_branch_name: c.originBranch?.branch_name || originCity,
+    dest_branch_name: c.destBranch?.branch_name || destCity,
+    current_branch_name: currentBranchName,
+    present_location_type: presentLocationType,
+    present_location_title: presentLocationTitle,
+    present_location_detail: presentLocationDetail,
     route_code: `${originCode} ➔ ${destCode}`,
+    consignor_id: c.consignor_id || c.consignor?.id,
+    consignee_id: c.consignee_id || c.consignee?.id,
+    consignor_name: c.consignor_name || c.consignor?.name,
+    consignee_name: c.consignee_name || c.consignee?.name,
+    consignor_phone: c.consignor_phone || c.consignor?.phone,
+    consignee_phone: c.consignee_phone || c.consignee?.phone,
+    consignor_address: c.consignor_address || c.consignor?.billing_address || c.consignor?.address || c.pickup_address,
+    consignee_address: c.consignee_address || c.consignee?.billing_address || c.consignee?.address || c.delivery_address,
+    consignor_gstin: c.consignor_gstin || c.consignor?.gstin,
+    consignee_gstin: c.consignee_gstin || c.consignee?.gstin,
     consignor: {
-      name: c.consignor?.name || 'Consignor Shipper',
+      id: c.consignor_id || c.consignor?.id,
+      name: c.consignor?.name || c.consignor_name || c.consignorName || (c.consignor_id ? undefined : 'Commercial Consignor'),
       segment: 'Commercial Freight',
-      city: c.consignor?.city || originCity,
-      phone: c.consignor?.phone || '',
+      city: c.consignor?.city || c.consignor_city || c.consignorCity || originCity,
+      phone: c.consignor?.phone || c.consignor_phone || c.consignorPhone || '',
+      address: c.consignor?.billing_address || c.consignor?.address || c.consignor_address || c.consignorAddress || c.pickup_address || '',
+      gstin: c.consignor?.gstin || c.consignor_gstin || c.consignorGstin || '',
     },
     consignee: {
-      name: c.consignee?.name || 'Consignee Receiver',
+      id: c.consignee_id || c.consignee?.id,
+      name: c.consignee?.name || c.consignee_name || c.consigneeName || (c.consignee_id ? undefined : 'Commercial Consignee'),
       segment: 'Receiving Depot',
-      city: c.consignee?.city || destCity,
-      phone: c.consignee?.phone || '',
+      city: c.consignee?.city || c.consignee_city || c.consigneeCity || destCity,
+      phone: c.consignee?.phone || c.consignee_phone || c.consigneePhone || '',
+      address: c.consignee?.billing_address || c.consignee?.address || c.consignee_address || c.consigneeAddress || c.delivery_address || '',
+      gstin: c.consignee?.gstin || c.consignee_gstin || c.consigneeGstin || '',
     },
     cargo_type: c.material_description || 'General Goods',
     packages_count: c.packages_count || 1,
@@ -186,11 +264,11 @@ const mapConsignmentFromApi = (c) => {
     tax_percent: parseFloat(c.tax_percent || 0),
     tax_amount: parseFloat(c.tax_amount || 0),
     discount_amount: parseFloat(c.discount_amount || 0),
-    vehicle_number: c.vehicle_number || (c.active_trip?.vehicle?.vehicle_number) || (c.trips?.[0]?.vehicle?.vehicle_number) || 'Unassigned',
+    vehicle_number: resolvedVehicle,
     vehicle_type: c.vehicle_type || (c.active_trip?.vehicle?.vehicle_type) || (c.trips?.[0]?.vehicle?.vehicle_type) || 'Scheduled Line-haul',
-    driver_name: c.driver_name || (c.active_trip?.driver?.name) || (c.trips?.[0]?.driver?.name) || 'Pending Allocation',
-    driver_phone: c.driver_phone || (c.active_trip?.driver?.phone) || (c.trips?.[0]?.driver?.phone) || '',
-    trip_number: c.trip_number || (c.active_trip?.trip_number) || (c.trips?.[0]?.trip_number) || null,
+    driver_name: resolvedDriver,
+    driver_phone: resolvedDriverPhone,
+    trip_number: resolvedTripNumber,
     transport_mode: c.transport_mode || 'ROAD',
     delivery_type: c.delivery_type || (parseFloat(c.door_delivery_charges || 0) > 0 ? 'DOOR_DELIVERY' : 'GODOWN_DELIVERY'),
     total_amount: parseFloat(c.total_amount || c.freight_amount || 0),
@@ -587,6 +665,378 @@ function BranchSelectDropdown({
   );
 }
 
+function FtlVehicleSelectDropdown({
+  value,
+  onChange,
+  vehiclesList = [],
+  isDark = true,
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [activeTab, setActiveTab] = useState('FLEET'); // 'FLEET' | 'CUSTOM'
+  const [customInput, setCustomInput] = useState('');
+  const [mounted, setMounted] = useState(false);
+  const triggerRef = useRef(null);
+  const dropdownMenuRef = useRef(null);
+  const [coords, setCoords] = useState({
+    top: 0,
+    bottom: 0,
+    left: 0,
+    width: 0,
+    maxHeight: 340,
+    opensUpward: false,
+  });
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const updateCoords = () => {
+    if (triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      const viewportHeight = window.innerHeight || (document.documentElement ? document.documentElement.clientHeight : 800);
+      const viewportWidth = window.innerWidth || (document.documentElement ? document.documentElement.clientWidth : 1200);
+
+      const spaceBelow = viewportHeight - rect.bottom - 12;
+      const spaceAbove = rect.top - 12;
+      const opensUpward = spaceBelow < 280 && spaceAbove > spaceBelow;
+      const availableSpace = opensUpward ? spaceAbove : spaceBelow;
+      const responsiveMaxHeight = Math.max(200, Math.min(360, Math.floor(availableSpace)));
+
+      const dropdownWidth = Math.max(rect.width, 380);
+      const clampedLeft = Math.max(8, Math.min(rect.left, viewportWidth - dropdownWidth - 8));
+
+      setCoords({
+        top: opensUpward ? 0 : rect.bottom + 6,
+        bottom: opensUpward ? viewportHeight - rect.top + 6 : 0,
+        left: clampedLeft,
+        width: dropdownWidth,
+        maxHeight: responsiveMaxHeight,
+        opensUpward,
+      });
+    }
+  };
+
+  useEffect(() => {
+    if (!isOpen) return;
+    updateCoords();
+
+    function handleClickOutside(e) {
+      if (
+        triggerRef.current && !triggerRef.current.contains(e.target) &&
+        dropdownMenuRef.current && !dropdownMenuRef.current.contains(e.target)
+      ) {
+        setIsOpen(false);
+      }
+    }
+
+    function handleScrollOrResize() {
+      updateCoords();
+    }
+
+    document.addEventListener('mousedown', handleClickOutside);
+    window.addEventListener('resize', handleScrollOrResize);
+    window.addEventListener('scroll', handleScrollOrResize, true);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('resize', handleScrollOrResize);
+      window.removeEventListener('scroll', handleScrollOrResize, true);
+    };
+  }, [isOpen]);
+
+  const filteredFleet = useMemo(() => {
+    const q = (query || '').toLowerCase().trim();
+    if (!q) return vehiclesList;
+    return vehiclesList.filter((v) => {
+      const num = (v.vehicle_number || '').toLowerCase();
+      const type = (v.vehicle_type || '').toLowerCase();
+      const cap = String(v.capacity_ton || '');
+      const owner = (v.ownership_type || '').toLowerCase();
+      return num.includes(q) || type.includes(q) || cap.includes(q) || owner.includes(q);
+    });
+  }, [vehiclesList, query]);
+
+  // Determine display representation for selected vehicle
+  const renderSelectedDisplay = () => {
+    if (!value) {
+      return <span className="text-slate-400 text-xs">-- Select Company Vehicle or Enter Custom --</span>;
+    }
+
+    const matchedFleet = vehiclesList.find((v) => value.startsWith(v.vehicle_number));
+    if (matchedFleet) {
+      const ownership = matchedFleet.ownership_type === 'ATTACHED' ? 'Attached' : 'Company Fleet';
+      return (
+        <div className="flex items-center gap-2 truncate">
+          <Truck className="w-4 h-4 text-emerald-500 shrink-0" />
+          <span className="font-mono font-bold text-xs truncate">{matchedFleet.vehicle_number}</span>
+          <span className="text-slate-400 text-xs shrink-0">—</span>
+          <span className="text-xs truncate">{matchedFleet.vehicle_type || 'Vehicle'} {matchedFleet.capacity_ton ? `(${matchedFleet.capacity_ton}T)` : ''}</span>
+          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 border ${
+            matchedFleet.ownership_type === 'ATTACHED'
+              ? 'bg-amber-500/15 text-amber-500 border-amber-500/30'
+              : 'bg-emerald-500/15 text-emerald-500 border-emerald-500/30'
+          }`}>
+            {ownership}
+          </span>
+        </div>
+      );
+    }
+
+    // It's a custom vehicle
+    return (
+      <div className="flex items-center gap-2 truncate">
+        <Pencil className="w-3.5 h-3.5 text-purple-500 shrink-0" />
+        <span className="font-bold text-xs truncate">{value}</span>
+        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/25">
+          Custom
+        </span>
+      </div>
+    );
+  };
+
+  const handleApplyCustom = () => {
+    const trimmed = (customInput || '').trim();
+    if (trimmed) {
+      onChange(trimmed);
+      setIsOpen(false);
+    }
+  };
+
+  return (
+    <div className="relative">
+      {/* Trigger Button */}
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => {
+          setIsOpen((prev) => !prev);
+          setQuery('');
+          if (value && !vehiclesList.some((v) => value.startsWith(v.vehicle_number))) {
+            setCustomInput(value);
+            setActiveTab('CUSTOM');
+          } else {
+            setActiveTab('FLEET');
+          }
+        }}
+        className={`w-full h-11 px-3.5 rounded-xl border text-xs font-semibold flex items-center justify-between transition-all cursor-pointer ${
+          isDark
+            ? 'border-purple-500/40 bg-slate-900/90 text-white hover:border-purple-400'
+            : 'border-purple-300 bg-white text-slate-800 hover:border-purple-400 shadow-xs'
+        }`}
+      >
+        <div className="min-w-0 flex-1 text-left truncate mr-2">
+          {renderSelectedDisplay()}
+        </div>
+        <ChevronDown className={`w-4 h-4 text-purple-600 dark:text-purple-400 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+
+      {/* Floating Dropdown Menu (Portaled to document.body) */}
+      {isOpen && mounted && typeof document !== 'undefined' && createPortal(
+        <div
+          ref={dropdownMenuRef}
+          style={{
+            position: 'fixed',
+            left: `${coords.left}px`,
+            width: `${coords.width}px`,
+            maxHeight: `${coords.maxHeight}px`,
+            zIndex: 99999,
+            ...(coords.opensUpward
+              ? { bottom: `${coords.bottom}px`, top: 'auto' }
+              : { top: `${coords.top}px`, bottom: 'auto' }),
+          }}
+          className={`flex flex-col rounded-2xl border shadow-2xl overflow-hidden transition-all duration-100 ${
+            isDark
+              ? 'bg-[#0f172a] border-slate-700/80 text-white shadow-black/80'
+              : 'bg-white border-slate-200 text-slate-900 shadow-slate-900/20'
+          }`}
+        >
+          {/* Filter Tabs (Only 2 options: Company Fleet and Custom) */}
+          <div className={`grid grid-cols-2 p-1.5 gap-1.5 border-b text-xs font-bold shrink-0 ${
+            isDark ? 'bg-slate-950/80 border-slate-800' : 'bg-slate-100/80 border-slate-200'
+          }`}>
+            <button
+              type="button"
+              onClick={() => setActiveTab('FLEET')}
+              className={`py-2 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                activeTab === 'FLEET'
+                  ? 'bg-purple-600 text-white shadow-xs font-black'
+                  : isDark ? 'text-slate-400 hover:text-white hover:bg-slate-800/60' : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+              }`}
+            >
+              <span>🏢 Company Fleet</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                activeTab === 'FLEET' ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-500'
+              }`}>
+                {vehiclesList.length}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('CUSTOM');
+                if (!customInput && value && !vehiclesList.some((v) => value.startsWith(v.vehicle_number))) {
+                  setCustomInput(value);
+                }
+              }}
+              className={`py-2 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                activeTab === 'CUSTOM'
+                  ? 'bg-purple-600 text-white shadow-xs font-black'
+                  : isDark ? 'text-slate-400 hover:text-white hover:bg-slate-800/60' : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+              }`}
+            >
+              <span>✍️ Custom Vehicle</span>
+            </button>
+          </div>
+
+          {/* TAB 1: Company Fleet */}
+          {activeTab === 'FLEET' && (
+            <div className="flex flex-col flex-1 min-h-0">
+              {/* Search Header */}
+              <div className={`p-2.5 px-3 border-b flex items-center gap-2 shrink-0 ${
+                isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-slate-50 border-slate-200'
+              }`}>
+                <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                <input
+                  type="text"
+                  autoFocus
+                  placeholder="Search truck number, body type, capacity..."
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  className={`w-full text-xs bg-transparent focus:outline-none ${
+                    isDark ? 'text-white placeholder-slate-500' : 'text-slate-900 placeholder-slate-400'
+                  }`}
+                />
+                {query && (
+                  <button
+                    type="button"
+                    onClick={() => setQuery('')}
+                    className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Scrollable Fleet List */}
+              <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800/60 p-1">
+                {filteredFleet.length > 0 ? (
+                  filteredFleet.map((v) => {
+                    const ownership = v.ownership_type === 'ATTACHED' ? 'Attached' : 'Company Fleet';
+                    const itemVal = `${v.vehicle_number} — ${v.vehicle_type || 'Vehicle'}${v.capacity_ton ? ` (${v.capacity_ton} Ton)` : ''} • [${ownership}]`;
+                    const isSelected = value === itemVal || (value && value.startsWith(v.vehicle_number));
+                    return (
+                      <div
+                        key={v.id || v.vehicle_number}
+                        onClick={() => {
+                          onChange(itemVal);
+                          setIsOpen(false);
+                        }}
+                        className={`p-2.5 px-3 rounded-xl cursor-pointer transition-colors flex items-center justify-between gap-2.5 my-0.5 ${
+                          isSelected
+                            ? isDark ? 'bg-purple-600/20 text-purple-300 font-bold' : 'bg-purple-50 text-purple-900 font-bold'
+                            : isDark ? 'hover:bg-slate-800 text-slate-200' : 'hover:bg-slate-50 text-slate-800'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0 flex-1 truncate">
+                          <Truck className={`w-4 h-4 shrink-0 ${isSelected ? 'text-purple-500' : 'text-emerald-500'}`} />
+                          <span className="font-mono font-bold text-xs shrink-0">{v.vehicle_number}</span>
+                          <span className="text-slate-400 text-xs shrink-0">—</span>
+                          <span className="text-xs truncate">{v.vehicle_type || 'Vehicle'} {v.capacity_ton ? `(${v.capacity_ton} Ton)` : ''}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${
+                            v.ownership_type === 'ATTACHED'
+                              ? 'bg-amber-500/10 text-amber-500 border-amber-500/25'
+                              : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/25'
+                          }`}>
+                            {ownership}
+                          </span>
+                          {isSelected && <Check className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 shrink-0" />}
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="p-6 text-center text-xs text-slate-400 space-y-1">
+                    <p>No company fleet vehicle matching &quot;{query}&quot;</p>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('CUSTOM')}
+                      className="text-purple-600 dark:text-purple-400 hover:underline font-bold text-xs cursor-pointer inline-block mt-2"
+                    >
+                      ✍️ Enter Custom Vehicle Instead →
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: Custom Vehicle Entry */}
+          {activeTab === 'CUSTOM' && (
+            <div className="p-4 space-y-3">
+              <div>
+                <label className={`text-xs font-bold block mb-1.5 ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
+                  Enter Custom Vehicle Specification / Reg. No:
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    autoFocus
+                    placeholder="e.g. DL01AB1234 — 32 FT Multi-Axle..."
+                    value={customInput}
+                    onChange={(e) => setCustomInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleApplyCustom();
+                      }
+                    }}
+                    className={`w-full h-11 px-3.5 rounded-xl border text-xs font-semibold focus:outline-none transition-colors ${
+                      isDark
+                        ? 'border-purple-500/40 bg-slate-950 text-white placeholder-slate-500 focus:border-purple-400'
+                        : 'border-purple-300 bg-slate-50 text-slate-900 placeholder-slate-400 focus:border-purple-500 focus:bg-white'
+                    }`}
+                  />
+                </div>
+                <p className={`text-[11px] mt-1.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                  💡 Specify custom truck registration number or container dimensions.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('FLEET')}
+                  className={`px-3 py-2 rounded-xl text-xs font-medium cursor-pointer ${
+                    isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={!customInput.trim()}
+                  onClick={handleApplyCustom}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold text-white transition-all cursor-pointer ${
+                    customInput.trim()
+                      ? 'bg-purple-600 hover:bg-purple-500 shadow-md shadow-purple-600/30 active:scale-95'
+                      : 'bg-slate-700 opacity-50 cursor-not-allowed'
+                  }`}
+                >
+                  Apply Custom Vehicle ➔
+                </button>
+              </div>
+            </div>
+          )}
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}
+
 export default function BookingsMasterPage() {
   const { theme } = useTheme();
   const { term, plural, newDocLabel } = useTerminology();
@@ -596,6 +1046,9 @@ export default function BookingsMasterPage() {
   const { canEdit, canDelete, canExport, isAdmin, canCreateBooking } = usePermissions();
 
   // Server-side Pagination & Sorting State
+  const [branchesList, setBranchesList] = useState([]);
+  const [customersList, setCustomersList] = useState([]);
+  const [vehiclesList, setVehiclesList] = useState([]);
   const [consignments, setConsignments] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
   const [page, setPage] = useState(1);
@@ -604,6 +1057,7 @@ export default function BookingsMasterPage() {
   const [sortOrder, setSortOrder] = useState('DESC');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('PENDING');
+  const [loadTypeFilter, setLoadTypeFilter] = useState('ALL'); // 'ALL' | 'PTL' | 'FTL'
   const [statusSummary, setStatusSummary] = useState({
     total: 0,
     pending: 0,
@@ -637,6 +1091,10 @@ export default function BookingsMasterPage() {
     consigneeCity: '',
     originCity: '',
     destinationCity: '',
+    originBranchId: '',
+    destBranchId: '',
+    originBranchCode: '',
+    destBranchCode: '',
     cargoType: '',
     packagesCount: '10',
     weightKg: '500',
@@ -654,6 +1112,45 @@ export default function BookingsMasterPage() {
     deliveryType: 'GODOWN_DELIVERY',
     status: 'BOOKED',
   });
+
+  // Dynamically resolve Origin and Destination Branch Codes
+  const resolvedOriginCode = useMemo(() => {
+    if (editFormData.originBranchCode) return editFormData.originBranchCode;
+    if (editFormData.originBranchId) {
+      const b = branchesList.find((item) => item.id === editFormData.originBranchId);
+      if (b?.branch_code) return b.branch_code;
+    }
+    if (editFormData.originCity) {
+      const b = branchesList.find((item) =>
+        (item.city && item.city.toLowerCase() === editFormData.originCity.toLowerCase()) ||
+        (item.branch_name && item.branch_name.toLowerCase() === editFormData.originCity.toLowerCase()) ||
+        (item.branch_code && item.branch_code.toLowerCase() === editFormData.originCity.toLowerCase())
+      );
+      if (b?.branch_code) return b.branch_code;
+    }
+    if (editingDocket?.origin_branch_code) return editingDocket.origin_branch_code;
+    if (editingDocket?.originBranch?.branch_code) return editingDocket.originBranch.branch_code;
+    return editFormData.originCity ? editFormData.originCity.slice(0, 3).toUpperCase() : 'HUB';
+  }, [editFormData.originBranchCode, editFormData.originBranchId, editFormData.originCity, branchesList, editingDocket]);
+
+  const resolvedDestCode = useMemo(() => {
+    if (editFormData.destBranchCode) return editFormData.destBranchCode;
+    if (editFormData.destBranchId) {
+      const b = branchesList.find((item) => item.id === editFormData.destBranchId);
+      if (b?.branch_code) return b.branch_code;
+    }
+    if (editFormData.destinationCity) {
+      const b = branchesList.find((item) =>
+        (item.city && item.city.toLowerCase() === editFormData.destinationCity.toLowerCase()) ||
+        (item.branch_name && item.branch_name.toLowerCase() === editFormData.destinationCity.toLowerCase()) ||
+        (item.branch_code && item.branch_code.toLowerCase() === editFormData.destinationCity.toLowerCase())
+      );
+      if (b?.branch_code) return b.branch_code;
+    }
+    if (editingDocket?.dest_branch_code) return editingDocket.dest_branch_code;
+    if (editingDocket?.destBranch?.branch_code) return editingDocket.destBranch.branch_code;
+    return editFormData.destinationCity ? editFormData.destinationCity.slice(0, 3).toUpperCase() : 'DST';
+  }, [editFormData.destBranchCode, editFormData.destBranchId, editFormData.destinationCity, branchesList, editingDocket]);
 
   // Delete Docket State
   const [deletingDocket, setDeletingDocket] = useState(null);
@@ -733,12 +1230,58 @@ export default function BookingsMasterPage() {
 
   const handleOpenPrintPreview = (consignment) => {
     if (!consignment) return;
-    setPrintConsignment(consignment);
+    let resolved = { ...consignment };
+
+    // 1. Resolve from customersList if customer id is available
+    const cId = resolved.consignor_id || resolved.consignor?.id;
+    if (cId && Array.isArray(customersList)) {
+      const matchCust = customersList.find(cu => cu.id === cId);
+      if (matchCust?.name) {
+        resolved.consignor = {
+          ...resolved.consignor,
+          id: cId,
+          name: matchCust.name,
+          phone: matchCust.phone || resolved.consignor?.phone,
+          address: matchCust.billing_address || matchCust.address || resolved.consignor?.address,
+          city: matchCust.city || resolved.consignor?.city,
+          gstin: matchCust.gstin || resolved.consignor?.gstin,
+        };
+      }
+    }
+    const ceId = resolved.consignee_id || resolved.consignee?.id;
+    if (ceId && Array.isArray(customersList)) {
+      const matchCust = customersList.find(cu => cu.id === ceId);
+      if (matchCust?.name) {
+        resolved.consignee = {
+          ...resolved.consignee,
+          id: ceId,
+          name: matchCust.name,
+          phone: matchCust.phone || resolved.consignee?.phone,
+          address: matchCust.billing_address || matchCust.address || resolved.consignee?.address,
+          city: matchCust.city || resolved.consignee?.city,
+          gstin: matchCust.gstin || resolved.consignee?.gstin,
+        };
+      }
+    }
+
+    // 2. If consignor or consignee name is still placeholder or missing, try resolving from active consignments list
+    if ((!resolved.consignor?.name || resolved.consignor.name === 'Consignor Shipper' || !resolved.consignee?.name || resolved.consignee.name === 'Consignee Receiver') && Array.isArray(consignments)) {
+      const match = consignments.find(c => c.id === consignment.id || c.lr_number === (consignment.docket_number || consignment.lr_number));
+      if (match) {
+        if (match.consignor?.name && match.consignor.name !== 'Consignor Shipper') {
+          resolved.consignor = match.consignor;
+        }
+        if (match.consignee?.name && match.consignee.name !== 'Consignee Receiver') {
+          resolved.consignee = match.consignee;
+        }
+      }
+    }
+    setPrintConsignment(resolved);
     setIsPrintModalOpen(true);
   };
 
   // Renders a single official Indian transport bilty slip sheet
-  const renderBiltySlipSheet = (c, copyTitle) => {
+  const renderBiltySlipSheet = (c, copyType = 'CONSIGNOR') => {
     if (!c) return null;
 
     const companyBrand = user?.businessName || user?.organizationName || (typeof window !== 'undefined' ? localStorage.getItem('transporter_brand_name') : null) || 'Balaji Logistics';
@@ -749,35 +1292,64 @@ export default function BookingsMasterPage() {
     const companyGstin = user?.gstin || '07AABCB1234F1Z8';
     const companyPan = user?.pan || 'AABCB1234F';
 
-    const isConsignorCopy = copyTitle.includes('CONSIGNOR');
-    const isConsigCopy = copyTitle.includes('CONSIGNEE');
-
-    const badgeTheme = isConsignorCopy
-      ? 'border-rose-600 bg-rose-50 text-rose-800'
-      : isConsigCopy
-        ? 'border-emerald-600 bg-emerald-50 text-emerald-800'
-        : 'border-blue-600 bg-blue-50 text-blue-800';
-
     const freightAmt = parseFloat(c.freight_amount || 0);
-    const loadingAmt = parseFloat(c.loading_charges || 0);
-    const biltyFeeAmt = parseFloat(c.bilty_fee || 50);
+    const loadingAmt = parseFloat(c.loading_charges || c.hamali_charges || 0);
+    const biltyFeeAmt = parseFloat(c.handling_charges ?? c.bilty_fee ?? 50);
     const ddcAmt = parseFloat(c.door_delivery_charges || 0);
     const otherAmt = parseFloat(c.other_charges || 0);
     const discountAmt = parseFloat(c.discount_amount || 0);
     const taxAmt = parseFloat(c.tax_amount || 0);
     const totalAmt = parseFloat(c.total_amount || (freightAmt + loadingAmt + biltyFeeAmt + ddcAmt + otherAmt - discountAmt + taxAmt) || 0);
 
+    const isFixedPricing = c.rate_type === 'FIXED' ||
+      c.pricing_mode === 'FIXED' ||
+      c.ftl_pricing_mode === 'FIXED' ||
+      ((c.load_type || 'PTL') === 'FTL' && (
+        !c.rate ||
+        parseFloat(c.rate) === 0 ||
+        Math.abs(freightAmt - (parseFloat(c.charged_weight || c.actual_weight || 0) * parseFloat(c.rate || 0))) > 1
+      ));
+
     const paymentType = (c.payment_mode || 'TO_PAY').toUpperCase();
+
+    const resolvedConsignor = c.consignor || {};
+    let consignorName = (resolvedConsignor.name && resolvedConsignor.name !== 'Consignor Shipper' && resolvedConsignor.name !== 'Commercial Consignor')
+      ? resolvedConsignor.name
+      : (c.consignor_name || c.consignorName);
+    const cId = c.consignor_id || resolvedConsignor.id;
+    if (!consignorName && cId && Array.isArray(customersList)) {
+      const matchCust = customersList.find(cu => cu.id === cId);
+      if (matchCust?.name) consignorName = matchCust.name;
+    }
+    if (!consignorName || consignorName === 'Consignor Shipper') {
+      consignorName = c.consignor_name || 'Commercial Shipper';
+    }
+
+    const consignorCity = resolvedConsignor.city || c.consignor_city || c.consignorCity || c.origin_city || 'Origin City';
+    const consignorPhone = resolvedConsignor.phone || c.consignor_phone || c.consignorPhone || '';
+    const consignorAddress = resolvedConsignor.billing_address || resolvedConsignor.address || c.consignor_address || c.consignorAddress || c.pickup_address || '';
+    const consignorGstin = resolvedConsignor.gstin || c.consignor_gstin || c.consignorGstin || '';
+
+    const resolvedConsignee = c.consignee || {};
+    let consigneeName = (resolvedConsignee.name && resolvedConsignee.name !== 'Consignee Receiver' && resolvedConsignee.name !== 'Commercial Consignee')
+      ? resolvedConsignee.name
+      : (c.consignee_name || c.consigneeName);
+    const ceId = c.consignee_id || resolvedConsignee.id;
+    if (!consigneeName && ceId && Array.isArray(customersList)) {
+      const matchCust = customersList.find(cu => cu.id === ceId);
+      if (matchCust?.name) consigneeName = matchCust.name;
+    }
+    if (!consigneeName || consigneeName === 'Consignee Receiver') {
+      consigneeName = c.consignee_name || 'Commercial Consignee';
+    }
+
+    const consigneeCity = resolvedConsignee.city || c.consignee_city || c.consigneeCity || c.destination_city || 'Destination City';
+    const consigneePhone = resolvedConsignee.phone || c.consignee_phone || c.consigneePhone || '';
+    const consigneeAddress = resolvedConsignee.billing_address || resolvedConsignee.address || c.consignee_address || c.consigneeAddress || c.delivery_address || '';
+    const consigneeGstin = resolvedConsignee.gstin || c.consignee_gstin || c.consigneeGstin || '';
 
     return (
       <div className="bilty-slip-sheet bg-white text-slate-900 border-2 border-slate-900 rounded-none shadow-xl p-5 sm:p-7 max-w-[860px] mx-auto text-[11px] leading-tight font-sans relative my-4">
-
-        {/* Faint Background Security Watermark */}
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.035] select-none overflow-hidden">
-          <span className="text-8xl font-black rotate-[-22deg] uppercase tracking-widest text-slate-900 whitespace-nowrap">
-            {copyTitle.split(' ')[0]} COPY
-          </span>
-        </div>
 
         {/* 1. Top Legal & Statutory Strip */}
         <div className="border-b border-slate-900 pb-1 mb-2 flex items-center justify-between text-[9px] font-bold tracking-wider uppercase text-slate-600">
@@ -819,8 +1391,23 @@ export default function BookingsMasterPage() {
             <div className="text-[11px] font-black tracking-wider uppercase text-slate-900">
               LORRY RECEIPT / BILTY
             </div>
-            <div className={`mt-0.5 inline-block px-2 py-0.5 border text-[9px] font-extrabold tracking-wide uppercase rounded ${badgeTheme}`}>
-              {copyTitle}
+            <div className="flex items-center justify-center gap-1.5 mt-0.5 flex-wrap">
+              <div className={`inline-block px-2 py-0.5 border text-[9px] font-black tracking-wide uppercase rounded ${
+                copyType === 'CONSIGNOR'
+                  ? 'border-rose-600 bg-rose-50 text-rose-800'
+                  : copyType === 'CONSIGNEE'
+                    ? 'border-emerald-600 bg-emerald-50 text-emerald-800'
+                    : 'border-blue-600 bg-blue-50 text-blue-800'
+              }`}>
+                COPY
+              </div>
+              <div className={`inline-block px-1.5 py-0.5 border text-[8.5px] font-black tracking-wide uppercase rounded ${
+                (c.load_type || 'PTL') === 'FTL'
+                  ? 'bg-purple-100 text-purple-900 border-purple-400'
+                  : 'bg-amber-100 text-amber-900 border-amber-400'
+              }`}>
+                {(c.load_type || 'PTL') === 'FTL' ? '🚛 FTL (FULL TRUCK)' : '📦 PTL (PART LOAD)'}
+              </div>
             </div>
 
             {/* Genuine Scannable Code 128 Barcode */}
@@ -844,59 +1431,65 @@ export default function BookingsMasterPage() {
           </div>
         </div>
 
-        {/* 3. Operational Transit Corridor Strip (4 Columns) */}
+        {/* 3. Customer Transit Corridor Strip (Booking Origin Station -> Delivery Destination) */}
         <div className="grid grid-cols-4 border-b-2 border-slate-900 bg-slate-100 text-[10px] font-sans">
           <div className="border-r border-slate-900 p-2">
-            <span className="text-[8.5px] uppercase font-bold text-slate-500 block">ORIGIN HUB (FROM)</span>
-            <span className="font-black text-slate-900 uppercase text-[11px] truncate block">{c.origin_city}</span>
+            <span className="text-[8px] uppercase font-bold text-slate-500 block">FROM (BOOKING / SHIPPER ORIGIN)</span>
+            <span className="font-black text-slate-900 uppercase text-[11px] truncate block">{consignorCity}</span>
+            <span className="text-[9px] text-slate-600 truncate block font-semibold mt-0.5">{consignorName}</span>
           </div>
           <div className="border-r border-slate-900 p-2">
-            <span className="text-[8.5px] uppercase font-bold text-slate-500 block">DESTINATION (TO)</span>
-            <span className="font-black text-slate-900 uppercase text-[11px] truncate block">{c.destination_city}</span>
+            <span className="text-[8px] uppercase font-bold text-slate-500 block">TO (DELIVERY DESTINATION / RECEIVER)</span>
+            <span className="font-black text-slate-900 uppercase text-[11px] truncate block">{consigneeCity}</span>
+            <span className="text-[9px] text-slate-600 truncate block font-semibold mt-0.5">{consigneeName}</span>
           </div>
           <div className="border-r border-slate-900 p-2">
-            <span className="text-[8.5px] uppercase font-bold text-slate-500 block">MODE & VEHICLE</span>
+            <span className="text-[8px] uppercase font-bold text-slate-500 block">MODE & VEHICLE</span>
             <span className="font-mono font-black text-slate-900 text-[11px] truncate block">
               {c.transport_mode === 'AIR' ? '✈️ BY AIR' : c.transport_mode === 'RAIL' ? '🚆 BY RAIL' : '🚛 BY ROAD'} {c.vehicle_number && c.vehicle_number !== 'Unassigned' ? `• ${c.vehicle_number}` : ''}
             </span>
           </div>
           <div className="p-2">
-            <span className="text-[8.5px] uppercase font-bold text-slate-500 block">DRIVER / CARRIER</span>
-            <span className="font-semibold text-slate-900 truncate block">{c.driver_name || 'Pending Assignment'}</span>
+            <span className="text-[8px] uppercase font-bold text-slate-500 block">DRIVER / CARRIER</span>
+            <span className="font-semibold text-slate-900 truncate block">{c.driver_name || 'Pending Allocation'}</span>
           </div>
         </div>
 
-        {/* 4. Consignor & Consignee Box (Two-Columns) */}
+        {/* 4. Consignor (Customer Shipper) & Consignee (Customer Receiver) Cards */}
         <div className="grid grid-cols-2 border-b-2 border-slate-900">
           {/* Consignor */}
           <div className="border-r border-slate-900 p-2.5">
             <div className="text-[9px] font-black tracking-wider uppercase text-slate-500 mb-1 flex items-center justify-between">
-              <span>CONSIGNOR (SHIPPER)</span>
-              <span className="text-[8.5px] font-normal text-slate-400">DISPATCH FROM</span>
+              <span className="font-bold text-slate-800">CONSIGNOR (SHIPPER / CUSTOMER)</span>
+              <span className="text-[8.5px] font-normal text-slate-500">DISPATCH FROM</span>
             </div>
-            <div className="font-bold text-slate-950 text-xs">{c.consignor?.name || 'Commercial Consignor'}</div>
-            <div className="text-[10px] text-slate-600 mt-0.5">{c.consignor?.city || c.origin_city}</div>
+            <div className="font-black text-slate-950 text-xs tracking-wide">{consignorName}</div>
+            <div className="text-[10px] text-slate-700 mt-0.5 font-medium leading-tight">
+              {consignorAddress ? `${consignorAddress}, ` : ''}{consignorCity}
+            </div>
             <div className="text-[9.5px] font-mono text-slate-700 mt-1">
-              Ph: {c.consignor?.phone || 'Not Provided'}
+              Ph: {consignorPhone || 'Not Provided'}
             </div>
-            <div className="text-[9px] font-mono text-slate-500 mt-0.5">
-              GSTIN: 07AABCT8842K1Z9 (Regular)
+            <div className="text-[9px] font-mono text-slate-600 mt-0.5">
+              GSTIN: {consignorGstin ? `${consignorGstin} (Registered)` : 'Unregistered / UR'}
             </div>
           </div>
 
           {/* Consignee */}
           <div className="p-2.5">
             <div className="text-[9px] font-black tracking-wider uppercase text-slate-500 mb-1 flex items-center justify-between">
-              <span>CONSIGNEE (RECEIVER)</span>
-              <span className="text-[8.5px] font-normal text-slate-400">DELIVER TO</span>
+              <span className="font-bold text-slate-800">CONSIGNEE (RECEIVER / CUSTOMER)</span>
+              <span className="text-[8.5px] font-normal text-slate-500">DELIVER TO</span>
             </div>
-            <div className="font-bold text-slate-950 text-xs">{c.consignee?.name || 'Commercial Consignee'}</div>
-            <div className="text-[10px] text-slate-600 mt-0.5">{c.consignee?.city || c.destination_city}</div>
+            <div className="font-black text-slate-950 text-xs tracking-wide">{consigneeName}</div>
+            <div className="text-[10px] text-slate-700 mt-0.5 font-medium leading-tight">
+              {consigneeAddress ? `${consigneeAddress}, ` : ''}{consigneeCity}
+            </div>
             <div className="text-[9.5px] font-mono text-slate-700 mt-1">
-              Ph: {c.consignee?.phone || 'Not Provided'}
+              Ph: {consigneePhone || 'Not Provided'}
             </div>
-            <div className="text-[9px] font-mono text-slate-500 mt-0.5">
-              GSTIN: 29AABCT8842K1Z2 (Regular)
+            <div className="text-[9px] font-mono text-slate-600 mt-0.5">
+              GSTIN: {consigneeGstin ? `${consigneeGstin} (Registered)` : 'Unregistered / UR'}
             </div>
           </div>
         </div>
@@ -929,7 +1522,11 @@ export default function BookingsMasterPage() {
                   {c.charged_weight || c.actual_weight || 0} KG
                 </td>
                 <td className="py-2 px-2 border-r border-slate-900 text-right font-mono">
-                  ₹{c.rate || 0} / KG
+                  {isFixedPricing ? (
+                    <span>0 <span className="text-[8px] text-slate-500 font-sans uppercase font-bold">(Fixed)</span></span>
+                  ) : (
+                    <span>₹{parseFloat(c.rate || 0)} / KG</span>
+                  )}
                 </td>
                 <td className="py-2 px-2 text-right font-mono font-bold text-slate-950">
                   ₹{freightAmt.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -971,7 +1568,13 @@ export default function BookingsMasterPage() {
 
             {/* GST & Transit Risk Clause */}
             <div className="mt-2 space-y-0.5 text-[8.5px] text-slate-500 leading-tight">
-              <p>• <strong>GST Note:</strong> Tax payable under Reverse Charge Mechanism (RCM) by {paymentType === 'TO_PAY' ? 'Consignee' : 'Consignor'} as per Notif. No. 13/2017-CT(R).</p>
+              {taxAmt > 0 ? (
+                <p>• <strong>GST Note:</strong> Tax charged under Forward Charge Mechanism ({c.tax_percent || 5}% GST added to bill/LR).</p>
+              ) : (parseFloat(c.tax_percent || 0) > 0 || c.is_rcm || c.gst_mode === 'RCM') ? (
+                <p>• <strong>GST Note:</strong> Tax payable under Reverse Charge Mechanism (RCM - 5% GTA) by {paymentType === 'TO_PAY' ? 'Consignee' : 'Consignor'} as per Notif. No. 13/2017-CT(R).</p>
+              ) : (
+                <p>• <strong>GST Note:</strong> Freight services are Nil / Exempt from Goods and Services Tax.</p>
+              )}
               <p>• <strong>Transit Insurance:</strong> Booked strictly at Owner's risk. Transporter is not an insurer.</p>
             </div>
           </div>
@@ -1029,7 +1632,7 @@ export default function BookingsMasterPage() {
           <p className="font-bold text-slate-700 uppercase mb-0.5">Summary Terms & Carriage Conditions:</p>
           <p>
             1. The consignment is carried strictly subject to standard conditions of carriage by road.
-            2. Delivery will be effected only upon surrender of original Consignee copy duly signed and stamped.
+            2. Delivery will be effected only upon surrender of original Consignment note duly signed and stamped.
             3. Transporter shall not be held liable for damages, leakage, breakage or delays caused by natural perils or road hazards.
             4. Demurrage @ ₹50/day applicable if not claimed within 48 hours of destination arrival.
           </p>
@@ -1054,17 +1657,37 @@ export default function BookingsMasterPage() {
 
   // New Booking Wizard Form State
   const [bookingStep, setBookingStep] = useState(1);
-  const [branchesList, setBranchesList] = useState([]);
-  const [customersList, setCustomersList] = useState([]);
   const [showConsignorDropdown, setShowConsignorDropdown] = useState(false);
   const [showConsigneeDropdown, setShowConsigneeDropdown] = useState(false);
   const [isManualConsignor, setIsManualConsignor] = useState(false);
   const [isManualConsignee, setIsManualConsignee] = useState(false);
   const [showAllConsignors, setShowAllConsignors] = useState(false);
+  const [isCustomVehicle, setIsCustomVehicle] = useState(false);
   const consignorDropdownRef = useRef(null);
   const consigneeDropdownRef = useRef(null);
+  const consignorInputRef = useRef(null);
+  const consigneeInputRef = useRef(null);
+  const consignorDropdownMenuRef = useRef(null);
+  const consigneeDropdownMenuRef = useRef(null);
   const consignorPhoneRef = useRef(null);
   const consigneePhoneRef = useRef(null);
+
+  const [consignorCoords, setConsignorCoords] = useState({
+    top: 0,
+    bottom: 0,
+    left: 0,
+    width: 0,
+    maxHeight: 220,
+    opensUpward: false,
+  });
+  const [consigneeCoords, setConsigneeCoords] = useState({
+    top: 0,
+    bottom: 0,
+    left: 0,
+    width: 0,
+    maxHeight: 220,
+    opensUpward: false,
+  });
 
   const [docketSeriesPreview, setDocketSeriesPreview] = useState(null);
 
@@ -1093,6 +1716,10 @@ export default function BookingsMasterPage() {
     pickupDate: new Date().toISOString().split('T')[0],
     transportMode: 'ROAD', // 'ROAD' | 'RAIL' | 'AIR'
     deliveryType: 'DOOR_DELIVERY', // Default to DOOR_DELIVERY
+    loadType: 'PTL', // 'PTL' | 'FTL'
+    ftlVehicleType: '',
+    ftlPricingMode: 'FIXED', // 'FIXED' | 'PER_KG'
+    ftlFreightAmount: '',
     // Dynamic & Editable Charges
     loadingCharges: '450',
     unloadingCharges: '0',
@@ -1116,9 +1743,15 @@ export default function BookingsMasterPage() {
 
   // Calculate live freight and all charges breakdown
   const calculateFreightBreakdown = (data) => {
-    const weight = parseFloat(data.weightKg) || 0;
-    const rate = parseFloat(data.ratePerKg) || 0;
-    const basicFreight = Math.round(weight * rate);
+    const isFtl = (data.loadType || 'PTL') === 'FTL';
+    let basicFreight = 0;
+    if (isFtl && data.ftlPricingMode === 'FIXED' && data.ftlFreightAmount !== undefined && data.ftlFreightAmount !== '') {
+      basicFreight = Math.round(parseFloat(data.ftlFreightAmount) || 0);
+    } else {
+      const weight = parseFloat(data.weightKg) || 0;
+      const rate = parseFloat(data.ratePerKg) || 0;
+      basicFreight = Math.round(weight * rate);
+    }
 
     const loading = parseFloat(data.loadingCharges) || 0;
     const unloading = parseFloat(data.unloadingCharges) || 0;
@@ -1223,9 +1856,21 @@ export default function BookingsMasterPage() {
     }
   };
 
+  const fetchVehicles = async () => {
+    try {
+      const res = await api.get('/fleet/vehicles');
+      const list = Array.isArray(res.data?.data) ? res.data.data : (res.data?.data?.rows || []);
+      setVehiclesList(list);
+    } catch (err) {
+      console.warn('Failed to load fleet vehicles for booking dropdown:', err);
+      setVehiclesList([]);
+    }
+  };
+
   useEffect(() => {
     fetchBranches();
     fetchCustomers();
+    fetchVehicles();
     fetchDocketSeriesPreview();
   }, []);
 
@@ -1233,6 +1878,7 @@ export default function BookingsMasterPage() {
     if (isDrawerOpen) {
       fetchBranches();
       fetchCustomers();
+      fetchVehicles();
       fetchDocketSeriesPreview();
       setShowAllConsignors(false);
       setIsManualConsignor(false);
@@ -1242,12 +1888,84 @@ export default function BookingsMasterPage() {
     }
   }, [isDrawerOpen]);
 
+  const updateConsignorCoords = () => {
+    if (!consignorInputRef.current) return;
+    const rect = consignorInputRef.current.getBoundingClientRect();
+    const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 800;
+    const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1200;
+    const spaceBelow = viewportHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    const opensUpward = spaceBelow < 250 && spaceAbove > spaceBelow;
+    const availableSpace = opensUpward ? spaceAbove : spaceBelow;
+    const responsiveMaxHeight = Math.max(140, Math.min(250, Math.floor(availableSpace) - 10));
+
+    setConsignorCoords({
+      top: opensUpward ? 0 : rect.bottom + 4,
+      bottom: opensUpward ? viewportHeight - rect.top + 4 : 0,
+      left: Math.max(8, Math.min(rect.left, viewportWidth - rect.width - 8)),
+      width: rect.width,
+      maxHeight: responsiveMaxHeight,
+      opensUpward,
+    });
+  };
+
+  const updateConsigneeCoords = () => {
+    if (!consigneeInputRef.current) return;
+    const rect = consigneeInputRef.current.getBoundingClientRect();
+    const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 800;
+    const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1200;
+    const spaceBelow = viewportHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    const opensUpward = spaceBelow < 250 && spaceAbove > spaceBelow;
+    const availableSpace = opensUpward ? spaceAbove : spaceBelow;
+    const responsiveMaxHeight = Math.max(140, Math.min(250, Math.floor(availableSpace) - 10));
+
+    setConsigneeCoords({
+      top: opensUpward ? 0 : rect.bottom + 4,
+      bottom: opensUpward ? viewportHeight - rect.top + 4 : 0,
+      left: Math.max(8, Math.min(rect.left, viewportWidth - rect.width - 8)),
+      width: rect.width,
+      maxHeight: responsiveMaxHeight,
+      opensUpward,
+    });
+  };
+
+  useEffect(() => {
+    if (!showConsignorDropdown) return;
+    updateConsignorCoords();
+    const handleScrollOrResize = () => updateConsignorCoords();
+    window.addEventListener('resize', handleScrollOrResize);
+    window.addEventListener('scroll', handleScrollOrResize, true);
+    return () => {
+      window.removeEventListener('resize', handleScrollOrResize);
+      window.removeEventListener('scroll', handleScrollOrResize, true);
+    };
+  }, [showConsignorDropdown]);
+
+  useEffect(() => {
+    if (!showConsigneeDropdown) return;
+    updateConsigneeCoords();
+    const handleScrollOrResize = () => updateConsigneeCoords();
+    window.addEventListener('resize', handleScrollOrResize);
+    window.addEventListener('scroll', handleScrollOrResize, true);
+    return () => {
+      window.removeEventListener('resize', handleScrollOrResize);
+      window.removeEventListener('scroll', handleScrollOrResize, true);
+    };
+  }, [showConsigneeDropdown]);
+
   useEffect(() => {
     const handleClickOutside = (e) => {
-      if (consignorDropdownRef.current && !consignorDropdownRef.current.contains(e.target)) {
+      if (
+        consignorDropdownRef.current && !consignorDropdownRef.current.contains(e.target) &&
+        (!consignorDropdownMenuRef.current || !consignorDropdownMenuRef.current.contains(e.target))
+      ) {
         setShowConsignorDropdown(false);
       }
-      if (consigneeDropdownRef.current && !consigneeDropdownRef.current.contains(e.target)) {
+      if (
+        consigneeDropdownRef.current && !consigneeDropdownRef.current.contains(e.target) &&
+        (!consigneeDropdownMenuRef.current || !consigneeDropdownMenuRef.current.contains(e.target))
+      ) {
         setShowConsigneeDropdown(false);
       }
     };
@@ -1330,7 +2048,8 @@ export default function BookingsMasterPage() {
     });
   }, [customersList, formData.consigneeName]);
 
-  // Step validation rules for New Consignment Modal
+  // Step validation rules for New Consignment Modal (4 Steps)
+  // Step 1: Movement Type & Customer Parties (Consignor & Consignee)
   const isStep1Valid = useMemo(() => {
     if (formData.docketNumberMode === 'manual' && !(formData.customDocketNumber || '').trim()) {
       return false;
@@ -1354,18 +2073,6 @@ export default function BookingsMasterPage() {
       if (cleanPhone.length !== 10) {
         return false;
       }
-    }
-    if (!formData.originBranchId) {
-      return false;
-    }
-    if (!formData.destBranchId) {
-      return false;
-    }
-    if (!formData.pickupDate) {
-      return false;
-    }
-    if (!formData.transportMode) {
-      return false;
     }
     return true;
   }, [formData]);
@@ -1391,10 +2098,35 @@ export default function BookingsMasterPage() {
         missing.push('Receiver Mobile (10 Digits)');
       }
     }
+    return missing;
+  }, [formData]);
+
+  // Step 2: Route & Transit Schedule (Origin Hub, Destination Hub [exempt for FTL], Pickup Date, Mode, Delivery Type)
+  const isStep2Valid = useMemo(() => {
+    if (!formData.originBranchId) {
+      return false;
+    }
+    const isFtl = (formData.loadType || 'PTL').toUpperCase() === 'FTL';
+    // For PTL, Destination Hub is strictly required. For FTL, direct point-to-point movement skips destination hub.
+    if (!isFtl && !formData.destBranchId) {
+      return false;
+    }
+    if (!formData.pickupDate) {
+      return false;
+    }
+    if (!formData.transportMode) {
+      return false;
+    }
+    return true;
+  }, [formData]);
+
+  const step2MissingFields = useMemo(() => {
+    const missing = [];
     if (!formData.originBranchId) {
       missing.push('Origin Hub');
     }
-    if (!formData.destBranchId) {
+    const isFtl = (formData.loadType || 'PTL').toUpperCase() === 'FTL';
+    if (!isFtl && !formData.destBranchId) {
       missing.push('Destination Hub');
     }
     if (!formData.pickupDate) {
@@ -1406,7 +2138,8 @@ export default function BookingsMasterPage() {
     return missing;
   }, [formData]);
 
-  const isStep2Valid = useMemo(() => {
+  // Step 3: Cargo Commodity, Packages, Weights, Tariff Rates & Payment Term
+  const isStep3Valid = useMemo(() => {
     if (!(formData.cargoType || '').trim()) {
       return false;
     }
@@ -1421,10 +2154,17 @@ export default function BookingsMasterPage() {
     if (!formData.paymentMode) {
       return false;
     }
+    const isFtl = (formData.loadType || 'PTL').toUpperCase() === 'FTL';
+    if (isFtl && formData.ftlPricingMode === 'FIXED') {
+      const fixedAmt = parseFloat(formData.ftlFreightAmount || 0);
+      if (isNaN(fixedAmt) || fixedAmt <= 0) {
+        return false;
+      }
+    }
     return true;
   }, [formData]);
 
-  const step2MissingFields = useMemo(() => {
+  const step3MissingFields = useMemo(() => {
     const missing = [];
     if (!(formData.cargoType || '').trim()) {
       missing.push('Cargo Commodity');
@@ -1440,11 +2180,33 @@ export default function BookingsMasterPage() {
     if (!formData.paymentMode) {
       missing.push('Payment Term');
     }
+    const isFtl = (formData.loadType || 'PTL').toUpperCase() === 'FTL';
+    if (isFtl && formData.ftlPricingMode === 'FIXED') {
+      const fixedAmt = parseFloat(formData.ftlFreightAmount || 0);
+      if (isNaN(fixedAmt) || fixedAmt <= 0) {
+        missing.push('Fixed Truck Freight (₹)');
+      }
+    }
     return missing;
   }, [formData]);
 
-  const isCurrentStepValid = bookingStep === 1 ? isStep1Valid : bookingStep === 2 ? isStep2Valid : true;
-  const currentMissingFields = bookingStep === 1 ? step1MissingFields : bookingStep === 2 ? step2MissingFields : [];
+  const isCurrentStepValid =
+    bookingStep === 1
+      ? isStep1Valid
+      : bookingStep === 2
+      ? isStep2Valid
+      : bookingStep === 3
+      ? isStep3Valid
+      : true;
+
+  const currentMissingFields =
+    bookingStep === 1
+      ? step1MissingFields
+      : bookingStep === 2
+      ? step2MissingFields
+      : bookingStep === 3
+      ? step3MissingFields
+      : [];
 
   // Fetch real consignments from backend with Server-Side Pagination & Sorting
   const fetchConsignments = async (overrides = {}) => {
@@ -1458,10 +2220,12 @@ export default function BookingsMasterPage() {
     const fd = overrides.fromDate !== undefined ? overrides.fromDate : fromDate;
     const td = overrides.toDate !== undefined ? overrides.toDate : toDate;
     const br = overrides.branchId !== undefined ? overrides.branchId : selectedBranchId;
+    const ltf = overrides.loadType !== undefined ? overrides.loadType : loadTypeFilter;
 
     try {
       let url = `/bookings?page=${p}&limit=${ps}&sort_by=${sb}&sort_order=${so}`;
       if (sq) url += `&search=${encodeURIComponent(sq)}`;
+      if (ltf && ltf !== 'ALL') url += `&load_type=${ltf}`;
       if (sf && sf !== 'ALL') {
         if (sf === 'PENDING') {
           url += `&status=BOOKED,MATERIAL_RECEIVED,READY_FOR_DISPATCH,LOADED,RECEIVED_AT_HUB`;
@@ -1483,7 +2247,40 @@ export default function BookingsMasterPage() {
 
       const res = await api.get(url);
       const rawList = res.data?.data || [];
-      const mapped = rawList.map(mapConsignmentFromApi);
+      const mapped = rawList.map(item => {
+        const m = mapConsignmentFromApi(item);
+        const cId = m.consignor_id || m.consignor?.id;
+        if ((!m.consignor?.name || m.consignor.name === 'Commercial Consignor' || m.consignor.name === 'Consignor Shipper') && cId && Array.isArray(customersList)) {
+          const matchCust = customersList.find(cu => cu.id === cId);
+          if (matchCust?.name) {
+            m.consignor = {
+              ...m.consignor,
+              id: cId,
+              name: matchCust.name,
+              phone: matchCust.phone || m.consignor.phone,
+              address: matchCust.billing_address || matchCust.address || m.consignor.address,
+              city: matchCust.city || m.consignor.city,
+              gstin: matchCust.gstin || m.consignor.gstin,
+            };
+          }
+        }
+        const ceId = m.consignee_id || m.consignee?.id;
+        if ((!m.consignee?.name || m.consignee.name === 'Commercial Consignee' || m.consignee.name === 'Consignee Receiver') && ceId && Array.isArray(customersList)) {
+          const matchCust = customersList.find(cu => cu.id === ceId);
+          if (matchCust?.name) {
+            m.consignee = {
+              ...m.consignee,
+              id: ceId,
+              name: matchCust.name,
+              phone: matchCust.phone || m.consignee.phone,
+              address: matchCust.billing_address || matchCust.address || m.consignee.address,
+              city: matchCust.city || m.consignee.city,
+              gstin: matchCust.gstin || m.consignee.gstin,
+            };
+          }
+        }
+        return m;
+      });
       setConsignments(mapped);
       setTotalCount(res.data?.pagination?.total ?? mapped.length);
       if (res.data?.pagination?.summary) {
@@ -1505,6 +2302,7 @@ export default function BookingsMasterPage() {
     try {
       let url = `/bookings?limit=all&page=1&sort_by=${sortBy}&sort_order=${sortOrder}`;
       if (searchQuery) url += `&search=${encodeURIComponent(searchQuery)}`;
+      if (loadTypeFilter && loadTypeFilter !== 'ALL') url += `&load_type=${loadTypeFilter}`;
       if (statusFilter && statusFilter !== 'ALL') {
         if (statusFilter === 'PENDING') {
           url += `&status=BOOKED,MATERIAL_RECEIVED,READY_FOR_DISPATCH,LOADED,RECEIVED_AT_HUB`;
@@ -1540,7 +2338,7 @@ export default function BookingsMasterPage() {
 
   useEffect(() => {
     fetchConsignments();
-  }, [selectedBranchId, page, pageSize, sortBy, sortOrder, statusFilter, fromDate, toDate]);
+  }, [selectedBranchId, page, pageSize, sortBy, sortOrder, statusFilter, loadTypeFilter, fromDate, toDate]);
 
   // Debounce search so keystrokes don't spam the server
   useEffect(() => {
@@ -1573,14 +2371,31 @@ export default function BookingsMasterPage() {
     const taxP = parseFloat(c.tax_percent || 0);
     const total = parseFloat(c.total_amount || 0);
 
+    const matchedOriginBranch = branchesList.find(b =>
+      b.id === (c.origin_branch_id || c.from_branch_id || c.origin_branch?.id || c.originBranch?.id) ||
+      (b.city && c.origin_city && b.city.toLowerCase() === c.origin_city.toLowerCase()) ||
+      (b.branch_name && c.origin_city && b.branch_name.toLowerCase() === c.origin_city.toLowerCase()) ||
+      (b.branch_code && c.origin_branch_code && b.branch_code.toLowerCase() === c.origin_branch_code.toLowerCase())
+    );
+    const matchedDestBranch = branchesList.find(b =>
+      b.id === (c.dest_branch_id || c.to_branch_id || c.dest_branch?.id || c.destBranch?.id) ||
+      (b.city && c.destination_city && b.city.toLowerCase() === c.destination_city.toLowerCase()) ||
+      (b.branch_name && c.destination_city && b.branch_name.toLowerCase() === c.destination_city.toLowerCase()) ||
+      (b.branch_code && c.dest_branch_code && b.branch_code.toLowerCase() === c.dest_branch_code.toLowerCase())
+    );
+
     setEditFormData({
       docketNumber: c.lr_number,
       consignorName: c.consignor?.name || '',
       consignorCity: c.consignor?.city || c.origin_city || '',
       consigneeName: c.consignee?.name || '',
       consigneeCity: c.consignee?.city || c.destination_city || '',
-      originCity: c.origin_city,
-      destinationCity: c.destination_city,
+      originCity: c.origin_city || '',
+      destinationCity: c.destination_city || '',
+      originBranchId: matchedOriginBranch?.id || c.origin_branch_id || '',
+      destBranchId: matchedDestBranch?.id || c.dest_branch_id || '',
+      originBranchCode: matchedOriginBranch?.branch_code || c.origin_branch_code || c.originBranch?.branch_code || '',
+      destBranchCode: matchedDestBranch?.branch_code || c.dest_branch_code || c.destBranch?.branch_code || '',
       cargoType: c.cargo_type,
       packagesCount: (c.packages_count || 1).toString(),
       weightKg: weight.toString(),
@@ -1595,6 +2410,7 @@ export default function BookingsMasterPage() {
       totalAmount: total.toString(),
       paymentMode: c.payment_type || c.payment_mode || 'TO_PAY',
       transportMode: c.transport_mode || 'ROAD',
+      loadType: (c.load_type || 'PTL').toUpperCase() === 'FTL' ? 'FTL' : 'PTL',
       deliveryType: c.delivery_type || (parseFloat(c.door_delivery_charges || 0) > 0 ? 'DOOR_DELIVERY' : 'GODOWN_DELIVERY'),
       status: c.status || 'BOOKED',
     });
@@ -1735,23 +2551,32 @@ export default function BookingsMasterPage() {
         consignee_city: editFormData.consigneeCity,
         origin_city: editFormData.originCity,
         destination_city: editFormData.destinationCity,
+        origin_branch_id: editFormData.originBranchId || editingDocket.origin_branch_id || undefined,
+        dest_branch_id: editFormData.destBranchId || editingDocket.dest_branch_id || undefined,
+        origin_branch_code: resolvedOriginCode,
+        dest_branch_code: resolvedDestCode,
         material_description: editFormData.cargoType,
         packages_count: parseInt(editFormData.packagesCount, 10) || 1,
         actual_weight: weight,
         charged_weight: weight,
-        rate: rate,
+        rate_type: (editFormData.loadType || editingDocket?.load_type || 'PTL') === 'FTL' && (editFormData.rateType === 'FIXED' || rate === 0) ? 'FIXED' : (editingDocket?.rate_type || 'PER_KG'),
+        rate: (editFormData.loadType || editingDocket?.load_type || 'PTL') === 'FTL' && (editFormData.rateType === 'FIXED' || rate === 0) ? 0 : rate,
         freight_amount: calculatedFreight,
         loading_charges: loading,
-        hamali_charges: loading,
+        hamali_charges: 0,
         unloading_charges: unloading,
         door_delivery_charges: doorDelivery,
+        handling_charges: biltyFee,
         other_charges: totalOther,
         discount_amount: discount,
         tax_percent: taxPercent,
         tax_amount: taxAmount,
         total_amount: totalAmount,
+        is_rcm: isRcm,
+        gst_mode: editFormData.gstMode,
         payment_type: editFormData.paymentMode,
         transport_mode: editFormData.transportMode || 'ROAD',
+        load_type: editFormData.loadType || editingDocket?.load_type || 'PTL',
         delivery_type: editFormData.deliveryType || (doorDelivery > 0 ? 'DOOR_DELIVERY' : 'GODOWN_DELIVERY'),
         status: editFormData.status,
       };
@@ -1914,8 +2739,8 @@ export default function BookingsMasterPage() {
 
   const handleCreateBookingSubmit = async (e) => {
     e.preventDefault();
-    if (!isStep1Valid || !isStep2Valid) {
-      alert('Please fill all mandatory fields before creating the consignment note.');
+    if (!isStep1Valid || !isStep2Valid || !isStep3Valid) {
+      alert('Please fill all mandatory fields across all steps before creating the consignment note.');
       return;
     }
     setIsLoading(true);
@@ -1941,13 +2766,15 @@ export default function BookingsMasterPage() {
         return;
       }
 
+      const isFtl = (formData.loadType || 'PTL').toUpperCase() === 'FTL';
+
       const payload = {
         docket_number: isManualDocket ? customDocNum : undefined,
         lr_number: isManualDocket ? customDocNum : undefined,
         origin_branch_id: formData.originBranchId || undefined,
-        dest_branch_id: formData.destBranchId || undefined,
+        dest_branch_id: isFtl ? null : (formData.destBranchId || undefined),
         origin_city: formData.originCity,
-        destination_city: formData.destinationCity,
+        destination_city: isFtl ? (formData.consigneeCity || formData.destinationCity) : formData.destinationCity,
         consignor_id: formData.consignorId || undefined,
         consignor_name: formData.consignorName || 'Shipper Party',
         consignor_phone: formData.consignorPhone ? formData.consignorPhone.replace(/\D/g, '') : undefined,
@@ -1960,10 +2787,11 @@ export default function BookingsMasterPage() {
         packages_count: parseInt(formData.packagesCount, 10) || 10,
         actual_weight: parseFloat(formData.weightKg) || 0,
         charged_weight: parseFloat(formData.weightKg) || 0,
-        rate: parseFloat(formData.ratePerKg) || 0,
+        rate_type: isFtl && (formData.ftlPricingMode || 'FIXED') === 'FIXED' ? 'FIXED' : 'PER_KG',
+        rate: isFtl && (formData.ftlPricingMode || 'FIXED') === 'FIXED' ? 0 : (parseFloat(formData.ratePerKg) || 0),
         freight_amount: breakdown.basicFreight,
         loading_charges: breakdown.loading,
-        hamali_charges: breakdown.loading,
+        hamali_charges: 0,
         unloading_charges: breakdown.unloading,
         door_delivery_charges: breakdown.doorDelivery,
         handling_charges: breakdown.biltyFee,
@@ -1972,12 +2800,18 @@ export default function BookingsMasterPage() {
         tax_percent: breakdown.taxPercent,
         tax_amount: breakdown.taxAmount,
         total_amount: breakdown.totalDocketFreight,
+        is_rcm: breakdown.isRcm,
+        gst_mode: formData.gstMode,
         payment_type: formData.paymentMode || 'TO_PAY',
         transport_mode: formData.transportMode || 'ROAD',
+        load_type: (formData.loadType || 'PTL').toUpperCase() === 'FTL' ? 'FTL' : 'PTL',
         delivery_type: formData.deliveryType || (breakdown.doorDelivery > 0 ? 'DOOR_DELIVERY' : 'GODOWN_DELIVERY'),
         pickup_address: formData.consignorAddress || formData.consignorCity || formData.originCity,
         delivery_address: formData.consigneeAddress || formData.consigneeCity || formData.destinationCity,
-        booking_remarks: customRemarks ? `Additional Charges: ${customRemarks}` : undefined,
+        booking_remarks: [
+          formData.loadType === 'FTL' && formData.ftlVehicleType ? `FTL Vehicle: ${formData.ftlVehicleType}` : null,
+          customRemarks ? `Additional Charges: ${customRemarks}` : null,
+        ].filter(Boolean).join(' | ') || undefined,
       };
 
       const res = await api.post('/bookings', payload);
@@ -1985,6 +2819,20 @@ export default function BookingsMasterPage() {
       setShowConsignorDropdown(false);
       setShowConsigneeDropdown(false);
       setBookingStep(1);
+      // Capture customer details entered in form before resetting formData
+      const submittedConsignor = {
+        name: formData.consignorName || 'Shipper Party',
+        city: formData.consignorCity || formData.originCity || 'Origin City',
+        phone: formData.consignorPhone || '',
+        address: formData.consignorAddress || '',
+      };
+      const submittedConsignee = {
+        name: formData.consigneeName || 'Consignee Party',
+        city: formData.consigneeCity || formData.destinationCity || 'Destination City',
+        phone: formData.consigneePhone || '',
+        address: formData.consigneeAddress || '',
+      };
+
       setFormData({
         docketNumberMode: 'auto',
         customDocketNumber: '',
@@ -2010,6 +2858,10 @@ export default function BookingsMasterPage() {
         pickupDate: new Date().toISOString().split('T')[0],
         transportMode: 'ROAD',
         deliveryType: 'GODOWN_DELIVERY',
+        loadType: 'PTL',
+        ftlVehicleType: '',
+        ftlPricingMode: 'FIXED',
+        ftlFreightAmount: '',
         loadingCharges: '450',
         unloadingCharges: '0',
         doorDeliveryCharges: '0',
@@ -2022,7 +2874,37 @@ export default function BookingsMasterPage() {
 
       const updated = await fetchConsignments();
       if (res.data?.data) {
-        const createdConsignment = mapConsignmentFromApi(res.data.data);
+        const foundInUpdated = Array.isArray(updated)
+          ? updated.find(item => item.id === res.data.data.id || item.lr_number === (res.data.data.docket_number || res.data.data.lr_number))
+          : null;
+        let createdConsignment = foundInUpdated || mapConsignmentFromApi(res.data.data);
+
+        // Ensure consignor and consignee are accurately set even if the server response missed associations
+        if ((!createdConsignment.consignor?.name || createdConsignment.consignor.name === 'Commercial Consignor' || createdConsignment.consignor.name === 'Consignor Shipper') && submittedConsignor.name) {
+          createdConsignment = {
+            ...createdConsignment,
+            consignor: {
+              ...createdConsignment.consignor,
+              name: submittedConsignor.name,
+              city: submittedConsignor.city,
+              phone: submittedConsignor.phone,
+              address: submittedConsignor.address,
+            }
+          };
+        }
+        if ((!createdConsignment.consignee?.name || createdConsignment.consignee.name === 'Commercial Consignee' || createdConsignment.consignee.name === 'Consignee Receiver') && submittedConsignee.name) {
+          createdConsignment = {
+            ...createdConsignment,
+            consignee: {
+              ...createdConsignment.consignee,
+              name: submittedConsignee.name,
+              city: submittedConsignee.city,
+              phone: submittedConsignee.phone,
+              address: submittedConsignee.address,
+            }
+          };
+        }
+
         setSelectedConsignment(createdConsignment);
         setIsDetailsOpen(true);
       }
@@ -2042,19 +2924,36 @@ export default function BookingsMasterPage() {
         sortable: true,
         width: 175,
         minWidth: 140,
-        exportValue: (row) => row.lr_number,
-        render: (val, row) => (
-          <div>
-            <div className={`font-mono font-bold group-hover:underline flex items-center gap-1.5 ${isDark ? 'text-cyan-400' : 'text-blue-600'
-              }`}>
-              <FileText className="w-3.5 h-3.5 shrink-0" />
-              <span>{row.lr_number}</span>
+        exportValue: (row) => `${row.lr_number} [${(row.load_type || 'PTL') === 'FTL' ? 'FTL' : 'PTL'}]`,
+        render: (val, row) => {
+          const isFtl = (row.load_type || 'PTL') === 'FTL';
+          return (
+            <div>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <div className={`font-mono font-bold group-hover:underline flex items-center gap-1 ${
+                  isDark ? 'text-cyan-400' : 'text-blue-600'
+                }`}>
+                  <FileText className="w-3.5 h-3.5 shrink-0" />
+                  <span>{row.lr_number}</span>
+                </div>
+                <span className={`px-1.5 py-0.2 rounded text-[9px] font-black uppercase tracking-wider border ${
+                  isFtl
+                    ? isDark
+                      ? 'bg-purple-500/15 text-purple-300 border-purple-500/30'
+                      : 'bg-purple-50 text-purple-700 border-purple-300'
+                    : isDark
+                      ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                      : 'bg-amber-50 text-amber-700 border-amber-300'
+                }`}>
+                  {isFtl ? '🚛 FTL' : '📦 PTL'}
+                </span>
+              </div>
+              <div className={`text-[10px] font-mono mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                {row.booking_id}
+              </div>
             </div>
-            <div className={`text-[10px] font-mono mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-              {row.booking_id}
-            </div>
-          </div>
-        ),
+          );
+        },
       },
       {
         key: 'booking_date',
@@ -2071,18 +2970,28 @@ export default function BookingsMasterPage() {
       },
       {
         key: 'origin_city',
-        header: 'Corridor & Mode',
+        header: 'Corridor & Destination',
         sortable: true,
-        width: 150,
-        minWidth: 120,
-        exportValue: (row) => `${row.origin_city} ➔ ${row.destination_city} (${row.transport_mode || 'ROAD'})`,
+        width: 195,
+        minWidth: 160,
+        exportValue: (row) => `From: ${row.origin_branch_code || row.origin_city} ➔ To: ${row.dest_branch_code || row.destination_city} (${row.transport_mode || 'ROAD'})`,
         render: (val, row) => (
           <div>
-            <span className={`px-2 py-0.5 rounded font-mono font-bold text-[11px] inline-block ${isDark ? 'bg-slate-900 border border-slate-800 text-slate-200' : 'bg-slate-100 text-slate-800'
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className={`px-2 py-0.5 rounded font-mono font-bold text-[11px] inline-flex items-center gap-1 ${
+                isDark ? 'bg-slate-900 border border-slate-800 text-slate-200' : 'bg-slate-100 border border-slate-200 text-slate-800'
               }`}>
-              {row.route_code}
-            </span>
-            <div className="mt-1 flex items-center gap-1 text-[10px]">
+                <span className="text-cyan-500 dark:text-cyan-400 font-bold">[{row.origin_branch_code || row.origin_city.slice(0, 3).toUpperCase()}]</span>
+                <span className="text-slate-400">➔</span>
+                <span className="text-emerald-600 dark:text-emerald-400 font-bold">[{row.dest_branch_code || row.destination_city.slice(0, 3).toUpperCase()}]</span>
+              </span>
+            </div>
+            {/* Clear Destination Branch Line */}
+            <div className={`text-[10px] truncate mt-1 flex items-center gap-1 font-medium ${isDark ? 'text-slate-300' : 'text-slate-700'}`} title={`Destination Branch: ${row.dest_branch_name || row.destination_city}`}>
+              <Building2 className="w-2.5 h-2.5 shrink-0 text-emerald-500" />
+              <span className="truncate">Goes to: <strong className="font-semibold">{row.dest_branch_name || row.destination_city}</strong></span>
+            </div>
+            <div className="mt-0.5 flex items-center gap-1 text-[10px]">
               {row.transport_mode === 'AIR' ? (
                 <span className={`inline-flex items-center gap-1 font-bold ${isDark ? 'text-purple-400' : 'text-purple-600'}`}>
                   <Plane className="w-3 h-3" /> By Air
@@ -2226,14 +3135,14 @@ export default function BookingsMasterPage() {
       },
       {
         key: 'status',
-        header: 'Status',
+        header: 'Status & Location',
         sortable: true,
         align: 'center',
-        width: 180,
-        minWidth: 160,
-        exportValue: (row) => row.status_label,
+        width: 200,
+        minWidth: 175,
+        exportValue: (row) => `${row.status_label} - ${row.present_location_title || ''}`,
         render: (val, row) => (
-          <div className="text-center whitespace-nowrap">
+          <div className="text-center">
             <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${row.status === 'IN_TRANSIT' || row.status === 'DISPATCHED' || row.status === 'ON_TRIP'
                 ? isDark ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30' : 'bg-cyan-50 text-cyan-800 border-cyan-200'
                 : row.status === 'DELIVERED' || row.status === 'COMPLETED'
@@ -2249,6 +3158,25 @@ export default function BookingsMasterPage() {
               <span className="w-1.5 h-1.5 rounded-full bg-current mr-1 animate-pulse" />
               {row.status_label}
             </span>
+
+            {/* Current Present Location Badge */}
+            <div
+              className={`text-[10px] mt-1 font-semibold truncate flex items-center justify-center gap-1 ${
+                row.present_location_type === 'IN_TRANSIT'
+                  ? isDark ? 'text-cyan-400' : 'text-blue-700'
+                  : row.present_location_type === 'DELIVERED'
+                  ? isDark ? 'text-emerald-400' : 'text-emerald-700'
+                  : row.present_location_type === 'DEST_GODOWN'
+                  ? isDark ? 'text-teal-300' : 'text-teal-700'
+                  : isDark ? 'text-amber-300' : 'text-amber-700'
+              }`}
+              title={`${row.present_location_title} — ${row.present_location_detail}`}
+            >
+              <MapPin className="w-2.5 h-2.5 shrink-0 opacity-80" />
+              <span className="truncate max-w-[185px]">
+                {row.present_location_title}
+              </span>
+            </div>
           </div>
         ),
       },
@@ -2553,6 +3481,47 @@ export default function BookingsMasterPage() {
                 >
                   All ({totalBookingsCount})
                 </button>
+
+                {/* Movement / Load Type Filter (PTL vs FTL) */}
+                <div className={`hidden sm:flex items-center ml-2 p-0.5 rounded-xl border ${
+                  isDark ? 'bg-slate-950/80 border-slate-800' : 'bg-slate-200/70 border-slate-300/80'
+                }`}>
+                  <button
+                    type="button"
+                    onClick={() => { setLoadTypeFilter('ALL'); setPage(1); }}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      loadTypeFilter === 'ALL'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    All Loads
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setLoadTypeFilter('PTL'); setPage(1); }}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                      loadTypeFilter === 'PTL'
+                        ? 'bg-amber-500 text-white shadow-xs'
+                        : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <span>📦</span>
+                    <span>PTL</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setLoadTypeFilter('FTL'); setPage(1); }}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                      loadTypeFilter === 'FTL'
+                        ? 'bg-purple-600 text-white shadow-xs'
+                        : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <span>🚛</span>
+                    <span>FTL</span>
+                  </button>
+                </div>
               </div>
             }
           />
@@ -2737,7 +3706,7 @@ export default function BookingsMasterPage() {
                     ? isDark ? 'text-cyan-400' : 'text-blue-600'
                     : isDark ? 'text-slate-400' : 'text-slate-600'
                   }`}>
-                  Parties & Hubs
+                  1. Movement & Parties
                 </span>
               </button>
               <div className={`w-8 h-px ${isDark ? 'bg-slate-800' : 'bg-slate-200'}`} />
@@ -2749,7 +3718,7 @@ export default function BookingsMasterPage() {
                 }}
                 className={`flex items-center space-x-2 focus:outline-none transition-opacity ${isStep1Valid ? 'cursor-pointer opacity-100' : 'cursor-not-allowed opacity-50'
                   }`}
-                title={!isStep1Valid ? 'Fill mandatory fields in Step 1 to unlock' : 'Cargo & Rates'}
+                title={!isStep1Valid ? 'Fill mandatory fields in Step 1 to unlock' : 'Route & Transit'}
               >
                 <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${bookingStep === 2
                     ? 'bg-blue-600 text-white'
@@ -2763,7 +3732,7 @@ export default function BookingsMasterPage() {
                     ? isDark ? 'text-cyan-400' : 'text-blue-600'
                     : isDark ? 'text-slate-400' : 'text-slate-600'
                   }`}>
-                  Cargo & Rates
+                  2. Route & Transit
                 </span>
               </button>
               <div className={`w-8 h-px ${isDark ? 'bg-slate-800' : 'bg-slate-200'}`} />
@@ -2775,30 +3744,169 @@ export default function BookingsMasterPage() {
                 }}
                 className={`flex items-center space-x-2 focus:outline-none transition-opacity ${isStep1Valid && isStep2Valid ? 'cursor-pointer opacity-100' : 'cursor-not-allowed opacity-50'
                   }`}
-                title={!isStep1Valid || !isStep2Valid ? 'Fill mandatory fields in Steps 1 & 2 to unlock' : 'Confirm'}
+                title={!isStep1Valid || !isStep2Valid ? 'Fill mandatory fields in Steps 1 & 2 to unlock' : 'Cargo & Rates'}
               >
                 <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${bookingStep === 3
                     ? 'bg-blue-600 text-white'
-                    : isDark ? 'bg-slate-800 text-slate-500' : 'bg-slate-200 text-slate-500'
+                    : bookingStep > 3
+                      ? isDark ? 'bg-emerald-500/20 text-emerald-400' : 'bg-emerald-100 text-emerald-700'
+                      : isDark ? 'bg-slate-800 text-slate-500' : 'bg-slate-200 text-slate-500'
                   }`}>
-                  3
+                  {bookingStep > 3 ? <Check className="w-3.5 h-3.5" /> : '3'}
                 </div>
                 <span className={`text-xs font-bold ${bookingStep === 3
                     ? isDark ? 'text-cyan-400' : 'text-blue-600'
                     : isDark ? 'text-slate-400' : 'text-slate-600'
                   }`}>
-                  Confirm
+                  3. Cargo & Rates
+                </span>
+              </button>
+              <div className={`w-8 h-px ${isDark ? 'bg-slate-800' : 'bg-slate-200'}`} />
+              <button
+                type="button"
+                disabled={!isStep1Valid || !isStep2Valid || !isStep3Valid}
+                onClick={() => {
+                  if (isStep1Valid && isStep2Valid && isStep3Valid) setBookingStep(4);
+                }}
+                className={`flex items-center space-x-2 focus:outline-none transition-opacity ${isStep1Valid && isStep2Valid && isStep3Valid ? 'cursor-pointer opacity-100' : 'cursor-not-allowed opacity-50'
+                  }`}
+                title={!isStep1Valid || !isStep2Valid || !isStep3Valid ? 'Fill mandatory fields in Steps 1, 2 & 3 to unlock' : 'Confirm'}
+              >
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${bookingStep === 4
+                    ? 'bg-blue-600 text-white'
+                    : isDark ? 'bg-slate-800 text-slate-500' : 'bg-slate-200 text-slate-500'
+                  }`}>
+                  4
+                </div>
+                <span className={`text-xs font-bold ${bookingStep === 4
+                    ? isDark ? 'text-cyan-400' : 'text-blue-600'
+                    : isDark ? 'text-slate-400' : 'text-slate-600'
+                  }`}>
+                  4. Confirm
                 </span>
               </button>
             </div>
 
             {/* Modal Form Body */}
             <form onSubmit={handleCreateBookingSubmit} className="flex-1 flex flex-col overflow-hidden min-h-0">
-              <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-5">
+              <div className="flex-1 overflow-y-auto p-5 sm:p-6 pb-28 space-y-5">
 
                 {/* STEP 1: Parties & Route Hubs */}
                 {bookingStep === 1 && (
                   <div className="space-y-4">
+
+                    {/* Consignment Movement Type Selector (PTL vs FTL) */}
+                    <div className={`p-4 rounded-2xl border transition-all ${
+                      isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50/80 border-slate-200'
+                    }`}>
+                      <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-200/60 dark:border-slate-800/60">
+                        <div className="flex items-center gap-2">
+                          <span className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 ${
+                            isDark ? 'bg-blue-500/20 text-cyan-400' : 'bg-blue-100 text-blue-700'
+                          }`}>
+                            <Truck className="w-3.5 h-3.5" />
+                          </span>
+                          <span className={`text-xs font-bold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
+                            Consignment Movement Type <span className="text-rose-500">*</span>
+                          </span>
+                        </div>
+                        {(formData.loadType || 'PTL') === 'FTL' ? (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-600 dark:text-purple-300 border border-purple-500/25">
+                            Dedicated Vehicle • Direct Point-to-Point
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-slate-400 font-medium">
+                            Sundry / Loose Load • Hub Consolidation
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        {/* PTL Option */}
+                        <button
+                          type="button"
+                          onClick={() => setFormData(prev => ({ ...prev, loadType: 'PTL' }))}
+                          className={`p-2.5 sm:p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                            (formData.loadType || 'PTL') === 'PTL'
+                              ? isDark
+                                ? 'bg-amber-500/10 border-amber-500/70 text-white ring-2 ring-amber-500/30 shadow-xs'
+                                : 'bg-amber-50/80 border-amber-400 text-slate-900 ring-2 ring-amber-400/30 shadow-xs'
+                              : isDark
+                                ? 'bg-slate-900/80 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                                : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-xs flex items-center gap-2">
+                              <span className="text-base">📦</span>
+                              <span>PTL (Part Truck Load)</span>
+                            </span>
+                            {(formData.loadType || 'PTL') === 'PTL' ? (
+                              <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-amber-500 text-white shadow-xs">
+                                Selected
+                              </span>
+                            ) : (
+                              <span className="w-3.5 h-3.5 rounded-full border border-slate-400" />
+                            )}
+                          </div>
+                          <p className={`text-[10.5px] mt-1 leading-snug line-clamp-1 sm:line-clamp-none ${
+                            (formData.loadType || 'PTL') === 'PTL'
+                              ? isDark ? 'text-amber-300/90' : 'text-amber-900/80 font-medium'
+                              : 'text-slate-400'
+                          }`}>
+                            Loose parcels, packages &amp; sundry bilties consolidated with other cargo at hubs.
+                          </p>
+                        </button>
+
+                        {/* FTL Option */}
+                        <button
+                          type="button"
+                          onClick={() => setFormData(prev => ({
+                            ...prev,
+                            loadType: 'FTL',
+                            transportMode: 'ROAD',
+                            deliveryType: 'DOOR_DELIVERY',
+                            ftlPricingMode: prev.ftlPricingMode || 'FIXED'
+                          }))}
+                          className={`p-2.5 sm:p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                            (formData.loadType || 'PTL') === 'FTL'
+                              ? isDark
+                                ? 'bg-purple-500/10 border-purple-500/70 text-white ring-2 ring-purple-500/30 shadow-xs'
+                                : 'bg-purple-50/80 border-purple-400 text-slate-900 ring-2 ring-purple-400/30 shadow-xs'
+                              : isDark
+                                ? 'bg-slate-900/80 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                                : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-xs flex items-center gap-2">
+                              <span className="text-base">🚛</span>
+                              <span>FTL (Full Truck Load)</span>
+                            </span>
+                            {(formData.loadType || 'PTL') === 'FTL' ? (
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 border border-purple-500/30">
+                                  Direct • No Hub
+                                </span>
+                                <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-purple-600 text-white shadow-xs">
+                                  Selected
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="w-3.5 h-3.5 rounded-full border border-slate-400" />
+                            )}
+                          </div>
+                          <p className={`text-[10.5px] mt-1 leading-snug line-clamp-1 sm:line-clamp-none ${
+                            (formData.loadType || 'PTL') === 'FTL'
+                              ? isDark ? 'text-purple-300/90' : 'text-purple-900/80 font-medium'
+                              : 'text-slate-400'
+                          }`}>
+                            Entire dedicated truck from shipper direct to consignee with no cross-docking.
+                          </p>
+                        </button>
+                      </div>
+                    </div>
+
                     {/* 2-Column Parties Grid: Consignor (Shipper) and Consignee (Receiver) */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
 
@@ -3032,18 +4140,22 @@ export default function BookingsMasterPage() {
                         ) : (
                           /* Case 3: Search Registered Shipper */
                           <div className="relative">
-                            <div className="relative">
+                            <div ref={consignorInputRef} className="relative">
                               <input
                                 type="text"
                                 placeholder="Search registered shipper by name, code, phone..."
                                 value={formData.consignorName}
-                                onFocus={() => setShowConsignorDropdown(true)}
+                                onFocus={() => {
+                                  updateConsignorCoords();
+                                  setShowConsignorDropdown(true);
+                                }}
                                 onChange={(e) => {
                                   setFormData(prev => ({
                                     ...prev,
                                     consignorName: e.target.value,
                                     consignorId: ''
                                   }));
+                                  updateConsignorCoords();
                                   setShowConsignorDropdown(true);
                                 }}
                                 onKeyDown={(e) => {
@@ -3075,30 +4187,25 @@ export default function BookingsMasterPage() {
                                   }
                                 }}
                                 onBlur={() => {
-                                  setTimeout(() => {
-                                    setShowConsignorDropdown(false);
-                                    const trimmed = (formData.consignorName || '').trim();
-                                    if (trimmed && !formData.consignorId) {
-                                      const exactMatch = customersList.find(
-                                        (c) => (c.name || '').toLowerCase() === trimmed.toLowerCase()
-                                      );
-                                      if (exactMatch) {
-                                        const isTbb = (parseInt(exactMatch.credit_days, 10) > 0 || parseFloat(exactMatch.credit_limit || 0) > 0);
-                                        setFormData((prev) => ({
-                                          ...prev,
-                                          consignorName: exactMatch.name,
-                                          consignorId: exactMatch.id,
-                                          consignorPhone: exactMatch.phone || '',
-                                          consignorAddress: exactMatch.billing_address || exactMatch.address || '',
-                                          consignorCity: exactMatch.city || prev.consignorCity,
-                                          paymentMode: isTbb ? 'TBB' : prev.paymentMode,
-                                        }));
-                                        setIsManualConsignor(false);
-                                      } else {
-                                        setIsManualConsignor(true);
-                                      }
+                                  const trimmed = (formData.consignorName || '').trim();
+                                  if (trimmed && !formData.consignorId) {
+                                    const exactMatch = customersList.find(
+                                      (c) => (c.name || '').toLowerCase() === trimmed.toLowerCase()
+                                    );
+                                    if (exactMatch) {
+                                      const isTbb = (parseInt(exactMatch.credit_days, 10) > 0 || parseFloat(exactMatch.credit_limit || 0) > 0);
+                                      setFormData((prev) => ({
+                                        ...prev,
+                                        consignorName: exactMatch.name,
+                                        consignorId: exactMatch.id,
+                                        consignorPhone: exactMatch.phone || '',
+                                        consignorAddress: exactMatch.billing_address || exactMatch.address || '',
+                                        consignorCity: exactMatch.city || prev.consignorCity,
+                                        paymentMode: isTbb ? 'TBB' : prev.paymentMode,
+                                      }));
+                                      setIsManualConsignor(false);
                                     }
-                                  }, 150);
+                                  }
                                 }}
                                 className={`w-full px-3.5 py-2.5 pr-14 rounded-xl border text-xs focus:outline-none transition-colors ${
                                   isDark
@@ -3120,6 +4227,7 @@ export default function BookingsMasterPage() {
                                         consignorCity: '',
                                         consignorAddress: ''
                                       }));
+                                      updateConsignorCoords();
                                       setShowConsignorDropdown(true);
                                     }}
                                     className="p-1 rounded-lg hover:bg-slate-500/20 text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
@@ -3130,7 +4238,10 @@ export default function BookingsMasterPage() {
                                 )}
                                 <button
                                   type="button"
-                                  onClick={() => setShowConsignorDropdown(prev => !prev)}
+                                  onClick={() => {
+                                    updateConsignorCoords();
+                                    setShowConsignorDropdown(prev => !prev);
+                                  }}
                                   className="p-1 rounded-lg hover:bg-slate-500/20 text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
                                   title="Toggle list"
                                 >
@@ -3139,16 +4250,27 @@ export default function BookingsMasterPage() {
                               </div>
                             </div>
 
-                            {/* Dropdown Menu */}
-                            {showConsignorDropdown && (
+                            {/* Portaled Floating Dropdown Menu */}
+                            {showConsignorDropdown && typeof document !== 'undefined' && createPortal(
                               <div
+                                ref={consignorDropdownMenuRef}
                                 onMouseDown={(e) => e.preventDefault()}
-                                className={`absolute left-0 right-0 top-full mt-1.5 z-50 rounded-2xl border shadow-2xl overflow-hidden backdrop-blur-md transition-all ${
+                                style={{
+                                  position: 'fixed',
+                                  left: `${consignorCoords.left}px`,
+                                  width: `${consignorCoords.width}px`,
+                                  maxHeight: `${consignorCoords.maxHeight}px`,
+                                  zIndex: 99999,
+                                  ...(consignorCoords.opensUpward
+                                    ? { bottom: `${consignorCoords.bottom}px`, top: 'auto' }
+                                    : { top: `${consignorCoords.top}px`, bottom: 'auto' }),
+                                }}
+                                className={`flex flex-col rounded-2xl border shadow-2xl overflow-hidden backdrop-blur-md transition-all ${
                                 isDark
-                                  ? 'bg-slate-900/98 border-slate-700/80 text-white shadow-cyan-950/30'
-                                  : 'bg-white border-slate-200 text-slate-900 shadow-slate-400/30'
+                                  ? 'bg-slate-900 border-slate-700/80 text-white shadow-cyan-950/40'
+                                  : 'bg-white border-slate-200 text-slate-900 shadow-slate-900/25'
                               }`}>
-                                <div className={`px-3 py-2 border-b flex items-center justify-between text-[11px] font-semibold ${
+                                <div className={`px-3 py-2 border-b flex items-center justify-between text-[11px] font-semibold shrink-0 ${
                                   isDark ? 'bg-slate-950/80 border-slate-800 text-slate-400' : 'bg-slate-50 border-slate-100 text-slate-600'
                                 }`}>
                                   <span className="flex items-center gap-1.5 truncate">
@@ -3181,7 +4303,7 @@ export default function BookingsMasterPage() {
                                   </div>
                                 </div>
 
-                                <div className="max-h-48 overflow-y-auto divide-y divide-slate-800/40">
+                                <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-slate-800/40">
                                   {filteredConsignors.length > 0 ? (
                                     filteredConsignors.map((c) => {
                                       const isSelected = formData.consignorId === c.id;
@@ -3248,7 +4370,7 @@ export default function BookingsMasterPage() {
                                       setIsManualConsignor(true);
                                       setShowConsignorDropdown(false);
                                     }}
-                                    className={`p-2 px-3 border-t text-xs cursor-pointer flex items-center justify-between font-medium ${
+                                    className={`p-2 px-3 border-t text-xs cursor-pointer flex items-center justify-between font-medium shrink-0 ${
                                       isDark ? 'bg-slate-950/80 border-slate-800 text-cyan-400 hover:bg-slate-800' : 'bg-slate-50 border-slate-100 text-blue-600 hover:bg-slate-100'
                                     }`}
                                   >
@@ -3256,7 +4378,8 @@ export default function BookingsMasterPage() {
                                     <ArrowRight className="w-3.5 h-3.5" />
                                   </div>
                                 )}
-                              </div>
+                              </div>,
+                              document.body
                             )}
                           </div>
                         )}
@@ -3460,18 +4583,22 @@ export default function BookingsMasterPage() {
                         ) : (
                           /* Case 3: Search Registered Receiver */
                           <div className="relative">
-                            <div className="relative">
+                            <div ref={consigneeInputRef} className="relative">
                               <input
                                 type="text"
                                 placeholder="Search registered receiver by name, code, phone..."
                                 value={formData.consigneeName}
-                                onFocus={() => setShowConsigneeDropdown(true)}
+                                onFocus={() => {
+                                  updateConsigneeCoords();
+                                  setShowConsigneeDropdown(true);
+                                }}
                                 onChange={(e) => {
                                   setFormData(prev => ({
                                     ...prev,
                                     consigneeName: e.target.value,
                                     consigneeId: ''
                                   }));
+                                  updateConsigneeCoords();
                                   setShowConsigneeDropdown(true);
                                 }}
                                 onKeyDown={(e) => {
@@ -3501,28 +4628,23 @@ export default function BookingsMasterPage() {
                                   }
                                 }}
                                 onBlur={() => {
-                                  setTimeout(() => {
-                                    setShowConsigneeDropdown(false);
-                                    const trimmed = (formData.consigneeName || '').trim();
-                                    if (trimmed && !formData.consigneeId) {
-                                      const exactMatch = customersList.find(
-                                        (c) => (c.name || '').toLowerCase() === trimmed.toLowerCase()
-                                      );
-                                      if (exactMatch) {
-                                        setFormData((prev) => ({
-                                          ...prev,
-                                          consigneeName: exactMatch.name,
-                                          consigneeId: exactMatch.id,
-                                          consigneePhone: exactMatch.phone || '',
-                                          consigneeAddress: exactMatch.delivery_address || exactMatch.address || '',
-                                          consigneeCity: exactMatch.city || prev.consigneeCity,
-                                        }));
-                                        setIsManualConsignee(false);
-                                      } else {
-                                        setIsManualConsignee(true);
-                                      }
+                                  const trimmed = (formData.consigneeName || '').trim();
+                                  if (trimmed && !formData.consigneeId) {
+                                    const exactMatch = customersList.find(
+                                      (c) => (c.name || '').toLowerCase() === trimmed.toLowerCase()
+                                    );
+                                    if (exactMatch) {
+                                      setFormData((prev) => ({
+                                        ...prev,
+                                        consigneeName: exactMatch.name,
+                                        consigneeId: exactMatch.id,
+                                        consigneePhone: exactMatch.phone || '',
+                                        consigneeAddress: exactMatch.delivery_address || exactMatch.address || '',
+                                        consigneeCity: exactMatch.city || prev.consigneeCity,
+                                      }));
+                                      setIsManualConsignee(false);
                                     }
-                                  }, 150);
+                                  }
                                 }}
                                 className={`w-full px-3.5 py-2.5 pr-14 rounded-xl border text-xs focus:outline-none transition-colors ${
                                   isDark
@@ -3544,6 +4666,7 @@ export default function BookingsMasterPage() {
                                         consigneeCity: '',
                                         consigneeAddress: ''
                                       }));
+                                      updateConsigneeCoords();
                                       setShowConsigneeDropdown(true);
                                     }}
                                     className="p-1 rounded-lg hover:bg-slate-500/20 text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
@@ -3554,7 +4677,10 @@ export default function BookingsMasterPage() {
                                 )}
                                 <button
                                   type="button"
-                                  onClick={() => setShowConsigneeDropdown(prev => !prev)}
+                                  onClick={() => {
+                                    updateConsigneeCoords();
+                                    setShowConsigneeDropdown(prev => !prev);
+                                  }}
                                   className="p-1 rounded-lg hover:bg-slate-500/20 text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
                                   title="Toggle list"
                                 >
@@ -3563,16 +4689,27 @@ export default function BookingsMasterPage() {
                               </div>
                             </div>
 
-                            {/* Dropdown Menu */}
-                            {showConsigneeDropdown && (
+                            {/* Portaled Floating Dropdown Menu */}
+                            {showConsigneeDropdown && typeof document !== 'undefined' && createPortal(
                               <div
+                                ref={consigneeDropdownMenuRef}
                                 onMouseDown={(e) => e.preventDefault()}
-                                className={`absolute left-0 right-0 top-full mt-1.5 z-50 rounded-2xl border shadow-2xl overflow-hidden backdrop-blur-md transition-all ${
+                                style={{
+                                  position: 'fixed',
+                                  left: `${consigneeCoords.left}px`,
+                                  width: `${consigneeCoords.width}px`,
+                                  maxHeight: `${consigneeCoords.maxHeight}px`,
+                                  zIndex: 99999,
+                                  ...(consigneeCoords.opensUpward
+                                    ? { bottom: `${consigneeCoords.bottom}px`, top: 'auto' }
+                                    : { top: `${consigneeCoords.top}px`, bottom: 'auto' }),
+                                }}
+                                className={`flex flex-col rounded-2xl border shadow-2xl overflow-hidden backdrop-blur-md transition-all ${
                                 isDark
-                                  ? 'bg-slate-900/98 border-slate-700/80 text-white shadow-blue-950/30'
-                                  : 'bg-white border-slate-200 text-slate-900 shadow-slate-400/30'
+                                  ? 'bg-slate-900 border-slate-700/80 text-white shadow-blue-950/40'
+                                  : 'bg-white border-slate-200 text-slate-900 shadow-slate-900/25'
                               }`}>
-                                <div className={`px-3 py-2 border-b flex items-center justify-between text-[11px] font-semibold ${
+                                <div className={`px-3 py-2 border-b flex items-center justify-between text-[11px] font-semibold shrink-0 ${
                                   isDark ? 'bg-slate-950/80 border-slate-800 text-slate-400' : 'bg-slate-50 border-slate-100 text-slate-600'
                                 }`}>
                                   <span className="flex items-center gap-1.5 truncate">
@@ -3589,7 +4726,7 @@ export default function BookingsMasterPage() {
                                   </Link>
                                 </div>
 
-                                <div className="max-h-48 overflow-y-auto divide-y divide-slate-800/40">
+                                <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-slate-800/40">
                                   {filteredConsignees.length > 0 ? (
                                     filteredConsignees.map((c) => {
                                       const isSelected = formData.consigneeId === c.id;
@@ -3649,7 +4786,7 @@ export default function BookingsMasterPage() {
                                       setIsManualConsignee(true);
                                       setShowConsigneeDropdown(false);
                                     }}
-                                    className={`p-2 px-3 border-t text-xs cursor-pointer flex items-center justify-between font-medium ${
+                                    className={`p-2 px-3 border-t text-xs cursor-pointer flex items-center justify-between font-medium shrink-0 ${
                                       isDark ? 'bg-slate-950/80 border-slate-800 text-blue-400 hover:bg-slate-800' : 'bg-slate-50 border-slate-100 text-blue-600 hover:bg-slate-100'
                                     }`}
                                   >
@@ -3657,12 +4794,39 @@ export default function BookingsMasterPage() {
                                     <ArrowRight className="w-3.5 h-3.5" />
                                   </div>
                                 )}
-                              </div>
+                              </div>,
+                              document.body
                             )}
                           </div>
                         )}
                       </div>
 
+                    </div>
+                  </div>
+                )}
+
+                {/* STEP 2: Route & Transit Parameters */}
+                {bookingStep === 2 && (
+                  <div className="space-y-4">
+
+                    {/* Movement Indicator Strip */}
+                    <div className={`p-3 rounded-xl border flex items-center justify-between text-xs ${
+                      (formData.loadType || 'PTL') === 'FTL'
+                        ? isDark ? 'bg-purple-950/20 border-purple-500/30 text-purple-200' : 'bg-purple-50 border-purple-200 text-purple-900'
+                        : isDark ? 'bg-amber-950/20 border-amber-500/30 text-amber-200' : 'bg-amber-50 border-amber-200 text-amber-900'
+                    }`}>
+                      <div className="flex items-center gap-2">
+                        <span className="text-base">{(formData.loadType || 'PTL') === 'FTL' ? '🚛' : '📦'}</span>
+                        <span className="font-bold">
+                          {(formData.loadType || 'PTL') === 'FTL' ? 'FTL Dedicated Load Active' : 'PTL Sundry Load Active'}
+                        </span>
+                        <span className="text-[11px] opacity-75 hidden sm:inline">
+                          — {(formData.loadType || 'PTL') === 'FTL' ? 'Point-to-point direct dispatch (no hub transfer)' : 'Hub-to-hub consolidation'}
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-black/10 dark:bg-white/10 uppercase">
+                        {formData.loadType || 'PTL'}
+                      </span>
                     </div>
 
                     {/* Corridor Route Section */}
@@ -3677,10 +4841,12 @@ export default function BookingsMasterPage() {
                             <Truck className="w-3.5 h-3.5" />
                           </span>
                           <span className={`text-xs font-bold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
-                            Corridor Route (Origin Hub ➔ Destination Hub)
+                            {(formData.loadType || 'PTL') === 'FTL'
+                              ? 'Direct Route (Origin Hub ➔ Direct Consignee Destination)'
+                              : 'Corridor Route (Origin Hub ➔ Destination Hub)'}
                           </span>
                         </div>
-                        {!isRestrictedBranchUser && (
+                        {!isRestrictedBranchUser && (formData.loadType || 'PTL') !== 'FTL' && (
                           <Link
                             href="/branches"
                             target="_blank"
@@ -3696,18 +4862,26 @@ export default function BookingsMasterPage() {
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                         {/* Origin Hub */}
                         <div className="space-y-1.5">
-                          <label className={`text-xs font-bold flex items-center gap-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                            <span>Origin Hub / Branch</span>
-                            <span className="text-rose-500 font-bold">*</span>
-                            {isRestrictedBranchUser && (
-                              <span className="ml-1 text-[9px] font-bold text-cyan-500 bg-cyan-500/10 px-1.5 py-0.2 rounded border border-cyan-500/20">
-                                Assigned
+                          <div className="flex items-center justify-between h-5">
+                            <label className={`text-xs font-bold flex items-center gap-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                              <Building2 className={`w-3.5 h-3.5 ${isDark ? 'text-cyan-400' : 'text-blue-600'}`} />
+                              <span>Origin Hub / Branch</span>
+                              <span className="text-rose-500 font-bold">*</span>
+                            </label>
+                            {isRestrictedBranchUser ? (
+                              <span className="text-[9px] font-bold text-cyan-600 dark:text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded-full border border-cyan-500/20">
+                                Assigned Hub
+                              </span>
+                            ) : (
+                              <span className="text-[9px] font-bold text-slate-500 bg-slate-500/10 px-2 py-0.5 rounded-full">
+                                Booking Origin
                               </span>
                             )}
-                          </label>
+                          </div>
+
                           {isRestrictedBranchUser ? (
-                            <div className={`w-full px-3 py-2.5 rounded-xl border text-xs font-bold flex items-center justify-between shadow-xs ${
-                              isDark ? 'border-slate-800 bg-slate-900/90 text-white' : 'border-slate-200 bg-slate-100 text-slate-900'
+                            <div className={`w-full h-11 px-3 rounded-xl border text-xs font-bold flex items-center justify-between shadow-xs ${
+                              isDark ? 'border-slate-800 bg-slate-900/90 text-white' : 'border-slate-200 bg-slate-100/90 text-slate-900'
                             }`}>
                               <div className="flex items-center gap-1.5 truncate flex-1 min-w-0">
                                 <Building2 className={`w-3.5 h-3.5 shrink-0 ${isDark ? 'text-cyan-400' : 'text-blue-600'}`} />
@@ -3723,7 +4897,7 @@ export default function BookingsMasterPage() {
                                   — {branchesList.find((b) => b.id === userBranchId)?.city || user?.city || 'Origin'}
                                 </span>
                               </div>
-                              <span className="text-[10px] text-slate-400 font-normal shrink-0 ml-1">🔒 Locked</span>
+                              <span className="text-[10px] text-slate-400 font-medium shrink-0 ml-1">🔒 Locked</span>
                             </div>
                           ) : (
                             <BranchSelectDropdown
@@ -3742,26 +4916,63 @@ export default function BookingsMasterPage() {
                           )}
                         </div>
 
-                        {/* Destination Hub */}
-                        <div className="space-y-1.5">
-                          <label className={`text-xs font-bold flex items-center gap-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                            <span>Destination Hub / Branch</span>
-                            <span className="text-rose-500 font-bold">*</span>
-                          </label>
-                          <BranchSelectDropdown
-                            selectedBranchId={formData.destBranchId}
-                            onSelect={(branchId, city) => {
-                              setFormData((prev) => ({
-                                ...prev,
-                                destBranchId: branchId,
-                                destinationCity: city,
-                              }));
-                            }}
-                            branches={branchesList.filter((b) => b.id !== formData.originBranchId)}
-                            placeholder="-- Select Destination Hub / Branch --"
-                            isDark={isDark}
-                          />
-                        </div>
+                        {/* Destination Hub / Branch (PTL) OR Direct Consignee Destination (FTL) */}
+                        {(formData.loadType || 'PTL') === 'FTL' ? (
+                          <div className="space-y-1.5">
+                            <div className="flex items-center justify-between h-5">
+                              <label className={`text-xs font-bold flex items-center gap-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                                <MapPin className="w-3.5 h-3.5 text-purple-500" />
+                                <span>Destination / Delivery Point</span>
+                                <span className="text-rose-500 font-bold">*</span>
+                              </label>
+                              <span className="text-[9px] font-bold text-purple-600 dark:text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded-full border border-purple-500/25">
+                                Direct Point-to-Point
+                              </span>
+                            </div>
+                            <div className={`w-full h-11 px-3 rounded-xl border text-xs flex items-center justify-between shadow-xs ${
+                              isDark ? 'border-purple-500/40 bg-purple-950/20 text-purple-200' : 'border-purple-200 bg-purple-50/70 text-purple-900'
+                            }`}>
+                              <div className="flex items-center gap-2 truncate flex-1 min-w-0">
+                                <MapPin className="w-3.5 h-3.5 text-purple-500 shrink-0" />
+                                <span className="font-bold truncate text-slate-900 dark:text-white">
+                                  Direct to {formData.consigneeName || 'Consignee'}
+                                </span>
+                                <span className={`text-[11px] font-normal truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                                  — {formData.consigneeAddress || formData.consigneeCity || 'Consignee Delivery Premises'}
+                                </span>
+                              </div>
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-purple-600 text-white shrink-0 ml-1">
+                                Direct Door
+                              </span>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="space-y-1.5">
+                            <div className="flex items-center justify-between h-5">
+                              <label className={`text-xs font-bold flex items-center gap-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                                <Building2 className={`w-3.5 h-3.5 ${isDark ? 'text-cyan-400' : 'text-blue-600'}`} />
+                                <span>Destination Hub / Branch</span>
+                                <span className="text-rose-500 font-bold">*</span>
+                              </label>
+                              <span className="text-[9px] font-bold text-slate-500 bg-slate-500/10 px-2 py-0.5 rounded-full">
+                                Hub Consolidation
+                              </span>
+                            </div>
+                            <BranchSelectDropdown
+                              selectedBranchId={formData.destBranchId}
+                              onSelect={(branchId, city) => {
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  destBranchId: branchId,
+                                  destinationCity: city,
+                                }));
+                              }}
+                              branches={branchesList.filter((b) => b.id !== formData.originBranchId)}
+                              placeholder="-- Select Destination Hub / Branch --"
+                              isDark={isDark}
+                            />
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -3769,135 +4980,262 @@ export default function BookingsMasterPage() {
                     <div className={`p-4 rounded-2xl border transition-all ${
                       isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50/80 border-slate-200'
                     }`}>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        {/* Pickup Date */}
-                        <div className="space-y-1.5">
-                          <label className={`text-xs font-bold flex items-center ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                            <span>Pickup Date</span>
-                            <span className="text-rose-500 font-bold ml-0.5">*</span>
-                          </label>
-                          <input
-                            type="date"
-                            value={formData.pickupDate}
-                            onChange={(e) => setFormData({ ...formData, pickupDate: e.target.value })}
-                            className={`w-full px-3 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                              isDark
-                                ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400 [color-scheme:dark]'
-                                : 'border-slate-200 bg-white text-slate-900 focus:border-blue-500 [color-scheme:light]'
-                            }`}
-                          />
-                        </div>
+                      {(formData.loadType || 'PTL') === 'FTL' ? (
+                        /* FTL: All 3 parameters in a single unified row, fixed and non-changeable */
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                          {/* 1. Pickup Date (Changeable) */}
+                          <div className="space-y-1.5">
+                            <div className="flex items-center h-5">
+                              <label className={`text-xs font-bold flex items-center gap-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                                <Calendar className={`w-3.5 h-3.5 ${isDark ? 'text-purple-400' : 'text-purple-600'}`} />
+                                <span>Pickup Date</span>
+                                <span className="text-rose-500 font-bold">*</span>
+                              </label>
+                            </div>
+                            <input
+                              type="date"
+                              value={formData.pickupDate}
+                              onChange={(e) => setFormData({ ...formData, pickupDate: e.target.value })}
+                              className={`w-full h-11 px-3 rounded-xl border text-xs font-bold focus:outline-none transition-colors cursor-pointer shadow-xs ${
+                                isDark
+                                  ? 'border-purple-500/40 bg-slate-900/90 text-white focus:border-purple-400 [color-scheme:dark]'
+                                  : 'border-purple-200 bg-white text-slate-900 focus:border-purple-500 [color-scheme:light]'
+                              }`}
+                            />
+                          </div>
 
-                        {/* Mode of Transport */}
-                        <div className="space-y-1.5">
-                          <label className={`text-xs font-bold flex items-center justify-between ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                            <span>Mode of Transport <span className="text-rose-500">*</span></span>
-                            <span className="text-[10px] text-slate-400 font-normal">Select Mode</span>
-                          </label>
-                          <div className="grid grid-cols-3 gap-1.5">
-                            {[
-                              { id: 'ROAD', label: 'By Road', icon: Truck },
-                              { id: 'RAIL', label: 'By Rail', icon: Train },
-                              { id: 'AIR', label: 'By Air', icon: Plane },
-                            ].map((m) => {
-                              const IconComp = m.icon;
-                              const isSelected = (formData.transportMode || 'ROAD') === m.id;
-                              return (
-                                <button
-                                  key={m.id}
-                                  type="button"
-                                  onClick={() => setFormData({ ...formData, transportMode: m.id })}
-                                  className={`py-2 px-1.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                                    isSelected
-                                      ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
-                                      : isDark
-                                      ? 'bg-slate-900/80 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
-                                      : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
-                                  }`}
-                                >
-                                  <IconComp className="w-3.5 h-3.5 shrink-0" />
-                                  <span className="truncate">{m.label}</span>
-                                </button>
-                              );
-                            })}
+                          {/* 2. Mode of Transport (Road Only) */}
+                          <div className="space-y-1.5">
+                            <div className="flex items-center h-5">
+                              <label className={`text-xs font-bold flex items-center gap-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                                <Truck className="w-3.5 h-3.5 text-purple-500" />
+                                <span>Mode of Transport</span>
+                                <span className="text-rose-500 font-bold">*</span>
+                              </label>
+                            </div>
+                            <div className={`w-full h-11 px-3 rounded-xl border text-xs font-bold flex items-center justify-between shadow-xs select-none ${
+                              isDark ? 'border-purple-500/40 bg-purple-950/20 text-purple-200' : 'border-purple-200 bg-purple-50/70 text-purple-900'
+                            }`}>
+                              <div className="flex items-center gap-2 truncate">
+                                <Truck className="w-4 h-4 text-purple-500 shrink-0" />
+                                <span className="truncate">By Road (Dedicated Truck)</span>
+                              </div>
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-purple-600 text-white shrink-0">
+                                FTL Road
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* 3. Delivery Type (Direct Doorstep) */}
+                          <div className="space-y-1.5">
+                            <div className="flex items-center h-5">
+                              <label className={`text-xs font-bold flex items-center gap-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                                <span>Delivery Type</span>
+                                <span className="text-rose-500 font-bold">*</span>
+                              </label>
+                            </div>
+                            <div className={`w-full h-11 px-3 rounded-xl border text-xs font-bold flex items-center justify-between shadow-xs select-none ${
+                              isDark ? 'border-emerald-500/40 bg-emerald-950/20 text-emerald-200' : 'border-emerald-200 bg-emerald-50/70 text-emerald-900'
+                            }`}>
+                              <div className="flex items-center gap-2 truncate">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                                <span className="truncate">Direct Doorstep Delivery</span>
+                              </div>
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-600 text-white shrink-0">
+                                Direct Door
+                              </span>
+                            </div>
                           </div>
                         </div>
-                      </div>
-
-                      {/* Delivery Type */}
-                      <div className="space-y-1.5 pt-3 mt-3 border-t border-slate-200/60 dark:border-slate-800/60">
-                        <div className="flex items-center justify-between">
-                          <label className={`text-xs font-bold flex items-center ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                            <span>Delivery Type <span className="text-rose-500">*</span></span>
-                          </label>
-                          <span className="text-[10px] text-slate-400 font-normal">
-                            {(formData.deliveryType || 'DOOR_DELIVERY') === 'DOOR_DELIVERY' ? 'Consignee Doorstep Delivery' : 'Hub / Godown Delivery'}
-                          </span>
-                        </div>
-                        <div className="grid grid-cols-2 gap-2">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const curDdc = parseFloat(formData.doorDeliveryCharges || 0);
-                              setFormData({
-                                ...formData,
-                                deliveryType: 'DOOR_DELIVERY',
-                                doorDeliveryCharges: curDdc < 100 ? '100' : formData.doorDeliveryCharges,
-                              });
-                            }}
-                            className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                              (formData.deliveryType || 'DOOR_DELIVERY') === 'DOOR_DELIVERY'
-                                ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
-                                : isDark
-                                ? 'bg-slate-900/80 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
-                                : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
-                            }`}
-                          >
-                            <Truck className="w-4 h-4 shrink-0" />
-                            <div className="text-left">
-                              <span className="block leading-tight">Door Delivery</span>
-                              <span className={`block text-[10px] font-normal ${
-                                (formData.deliveryType || 'DOOR_DELIVERY') === 'DOOR_DELIVERY' ? 'text-blue-100' : 'text-slate-400'
-                              }`}>Direct doorstep delivery</span>
+                      ) : (
+                        /* PTL: Interactive Selection */
+                        <>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            {/* Pickup Date */}
+                            <div className="space-y-1.5">
+                              <label className={`text-xs font-bold flex items-center ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                                <span>Pickup Date</span>
+                                <span className="text-rose-500 font-bold ml-0.5">*</span>
+                              </label>
+                              <input
+                                type="date"
+                                value={formData.pickupDate}
+                                onChange={(e) => setFormData({ ...formData, pickupDate: e.target.value })}
+                                className={`w-full px-3 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
+                                  isDark
+                                    ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400 [color-scheme:dark]'
+                                    : 'border-slate-200 bg-white text-slate-900 focus:border-blue-500 [color-scheme:light]'
+                                }`}
+                              />
                             </div>
-                          </button>
 
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const curDdc = parseFloat(formData.doorDeliveryCharges || 0);
-                              setFormData({
-                                ...formData,
-                                deliveryType: 'GODOWN_DELIVERY',
-                                doorDeliveryCharges: curDdc === 100 ? '0' : formData.doorDeliveryCharges,
-                              });
-                            }}
-                            className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                              formData.deliveryType === 'GODOWN_DELIVERY'
-                                ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
-                                : isDark
-                                ? 'bg-slate-900/80 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
-                                : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
-                            }`}
-                          >
-                            <Building2 className="w-4 h-4 shrink-0" />
-                            <div className="text-left">
-                              <span className="block leading-tight">Godown Delivery</span>
-                              <span className={`block text-[10px] font-normal ${
-                                formData.deliveryType === 'GODOWN_DELIVERY' ? 'text-blue-100' : 'text-slate-400'
-                              }`}>Pickup from branch</span>
+                            {/* Mode of Transport */}
+                            <div className="space-y-1.5">
+                              <label className={`text-xs font-bold flex items-center justify-between ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                                <span>Mode of Transport <span className="text-rose-500">*</span></span>
+                                <span className="text-[10px] text-slate-400 font-normal">Select Mode</span>
+                              </label>
+                              <div className="grid grid-cols-3 gap-1.5">
+                                {[
+                                  { id: 'ROAD', label: 'By Road', icon: Truck },
+                                  { id: 'RAIL', label: 'By Rail', icon: Train },
+                                  { id: 'AIR', label: 'By Air', icon: Plane },
+                                ].map((m) => {
+                                  const IconComp = m.icon;
+                                  const isSelected = (formData.transportMode || 'ROAD') === m.id;
+                                  return (
+                                    <button
+                                      key={m.id}
+                                      type="button"
+                                      onClick={() => setFormData({ ...formData, transportMode: m.id })}
+                                      className={`py-2 px-1.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                                        isSelected
+                                          ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
+                                          : isDark
+                                          ? 'bg-slate-900/80 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
+                                          : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
+                                      }`}
+                                    >
+                                      <IconComp className="w-3.5 h-3.5 shrink-0" />
+                                      <span className="truncate">{m.label}</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
                             </div>
-                          </button>
-                        </div>
-                      </div>
+                          </div>
+
+                          {/* Delivery Type */}
+                          <div className="space-y-1.5 pt-3 mt-3 border-t border-slate-200/60 dark:border-slate-800/60">
+                            <div className="flex items-center justify-between">
+                              <label className={`text-xs font-bold flex items-center ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                                <span>Delivery Type <span className="text-rose-500">*</span></span>
+                              </label>
+                              <span className="text-[10px] text-slate-400 font-normal">
+                                {(formData.deliveryType || 'DOOR_DELIVERY') === 'DOOR_DELIVERY'
+                                  ? 'Consignee Doorstep Delivery'
+                                  : 'Hub / Godown Delivery'}
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const curDdc = parseFloat(formData.doorDeliveryCharges || 0);
+                                  setFormData({
+                                    ...formData,
+                                    deliveryType: 'DOOR_DELIVERY',
+                                    doorDeliveryCharges: curDdc < 100 ? '100' : formData.doorDeliveryCharges,
+                                  });
+                                }}
+                                className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                                  (formData.deliveryType || 'DOOR_DELIVERY') === 'DOOR_DELIVERY'
+                                    ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
+                                    : isDark
+                                    ? 'bg-slate-900/80 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
+                                    : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
+                                }`}
+                              >
+                                <Truck className="w-4 h-4 shrink-0" />
+                                <div className="text-left">
+                                  <span className="block leading-tight">Door Delivery</span>
+                                  <span className={`block text-[10px] font-normal ${
+                                    (formData.deliveryType || 'DOOR_DELIVERY') === 'DOOR_DELIVERY' ? 'text-blue-100' : 'text-slate-400'
+                                  }`}>Direct doorstep delivery</span>
+                                </div>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const curDdc = parseFloat(formData.doorDeliveryCharges || 0);
+                                  setFormData({
+                                    ...formData,
+                                    deliveryType: 'GODOWN_DELIVERY',
+                                    doorDeliveryCharges: curDdc === 100 ? '0' : formData.doorDeliveryCharges,
+                                  });
+                                }}
+                                className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                                  formData.deliveryType === 'GODOWN_DELIVERY'
+                                    ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
+                                    : isDark
+                                    ? 'bg-slate-900/80 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
+                                    : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
+                                }`}
+                              >
+                                <Building2 className="w-4 h-4 shrink-0" />
+                                <div className="text-left">
+                                  <span className="block leading-tight">Godown Delivery</span>
+                                  <span className={`block text-[10px] font-normal ${
+                                    formData.deliveryType === 'GODOWN_DELIVERY' ? 'text-blue-100' : 'text-slate-400'
+                                  }`}>Pickup from branch</span>
+                                </div>
+                              </button>
+                            </div>
+                          </div>
+                        </>
+                      )}
                     </div>
 
                   </div>
                 )}
 
-                {/* STEP 2: Cargo & Freight Charges */}
-                {bookingStep === 2 && (
+                {/* STEP 3: Cargo & Freight Charges */}
+                {bookingStep === 3 && (
                   <div className="space-y-4">
+                    {/* If FTL is active: Pricing mode (Lump Sum Truck Hire vs Per KG) */}
+                    {(formData.loadType || 'PTL') === 'FTL' && (
+                      <div className={`p-4 rounded-2xl border transition-all ${
+                        isDark ? 'bg-purple-950/20 border-purple-500/30' : 'bg-purple-50/70 border-purple-200'
+                      }`}>
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-base">🏷️</span>
+                              <label className={`text-xs font-bold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
+                                FTL Freight Pricing Basis
+                              </label>
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-600 dark:text-purple-300 border border-purple-500/25">
+                                {(formData.ftlPricingMode || 'FIXED') === 'FIXED' ? 'Lump Sum Freight' : 'Weight-Based Tariff'}
+                              </span>
+                            </div>
+                            <p className={`text-[11px] mt-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                              {(formData.ftlPricingMode || 'FIXED') === 'FIXED'
+                                ? 'Charge a flat lump-sum truck hire freight for this consignment.'
+                                : 'Calculate freight based on cargo weight rate (₹ / KG).'}
+                            </p>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2 h-11 shrink-0 sm:w-80">
+                            <button
+                              type="button"
+                              onClick={() => setFormData(prev => ({ ...prev, ftlPricingMode: 'FIXED' }))}
+                              className={`h-full px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                                (formData.ftlPricingMode || 'FIXED') === 'FIXED'
+                                  ? 'bg-purple-600 text-white border-purple-500 shadow-md shadow-purple-600/25'
+                                  : isDark ? 'bg-slate-900/80 border-slate-800 text-slate-300 hover:border-slate-700' : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
+                              }`}
+                            >
+                              <span>Fixed Truck Hire (₹)</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setFormData(prev => ({ ...prev, ftlPricingMode: 'PER_KG' }))}
+                              className={`h-full px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                                formData.ftlPricingMode === 'PER_KG'
+                                  ? 'bg-purple-600 text-white border-purple-500 shadow-md shadow-purple-600/25'
+                                  : isDark ? 'bg-slate-900/80 border-slate-800 text-slate-300 hover:border-slate-700' : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
+                              }`}
+                            >
+                              <span>Weight / Per KG (₹)</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="space-y-1.5">
                       <label className={`text-xs font-bold flex items-center ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
                         <span>Declared Cargo Commodity</span>
@@ -3963,27 +5301,43 @@ export default function BookingsMasterPage() {
                       </div>
                       <div className="space-y-1.5">
                         <label className={`text-xs font-bold flex items-center h-5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                          <span>Rate / KG (₹)</span>
+                          <span>{formData.loadType === 'FTL' && formData.ftlPricingMode === 'FIXED' ? 'Truck Freight (₹)' : 'Rate / KG (₹)'}</span>
                           <span className="text-rose-500 font-bold ml-0.5">*</span>
                         </label>
                         <div className="relative">
                           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 pointer-events-none">
                             ₹
                           </span>
-                          <input
-                            type="number"
-                            min="0"
-                            step="any"
-                            required
-                            value={formData.ratePerKg}
-                            onChange={(e) => setFormData({ ...formData, ratePerKg: e.target.value })}
-                            className={`w-full pl-7 pr-12 py-2.5 rounded-xl border text-xs font-semibold focus:outline-none transition-colors ${isDark
-                                ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
-                                : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
-                              }`}
-                          />
+                          {formData.loadType === 'FTL' && formData.ftlPricingMode === 'FIXED' ? (
+                            <input
+                              type="number"
+                              min="0"
+                              step="any"
+                              required
+                              placeholder="e.g. 25000"
+                              value={formData.ftlFreightAmount}
+                              onChange={(e) => setFormData({ ...formData, ftlFreightAmount: e.target.value })}
+                              className={`w-full pl-7 pr-16 py-2.5 rounded-xl border text-xs font-semibold focus:outline-none transition-colors ${isDark
+                                  ? 'border-purple-500/40 bg-slate-900/80 text-white focus:border-purple-400'
+                                  : 'border-purple-300 bg-purple-50/30 text-slate-900 focus:border-purple-500 focus:bg-white'
+                                }`}
+                            />
+                          ) : (
+                            <input
+                              type="number"
+                              min="0"
+                              step="any"
+                              required
+                              value={formData.ratePerKg}
+                              onChange={(e) => setFormData({ ...formData, ratePerKg: e.target.value })}
+                              className={`w-full pl-7 pr-12 py-2.5 rounded-xl border text-xs font-semibold focus:outline-none transition-colors ${isDark
+                                  ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                                  : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                                }`}
+                            />
+                          )}
                           <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400 uppercase pointer-events-none">
-                            / KG
+                            {formData.loadType === 'FTL' && formData.ftlPricingMode === 'FIXED' ? '/ Truck' : '/ KG'}
                           </span>
                         </div>
                       </div>
@@ -4255,7 +5609,11 @@ export default function BookingsMasterPage() {
                             }`}>
                             <div className={`text-xs font-bold flex items-center justify-between ${isDark ? 'text-slate-300' : 'text-slate-700'
                               }`}>
-                              <span>Basic Freight ({formData.weightKg || 0} kg @ ₹{formData.ratePerKg || 0})</span>
+                              <span>
+                                {formData.loadType === 'FTL' && (formData.ftlPricingMode || 'FIXED') === 'FIXED'
+                                  ? 'Fixed Truck Freight (Lump Sum)'
+                                  : `Basic Freight (${formData.weightKg || 0} kg @ ₹${formData.ratePerKg || 0})`}
+                              </span>
                               <span className={`font-mono ${isDark ? 'text-white' : 'text-slate-900'}`}>
                                 ₹ {(liveBreakdown.basicFreight || 0).toLocaleString('en-IN')}
                               </span>
@@ -4357,8 +5715,8 @@ export default function BookingsMasterPage() {
                   </div>
                 )}
 
-                {/* STEP 3: Review & Generate Docket (LR / Bilty) */}
-                {bookingStep === 3 && (
+                {/* STEP 4: Review & Generate Docket (LR / Bilty) */}
+                {bookingStep === 4 && (
                   <div className="space-y-4">
                     <div className={`p-4 rounded-2xl border space-y-3 ${isDark
                         ? 'bg-gradient-to-br from-blue-950/40 via-slate-900 to-cyan-950/30 border-cyan-500/40'
@@ -4433,9 +5791,24 @@ export default function BookingsMasterPage() {
                         </div>
                         <div>
                           <span className={`text-[10px] block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Corridor Route:</span>
-                          <span className={`font-bold ${isDark ? 'text-cyan-300' : 'text-blue-600'}`}>
-                            {branchesList.find((b) => b.id === formData.originBranchId)?.branch_name || formData.originCity || 'Origin'} ➔ {branchesList.find((b) => b.id === formData.destBranchId)?.branch_name || formData.destinationCity || 'Destination'}
-                          </span>
+                          <div className={`font-bold ${isDark ? 'text-cyan-300' : 'text-blue-600'}`}>
+                            {(formData.loadType || 'PTL') === 'FTL' ? (
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span>{branchesList.find((b) => b.id === formData.originBranchId)?.branch_name || formData.originCity || 'Origin'}</span>
+                                <span>➔</span>
+                                <span className={isDark ? 'text-purple-300' : 'text-purple-700'}>
+                                  Direct {formData.consigneeName || 'Consignee'} ({formData.consigneeCity || formData.destinationCity || 'Customer Destination'})
+                                </span>
+                                <span className="text-[9px] px-1 py-0.2 rounded font-bold bg-purple-500/20 text-purple-400 border border-purple-500/30">
+                                  Direct FTL (No Hub)
+                                </span>
+                              </div>
+                            ) : (
+                              <span>
+                                {branchesList.find((b) => b.id === formData.originBranchId)?.branch_name || formData.originCity || 'Origin'} ➔ {branchesList.find((b) => b.id === formData.destBranchId)?.branch_name || formData.destinationCity || 'Destination'}
+                              </span>
+                            )}
+                          </div>
                         </div>
                         <div>
                           <span className={`text-[10px] block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Transport Mode:</span>
@@ -4447,6 +5820,19 @@ export default function BookingsMasterPage() {
                             }`}>
                             {formData.transportMode === 'AIR' ? <Plane className="w-3.5 h-3.5" /> : formData.transportMode === 'RAIL' ? <Train className="w-3.5 h-3.5" /> : <Truck className="w-3.5 h-3.5" />}
                             {formData.transportMode === 'AIR' ? 'By Air Cargo' : formData.transportMode === 'RAIL' ? 'By Rail Express' : 'By Road Line-haul'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className={`text-[10px] block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Movement Type:</span>
+                          <span className={`font-bold inline-flex items-center gap-1.5 px-2 py-0.5 rounded border text-[11px] ${
+                            (formData.loadType || 'PTL') === 'FTL'
+                              ? isDark ? 'bg-purple-500/15 text-purple-300 border-purple-500/30' : 'bg-purple-100 text-purple-800 border-purple-300'
+                              : isDark ? 'bg-amber-500/15 text-amber-300 border-amber-500/30' : 'bg-amber-50 text-amber-800 border-amber-300'
+                          }`}>
+                            <span>{(formData.loadType || 'PTL') === 'FTL' ? '🚛 FTL (Full Truck)' : '📦 PTL (Part Load)'}</span>
+                            {formData.loadType === 'FTL' && formData.ftlVehicleType && (
+                              <span className="opacity-80 font-normal">({formData.ftlVehicleType})</span>
+                            )}
                           </span>
                         </div>
                         <div>
@@ -4466,7 +5852,7 @@ export default function BookingsMasterPage() {
                         </div>
                       </div>
 
-                      {/* Step 3 Live Itemized Charges Summary */}
+                      {/* Step 4 Live Itemized Charges Summary */}
                       {(() => {
                         const breakdown = calculateFreightBreakdown(formData);
                         return (
@@ -4551,7 +5937,7 @@ export default function BookingsMasterPage() {
                     </span>
                   )}
 
-                  {bookingStep < 3 ? (
+                  {bookingStep < 4 ? (
                     <button
                       type="button"
                       disabled={!isCurrentStepValid}
@@ -4564,14 +5950,16 @@ export default function BookingsMasterPage() {
                           : 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border border-slate-300 dark:border-slate-700/60 shadow-none cursor-not-allowed opacity-60'
                         }`}
                     >
-                      <span>Next: {bookingStep === 1 ? 'Cargo & Rates' : 'Review & Confirm'}</span>
+                      <span>
+                        Next: {bookingStep === 1 ? 'Route & Transit' : bookingStep === 2 ? 'Cargo & Rates' : 'Review & Confirm'}
+                      </span>
                       <span>➔</span>
                     </button>
                   ) : (
                     <button
                       type="submit"
-                      disabled={isLoading || !isStep1Valid || !isStep2Valid}
-                      className={`px-6 py-2.5 rounded-xl text-white text-xs font-black shadow-lg shadow-cyan-500/25 active:scale-95 transition-all flex items-center gap-1.5 ${isLoading || !isStep1Valid || !isStep2Valid
+                      disabled={isLoading || !isStep1Valid || !isStep2Valid || !isStep3Valid}
+                      className={`px-6 py-2.5 rounded-xl text-white text-xs font-black shadow-lg shadow-cyan-500/25 active:scale-95 transition-all flex items-center gap-1.5 ${isLoading || !isStep1Valid || !isStep2Valid || !isStep3Valid
                           ? 'bg-slate-700 opacity-60 cursor-not-allowed'
                           : 'bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 cursor-pointer'
                         }`}
@@ -4631,6 +6019,7 @@ export default function BookingsMasterPage() {
                   <span className={`font-mono font-black text-base ${isDark ? 'text-cyan-400' : 'text-blue-600'}`}>
                     {selectedConsignment.lr_number}
                   </span>
+                  <BuiltyTypeBadge docket={selectedConsignment} />
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${selectedConsignment.status === 'IN_TRANSIT'
                       ? isDark
                         ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30'
@@ -4743,6 +6132,93 @@ export default function BookingsMasterPage() {
                   <span>Origin: {selectedConsignment.origin_city}</span>
                   <span>ETA: {selectedConsignment.eta}</span>
                   <span>Dest: {selectedConsignment.destination_city}</span>
+                </div>
+              </div>
+
+              {/* Present Location & Branch Journey Card */}
+              <div className={`p-4 rounded-2xl border space-y-3.5 ${
+                isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
+              }`}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className={`p-2 rounded-xl ${
+                      selectedConsignment.present_location_type === 'DELIVERED'
+                        ? 'bg-emerald-500/10 text-emerald-500'
+                        : selectedConsignment.present_location_type === 'IN_TRANSIT'
+                        ? 'bg-cyan-500/10 text-cyan-400'
+                        : 'bg-amber-500/10 text-amber-500'
+                    }`}>
+                      <MapPin className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <span className={`text-[10px] uppercase font-bold tracking-wider block ${
+                        isDark ? 'text-slate-400' : 'text-slate-500'
+                      }`}>
+                        Current Present Location
+                      </span>
+                      <h4 className={`text-sm font-extrabold ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                        {selectedConsignment.present_location_title || 'Location Unknown'}
+                      </h4>
+                    </div>
+                  </div>
+                  <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${
+                    selectedConsignment.status === 'DELIVERED'
+                      ? isDark ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                      : selectedConsignment.status === 'IN_TRANSIT' || selectedConsignment.status === 'DISPATCHED'
+                      ? isDark ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30' : 'bg-cyan-50 text-cyan-800 border-cyan-200'
+                      : isDark ? 'bg-amber-500/15 text-amber-300 border-amber-500/30' : 'bg-amber-50 text-amber-800 border-amber-200'
+                  }`}>
+                    {selectedConsignment.status_label || selectedConsignment.status}
+                  </span>
+                </div>
+
+                <p className={`text-xs leading-relaxed px-3 py-2 rounded-xl ${
+                  isDark ? 'bg-slate-800/60 text-slate-300' : 'bg-slate-50 text-slate-600'
+                }`}>
+                  {selectedConsignment.present_location_detail}
+                </p>
+
+                {/* 3-Step Journey Nodes */}
+                <div className={`pt-2 border-t grid grid-cols-3 gap-2 text-center text-xs ${
+                  isDark ? 'border-slate-800/80' : 'border-slate-100'
+                }`}>
+                  <div className={`p-2 rounded-xl ${
+                    selectedConsignment.present_location_type === 'ORIGIN_GODOWN'
+                      ? isDark ? 'bg-amber-500/15 border border-amber-500/30' : 'bg-amber-50 border border-amber-200'
+                      : isDark ? 'bg-slate-800/40' : 'bg-slate-50'
+                  }`}>
+                    <div className={`text-[10px] font-bold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Origin Branch</div>
+                    <div className={`font-mono font-bold text-xs mt-0.5 ${isDark ? 'text-white' : 'text-slate-800'}`}>
+                      {selectedConsignment.origin_branch_code || selectedConsignment.origin_city}
+                    </div>
+                    <div className="text-[10px] text-slate-400 truncate mt-0.5">{selectedConsignment.origin_branch_name}</div>
+                  </div>
+
+                  <div className={`p-2 rounded-xl ${
+                    selectedConsignment.present_location_type === 'IN_TRANSIT' || selectedConsignment.present_location_type === 'TRANSIT_HUB'
+                      ? isDark ? 'bg-cyan-500/15 border border-cyan-500/30' : 'bg-cyan-50 border border-cyan-200'
+                      : isDark ? 'bg-slate-800/40' : 'bg-slate-50'
+                  }`}>
+                    <div className={`text-[10px] font-bold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Corridor Route</div>
+                    <div className={`font-mono font-bold text-xs mt-0.5 ${isDark ? 'text-cyan-400' : 'text-blue-600'}`}>
+                      {selectedConsignment.route_code}
+                    </div>
+                    <div className="text-[10px] text-slate-400 truncate mt-0.5">
+                      {selectedConsignment.origin_city} ➔ {selectedConsignment.destination_city}
+                    </div>
+                  </div>
+
+                  <div className={`p-2 rounded-xl ${
+                    selectedConsignment.present_location_type === 'DEST_GODOWN' || selectedConsignment.present_location_type === 'OUT_FOR_DELIVERY' || selectedConsignment.present_location_type === 'DELIVERED'
+                      ? isDark ? 'bg-emerald-500/15 border border-emerald-500/30' : 'bg-emerald-50 border border-emerald-200'
+                      : isDark ? 'bg-slate-800/40' : 'bg-slate-50'
+                  }`}>
+                    <div className={`text-[10px] font-bold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Destination Branch</div>
+                    <div className={`font-mono font-bold text-xs mt-0.5 ${isDark ? 'text-white' : 'text-slate-800'}`}>
+                      {selectedConsignment.destination_branch_code || selectedConsignment.destination_city}
+                    </div>
+                    <div className="text-[10px] text-slate-400 truncate mt-0.5">{selectedConsignment.destination_branch_name}</div>
+                  </div>
                 </div>
               </div>
 
@@ -4995,8 +6471,9 @@ export default function BookingsMasterPage() {
                 <div className="grid grid-cols-2 gap-4">
                   {/* Docket Number */}
                   <div className="space-y-1">
-                    <label className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                      Docket No. (LR / Bilty) *
+                    <label className={`text-xs font-bold flex items-center gap-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                      <span>Docket No. (LR / Bilty)</span>
+                      <span className="text-red-500 font-bold">*</span>
                     </label>
                     <input
                       type="text"
@@ -5012,8 +6489,9 @@ export default function BookingsMasterPage() {
 
                   {/* Status */}
                   <div className="space-y-1">
-                    <label className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                      Consignment Status *
+                    <label className={`text-xs font-bold flex items-center gap-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                      <span>Consignment Status</span>
+                      <span className="text-red-500 font-bold">*</span>
                     </label>
                     <select
                       value={editFormData.status}
@@ -5034,8 +6512,9 @@ export default function BookingsMasterPage() {
 
                   {/* Consignor Name */}
                   <div className="space-y-1">
-                    <label className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                      Consignor (Shipper Name) *
+                    <label className={`text-xs font-bold flex items-center gap-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                      <span>Consignor (Shipper Name)</span>
+                      <span className="text-red-500 font-bold">*</span>
                     </label>
                     <input
                       type="text"
@@ -5051,8 +6530,9 @@ export default function BookingsMasterPage() {
 
                   {/* Consignee Name */}
                   <div className="space-y-1">
-                    <label className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                      Consignee (Receiver Name) *
+                    <label className={`text-xs font-bold flex items-center gap-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                      <span>Consignee (Receiver Name)</span>
+                      <span className="text-red-500 font-bold">*</span>
                     </label>
                     <input
                       type="text"
@@ -5066,44 +6546,125 @@ export default function BookingsMasterPage() {
                     />
                   </div>
 
-                  {/* Origin City */}
+                  {/* Origin City with Branch Code */}
                   <div className="space-y-1">
-                    <label className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                      Origin City *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={editFormData.originCity}
-                      onChange={(e) => setEditFormData({ ...editFormData, originCity: e.target.value })}
-                      className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
-                          ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
-                          : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
-                        }`}
-                    />
+                    <div className="flex items-center justify-between">
+                      <label className={`text-xs font-bold flex items-center gap-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                        <span>Origin City</span>
+                        <span className="text-red-500 font-bold">*</span>
+                      </label>
+                      {resolvedOriginCode && (
+                        <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-md border flex items-center gap-1 ${
+                          isDark ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30' : 'bg-blue-50 text-blue-700 border-blue-200'
+                        }`}>
+                          <Building2 className="w-3 h-3" />
+                          <span>Branch Code: {resolvedOriginCode}</span>
+                        </span>
+                      )}
+                    </div>
+                    <div className="relative flex items-center">
+                      <span className={`px-2.5 py-2 rounded-l-xl border border-r-0 text-xs font-mono font-bold shrink-0 flex items-center gap-1 ${
+                        isDark ? 'bg-slate-800 text-cyan-400 border-slate-800' : 'bg-slate-100 text-blue-700 border-slate-200'
+                      }`}>
+                        [{resolvedOriginCode || 'ORG'}]
+                      </span>
+                      <input
+                        type="text"
+                        required
+                        value={editFormData.originCity}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          const matched = branchesList.find(b =>
+                            (b.city && b.city.toLowerCase() === val.toLowerCase()) ||
+                            (b.branch_name && b.branch_name.toLowerCase() === val.toLowerCase()) ||
+                            (b.branch_code && b.branch_code.toLowerCase() === val.toLowerCase())
+                          );
+                          setEditFormData((prev) => ({
+                            ...prev,
+                            originCity: val,
+                            originBranchId: matched ? matched.id : prev.originBranchId,
+                            originBranchCode: matched ? matched.branch_code : prev.originBranchCode,
+                          }));
+                        }}
+                        list="edit-origin-branches-list"
+                        placeholder="e.g. Bengaluru"
+                        className={`w-full px-3 py-2 rounded-r-xl border text-xs focus:outline-none transition-colors ${isDark
+                            ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                            : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                          }`}
+                      />
+                      <datalist id="edit-origin-branches-list">
+                        {branchesList.map((b) => (
+                          <option key={b.id} value={b.city || b.branch_name}>
+                            {b.branch_code ? `[${b.branch_code}] ` : ''}{b.city || b.branch_name} ({b.branch_name})
+                          </option>
+                        ))}
+                      </datalist>
+                    </div>
                   </div>
 
-                  {/* Destination City */}
+                  {/* Destination City with Branch Code */}
                   <div className="space-y-1">
-                    <label className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                      Destination City *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={editFormData.destinationCity}
-                      onChange={(e) => setEditFormData({ ...editFormData, destinationCity: e.target.value })}
-                      className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
-                          ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
-                          : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
-                        }`}
-                    />
+                    <div className="flex items-center justify-between">
+                      <label className={`text-xs font-bold flex items-center gap-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                        <span>Destination City</span>
+                        <span className="text-red-500 font-bold">*</span>
+                      </label>
+                      {resolvedDestCode && (
+                        <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-md border flex items-center gap-1 ${
+                          isDark ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30' : 'bg-blue-50 text-blue-700 border-blue-200'
+                        }`}>
+                          <Building2 className="w-3 h-3" />
+                          <span>Branch Code: {resolvedDestCode}</span>
+                        </span>
+                      )}
+                    </div>
+                    <div className="relative flex items-center">
+                      <span className={`px-2.5 py-2 rounded-l-xl border border-r-0 text-xs font-mono font-bold shrink-0 flex items-center gap-1 ${
+                        isDark ? 'bg-slate-800 text-cyan-400 border-slate-800' : 'bg-slate-100 text-blue-700 border-slate-200'
+                      }`}>
+                        [{resolvedDestCode || 'DST'}]
+                      </span>
+                      <input
+                        type="text"
+                        required
+                        value={editFormData.destinationCity}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          const matched = branchesList.find(b =>
+                            (b.city && b.city.toLowerCase() === val.toLowerCase()) ||
+                            (b.branch_name && b.branch_name.toLowerCase() === val.toLowerCase()) ||
+                            (b.branch_code && b.branch_code.toLowerCase() === val.toLowerCase())
+                          );
+                          setEditFormData((prev) => ({
+                            ...prev,
+                            destinationCity: val,
+                            destBranchId: matched ? matched.id : prev.destBranchId,
+                            destBranchCode: matched ? matched.branch_code : prev.destBranchCode,
+                          }));
+                        }}
+                        list="edit-dest-branches-list"
+                        placeholder="e.g. South West Delhi"
+                        className={`w-full px-3 py-2 rounded-r-xl border text-xs focus:outline-none transition-colors ${isDark
+                            ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                            : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                          }`}
+                      />
+                      <datalist id="edit-dest-branches-list">
+                        {branchesList.map((b) => (
+                          <option key={b.id} value={b.city || b.branch_name}>
+                            {b.branch_code ? `[${b.branch_code}] ` : ''}{b.city || b.branch_name} ({b.branch_name})
+                          </option>
+                        ))}
+                      </datalist>
+                    </div>
                   </div>
 
                   {/* Cargo Type */}
                   <div className="space-y-1 col-span-2">
-                    <label className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                      Material / Commodity Description *
+                    <label className={`text-xs font-bold flex items-center gap-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                      <span>Material / Commodity Description</span>
+                      <span className="text-red-500 font-bold">*</span>
                     </label>
                     <input
                       type="text"
@@ -5120,8 +6681,9 @@ export default function BookingsMasterPage() {
                   {/* Packages Count */}
                   <div className="space-y-1">
                     <div className="flex items-center justify-between">
-                      <label className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                        Packages Count *
+                      <label className={`text-xs font-bold flex items-center gap-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                        <span>Packages Count</span>
+                        <span className="text-red-500 font-bold">*</span>
                       </label>
                       {isEditingDocketPaid && (
                         <span className="text-[10px] text-amber-500 font-bold flex items-center gap-1">
@@ -5149,8 +6711,9 @@ export default function BookingsMasterPage() {
                   {/* Weight KG */}
                   <div className="space-y-1">
                     <div className="flex items-center justify-between">
-                      <label className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                        Charged Weight (KG) *
+                      <label className={`text-xs font-bold flex items-center gap-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                        <span>Charged Weight (KG)</span>
+                        <span className="text-red-500 font-bold">*</span>
                       </label>
                       {isEditingDocketPaid && (
                         <span className="text-[10px] text-amber-500 font-bold flex items-center gap-1">
@@ -5178,8 +6741,9 @@ export default function BookingsMasterPage() {
                   {/* Rate per KG */}
                   <div className="space-y-1">
                     <div className="flex items-center justify-between">
-                      <label className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                        Rate / KG (₹) *
+                      <label className={`text-xs font-bold flex items-center gap-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                        <span>Rate / KG (₹)</span>
+                        <span className="text-red-500 font-bold">*</span>
                       </label>
                       {isEditingDocketPaid && (
                         <span className="text-[10px] text-amber-500 font-bold flex items-center gap-1">
@@ -5472,8 +7036,9 @@ export default function BookingsMasterPage() {
                   {/* Total Freight */}
                   <div className="space-y-1 col-span-2">
                     <div className="flex items-center justify-between">
-                      <label className={`text-xs font-bold ${isDark ? 'text-cyan-400' : 'text-blue-600'}`}>
-                        Total Docket Freight (₹) *
+                      <label className={`text-xs font-bold flex items-center gap-1 ${isDark ? 'text-cyan-400' : 'text-blue-600'}`}>
+                        <span>Total Docket Freight (₹)</span>
+                        <span className="text-red-500 font-bold">*</span>
                       </label>
                       <span className={`text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                         {isEditingDocketPaid
@@ -5502,8 +7067,9 @@ export default function BookingsMasterPage() {
                   {/* Payment Mode */}
                   <div className="space-y-1 col-span-2">
                     <div className="flex items-center justify-between">
-                      <label className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                        Payment Term *
+                      <label className={`text-xs font-bold flex items-center gap-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                        <span>Payment Term</span>
+                        <span className="text-red-500 font-bold">*</span>
                       </label>
                       {isEditingDocketPaid && (
                         <span className="text-[10px] text-emerald-500 font-bold flex items-center gap-1">
@@ -5530,6 +7096,39 @@ export default function BookingsMasterPage() {
                           {mode === 'TBB' ? 'T.B.B. (Bill)' : mode}
                         </button>
                       ))}
+                    </div>
+                  </div>
+
+                  {/* Load / Movement Type (PTL vs FTL) */}
+                  <div className="space-y-1 col-span-2">
+                    <label className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                      Consignment Load Type (PTL / FTL) *
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setEditFormData({ ...editFormData, loadType: 'PTL' })}
+                        className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                          (editFormData.loadType || 'PTL') === 'PTL'
+                            ? 'bg-amber-500 text-white border-amber-600 shadow-sm'
+                            : isDark ? 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white' : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200'
+                        }`}
+                      >
+                        <span>📦</span>
+                        <span>PTL (Part Truck Load)</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditFormData({ ...editFormData, loadType: 'FTL' })}
+                        className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                          (editFormData.loadType || 'PTL') === 'FTL'
+                            ? 'bg-purple-600 text-white border-purple-500 shadow-sm'
+                            : isDark ? 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white' : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200'
+                        }`}
+                      >
+                        <span>🚛</span>
+                        <span>FTL (Full Truck Load)</span>
+                      </button>
                     </div>
                   </div>
 
@@ -5890,94 +7489,101 @@ export default function BookingsMasterPage() {
               {/* Top Toolbar (Non-printable) */}
               <div
                 id="bilty-modal-toolbar"
-                className={`p-4 px-6 border-b flex flex-wrap items-center justify-between gap-3 shrink-0 ${isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200'
+                className={`p-3 sm:p-4 px-4 sm:px-6 border-b flex items-center justify-between gap-3 shrink-0 ${isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200'
                   }`}
               >
-                <div className="flex items-center space-x-3">
-                  <div className="w-10 h-10 rounded-xl bg-blue-600/20 text-blue-500 border border-blue-500/30 flex items-center justify-center shrink-0">
-                    <FileText className="w-5 h-5" />
+                {/* Left: Icon, LR Number & Customer Route */}
+                <div className="flex items-center space-x-2.5 min-w-0 flex-1">
+                  <div className="w-9 h-9 rounded-xl bg-blue-600/20 text-blue-500 border border-blue-500/30 flex items-center justify-center shrink-0">
+                    <FileText className="w-4 h-4" />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <h3 className="text-base font-bold">Consignment Note (Bilty / LR)</h3>
-                      <span className="font-mono text-xs px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 font-bold border border-blue-500/30">
+                      <h3 className="text-sm sm:text-base font-bold truncate">Consignment Note (Bilty / LR)</h3>
+                      <span className="font-mono text-[11px] px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 font-bold border border-blue-500/30 shrink-0">
                         {printConsignment.lr_number}
                       </span>
                     </div>
-                    <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                      Official 3-Part Transport Docket • {printConsignment.origin_city} ➔ {printConsignment.destination_city}
+                    <p className={`text-[11px] truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                      <span className="font-bold text-slate-800 dark:text-slate-200">
+                        {printConsignment.consignor?.name || printConsignment.consignor_name || 'Shipper'} ➔ {printConsignment.consignee?.name || printConsignment.consignee_name || 'Receiver'}
+                      </span>
+                      <span className="mx-1.5 opacity-50">•</span>
+                      <span>{printConsignment.consignor?.city || printConsignment.origin_city} ➔ {printConsignment.consignee?.city || printConsignment.destination_city}</span>
                     </p>
                   </div>
                 </div>
 
-                {/* Copy Selector Pills */}
-                <div className={`flex items-center p-1 rounded-xl border text-xs font-semibold ${isDark ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-200'
-                  }`}>
-                  <button
-                    type="button"
-                    onClick={() => setActivePrintCopy('ALL')}
-                    className={`px-3 py-1.5 rounded-lg transition-all ${activePrintCopy === 'ALL'
-                        ? 'bg-blue-600 text-white shadow-xs'
-                        : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                  >
-                    Triplicate (All 3 Copies)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActivePrintCopy('CONSIGNOR')}
-                    className={`px-3 py-1.5 rounded-lg transition-all ${activePrintCopy === 'CONSIGNOR'
-                        ? 'bg-rose-600 text-white shadow-xs'
-                        : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                  >
-                    Consignor Copy
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActivePrintCopy('CONSIGNEE')}
-                    className={`px-3 py-1.5 rounded-lg transition-all ${activePrintCopy === 'CONSIGNEE'
-                        ? 'bg-emerald-600 text-white shadow-xs'
-                        : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                  >
-                    Consignee Copy
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActivePrintCopy('DRIVER')}
-                    className={`px-3 py-1.5 rounded-lg transition-all ${activePrintCopy === 'DRIVER'
-                        ? 'bg-cyan-600 text-white shadow-xs'
-                        : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                  >
-                    Driver / Transporter
-                  </button>
-                </div>
+                {/* Right: Copy Selector Pills + Action Buttons */}
+                <div className="flex items-center gap-2.5 shrink-0">
+                  {/* Copy Selector Pills */}
+                  <div className={`hidden md:flex items-center p-0.5 rounded-xl border text-[11px] font-semibold shrink-0 ${isDark ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-200'}`}>
+                    <button
+                      type="button"
+                      onClick={() => setActivePrintCopy('ALL')}
+                      className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${activePrintCopy === 'ALL'
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                    >
+                      Triplicate (All 3)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActivePrintCopy('CONSIGNOR')}
+                      className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${activePrintCopy === 'CONSIGNOR'
+                          ? 'bg-rose-600 text-white shadow-xs'
+                          : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                    >
+                      Consignor Copy
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActivePrintCopy('CONSIGNEE')}
+                      className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${activePrintCopy === 'CONSIGNEE'
+                          ? 'bg-emerald-600 text-white shadow-xs'
+                          : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                    >
+                      Consignee Copy
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActivePrintCopy('DRIVER')}
+                      className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${activePrintCopy === 'DRIVER'
+                          ? 'bg-cyan-600 text-white shadow-xs'
+                          : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                    >
+                      Driver / Transporter
+                    </button>
+                  </div>
 
-                {/* Action Buttons */}
-                <div className="flex items-center space-x-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (typeof window !== 'undefined') window.print();
-                    }}
-                    className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 flex items-center space-x-2 transition-transform active:scale-95 cursor-pointer"
-                  >
-                    <Printer className="w-4 h-4" />
-                    <span>Print Slip</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setIsPrintModalOpen(false)}
-                    className={`p-2 rounded-xl border transition-colors cursor-pointer ${isDark
-                        ? 'border-slate-800 bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800'
-                        : 'border-slate-200 bg-slate-100 text-slate-600 hover:text-slate-900 hover:bg-slate-200'
-                      }`}
-                    title="Close preview"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
+                  {/* Action Buttons: Print Slip & Close */}
+                  <div className="flex items-center space-x-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (typeof window !== 'undefined') window.print();
+                      }}
+                      className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 flex items-center space-x-1.5 transition-transform active:scale-95 cursor-pointer shrink-0"
+                    >
+                      <Printer className="w-3.5 h-3.5" />
+                      <span>Print Bilty</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsPrintModalOpen(false)}
+                      className={`p-1.5 rounded-xl border transition-colors cursor-pointer shrink-0 ${isDark
+                          ? 'border-slate-800 bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800'
+                          : 'border-slate-200 bg-slate-100 text-slate-600 hover:text-slate-900 hover:bg-slate-200'
+                        }`}
+                      title="Close preview"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -5989,15 +7595,11 @@ export default function BookingsMasterPage() {
               >
                 <div id="bilty-slip-printable-area" className="w-full">
                   {(activePrintCopy === 'ALL'
-                    ? ['1. CONSIGNOR COPY (FOR SENDER)', '2. CONSIGNEE COPY (FOR RECEIVER)', '3. DRIVER / TRANSPORTER COPY (FOR RECORDS)']
-                    : activePrintCopy === 'CONSIGNOR'
-                      ? ['CONSIGNOR COPY (FOR SENDER)']
-                      : activePrintCopy === 'CONSIGNEE'
-                        ? ['CONSIGNEE COPY (FOR RECEIVER)']
-                        : ['DRIVER / TRANSPORTER COPY (FOR RECORDS)']
-                  ).map((copyTitle, idx, arr) => (
-                    <div key={copyTitle}>
-                      {renderBiltySlipSheet(printConsignment, copyTitle)}
+                    ? ['CONSIGNOR', 'CONSIGNEE', 'DRIVER']
+                    : [activePrintCopy]
+                  ).map((copyType, idx, arr) => (
+                    <div key={copyType}>
+                      {renderBiltySlipSheet(printConsignment, copyType)}
                       {idx < arr.length - 1 && (
                         <div className="bilty-page-break my-6 border-b-2 border-dashed border-slate-400 no-print" />
                       )}

@@ -2,6 +2,7 @@
 const defaultModels = require('../models');
 const { successResponse, paginatedResponse, errorResponse } = require('../utils/apiResponse');
 const { Op } = require('sequelize');
+const { logAudit } = require('../middleware/auditLogger');
 
 const listBranches = async (req, res) => {
   try {
@@ -173,6 +174,16 @@ const createBranch = async (req, res) => {
       max_customer_credit_limit: parsedBranchCap,
     });
 
+    logAudit({
+      req,
+      action: 'CREATE',
+      entityType: 'BRANCH',
+      entityId: branch.branch_code || branch.id,
+      entityName: branch.branch_name,
+      summary: `Created ${branch.is_head_office ? 'Head Office' : branch.is_hub ? 'Hub' : 'Branch'} "${branch.branch_name}" (${branch.city}, Code: ${branch.branch_code})`,
+      newValues: branch.toJSON ? branch.toJSON() : branch,
+    });
+
     return successResponse(res, `${branch.is_head_office ? 'Head Office' : branch.is_hub ? 'Hub' : 'Branch'} created successfully`, branch, 201);
   } catch (error) {
     return errorResponse(res, error.message, null, 500);
@@ -209,6 +220,8 @@ const updateBranch = async (req, res) => {
     if (!branch) {
       return errorResponse(res, 'Branch not found', null, 404);
     }
+
+    const oldSnapshot = branch.toJSON ? branch.toJSON() : null;
 
     if (branch_code && branch_code.trim().toUpperCase() !== branch.branch_code) {
       const codeCheck = await Branch.findOne({
@@ -262,6 +275,17 @@ const updateBranch = async (req, res) => {
 
     await branch.save();
 
+    logAudit({
+      req,
+      action: 'UPDATE',
+      entityType: 'BRANCH',
+      entityId: branch.branch_code || branch.id,
+      entityName: branch.branch_name,
+      summary: `Updated branch settings for "${branch.branch_name}" (${branch.city})`,
+      oldValues: oldSnapshot,
+      newValues: branch.toJSON ? branch.toJSON() : branch,
+    });
+
     return successResponse(res, `${branch.is_head_office ? 'Head Office' : branch.is_hub ? 'Hub' : 'Branch'} updated successfully`, branch);
   } catch (error) {
     return errorResponse(res, error.message, null, 500);
@@ -302,7 +326,19 @@ const deleteBranch = async (req, res) => {
       }
     }
 
+    const branchSnapshot = branch.toJSON ? branch.toJSON() : { id, branch_name: branch.branch_name };
     await branch.destroy();
+
+    logAudit({
+      req,
+      action: 'DELETE',
+      entityType: 'BRANCH',
+      entityId: branchSnapshot.branch_code || id,
+      entityName: branchSnapshot.branch_name,
+      summary: `Deleted branch "${branchSnapshot.branch_name}" (${branchSnapshot.city || 'City'})`,
+      oldValues: branchSnapshot,
+    });
+
     return successResponse(res, 'Branch deleted successfully');
   } catch (error) {
     return errorResponse(res, error.message, null, 500);

@@ -1,7 +1,7 @@
 // frontend/app/(owner)/trips/page.js
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import api from '../../../services/api';
 import Sidebar from '../../../components/layout/Sidebar';
 import Navbar from '../../../components/layout/Navbar';
@@ -10,6 +10,7 @@ import Badge from '../../../components/ui/Badge';
 import { useTheme } from '../../../components/ThemeProvider';
 import { usePermissions } from '../../../hooks/usePermissions';
 import Modal from '../../../components/ui/Modal';
+import CameraCaptureModal from '../../../components/ui/CameraCaptureModal';
 import {
   Truck,
   MapPin,
@@ -36,7 +37,12 @@ import {
   Gauge,
   Send,
   Info,
-  ChevronDown
+  ChevronDown,
+  RotateCw,
+  Camera,
+  UploadCloud,
+  FileCheck,
+  Eye,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useStore } from '../../../store/useStore';
@@ -56,6 +62,7 @@ export default function TripsPage() {
   const [selectedTrip, setSelectedTrip] = useState(null);
   const [settling, setSettling] = useState(false);
   const [driverAllowance, setDriverAllowance] = useState(1500);
+  const [settleVehicleCharge, setSettleVehicleCharge] = useState('');
 
   // Trip Settlement Center States
   const [settleExpensesList, setSettleExpensesList] = useState([]);
@@ -134,6 +141,30 @@ export default function TripsPage() {
   const [submittingArrival, setSubmittingArrival] = useState(false);
   const [arrivalError, setArrivalError] = useState('');
 
+  // FTL Direct Delivery Modal State
+  const [ftlDeliveryModalOpen, setFtlDeliveryModalOpen] = useState(false);
+  const [ftlDeliveryTrip, setFtlDeliveryTrip] = useState(null);
+  const [ftlEndOdo, setFtlEndOdo] = useState('');
+  const [ftlReceiverName, setFtlReceiverName] = useState('');
+  const [ftlReceiverPhone, setFtlReceiverPhone] = useState('');
+  const [ftlPhysicalSeal, setFtlPhysicalSeal] = useState('');
+  const [ftlSealStatus, setFtlSealStatus] = useState('INTACT'); // 'INTACT' | 'MISMATCH' | 'BROKEN' | 'NO_SEAL'
+  const [ftlDiscrepancyCategory, setFtlDiscrepancyCategory] = useState('RTO / Police Highway Inspection (Memo Checked)');
+  const [ftlDiscrepancyReason, setFtlDiscrepancyReason] = useState('');
+  const [ftlMemoNumber, setFtlMemoNumber] = useState('');
+  const [ftlCargoCondition, setFtlCargoCondition] = useState('INTACT'); // 'INTACT' | 'MINOR_DAMAGE' | 'SEVERE_DAMAGE'
+  const [ftlPodDocType, setFtlPodDocType] = useState('SIGNED_BILTY');
+  const [ftlPodNumber, setFtlPodNumber] = useState('');
+  const [ftlPodFileUrl, setFtlPodFileUrl] = useState('');
+  const [ftlPodFileName, setFtlPodFileName] = useState('');
+  const [ftlPodFileSize, setFtlPodFileSize] = useState('');
+  const [ftlPodUploading, setFtlPodUploading] = useState(false);
+  const [ftlCameraModalOpen, setFtlCameraModalOpen] = useState(false);
+  const [ftlRemarks, setFtlRemarks] = useState('');
+  const [submittingFtlDelivery, setSubmittingFtlDelivery] = useState(false);
+  const [ftlDeliveryError, setFtlDeliveryError] = useState('');
+  const ftlPodFileInputRef = useRef(null);
+
   const [searchInput, setSearchInput] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -141,6 +172,7 @@ export default function TripsPage() {
   const [sortBy, setSortBy] = useState('trip_date');
   const [sortOrder, setSortOrder] = useState('DESC');
   const [statusFilter, setStatusFilter] = useState('');
+  const [loadTypeFilter, setLoadTypeFilter] = useState('');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
 
@@ -159,6 +191,7 @@ export default function TripsPage() {
       let url = `/trips?page=${page}&limit=${pageSize}&sort_by=${sortBy}&sort_order=${sortOrder}`;
       if (debouncedSearch && debouncedSearch.trim()) url += `&search=${encodeURIComponent(debouncedSearch.trim())}`;
       if (statusFilter) url += `&status=${statusFilter}`;
+      if (loadTypeFilter) url += `&load_type=${loadTypeFilter}`;
       if (fromDate) url += `&from_date=${fromDate}`;
       if (toDate) url += `&to_date=${toDate}`;
 
@@ -214,7 +247,7 @@ export default function TripsPage() {
 
   useEffect(() => {
     fetchTrips();
-  }, [page, pageSize, sortBy, sortOrder, statusFilter, debouncedSearch, fromDate, toDate, currentBranchId, movementTab]);
+  }, [page, pageSize, sortBy, sortOrder, statusFilter, loadTypeFilter, debouncedSearch, fromDate, toDate, currentBranchId, movementTab]);
 
   useEffect(() => {
     fetchMasterData();
@@ -309,6 +342,239 @@ export default function TripsPage() {
     }
   };
 
+  // Helper to test if a POD URL is an image
+  const isPodImage = (url) => {
+    if (!url) return false;
+    if (url.startsWith('data:image')) return true;
+    if (url.endsWith('.pdf')) return false;
+    return /\.(jpg|jpeg|png|webp|gif)$/i.test(url) || url.includes('/uploads/pods/');
+  };
+
+  // Safely open Base64 or remote URL in new tab
+  const openBlobInNewTab = (dataUrl) => {
+    if (!dataUrl) return;
+    try {
+      if (dataUrl.startsWith('data:')) {
+        const arr = dataUrl.split(',');
+        const mimeMatch = arr[0].match(/:(.*?);/);
+        const mime = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+        const bstr = atob(arr[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) {
+          u8arr[n] = bstr.charCodeAt(n);
+        }
+        const blob = new Blob([u8arr], { type: mime });
+        const blobUrl = URL.createObjectURL(blob);
+        window.open(blobUrl, '_blank');
+      } else {
+        window.open(dataUrl, '_blank');
+      }
+    } catch (e) {
+      console.warn('Error opening blob URL:', e);
+      window.open(dataUrl, '_blank');
+    }
+  };
+
+  // Client-side image compression using HTML5 Canvas
+  const compressImageFile = (file, maxDimension = 1400, quality = 0.75) => {
+    return new Promise((resolve) => {
+      if (!file.type || !file.type.startsWith('image/')) {
+        return resolve(file);
+      }
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          let width = img.width;
+          let height = img.height;
+          if (width > maxDimension || height > maxDimension) {
+            if (width > height) {
+              height = Math.round((height * maxDimension) / width);
+              width = maxDimension;
+            } else {
+              width = Math.round((width * maxDimension) / height);
+              height = maxDimension;
+            }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            ctx.drawImage(img, 0, 0, width, height);
+
+            canvas.toBlob((blob) => {
+              if (!blob) {
+                return resolve(file);
+              }
+              const compressedFile = new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".jpg", {
+                type: 'image/jpeg',
+                lastModified: Date.now(),
+              });
+              resolve(compressedFile);
+            }, 'image/jpeg', quality);
+          } else {
+            resolve(file);
+          }
+        };
+        img.onerror = () => resolve(file);
+        img.src = event.target?.result;
+      };
+      reader.onerror = () => resolve(file);
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleOpenFtlDeliveryModal = (trip) => {
+    setFtlDeliveryTrip(trip);
+    setFtlEndOdo(trip.start_odometer ? String(trip.start_odometer) : '');
+    const consignee = trip.consignments?.[0]?.consignee;
+    setFtlReceiverName(consignee?.name || '');
+    const rawPhone = consignee?.phone ? String(consignee.phone).replace(/\D/g, '') : '';
+    setFtlReceiverPhone(rawPhone.length > 10 ? rawPhone.slice(-10) : rawPhone);
+
+    const dispatchedSeal = trip.dispatches?.[0]?.seal_number || trip.seal_number || '';
+    setFtlPhysicalSeal(dispatchedSeal);
+    setFtlSealStatus('INTACT');
+    setFtlDiscrepancyCategory('RTO / Police Highway Inspection (Memo Checked)');
+    setFtlDiscrepancyReason('');
+    setFtlMemoNumber('');
+    setFtlCargoCondition('INTACT');
+
+    setFtlPodDocType('SIGNED_BILTY');
+    setFtlPodNumber('');
+    setFtlPodFileUrl('');
+    setFtlPodFileName('');
+    setFtlPodFileSize('');
+    setFtlRemarks('');
+    setFtlDeliveryError('');
+    setFtlDeliveryModalOpen(true);
+  };
+
+  const handleFtlPodFileSelect = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.type === 'application/pdf') {
+      if (file.size > 1 * 1024 * 1024) {
+        alert(`PDF file size (${(file.size / (1024 * 1024)).toFixed(2)} MB) exceeds the 1 MB database limit. Please select a smaller PDF.`);
+        e.target.value = '';
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const base64Data = event.target?.result;
+        if (base64Data) {
+          setFtlPodFileUrl(base64Data);
+          setFtlPodFileName(file.name);
+          setFtlPodFileSize(`${(file.size / 1024).toFixed(0)} KB (PDF)`);
+        }
+      };
+      reader.readAsDataURL(file);
+      e.target.value = '';
+      return;
+    }
+
+    try {
+      setFtlPodUploading(true);
+      const compressedFile = await compressImageFile(file, 1280, 0.72);
+      if (compressedFile.size > 1 * 1024 * 1024) {
+        alert('Image size exceeds 1 MB database limit. Please capture or select a smaller photo.');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const base64Data = event.target?.result;
+        if (base64Data) {
+          const sizeKb = (compressedFile.size / 1024).toFixed(0);
+          setFtlPodFileUrl(base64Data);
+          setFtlPodFileName(file.name);
+          setFtlPodFileSize(`${sizeKb} KB (Photo)`);
+        }
+      };
+      reader.readAsDataURL(compressedFile);
+    } catch (err) {
+      console.error('Error processing POD file:', err);
+      alert('Failed to process image. Please try again.');
+    } finally {
+      setFtlPodUploading(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleFtlCameraCaptured = (base64Data, sizeKb) => {
+    setFtlPodFileUrl(base64Data);
+    setFtlPodFileName(`POD_Camera_${Date.now()}.jpg`);
+    setFtlPodFileSize(`${sizeKb} KB (Camera Photo)`);
+    setFtlCameraModalOpen(false);
+  };
+
+  const handleSubmitFtlDelivery = async (e) => {
+    e.preventDefault();
+    if (!ftlDeliveryTrip) return;
+
+    const startOdo = parseInt(ftlDeliveryTrip.start_odometer || 0, 10);
+    const endOdo = parseInt(ftlEndOdo || startOdo, 10);
+    if (endOdo < startOdo) {
+      setFtlDeliveryError(`Delivery odometer (${endOdo} KM) cannot be less than departure odometer (${startOdo} KM).`);
+      return;
+    }
+
+    if (!ftlPhysicalSeal.trim()) {
+      setFtlDeliveryError('Please enter the physical seal number observed on the truck container.');
+      return;
+    }
+
+    if (ftlSealStatus !== 'INTACT' && !ftlDiscrepancyReason.trim()) {
+      setFtlDeliveryError('Please specify the incident explanation / reason for the broken or mismatched seal.');
+      return;
+    }
+
+    const cleanedPhone = ftlReceiverPhone.replace(/\D/g, '');
+    if (cleanedPhone && cleanedPhone.length !== 10) {
+      setFtlDeliveryError(`Receiver contact phone must be exactly 10 digits (currently ${cleanedPhone.length} digits).`);
+      return;
+    }
+
+    const fullDiscrepancy = ftlSealStatus !== 'INTACT'
+      ? `${ftlDiscrepancyCategory}${ftlMemoNumber.trim() ? ` [Memo #${ftlMemoNumber.trim()}]` : ''}: ${ftlDiscrepancyReason.trim()}`
+      : '';
+
+    setSubmittingFtlDelivery(true);
+    setFtlDeliveryError('');
+
+    try {
+      const res = await api.post(`/trips/${ftlDeliveryTrip.id}/complete-ftl-delivery`, {
+        end_odometer: endOdo,
+        receiver_name: ftlReceiverName.trim() || 'Client Store',
+        receiver_phone: ftlReceiverPhone.trim(),
+        received_seal_number: ftlPhysicalSeal.trim(),
+        seal_status: ftlSealStatus,
+        discrepancy_reason: fullDiscrepancy,
+        cargo_condition: ftlCargoCondition,
+        pod_doc_type: ftlPodDocType,
+        pod_number: ftlPodNumber.trim(),
+        pod_file_url: ftlPodFileUrl || null,
+        delivery_remarks: ftlRemarks.trim(),
+        delivery_date: new Date().toISOString(),
+      });
+
+      if (res.data?.success) {
+        setFtlDeliveryModalOpen(false);
+        setFtlDeliveryTrip(null);
+        fetchTrips();
+      }
+    } catch (err) {
+      console.error('Failed to complete FTL delivery', err);
+      setFtlDeliveryError(err.response?.data?.message || 'Failed to record direct delivery.');
+    } finally {
+      setSubmittingFtlDelivery(false);
+    }
+  };
+
   const handleOpenAssignVehicle = (trip) => {
     setTripToAssign(trip);
     setAssignVehicleId(trip.vehicle?.id || trip.vehicle_id || '');
@@ -346,6 +612,7 @@ export default function TripsPage() {
   const handleOpenSettleModal = async (trip) => {
     setSelectedTrip(trip);
     setDriverAllowance(1500);
+    setSettleVehicleCharge(trip.vehicle_charge !== undefined && trip.vehicle_charge !== null ? String(trip.vehicle_charge) : '');
     setSettleRemarks('Trip advance & highway expense reconciliation closed');
     setShowAddExpenseInSettle(false);
     setSettleNewExpCategory('Fuel & Diesel');
@@ -368,6 +635,9 @@ export default function TripsPage() {
         const detailedTrip = tripRes.value.data.data;
         if (detailedTrip) {
           setSelectedTrip((prev) => ({ ...prev, ...detailedTrip }));
+          if (detailedTrip.vehicle_charge !== undefined && detailedTrip.vehicle_charge !== null) {
+            setSettleVehicleCharge(String(detailedTrip.vehicle_charge));
+          }
           if (Array.isArray(detailedTrip.advances)) {
             setSettleAdvancesList(detailedTrip.advances);
           }
@@ -430,6 +700,7 @@ export default function TripsPage() {
       const res = await api.post('/expenses/settle', {
         trip_id: tripId,
         driver_allowance: parseFloat(driverAllowance || 0),
+        vehicle_charge: parseFloat(settleVehicleCharge || 0),
         remarks: settleRemarks || 'Trip advance & expense reconciliation closed',
       });
       if (res.data?.success) {
@@ -503,17 +774,60 @@ export default function TripsPage() {
     }
   };
 
+  const renderLoadTypeBadge = (trip, { size = 'sm', showLabel = false } = {}) => {
+    if (!trip) return null;
+    const isFtl =
+      (trip.load_type || '').toUpperCase() === 'FTL' ||
+      (Array.isArray(trip.consignments) && trip.consignments.some((c) => (c.load_type || '').toUpperCase() === 'FTL')) ||
+      (trip.remarks && trip.remarks.toUpperCase().includes('FTL'));
+
+    if (isFtl) {
+      return (
+        <span
+          className={`inline-flex items-center gap-1 font-black uppercase tracking-wider rounded-md border shadow-2xs transition-all ${
+            size === 'xs'
+              ? 'px-1.5 py-0.5 text-[9px]'
+              : 'px-2 py-0.5 text-[10px]'
+          } bg-purple-50 text-purple-700 border-purple-200/80 dark:bg-purple-950/60 dark:text-purple-300 dark:border-purple-800/80`}
+          title="Full Truckload (FTL) - Dedicated Direct Vehicle"
+        >
+          <span className="w-1.5 h-1.5 rounded-full bg-purple-600 dark:bg-purple-400 animate-pulse" />
+          <span>FTL</span>
+          {showLabel && <span className="font-semibold text-purple-600/80 dark:text-purple-400/80 text-[9px]">(Dedicated)</span>}
+        </span>
+      );
+    }
+
+    return (
+      <span
+        className={`inline-flex items-center gap-1 font-bold uppercase tracking-wider rounded-md border shadow-2xs transition-all ${
+          size === 'xs'
+            ? 'px-1.5 py-0.5 text-[9px]'
+            : 'px-2 py-0.5 text-[10px]'
+        } bg-sky-50 text-sky-700 border-sky-200/80 dark:bg-sky-950/60 dark:text-sky-300 dark:border-sky-800/80`}
+        title="Part Truckload (PTL) - Consolidated Sundry Cargo"
+      >
+        <span className="w-1.5 h-1.5 rounded-full bg-sky-500 dark:bg-sky-400" />
+        <span>PTL</span>
+        {showLabel && <span className="font-semibold text-sky-600/70 dark:text-sky-400/70 text-[9px]">(Consolidated)</span>}
+      </span>
+    );
+  };
+
   const columns = useMemo(() => [
     {
       key: 'trip_number',
       label: 'Trip Number',
-      width: 170,
-      minWidth: 140,
+      width: 195,
+      minWidth: 165,
       sortable: true,
-      render: (val) => (
-        <span className="font-bold text-blue-600 dark:text-blue-400">
-          {val}
-        </span>
+      render: (val, row) => (
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-bold font-mono tracking-tight text-blue-600 dark:text-cyan-400">
+            {val}
+          </span>
+          {renderLoadTypeBadge(row, { size: 'xs' })}
+        </div>
       )
     },
     {
@@ -562,21 +876,54 @@ export default function TripsPage() {
     {
       key: 'vehicle',
       label: 'Assigned Vehicle',
-      width: 190,
-      minWidth: 160,
+      width: 220,
+      minWidth: 190,
       sortable: false,
-      render: (val, row) => (
-        <div className="min-w-0">
-          <span className={`font-mono font-bold text-xs truncate block ${row.vehicle ? 'text-blue-600 dark:text-cyan-400' : 'text-slate-400'}`}>
-            {row.vehicle?.vehicle_number || 'Unassigned'}
-          </span>
-          {row.vehicle?.vehicle_type && (
-            <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
-              {row.vehicle.vehicle_type} ({row.vehicle.capacity_ton || '10'}T)
-            </p>
-          )}
-        </div>
-      )
+      render: (val, row) => {
+        const ownership = (row.vehicle?.ownership || 'OWN').toUpperCase();
+        const isMarket = ownership === 'MARKET';
+        const isAttached = ownership === 'ATTACHED';
+        const isOwn = ownership === 'OWN';
+        const vehicleCharge = parseFloat(row.vehicle_charge || 0);
+
+        return (
+          <div className="min-w-0 space-y-1">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className={`font-mono font-bold text-xs ${row.vehicle ? 'text-blue-600 dark:text-cyan-400' : 'text-slate-400'}`}>
+                {row.vehicle?.vehicle_number || 'Unassigned'}
+              </span>
+              {isMarket && (
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800 tracking-tight">
+                  Market Hire
+                </span>
+              )}
+              {isAttached && (
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-100 dark:bg-purple-950/60 text-purple-800 dark:text-purple-300 border border-purple-300 dark:border-purple-800 tracking-tight">
+                  Vendor Attached
+                </span>
+              )}
+              {isOwn && row.vehicle && (
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 tracking-tight">
+                  Company Owned
+                </span>
+              )}
+            </div>
+
+            {row.vehicle?.vehicle_type && (
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
+                {row.vehicle.vehicle_type} ({row.vehicle.capacity_ton || '10'}T)
+              </p>
+            )}
+
+            {(isMarket || isAttached) && vehicleCharge > 0 && (
+              <div className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-900 dark:text-amber-200 bg-amber-50 dark:bg-amber-950/40 px-1.5 py-0.5 rounded border border-amber-200/80 dark:border-amber-800/60">
+                <span className="text-slate-500 dark:text-slate-400 font-normal">Vehicle Charge:</span>
+                <span className="font-bold text-amber-700 dark:text-amber-300">₹{vehicleCharge.toLocaleString('en-IN')}</span>
+              </div>
+            )}
+          </div>
+        );
+      }
     },
     {
       key: 'driver',
@@ -586,11 +933,11 @@ export default function TripsPage() {
       sortable: false,
       render: (val, row) => (
         <div>
-          <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
+          <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
             {row.driver?.name || 'Unassigned'}
           </span>
           {row.driver?.phone && (
-            <p className="text-[11px] text-slate-400">{row.driver.phone}</p>
+            <p className="text-[11px] font-mono text-slate-500 dark:text-slate-400">{row.driver.phone}</p>
           )}
         </div>
       )
@@ -603,28 +950,50 @@ export default function TripsPage() {
       sortable: true,
       align: 'right',
       render: (val) => (
-        <span className="text-xs font-semibold text-slate-900 dark:text-slate-100">
+        <span className="text-xs font-black text-slate-900 dark:text-slate-100 font-mono">
           {val ? `${Number(val).toLocaleString()} KG` : '0 KG'}
         </span>
       )
     },
     {
       key: 'financials',
-      label: 'Advance / Exp',
-      width: 140,
-      minWidth: 120,
+      label: 'Financials / Advance',
+      width: 155,
+      minWidth: 135,
       sortable: false,
       align: 'right',
-      render: (val, row) => (
-        <div className="text-xs text-right space-y-0.5">
-          <span className="font-bold text-slate-900 dark:text-slate-100">
-            ₹{parseFloat(row.driver_advance || 0).toLocaleString('en-IN')}
-          </span>
-          <p className="text-[10px] text-slate-400">
-            Exp: ₹{parseFloat(row.total_expenses || 0).toLocaleString('en-IN')}
-          </p>
-        </div>
-      )
+      render: (val, row) => {
+        const ownership = (row.vehicle?.ownership || 'OWN').toUpperCase();
+        const isVendorOrMarket = ownership === 'MARKET' || ownership === 'ATTACHED';
+        const vehicleCharge = parseFloat(row.vehicle_charge || 0);
+        const adv = parseFloat(row.driver_advance || 0);
+        const exp = parseFloat(row.total_expenses || 0);
+
+        return (
+          <div className="text-xs text-right space-y-0.5">
+            {isVendorOrMarket ? (
+              <>
+                <div className="font-black text-slate-900 dark:text-slate-100 flex items-center justify-end gap-1 font-mono">
+                  <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 font-sans">Charge:</span>
+                  <span>₹{vehicleCharge.toLocaleString('en-IN')}</span>
+                </div>
+                <p className="text-[10px] text-slate-600 dark:text-slate-400 font-medium">
+                  Adv: ₹{adv.toLocaleString('en-IN')} | Exp: ₹{exp.toLocaleString('en-IN')}
+                </p>
+              </>
+            ) : (
+              <>
+                <span className="font-black text-slate-900 dark:text-slate-100 font-mono">
+                  ₹{adv.toLocaleString('en-IN')}
+                </span>
+                <p className="text-[10px] text-slate-600 dark:text-slate-400 font-medium">
+                  Exp: ₹{exp.toLocaleString('en-IN')}
+                </p>
+              </>
+            )}
+          </div>
+        );
+      }
     },
     {
       key: 'status',
@@ -658,23 +1027,6 @@ export default function TripsPage() {
       }
     },
     {
-      key: 'settlement',
-      label: 'Settlement',
-      width: 110,
-      minWidth: 90,
-      sortable: false,
-      align: 'center',
-      render: (val, row) => (
-        row.settlement_status === 'SETTLED' ? (
-          <span className="text-xs font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 dark:text-emerald-400 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800">
-            SETTLED
-          </span>
-        ) : (
-          <span className="text-xs text-slate-400 font-medium">Pending</span>
-        )
-      )
-    },
-    {
       key: 'inbound_arrival',
       label: 'Dispatch & Unload',
       width: 175,
@@ -704,17 +1056,42 @@ export default function TripsPage() {
           )
         );
 
+        const isFtlTrip = (row.load_type || '').toUpperCase() === 'FTL' || (Array.isArray(row.consignments) && row.consignments.some((c) => (c.load_type || '').toUpperCase() === 'FTL'));
+
         // 3. If trip is COMPLETED
         if (row.status === 'COMPLETED') {
-          return (
-            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800 whitespace-nowrap">
-              <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+          return isFtlTrip ? (
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/40 px-2.5 py-0.5 rounded-md border border-sky-200 dark:border-sky-800 whitespace-nowrap shadow-2xs">
+              <CheckCircle2 className="w-3.5 h-3.5 text-sky-500" />
+              Delivered & Done
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/80 px-2.5 py-0.5 rounded-md border border-slate-200 dark:border-slate-700 whitespace-nowrap shadow-2xs">
+              <CheckCircle2 className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500" />
               Unloaded & Done
             </span>
           );
         }
 
-        // 4. If trip is RUNNING / READY (In Transit / Arriving)
+        // 4. FTL Dedicated Trips: Direct Client Delivery (Does not depend on destination hub gate)
+        if (isFtlTrip && (row.status === 'RUNNING' || row.status === 'READY')) {
+          return (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleOpenFtlDeliveryModal(row);
+              }}
+              className="inline-flex items-center gap-1.5 text-[11px] font-bold text-purple-700 dark:text-purple-300 hover:text-white bg-purple-50 dark:bg-purple-950/40 hover:bg-purple-600 dark:hover:bg-purple-600 px-2.5 py-1 rounded-md border border-purple-300 dark:border-purple-800 transition-all cursor-pointer shadow-2xs whitespace-nowrap active:scale-95"
+              title={`Record Direct FTL Delivery at ${row.destination_city || row.destBranch?.city || 'Customer Site'}`}
+            >
+              <Truck className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+              <span>Reached & Deliver</span>
+            </button>
+          );
+        }
+
+        // 5. PTL Consolidated Trips: RUNNING / READY (Hub-to-Hub transit & gate entry)
         if (row.status === 'RUNNING' || row.status === 'READY') {
           const hasArrived = Boolean(row.end_odometer && Number(row.end_odometer) > 0) || Boolean(row.is_arrived);
 
@@ -820,6 +1197,23 @@ export default function TripsPage() {
       }
     },
     {
+      key: 'settlement',
+      label: 'Settlement',
+      width: 110,
+      minWidth: 90,
+      sortable: false,
+      align: 'center',
+      render: (val, row) => (
+        row.settlement_status === 'SETTLED' ? (
+          <span className="text-xs font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 dark:text-emerald-400 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800">
+            SETTLED
+          </span>
+        ) : (
+          <span className="text-xs text-slate-400 font-medium">Pending</span>
+        )
+      )
+    },
+    {
       key: 'actions',
       label: 'Actions',
       width: 180,
@@ -880,8 +1274,8 @@ export default function TripsPage() {
             )}
 
             {row.settlement_status === 'SETTLED' && (
-              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800/60">
-                <CheckCircle2 className="w-3 h-3" />
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/80 px-2.5 py-0.5 rounded-md border border-slate-200 dark:border-slate-700">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
                 Settled
               </span>
             )}
@@ -999,31 +1393,58 @@ export default function TripsPage() {
             branchFilterLabel="Branch:"
             branchFilterAllLabel="All Branches (Network-wide)"
             headerFiltersSlot={
-              <div className="relative">
-                <select
-                  value={statusFilter}
-                  onChange={(e) => {
-                    setStatusFilter(e.target.value);
-                    setPage(1);
-                  }}
-                  className={`pl-3 pr-8 py-1.5 rounded-xl text-xs font-semibold border transition-all focus:outline-none appearance-none cursor-pointer ${
-                    statusFilter !== 'ALL'
-                      ? isDark
-                        ? 'bg-blue-600/20 border-blue-500/50 text-blue-300'
-                        : 'bg-blue-50 border-blue-300 text-blue-800'
-                      : isDark
-                      ? 'bg-slate-900/90 border-slate-700/80 text-slate-200 hover:border-slate-600'
-                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-xs'
-                  }`}
-                  title="Filter trips by operational status"
-                >
-                  {statusOptions.map((opt) => (
-                    <option key={opt.value} value={opt.value} className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="relative">
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => {
+                      setStatusFilter(e.target.value);
+                      setPage(1);
+                    }}
+                    className={`pl-3 pr-8 py-1.5 rounded-xl text-xs font-semibold border transition-all focus:outline-none appearance-none cursor-pointer ${
+                      statusFilter !== 'ALL' && statusFilter !== ''
+                        ? isDark
+                          ? 'bg-blue-600/20 border-blue-500/50 text-blue-300'
+                          : 'bg-blue-50 border-blue-300 text-blue-800'
+                        : isDark
+                        ? 'bg-slate-900/90 border-slate-700/80 text-slate-200 hover:border-slate-600'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-xs'
+                    }`}
+                    title="Filter trips by operational status"
+                  >
+                    {statusOptions.map((opt) => (
+                      <option key={opt.value} value={opt.value} className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                </div>
+
+                <div className="relative">
+                  <select
+                    value={loadTypeFilter}
+                    onChange={(e) => {
+                      setLoadTypeFilter(e.target.value);
+                      setPage(1);
+                    }}
+                    className={`pl-3 pr-8 py-1.5 rounded-xl text-xs font-semibold border transition-all focus:outline-none appearance-none cursor-pointer ${
+                      loadTypeFilter
+                        ? isDark
+                          ? 'bg-purple-600/20 border-purple-500/50 text-purple-300'
+                          : 'bg-purple-50 border-purple-300 text-purple-800'
+                        : isDark
+                        ? 'bg-slate-900/90 border-slate-700/80 text-slate-200 hover:border-slate-600'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-xs'
+                    }`}
+                    title="Filter trips by FTL / PTL load type"
+                  >
+                    <option value="" className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>All Loads</option>
+                    <option value="FTL" className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>⚡ FTL (Dedicated)</option>
+                    <option value="PTL" className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>📦 PTL (Consolidated)</option>
+                  </select>
+                  <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                </div>
               </div>
             }
             fromDate={fromDate}
@@ -1055,11 +1476,12 @@ export default function TripsPage() {
                       <Receipt className="w-5 h-5" />
                     </div>
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="text-base font-black tracking-tight">Trip Expense Settlement & Reconciliation</h3>
                         <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-600 dark:text-emerald-400">
                           Final Debrief
                         </span>
+                        {renderLoadTypeBadge(selectedTrip, { size: 'xs', showLabel: true })}
                       </div>
                       <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'} mt-0.5`}>
                         Trip #{selectedTrip.trip_number} • {selectedTrip.origin_city || selectedTrip.originBranch?.city || 'Origin'} → {selectedTrip.destination_city || selectedTrip.destBranch?.city || 'Dest'}
@@ -1090,103 +1512,301 @@ export default function TripsPage() {
                       {selectedTrip.driver?.name || 'Unassigned'} {selectedTrip.driver?.phone ? `(${selectedTrip.driver.phone})` : ''}
                     </span>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <Truck className="w-3.5 h-3.5 text-indigo-500" />
                     <span>Assigned Vehicle:</span>
                     <span className="font-mono font-bold text-blue-600 dark:text-cyan-400">
                       {selectedTrip.vehicle?.vehicle_number || 'N/A'}
                     </span>
+                    {/* Vehicle Ownership Badge */}
+                    {(() => {
+                      const own = (selectedTrip.vehicle?.ownership || 'OWN').toUpperCase();
+                      if (own === 'MARKET') {
+                        return (
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-purple-500/20 text-purple-600 dark:text-purple-400 border border-purple-500/30">
+                            🚛 Market Hired Truck
+                          </span>
+                        );
+                      }
+                      if (own === 'ATTACHED') {
+                        return (
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                            🤝 Vendor Attached Truck
+                          </span>
+                        );
+                      }
+                      return (
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30">
+                          🏢 Company Owned Fleet
+                        </span>
+                      );
+                    })()}
                   </div>
                 </div>
 
                 {/* Scrollable Body */}
                 {(() => {
+                  const ownership = (selectedTrip.vehicle?.ownership || 'OWN').toUpperCase();
+                  const isMarketOrAttached = ownership === 'MARKET' || ownership === 'ATTACHED';
+
                   const totalAdv = parseFloat(selectedTrip.driver_advance || 0);
                   const totalExp = settleExpensesList.length > 0
                     ? settleExpensesList.reduce((acc, curr) => acc + parseFloat(curr.amount || 0), 0)
                     : parseFloat(selectedTrip.total_expenses || 0);
                   const bhatta = parseFloat(driverAllowance || 0);
-                  // Logistics Formula:
-                  // Balance = Total Advance - (Total Highway Expenses + Driver Bhatta)
-                  // If balance > 0 => Driver has excess advance -> Driver must refund to Company
-                  // If balance < 0 => Expenses + Bhatta exceeded advance -> Company owes balance to Driver
-                  const netBalance = totalAdv - (totalExp + bhatta);
-                  const isPayableToDriver = netBalance < 0;
-                  const isRefundFromDriver = netBalance > 0;
-                  const absBalance = Math.abs(netBalance);
+
+                  const parsedVehicleCharge = parseFloat(
+                    settleVehicleCharge !== '' && settleVehicleCharge !== null && settleVehicleCharge !== undefined
+                      ? settleVehicleCharge
+                      : (selectedTrip.vehicle_charge || 0)
+                  ) || 0;
+
+                  const grossRev = parseFloat(selectedTrip.expected_revenue || 0);
+
+                  // Calculation for MARKET / ATTACHED:
+                  // Net Payable to Vendor/Market Owner = Agreed Vehicle Charge - (Disbursed Advance + Company Paid Highway Expenses)
+                  const totalCompanyDeductions = totalAdv + totalExp;
+                  const netVendorBalance = parsedVehicleCharge - totalCompanyDeductions;
+                  const isVendorPayable = netVendorBalance > 0;
+                  const isVendorRecover = netVendorBalance < 0;
+                  const absVendorBalance = Math.abs(netVendorBalance);
+                  const vendorGrossMargin = grossRev - parsedVehicleCharge;
+                  const vendorMarginPct = grossRev > 0 ? ((vendorGrossMargin / grossRev) * 100).toFixed(1) : 0;
+
+                  // Calculation for COMPANY OWNED:
+                  // Driver debrief: Advance - (Highway Expenses + Bhatta)
+                  const netDriverBalance = totalAdv - (totalExp + bhatta);
+                  const isPayableToDriver = netDriverBalance < 0;
+                  const isRefundFromDriver = netDriverBalance > 0;
+                  const absDriverBalance = Math.abs(netDriverBalance);
+                  const ownOperatingCosts = totalExp + bhatta;
+                  const ownMargin = grossRev - ownOperatingCosts;
+                  const ownMarginPct = grossRev > 0 ? ((ownMargin / grossRev) * 100).toFixed(1) : 0;
 
                   return (
                     <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-5 max-h-[calc(92vh-150px)]">
                       {/* Financial KPI Grid */}
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                        {/* 1. Advance */}
-                        <div className={`p-3 rounded-xl border ${
-                          isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200'
-                        }`}>
-                          <div className="flex items-center justify-between text-slate-400 text-[11px] font-semibold mb-1">
-                            <span>Disbursed Advance</span>
-                            <Banknote className="w-3.5 h-3.5 text-blue-500" />
-                          </div>
-                          <div className="text-base font-black font-mono text-slate-900 dark:text-white">
-                            ₹{totalAdv.toLocaleString('en-IN')}
-                          </div>
-                          <span className="text-[10px] text-slate-400">Cash / Fuel Card</span>
-                        </div>
+                        {isMarketOrAttached ? (
+                          <>
+                            {/* 1. Agreed Vehicle Charge */}
+                            <div className={`p-3 rounded-xl border ${
+                              isDark ? 'bg-purple-950/20 border-purple-800/50' : 'bg-purple-50/70 border-purple-200'
+                            }`}>
+                              <div className="flex items-center justify-between text-purple-600 dark:text-purple-400 text-[11px] font-bold mb-1">
+                                <span>Vehicle Charge</span>
+                                <Truck className="w-3.5 h-3.5" />
+                              </div>
+                              <div className="text-base font-black font-mono text-purple-700 dark:text-purple-300">
+                                ₹{parsedVehicleCharge.toLocaleString('en-IN')}
+                              </div>
+                              <span className="text-[10px] text-slate-400">Agreed Hire Rate</span>
+                            </div>
 
-                        {/* 2. Expenses */}
-                        <div className={`p-3 rounded-xl border ${
-                          isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200'
-                        }`}>
-                          <div className="flex items-center justify-between text-slate-400 text-[11px] font-semibold mb-1">
-                            <span>Highway Expenses</span>
-                            <Receipt className="w-3.5 h-3.5 text-amber-500" />
-                          </div>
-                          <div className="text-base font-black font-mono text-amber-600 dark:text-amber-400">
-                            ₹{totalExp.toLocaleString('en-IN')}
-                          </div>
-                          <span className="text-[10px] text-slate-400">{settleExpensesList.length} slips recorded</span>
-                        </div>
+                            {/* 2. Disbursed Advance (Less) */}
+                            <div className={`p-3 rounded-xl border ${
+                              isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200'
+                            }`}>
+                              <div className="flex items-center justify-between text-slate-400 text-[11px] font-semibold mb-1">
+                                <span>Less: Advance</span>
+                                <Banknote className="w-3.5 h-3.5 text-blue-500" />
+                              </div>
+                              <div className="text-base font-black font-mono text-slate-900 dark:text-white">
+                                ₹{totalAdv.toLocaleString('en-IN')}
+                              </div>
+                              <span className="text-[10px] text-slate-400">Cash / Fuel Card</span>
+                            </div>
 
-                        {/* 3. Bhatta */}
-                        <div className={`p-3 rounded-xl border ${
-                          isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200'
-                        }`}>
-                          <div className="flex items-center justify-between text-slate-400 text-[11px] font-semibold mb-1">
-                            <span>Driver Bhatta</span>
-                            <User className="w-3.5 h-3.5 text-indigo-500" />
-                          </div>
-                          <div className="text-base font-black font-mono text-indigo-600 dark:text-indigo-400">
-                            ₹{bhatta.toLocaleString('en-IN')}
-                          </div>
-                          <span className="text-[10px] text-slate-400">Daily allowance</span>
-                        </div>
+                            {/* 3. Company Paid Highway Expenses (Less) */}
+                            <div className={`p-3 rounded-xl border ${
+                              isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200'
+                            }`}>
+                              <div className="flex items-center justify-between text-slate-400 text-[11px] font-semibold mb-1">
+                                <span>Less: Highway Exp.</span>
+                                <Receipt className="w-3.5 h-3.5 text-amber-500" />
+                              </div>
+                              <div className="text-base font-black font-mono text-amber-600 dark:text-amber-400">
+                                ₹{totalExp.toLocaleString('en-IN')}
+                              </div>
+                              <span className="text-[10px] text-slate-400">{settleExpensesList.length} slips company paid</span>
+                            </div>
 
-                        {/* 4. Net Settlement */}
-                        <div className={`p-3 rounded-xl border ${
-                          isPayableToDriver
-                            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-900 dark:text-emerald-100'
-                            : isRefundFromDriver
-                            ? 'bg-amber-500/10 border-amber-500/30 text-amber-900 dark:text-amber-100'
-                            : 'bg-blue-500/10 border-blue-500/30 text-blue-900 dark:text-blue-100'
-                        }`}>
-                          <div className="flex items-center justify-between text-[11px] font-bold mb-1 opacity-90">
-                            <span>{isPayableToDriver ? 'Company to Pay' : isRefundFromDriver ? 'Driver to Refund' : 'Reconciled'}</span>
-                            <DollarSign className="w-3.5 h-3.5" />
+                            {/* 4. Net Settlement Balance */}
+                            <div className={`p-3 rounded-xl border ${
+                              isVendorPayable
+                                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-900 dark:text-emerald-100'
+                                : isVendorRecover
+                                ? 'bg-amber-500/10 border-amber-500/30 text-amber-900 dark:text-amber-100'
+                                : 'bg-blue-500/10 border-blue-500/30 text-blue-900 dark:text-blue-100'
+                            }`}>
+                              <div className="flex items-center justify-between text-[11px] font-bold mb-1 opacity-90">
+                                <span>{isVendorPayable ? 'Company to Pay' : isVendorRecover ? 'Recovery Due' : 'Reconciled'}</span>
+                                <DollarSign className="w-3.5 h-3.5" />
+                              </div>
+                              <div className={`text-base font-black font-mono ${
+                                isVendorPayable
+                                  ? 'text-emerald-600 dark:text-emerald-400'
+                                  : isVendorRecover
+                                  ? 'text-amber-600 dark:text-amber-400'
+                                  : 'text-blue-600 dark:text-blue-400'
+                              }`}>
+                                ₹{absVendorBalance.toLocaleString('en-IN')}
+                              </div>
+                              <span className="text-[10px] font-semibold opacity-80">
+                                {isVendorPayable
+                                  ? (ownership === 'MARKET' ? 'Payable to Market Owner' : 'Payable to Attached Vendor')
+                                  : isVendorRecover
+                                  ? 'Deduction exceeds hire rate'
+                                  : 'Balanced (₹0)'}
+                              </span>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            {/* 1. Advance */}
+                            <div className={`p-3 rounded-xl border ${
+                              isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200'
+                            }`}>
+                              <div className="flex items-center justify-between text-slate-400 text-[11px] font-semibold mb-1">
+                                <span>Disbursed Advance</span>
+                                <Banknote className="w-3.5 h-3.5 text-blue-500" />
+                              </div>
+                              <div className="text-base font-black font-mono text-slate-900 dark:text-white">
+                                ₹{totalAdv.toLocaleString('en-IN')}
+                              </div>
+                              <span className="text-[10px] text-slate-400">Cash / Fuel Card</span>
+                            </div>
+
+                            {/* 2. Expenses */}
+                            <div className={`p-3 rounded-xl border ${
+                              isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200'
+                            }`}>
+                              <div className="flex items-center justify-between text-slate-400 text-[11px] font-semibold mb-1">
+                                <span>Highway Expenses</span>
+                                <Receipt className="w-3.5 h-3.5 text-amber-500" />
+                              </div>
+                              <div className="text-base font-black font-mono text-amber-600 dark:text-amber-400">
+                                ₹{totalExp.toLocaleString('en-IN')}
+                              </div>
+                              <span className="text-[10px] text-slate-400">{settleExpensesList.length} slips recorded</span>
+                            </div>
+
+                            {/* 3. Bhatta */}
+                            <div className={`p-3 rounded-xl border ${
+                              isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200'
+                            }`}>
+                              <div className="flex items-center justify-between text-slate-400 text-[11px] font-semibold mb-1">
+                                <span>Driver Bhatta</span>
+                                <User className="w-3.5 h-3.5 text-indigo-500" />
+                              </div>
+                              <div className="text-base font-black font-mono text-indigo-600 dark:text-indigo-400">
+                                ₹{bhatta.toLocaleString('en-IN')}
+                              </div>
+                              <span className="text-[10px] text-slate-400">Daily allowance</span>
+                            </div>
+
+                            {/* 4. Net Settlement */}
+                            <div className={`p-3 rounded-xl border ${
+                              isPayableToDriver
+                                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-900 dark:text-emerald-100'
+                                : isRefundFromDriver
+                                ? 'bg-amber-500/10 border-amber-500/30 text-amber-900 dark:text-amber-100'
+                                : 'bg-blue-500/10 border-blue-500/30 text-blue-900 dark:text-blue-100'
+                            }`}>
+                              <div className="flex items-center justify-between text-[11px] font-bold mb-1 opacity-90">
+                                <span>{isPayableToDriver ? 'Company to Pay' : isRefundFromDriver ? 'Driver to Refund' : 'Reconciled'}</span>
+                                <DollarSign className="w-3.5 h-3.5" />
+                              </div>
+                              <div className={`text-base font-black font-mono ${
+                                isPayableToDriver
+                                  ? 'text-emerald-600 dark:text-emerald-400'
+                                  : isRefundFromDriver
+                                  ? 'text-amber-600 dark:text-amber-400'
+                                  : 'text-blue-600 dark:text-blue-400'
+                              }`}>
+                                ₹{absDriverBalance.toLocaleString('en-IN')}
+                              </div>
+                              <span className="text-[10px] font-semibold opacity-80">
+                                {isPayableToDriver ? 'Payable to Driver' : isRefundFromDriver ? 'Refund to Transporter' : 'Balanced (₹0)'}
+                              </span>
+                            </div>
+                          </>
+                        )}
+                      </div>
+
+                      {/* Financial Margin & Operating Summary Bar */}
+                      <div className={`p-3 rounded-xl border flex flex-wrap items-center justify-between gap-3 text-xs ${
+                        isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200'
+                      }`}>
+                        <div className="flex items-center gap-2">
+                          <span className="text-slate-400 font-semibold">Customer Freight Revenue:</span>
+                          <span className="font-mono font-bold text-slate-900 dark:text-white">
+                            ₹{grossRev.toLocaleString('en-IN')}
+                          </span>
+                        </div>
+                        {isMarketOrAttached ? (
+                          <div className="flex items-center gap-2">
+                            <span className="text-slate-400 font-semibold">Vehicle Hire Charge:</span>
+                            <span className="font-mono font-bold text-rose-500">
+                              -₹{parsedVehicleCharge.toLocaleString('en-IN')}
+                            </span>
                           </div>
-                          <div className={`text-base font-black font-mono ${
-                            isPayableToDriver
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <span className="text-slate-400 font-semibold">Total Trip Operating Costs:</span>
+                            <span className="font-mono font-bold text-rose-500">
+                              -₹{ownOperatingCosts.toLocaleString('en-IN')}
+                            </span>
+                          </div>
+                        )}
+                        <div className="flex items-center gap-2">
+                          <span className="text-slate-400 font-semibold">Net Trip Margin:</span>
+                          <span className={`font-mono font-black ${
+                            (isMarketOrAttached ? vendorGrossMargin : ownMargin) >= 0
                               ? 'text-emerald-600 dark:text-emerald-400'
-                              : isRefundFromDriver
-                              ? 'text-amber-600 dark:text-amber-400'
-                              : 'text-blue-600 dark:text-blue-400'
+                              : 'text-rose-500'
                           }`}>
-                            ₹{absBalance.toLocaleString('en-IN')}
-                          </div>
-                          <span className="text-[10px] font-semibold opacity-80">
-                            {isPayableToDriver ? 'Payable to Driver' : isRefundFromDriver ? 'Refund to Transporter' : 'Balanced (₹0)'}
+                            ₹{(isMarketOrAttached ? vendorGrossMargin : ownMargin).toLocaleString('en-IN')} ({(isMarketOrAttached ? vendorMarginPct : ownMarginPct)}%)
                           </span>
                         </div>
                       </div>
+
+                      {/* Section: Vehicle Charge Adjustment for MARKET / ATTACHED */}
+                      {isMarketOrAttached && (
+                        <div className={`p-4 rounded-xl border ${
+                          isDark ? 'bg-purple-950/20 border-purple-800/40' : 'bg-purple-50/60 border-purple-200'
+                        }`}>
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <Truck className="w-4 h-4 text-purple-500" />
+                              <h4 className="text-xs font-bold text-slate-900 dark:text-white">
+                                Vehicle Charge (Agreed Hire / Trip Freight) ₹ *
+                              </h4>
+                            </div>
+                            <span className="text-[10px] text-purple-600 dark:text-purple-400 font-bold">
+                              {ownership === 'MARKET' ? 'Market Hired Rate' : 'Vendor Attached Rate'}
+                            </span>
+                          </div>
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">₹</span>
+                            <input
+                              type="number"
+                              min="0"
+                              value={settleVehicleCharge}
+                              onChange={(e) => setSettleVehicleCharge(e.target.value)}
+                              placeholder="e.g. 25000"
+                              className={`w-full pl-7 pr-3 py-2 rounded-xl text-xs font-mono font-bold border focus:outline-none transition-colors ${
+                                isDark
+                                  ? 'bg-slate-900 border-purple-800/60 text-white focus:border-purple-400'
+                                  : 'bg-white border-purple-300 text-slate-900 focus:border-purple-500'
+                              }`}
+                            />
+                          </div>
+                          <p className="text-[10px] text-slate-400 mt-1.5">
+                            Agreed vehicle hire freight. Disbursed advances (₹{totalAdv.toLocaleString('en-IN')}) and company-paid diesel/toll slips (₹{totalExp.toLocaleString('en-IN')}) are deducted automatically.
+                          </p>
+                        </div>
+                      )}
 
                       {/* Section: Highway Expense Slips & Vouchers */}
                       <div className={`p-4 rounded-xl border ${
@@ -1351,51 +1971,53 @@ export default function TripsPage() {
                           }`}>
                             <p className="text-xs font-medium">No highway expense slips recorded yet for this trip.</p>
                             <p className="text-[11px] text-slate-400 mt-0.5">
-                              If driver submitted diesel or toll bills upon arrival, click &quot;+ Add Expense / Slip&quot; above to log them before closing.
+                              If diesel or toll bills were paid on behalf of this vehicle, click &quot;+ Add Expense / Slip&quot; above to log and deduct them.
                             </p>
                           </div>
                         )}
                       </div>
 
-                      {/* Section: Driver Allowance (Bhatta) Adjustment */}
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                            Driver Daily Allowance (Bhatta) ₹ *
-                          </label>
-                          <div className="flex items-center gap-1.5">
-                            {[500, 1000, 1500, 2000].map((amt) => (
-                              <button
-                                key={amt}
-                                type="button"
-                                onClick={() => setDriverAllowance(amt)}
-                                className={`px-2 py-0.5 rounded-md text-[10px] font-bold border transition-all cursor-pointer ${
-                                  Number(driverAllowance) === amt
-                                    ? 'bg-blue-600 text-white border-blue-600 shadow-2xs'
-                                    : isDark ? 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700' : 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200'
-                                }`}
-                              >
-                                ₹{amt}
-                              </button>
-                            ))}
+                      {/* Section: Driver Allowance (Bhatta) Adjustment - Only for Company Owned trucks */}
+                      {!isMarketOrAttached && (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                              Driver Daily Allowance (Bhatta) ₹ *
+                            </label>
+                            <div className="flex items-center gap-1.5">
+                              {[500, 1000, 1500, 2000].map((amt) => (
+                                <button
+                                  key={amt}
+                                  type="button"
+                                  onClick={() => setDriverAllowance(amt)}
+                                  className={`px-2 py-0.5 rounded-md text-[10px] font-bold border transition-all cursor-pointer ${
+                                    Number(driverAllowance) === amt
+                                      ? 'bg-blue-600 text-white border-blue-600 shadow-2xs'
+                                      : isDark ? 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700' : 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200'
+                                  }`}
+                                >
+                                  ₹{amt}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">₹</span>
+                            <input
+                              type="number"
+                              min="0"
+                              value={driverAllowance}
+                              onChange={(e) => setDriverAllowance(e.target.value)}
+                              className={`w-full pl-7 pr-3 py-2 rounded-xl text-xs font-mono font-bold border focus:outline-none transition-colors ${
+                                isDark
+                                  ? 'bg-slate-900 border-slate-700 text-white focus:border-blue-400'
+                                  : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
+                              }`}
+                            />
                           </div>
                         </div>
-
-                        <div className="relative">
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">₹</span>
-                          <input
-                            type="number"
-                            min="0"
-                            value={driverAllowance}
-                            onChange={(e) => setDriverAllowance(e.target.value)}
-                            className={`w-full pl-7 pr-3 py-2 rounded-xl text-xs font-mono font-bold border focus:outline-none transition-colors ${
-                              isDark
-                                ? 'bg-slate-900 border-slate-700 text-white focus:border-blue-400'
-                                : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
-                            }`}
-                          />
-                        </div>
-                      </div>
+                      )}
 
                       {/* Section: Settlement Remarks */}
                       <div className="space-y-1">
@@ -1406,7 +2028,7 @@ export default function TripsPage() {
                           type="text"
                           value={settleRemarks}
                           onChange={(e) => setSettleRemarks(e.target.value)}
-                          placeholder="e.g. Verified fuel slips and settled cash balance with driver at Bangalore hub desk"
+                          placeholder={isMarketOrAttached ? 'e.g. Cleared market truck hire payment after diesel deduction' : 'e.g. Verified fuel slips and settled cash balance with driver'}
                           className={`w-full px-3 py-2 rounded-xl text-xs border focus:outline-none transition-colors ${
                             isDark
                               ? 'bg-slate-900 border-slate-700 text-white focus:border-blue-400'
@@ -1420,15 +2042,30 @@ export default function TripsPage() {
 
                 {/* Sticky Footer */}
                 {(() => {
+                  const ownership = (selectedTrip.vehicle?.ownership || 'OWN').toUpperCase();
+                  const isMarketOrAttached = ownership === 'MARKET' || ownership === 'ATTACHED';
+
                   const totalAdv = parseFloat(selectedTrip.driver_advance || 0);
                   const totalExp = settleExpensesList.length > 0
                     ? settleExpensesList.reduce((acc, curr) => acc + parseFloat(curr.amount || 0), 0)
                     : parseFloat(selectedTrip.total_expenses || 0);
                   const bhatta = parseFloat(driverAllowance || 0);
-                  const netBalance = totalAdv - (totalExp + bhatta);
-                  const isPayableToDriver = netBalance < 0;
-                  const isRefundFromDriver = netBalance > 0;
-                  const absBalance = Math.abs(netBalance);
+
+                  const parsedVehicleCharge = parseFloat(
+                    settleVehicleCharge !== '' && settleVehicleCharge !== null && settleVehicleCharge !== undefined
+                      ? settleVehicleCharge
+                      : (selectedTrip.vehicle_charge || 0)
+                  ) || 0;
+
+                  const netVendorBalance = parsedVehicleCharge - (totalAdv + totalExp);
+                  const isVendorPayable = netVendorBalance > 0;
+                  const isVendorRecover = netVendorBalance < 0;
+                  const absVendorBalance = Math.abs(netVendorBalance);
+
+                  const netDriverBalance = totalAdv - (totalExp + bhatta);
+                  const isPayableToDriver = netDriverBalance < 0;
+                  const isRefundFromDriver = netDriverBalance > 0;
+                  const absDriverBalance = Math.abs(netDriverBalance);
 
                   return (
                     <div className={`p-4 px-6 border-t flex flex-wrap items-center justify-between gap-3 shrink-0 ${
@@ -1436,18 +2073,34 @@ export default function TripsPage() {
                     }`}>
                       <div className="text-xs">
                         <span className="text-slate-400">Final Decision: </span>
-                        {isPayableToDriver ? (
-                          <span className="font-bold text-emerald-600 dark:text-emerald-400">
-                            Pay Driver ₹{absBalance.toLocaleString('en-IN')}
-                          </span>
-                        ) : isRefundFromDriver ? (
-                          <span className="font-bold text-amber-600 dark:text-amber-400">
-                            Collect ₹{absBalance.toLocaleString('en-IN')} Cash Refund
-                          </span>
+                        {isMarketOrAttached ? (
+                          isVendorPayable ? (
+                            <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                              Pay {ownership === 'MARKET' ? 'Market Owner' : 'Vendor'} ₹{absVendorBalance.toLocaleString('en-IN')}
+                            </span>
+                          ) : isVendorRecover ? (
+                            <span className="font-bold text-amber-600 dark:text-amber-400">
+                              Recover ₹{absVendorBalance.toLocaleString('en-IN')} from {ownership === 'MARKET' ? 'Market Owner' : 'Vendor'}
+                            </span>
+                          ) : (
+                            <span className="font-bold text-blue-600 dark:text-blue-400">
+                              Zero Balance Reconciled (₹0)
+                            </span>
+                          )
                         ) : (
-                          <span className="font-bold text-blue-600 dark:text-blue-400">
-                            Zero Balance Reconciled
-                          </span>
+                          isPayableToDriver ? (
+                            <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                              Pay Driver ₹{absDriverBalance.toLocaleString('en-IN')}
+                            </span>
+                          ) : isRefundFromDriver ? (
+                            <span className="font-bold text-amber-600 dark:text-amber-400">
+                              Collect ₹{absDriverBalance.toLocaleString('en-IN')} Cash Refund
+                            </span>
+                          ) : (
+                            <span className="font-bold text-blue-600 dark:text-blue-400">
+                              Zero Balance Reconciled
+                            </span>
+                          )
                         )}
                       </div>
 
@@ -1480,11 +2133,17 @@ export default function TripsPage() {
                             <>
                               <CheckCircle2 className="w-3.5 h-3.5" />
                               <span>
-                                {isPayableToDriver
-                                  ? `Pay ₹${absBalance} & Settle Trip`
-                                  : isRefundFromDriver
-                                  ? `Collect ₹${absBalance} & Settle Trip`
-                                  : 'Confirm & Settle Trip'}
+                                {isMarketOrAttached
+                                  ? (isVendorPayable
+                                      ? `Pay ₹${absVendorBalance.toLocaleString('en-IN')} & Settle Trip`
+                                      : isVendorRecover
+                                      ? `Recover ₹${absVendorBalance.toLocaleString('en-IN')} & Settle`
+                                      : 'Confirm & Settle Trip')
+                                  : (isPayableToDriver
+                                      ? `Pay ₹${absDriverBalance.toLocaleString('en-IN')} & Settle Trip`
+                                      : isRefundFromDriver
+                                      ? `Collect ₹${absDriverBalance.toLocaleString('en-IN')} & Settle`
+                                      : 'Confirm & Settle Trip')}
                               </span>
                             </>
                           )}
@@ -1513,7 +2172,10 @@ export default function TripsPage() {
                       <Truck className="w-5 h-5" />
                     </div>
                     <div>
-                      <h3 className="text-base font-black">Assign Vehicle</h3>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-base font-black">Assign Vehicle</h3>
+                        {renderLoadTypeBadge(tripToAssign, { size: 'xs' })}
+                      </div>
                       <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                         Trip #{tripToAssign.trip_number}
                       </p>
@@ -1625,7 +2287,10 @@ export default function TripsPage() {
                       <Wallet className="w-5 h-5" />
                     </div>
                     <div>
-                      <h2 className="text-base font-black tracking-tight">Driver Advance & Trip Expenses</h2>
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-base font-black tracking-tight">Driver Advance & Trip Expenses</h2>
+                        {renderLoadTypeBadge(advExpTrip, { size: 'xs' })}
+                      </div>
                       <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                         Trip #{advExpTrip.trip_number} • {advExpTrip.origin_city || advExpTrip.originBranch?.city || 'Origin'} → {advExpTrip.destination_city || advExpTrip.destBranch?.city || 'Dest'}
                       </p>
@@ -1925,9 +2590,12 @@ export default function TripsPage() {
                       <MapPin className="w-5 h-5" />
                     </div>
                     <div>
-                      <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                        Vehicle Arrival & Gate-In
-                      </h3>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                          Vehicle Arrival & Gate-In
+                        </h3>
+                        {renderLoadTypeBadge(arrivalTrip, { size: 'xs' })}
+                      </div>
                       <p className="text-xs text-slate-500 dark:text-slate-400">
                         Trip #{arrivalTrip.trip_number} • {arrivalTrip.originBranch?.city || arrivalTrip.origin_city} → {arrivalTrip.destBranch?.city || arrivalTrip.destination_city}
                       </p>
@@ -2200,6 +2868,542 @@ export default function TripsPage() {
               </div>
             )}
           </Modal>
+
+          {/* FTL Direct Delivery Modal */}
+          <Modal
+            isOpen={Boolean(ftlDeliveryModalOpen && ftlDeliveryTrip)}
+            onClose={() => {
+              if (!submittingFtlDelivery) {
+                setFtlDeliveryModalOpen(false);
+                setFtlDeliveryTrip(null);
+              }
+            }}
+          >
+            {ftlDeliveryModalOpen && ftlDeliveryTrip && (
+              <div className={`relative w-full max-w-2xl max-h-[90vh] my-auto rounded-3xl shadow-2xl flex flex-col z-10 border overflow-hidden animate-in fade-in zoom-in-95 duration-200 ${
+                isDark ? 'bg-[#0B1120] border-slate-800 text-white shadow-purple-950/40' : 'bg-white border-slate-200 text-slate-900 shadow-slate-200/80'
+              }`}>
+                {/* Modal Header */}
+                <div className={`p-5 border-b flex items-center justify-between shrink-0 ${
+                  isDark ? 'border-slate-800 bg-slate-950/60' : 'border-slate-100 bg-slate-50/80'
+                }`}>
+                  <div className="flex items-center space-x-3">
+                    <div className="p-2.5 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-600/25">
+                      <Truck className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                          Record FTL Direct Delivery & POD
+                        </h3>
+                        <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30">
+                          FTL DEDICATED
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        Trip #{ftlDeliveryTrip.trip_number} • Direct Client Site Delivery & Handover
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFtlDeliveryModalOpen(false);
+                      setFtlDeliveryTrip(null);
+                    }}
+                    className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Form with Scrollable Content */}
+                <form onSubmit={handleSubmitFtlDelivery} className="flex flex-col flex-1 overflow-hidden">
+                  <div className="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1 max-h-[calc(90vh-140px)]">
+                    {/* FTL Trip & Route Context */}
+                    <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 grid grid-cols-2 sm:grid-cols-5 gap-2.5 text-xs">
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase">Assigned Truck</span>
+                        <p className="font-bold text-slate-900 dark:text-white mt-0.5 font-mono">
+                          {ftlDeliveryTrip.vehicle?.vehicle_number || 'N/A'}
+                        </p>
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase">Driver</span>
+                        <p className="font-bold text-slate-900 dark:text-white mt-0.5 truncate">
+                          {ftlDeliveryTrip.driver?.name || 'N/A'}
+                        </p>
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase">Destination</span>
+                        <p className="font-bold text-purple-600 dark:text-purple-400 mt-0.5 truncate">
+                          {ftlDeliveryTrip.destination_city || ftlDeliveryTrip.destBranch?.city || 'Party Site'}
+                        </p>
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase">Cargo Weight</span>
+                        <p className="font-bold text-slate-900 dark:text-white mt-0.5 font-mono">
+                          {ftlDeliveryTrip.total_weight ? `${Number(ftlDeliveryTrip.total_weight).toLocaleString()} KG` : 'N/A'}
+                        </p>
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase">Dispatched Seal</span>
+                        <p className="font-bold text-indigo-600 dark:text-indigo-400 mt-0.5 font-mono truncate" title={ftlDeliveryTrip.dispatches?.[0]?.seal_number || ftlDeliveryTrip.seal_number || 'None'}>
+                          {ftlDeliveryTrip.dispatches?.[0]?.seal_number || ftlDeliveryTrip.seal_number || 'N/A'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Error display */}
+                    {ftlDeliveryError && (
+                      <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs font-bold flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 shrink-0" />
+                        <span>{ftlDeliveryError}</span>
+                      </div>
+                    )}
+
+                    {/* 1. CONTAINER SEAL VERIFICATION & TRUCK INSPECTION */}
+                    <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                          <Lock className="w-3.5 h-3.5 text-indigo-500" />
+                          <span>1. Container Seal Verification on Arrival *</span>
+                        </label>
+                        {(ftlDeliveryTrip.dispatches?.[0]?.seal_number || ftlDeliveryTrip.seal_number) && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const seal = ftlDeliveryTrip.dispatches?.[0]?.seal_number || ftlDeliveryTrip.seal_number;
+                              setFtlPhysicalSeal(seal);
+                              setFtlSealStatus('INTACT');
+                            }}
+                            className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                          >
+                            Match Origin Seal
+                          </button>
+                        )}
+                      </div>
+
+                      <input
+                        type="text"
+                        required
+                        value={ftlPhysicalSeal}
+                        onChange={(e) => setFtlPhysicalSeal(e.target.value)}
+                        placeholder="Enter seal number observed on vehicle door..."
+                        className="w-full px-3.5 py-2 rounded-xl text-xs font-mono font-bold uppercase tracking-wider bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-purple-500"
+                      />
+
+                      {/* Seal Status Radio Selector */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        {[
+                          { value: 'INTACT', label: 'Seal Intact', icon: ShieldCheck, color: 'emerald' },
+                          { value: 'MISMATCH', label: 'Seal Mismatch', icon: ShieldAlert, color: 'rose' },
+                          { value: 'BROKEN', label: 'Seal Broken', icon: AlertTriangle, color: 'amber' },
+                          { value: 'NO_SEAL', label: 'No Seal / Open', icon: Lock, color: 'slate' },
+                        ].map((opt) => (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() => setFtlSealStatus(opt.value)}
+                            className={`py-1.5 px-2 rounded-lg text-[10px] font-bold border transition-all flex items-center justify-center gap-1 cursor-pointer ${
+                              ftlSealStatus === opt.value
+                                ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 border-transparent shadow-2xs'
+                                : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+                            }`}
+                          >
+                            <opt.icon className="w-3 h-3" />
+                            <span>{opt.label}</span>
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Discrepancy & Reason Section (Opens when Mismatch or Broken is selected) */}
+                      {ftlSealStatus !== 'INTACT' && ftlSealStatus !== 'NO_SEAL' && (
+                        <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 space-y-2.5 animate-in fade-in slide-in-from-top-2 duration-200">
+                          <div className="flex items-center gap-2">
+                            <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                            <div>
+                              <h4 className="text-xs font-bold text-amber-900 dark:text-amber-200">
+                                {ftlSealStatus === 'BROKEN' ? 'Seal Broken Incident Report' : 'Seal Mismatch Discrepancy Report'}
+                              </h4>
+                              <p className="text-[10px] text-amber-700 dark:text-amber-400">
+                                Explain why container seal does not match dispatch manifest.
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Quick Category Selector */}
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-700 dark:text-slate-300">
+                              Incident Category / Cause *
+                            </label>
+                            <select
+                              value={ftlDiscrepancyCategory}
+                              onChange={(e) => setFtlDiscrepancyCategory(e.target.value)}
+                              className="w-full px-3 py-1.5 rounded-xl text-xs font-semibold bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-700 text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                            >
+                              <option value="RTO / Police Highway Inspection (Memo Checked)">RTO / Police Highway Inspection (Memo Checked)</option>
+                              <option value="Accidental Breakage / Transit Impact">Accidental Breakage / Transit Impact</option>
+                              <option value="Toll Plaza / Border Barrier Clearance">Toll Plaza / Border Barrier Clearance</option>
+                              <option value="Wrong Seal Tag Number Applied at Origin Hub">Wrong Seal Tag Number Applied at Origin Hub</option>
+                              <option value="Commercial Tax / GST Flying Squad Checking">Commercial Tax / GST Flying Squad Checking</option>
+                              <option value="Driver Tampering / Theft Suspicion">Driver Tampering / Theft Suspicion</option>
+                              <option value="Other Highway Incident">Other Highway Incident</option>
+                            </select>
+                          </div>
+
+                          {/* Official Memo / Challan / Slip Ref */}
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                              <span>Inspection Memo / Challan # (Optional)</span>
+                              <span className="text-[9px] text-slate-400">E.g. RTO-KA-2026-918</span>
+                            </label>
+                            <input
+                              type="text"
+                              value={ftlMemoNumber}
+                              onChange={(e) => setFtlMemoNumber(e.target.value)}
+                              placeholder="Enter memo or receipt number..."
+                              className="w-full px-3 py-1.5 rounded-xl text-xs bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-700 text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                            />
+                          </div>
+
+                          {/* Detailed Reason Notes */}
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-700 dark:text-slate-300">
+                              Discrepancy Explanation & Driver Statement *
+                            </label>
+                            <textarea
+                              rows={2}
+                              value={ftlDiscrepancyReason}
+                              onChange={(e) => setFtlDiscrepancyReason(e.target.value)}
+                              placeholder="Driver explanation on how and where seal was broken..."
+                              className="w-full px-3 py-1.5 rounded-xl text-xs bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-700 text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Cargo Condition Selector */}
+                      <div className="space-y-1 pt-1">
+                        <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block">
+                          Truck Cargo Physical Condition
+                        </label>
+                        <div className="grid grid-cols-3 gap-2">
+                          {[
+                            { value: 'INTACT', label: '100% Intact & Sound' },
+                            { value: 'MINOR_DAMAGE', label: 'Minor Scratches / Dents' },
+                            { value: 'SEVERE_DAMAGE', label: 'Damage / Shortage' },
+                          ].map((cond) => (
+                            <button
+                              key={cond.value}
+                              type="button"
+                              onClick={() => setFtlCargoCondition(cond.value)}
+                              className={`py-1.5 px-2 rounded-lg text-[10px] font-bold border transition-all text-center cursor-pointer ${
+                                ftlCargoCondition === cond.value
+                                  ? 'bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border-purple-400 font-black'
+                                  : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+                              }`}
+                            >
+                              {cond.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 2. FINAL ODOMETER & MILEAGE */}
+                    <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 space-y-2">
+                      <div className="flex justify-between items-center">
+                        <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                          <Gauge className="w-3.5 h-3.5 text-purple-500" />
+                          <span>2. Final Odometer Reading (KM) *</span>
+                        </label>
+                        <span className="text-[11px] text-slate-400 font-mono">
+                          Departure: {ftlDeliveryTrip.start_odometer ? `${ftlDeliveryTrip.start_odometer} KM` : '0 KM'}
+                        </span>
+                      </div>
+                      <input
+                        type="number"
+                        value={ftlEndOdo}
+                        onChange={(e) => setFtlEndOdo(e.target.value)}
+                        placeholder="Enter vehicle final odometer"
+                        className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-mono font-bold focus:outline-hidden focus:ring-2 focus:ring-purple-500"
+                        required
+                      />
+                      {ftlEndOdo && Number(ftlEndOdo) >= (Number(ftlDeliveryTrip.start_odometer) || 0) && (
+                        <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-mono">
+                          ✓ Trip Distance: {(Number(ftlEndOdo) - (Number(ftlDeliveryTrip.start_odometer) || 0)).toLocaleString()} KM
+                        </p>
+                      )}
+                    </div>
+
+                    {/* 3. RECEIVER PERSON DETAILS */}
+                    <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 space-y-2.5">
+                      <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                        <User className="w-3.5 h-3.5 text-blue-500" />
+                        <span>3. Consignee / Receiver Person Details</span>
+                      </label>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
+                            Received By (Name)
+                          </label>
+                          <input
+                            type="text"
+                            value={ftlReceiverName}
+                            onChange={(e) => setFtlReceiverName(e.target.value)}
+                            placeholder="e.g. Ramesh Kumar (Store In-charge)"
+                            className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs focus:outline-hidden focus:ring-2 focus:ring-purple-500"
+                          />
+                        </div>
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400">
+                              Receiver Contact Phone
+                            </label>
+                            <span className={`text-[10px] font-mono font-bold ${
+                              ftlReceiverPhone.length === 10
+                                ? 'text-emerald-600 dark:text-emerald-400'
+                                : ftlReceiverPhone.length > 0
+                                ? 'text-amber-500'
+                                : 'text-slate-400'
+                            }`}>
+                              {ftlReceiverPhone.length}/10 digits
+                            </span>
+                          </div>
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400 font-mono">
+                              +91
+                            </span>
+                            <input
+                              type="tel"
+                              maxLength={10}
+                              value={ftlReceiverPhone}
+                              onChange={(e) => {
+                                const digits = e.target.value.replace(/\D/g, '').slice(0, 10);
+                                setFtlReceiverPhone(digits);
+                              }}
+                              placeholder="9876543210"
+                              className={`w-full pl-10 pr-3 py-2 rounded-xl border text-xs font-mono transition-colors focus:outline-hidden focus:ring-2 ${
+                                ftlReceiverPhone.length === 10
+                                  ? 'border-emerald-400 dark:border-emerald-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-emerald-500'
+                                  : ftlReceiverPhone.length > 0
+                                  ? 'border-amber-400 dark:border-amber-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-amber-500'
+                                  : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-purple-500'
+                              }`}
+                            />
+                          </div>
+                          {ftlReceiverPhone.length > 0 && ftlReceiverPhone.length < 10 && (
+                            <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1 font-medium">
+                              Phone number must be exactly 10 digits ({10 - ftlReceiverPhone.length} more needed).
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 4. PROOF OF DELIVERY (POD) & DOCUMENT UPLOAD */}
+                    <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                          <FileCheck className="w-3.5 h-3.5 text-emerald-500" />
+                          <span>4. Proof of Delivery (POD) Documentation</span>
+                        </label>
+                        <span className="text-[10px] font-semibold text-slate-400">
+                          Camera / Upload supported (Max 1 MB)
+                        </span>
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
+                          Document Type
+                        </label>
+                        <select
+                          value={ftlPodDocType}
+                          onChange={(e) => setFtlPodDocType(e.target.value)}
+                          className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold focus:outline-hidden focus:ring-2 focus:ring-purple-500"
+                        >
+                          <option value="SIGNED_BILTY">Signed Bilty / POD (Consignee Copy)</option>
+                          <option value="CUSTOMER_STAMP">Customer Stamped Invoice / Challan</option>
+                          <option value="DELIVERY_CHALLAN">Consignee Delivery Challan</option>
+                          <option value="WEIGHBRIDGE_SLIP">Factory Weighbridge Slip</option>
+                          <option value="GATE_PASS">Gate Security Pass Stamp</option>
+                        </select>
+                      </div>
+
+                      {/* Hidden File Input for POD upload */}
+                      <input
+                        type="file"
+                        ref={ftlPodFileInputRef}
+                        onChange={handleFtlPodFileSelect}
+                        accept="image/*,application/pdf"
+                        className="hidden"
+                      />
+
+                      {/* Attached File Preview or Camera/Upload Actions */}
+                      {ftlPodFileUrl ? (
+                        <div className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 ${
+                          isDark ? 'bg-slate-900 border-emerald-500/40' : 'bg-emerald-50/50 border-emerald-500/30'
+                        }`}>
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            {isPodImage(ftlPodFileUrl) ? (
+                              <img
+                                src={ftlPodFileUrl}
+                                alt="POD Preview"
+                                className="w-10 h-10 rounded-lg object-cover border border-emerald-500/40 shrink-0 cursor-pointer"
+                                onClick={() => openBlobInNewTab(ftlPodFileUrl)}
+                                title="Click to view full image"
+                              />
+                            ) : (
+                              <div className="w-10 h-10 rounded-lg bg-emerald-500/20 text-emerald-500 flex items-center justify-center shrink-0">
+                                <FileText className="w-5 h-5" />
+                              </div>
+                            )}
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold truncate text-emerald-700 dark:text-emerald-400">
+                                {ftlPodFileName || 'Signed_POD_Document.jpg'}
+                              </p>
+                              <p className="text-[10px] text-slate-400 truncate">
+                                {ftlPodFileSize || 'Attached Document'} • Ready for DB Storage
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => openBlobInNewTab(ftlPodFileUrl)}
+                              className="p-1.5 rounded-lg text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                              title="View Document"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => ftlPodFileInputRef.current?.click()}
+                              className={`px-2.5 py-1 text-[11px] font-bold rounded-lg border transition-colors cursor-pointer ${
+                                isDark ? 'bg-slate-800 border-slate-700 text-slate-300 hover:text-white' : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-100'
+                              }`}
+                            >
+                              Change
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setFtlPodFileUrl('');
+                                setFtlPodFileName('');
+                                setFtlPodFileSize('');
+                              }}
+                              className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                              title="Remove"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-3 pt-1">
+                          <button
+                            type="button"
+                            onClick={() => setFtlCameraModalOpen(true)}
+                            className={`p-3 rounded-2xl border-2 border-dashed flex items-center gap-3 text-left transition-all cursor-pointer ${
+                              isDark
+                                ? 'border-purple-500/40 bg-purple-500/10 hover:bg-purple-500/20 text-purple-300'
+                                : 'border-purple-300 bg-purple-50/60 hover:bg-purple-100/60 text-purple-700'
+                            }`}
+                          >
+                            <div className="w-9 h-9 rounded-xl bg-purple-500/20 flex items-center justify-center shrink-0">
+                              <Camera className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold leading-tight">Take Photo</p>
+                              <p className="text-[10px] text-slate-400 leading-tight mt-0.5">Use Device Camera</p>
+                            </div>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => ftlPodFileInputRef.current?.click()}
+                            disabled={ftlPodUploading}
+                            className={`p-3 rounded-2xl border-2 border-dashed flex items-center gap-3 text-left transition-all cursor-pointer ${
+                              isDark
+                                ? 'border-slate-700 hover:border-slate-600 bg-slate-800/40 text-slate-300'
+                                : 'border-slate-300 hover:border-slate-400 bg-slate-50 text-slate-700'
+                            }`}
+                          >
+                            <div className="w-9 h-9 rounded-xl bg-slate-200 dark:bg-slate-800 flex items-center justify-center shrink-0">
+                              {ftlPodUploading ? (
+                                <RotateCw className="w-5 h-5 text-slate-500 animate-spin" />
+                              ) : (
+                                <UploadCloud className="w-5 h-5 text-slate-500" />
+                              )}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold leading-tight">
+                                {ftlPodUploading ? 'Compressing...' : 'Upload File'}
+                              </p>
+                              <p className="text-[10px] text-slate-400 leading-tight mt-0.5">Image or PDF (Max 1MB)</p>
+                            </div>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 5. DELIVERY REMARKS */}
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                        5. Delivery Remarks & Debrief Notes
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={ftlRemarks}
+                        onChange={(e) => setFtlRemarks(e.target.value)}
+                        placeholder="e.g. Full load delivered safely. Unloaded at client factory warehouse bay."
+                        className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs focus:outline-hidden focus:ring-2 focus:ring-purple-500"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Sticky Footer */}
+                  <div className={`p-4 border-t flex items-center justify-end gap-3 shrink-0 ${
+                    isDark ? 'border-slate-800 bg-slate-950/60' : 'border-slate-100 bg-slate-50/80'
+                  }`}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFtlDeliveryModalOpen(false);
+                        setFtlDeliveryTrip(null);
+                      }}
+                      disabled={submittingFtlDelivery}
+                      className="px-4 py-2 rounded-xl border border-slate-300 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={submittingFtlDelivery}
+                      className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold transition-all shadow-md shadow-purple-600/25 flex items-center gap-1.5 cursor-pointer disabled:opacity-50 active:scale-95"
+                    >
+                      {submittingFtlDelivery && <RotateCw className="w-3.5 h-3.5 animate-spin" />}
+                      <span>Confirm & Complete FTL Delivery ➔</span>
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+          </Modal>
+
+          {/* FTL CAMERA CAPTURE MODAL */}
+          <CameraCaptureModal
+            isOpen={ftlCameraModalOpen}
+            onClose={() => setFtlCameraModalOpen(false)}
+            onCapture={(base64Data, sizeKb) => handleFtlCameraCaptured(base64Data, sizeKb)}
+            onFallbackUpload={() => {
+              setFtlCameraModalOpen(false);
+              ftlPodFileInputRef.current?.click();
+            }}
+            title="Capture FTL Delivery POD Document"
+          />
 
         </main>
       </div>

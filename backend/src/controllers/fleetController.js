@@ -662,7 +662,11 @@ const createMarketVehicle = async (req, res) => {
       owner_name,
       owner_phone,
       current_odometer,
+      vehicle_charge,
+      hire_charges,
     } = req.body;
+
+    const parsedCharge = parseFloat(vehicle_charge !== undefined ? vehicle_charge : (hire_charges || 0)) || 0;
 
     if (!vehicle_number || !vehicle_number.trim()) {
       return errorResponse(res, 'Vehicle registration number is required', null, 400);
@@ -785,7 +789,10 @@ const createMarketVehicle = async (req, res) => {
       newValues: vehicle.toJSON ? vehicle.toJSON() : vehicle,
     });
 
-    return successResponse(res, `Vehicle ${normalizedPlate} ready for trip`, reloaded || vehicle, 201);
+    const respData = (reloaded || vehicle).toJSON ? (reloaded || vehicle).toJSON() : { ...(reloaded || vehicle) };
+    respData.vehicle_charge = parsedCharge;
+
+    return successResponse(res, `Vehicle ${normalizedPlate} ready for trip`, respData, 201);
   } catch (error) {
     return errorResponse(res, error.message, null, 500);
   }

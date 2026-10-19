@@ -19,9 +19,12 @@ const logAudit = async ({
     const AuditLogModel = req?.tenantDb?.AuditLog || defaultModels.AuditLog;
     if (!AuditLogModel) return;
 
-    const performerName = req?.user?.name || req?.user?.full_name || 'Staff User';
-    const performerEmail = req?.user?.email || '';
-    const performerRole = (req?.userRoles && req.userRoles[0]) || req?.user?.role || 'Staff';
+    const user = req?.user;
+    const performerName = (user?.first_name || user?.last_name)
+      ? `${user.first_name || ''} ${user.last_name || ''}`.trim()
+      : (user?.name || user?.full_name || user?.email || 'Staff User');
+    const performerEmail = user?.email || '';
+    const performerRole = (req?.userRoles && req.userRoles[0]) || user?.role || (user?.roles && user.roles[0]?.name) || 'Staff';
 
     // Enrich new_values with structured meta so audit UI can render instant summaries and diffs
     const enrichedNewValues = {
@@ -29,7 +32,7 @@ const logAudit = async ({
       _summary: summary || `${action} on ${entityType} #${entityId}`,
       _entity_name: entityName || String(entityId),
       _performer: {
-        id: req?.user?.id || null,
+        id: user?.id || null,
         name: performerName,
         email: performerEmail,
         role: performerRole,
@@ -65,10 +68,10 @@ const logAudit = async ({
     }
 
     const payload = {
-      tenant_id: req?.tenant?.tenantId || req?.user?.tenant_id || null,
-      organization_id: req?.tenant?.organizationId || req?.user?.organization_id || null,
-      branch_id: req?.branchId || req?.user?.branch_id || null,
-      user_id: req?.user?.id || null,
+      tenant_id: req?.tenant?.tenantId || user?.tenant_id || null,
+      organization_id: req?.tenant?.organizationId || user?.organization_id || null,
+      branch_id: req?.branchId || user?.branch_id || user?.branch?.id || req?.body?.branch_id || null,
+      user_id: user?.id || null,
       action: (action || 'UNKNOWN').toUpperCase(),
       entity_type: (entityType || 'GENERAL').toUpperCase(),
       entity_id: String(entityId || 'N/A'),

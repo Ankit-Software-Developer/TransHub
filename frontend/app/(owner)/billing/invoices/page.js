@@ -7,6 +7,7 @@ import Sidebar from '../../../../components/layout/Sidebar';
 import Navbar from '../../../../components/layout/Navbar';
 import DataTable from '../../../../components/ui/DataTable';
 import BranchFilterDropdown from '../../../../components/ui/BranchFilterDropdown';
+import BuiltyTypeBadge from '../../../../components/ui/BuiltyTypeBadge';
 import { useTheme } from '../../../../components/ThemeProvider';
 import { usePermissions } from '../../../../hooks/usePermissions';
 import { useStore } from '../../../../store/useStore';
@@ -2192,9 +2193,10 @@ export default function InvoicesMasterPage() {
         const docNum = termSingular === 'Docket' ? (row.docket_number || row.lr_number) : (row.lr_number || row.docket_number);
         return (
           <div>
-            <div className="font-mono font-bold text-xs text-slate-900 dark:text-white flex items-center gap-1.5">
+            <div className="font-mono font-bold text-xs text-slate-900 dark:text-white flex items-center gap-1.5 whitespace-nowrap">
               <FileText className="w-3.5 h-3.5 text-purple-500 shrink-0" />
               <span>{docNum}</span>
+              <BuiltyTypeBadge docket={row} />
             </div>
             <div className="text-[10px] text-slate-400 font-mono mt-0.5">
               {row.booking_date} • {row.packages_count || 1} Pkgs
@@ -3561,6 +3563,7 @@ export default function InvoicesMasterPage() {
                                 <span className="text-blue-600 dark:text-cyan-400">
                                   {termSingular === 'Docket' ? (lr.docket_number || lr.lr_number) : (lr.lr_number || lr.docket_number)}
                                 </span>
+                                <BuiltyTypeBadge docket={lr} />
                                 
                                 {/* Payment Mode Badge */}
                                 <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${

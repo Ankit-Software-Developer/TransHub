@@ -10,7 +10,7 @@ export const ROUTE_PERMISSIONS = {
   '/branches': ['branch.view', 'branch.create', 'branch.manage', 'branch.delete'],
   '/fleet': ['vehicle.view', 'vehicle.create', 'vehicle.manage', 'vehicle.delete', 'driver.manage', 'vehicle.export'],
   '/users': ['role.manage', 'settings.manage', 'driver.manage', 'vehicle.manage', 'ADMIN'],
-  '/staff': ['role.manage', 'settings.manage', 'user.manage', 'ADMIN'],
+  '/staff': ['role.manage', 'settings.manage', 'user.manage', 'ADMIN', 'BRANCH_MANAGER'],
   '/control-tower': ['trip.view', 'booking.view', 'dispatch.view', 'vehicle.view'],
   '/load-planning': ['dispatch.view', 'dispatch.create', 'dispatch.manage', 'booking.view'],
   '/unload-planning': ['dispatch.view', 'dispatch.manage', 'trip.view', 'trip.manage', 'booking.view'],
@@ -21,7 +21,7 @@ export const ROUTE_PERMISSIONS = {
   '/billing/invoices': ['invoice.view', 'invoice.create', 'invoice.update', 'invoice.delete', 'payment.create', 'invoice.export'],
   '/expenses': ['expense.view', 'expense.create', 'expense.update', 'expense.delete', 'expense.approve', 'expense.export'],
   '/reports': ['reports.view', 'reports.create', 'data.export'],
-  '/approvals': ['*'],
+  '/approvals': ['ADMIN', 'BRANCH_MANAGER', 'dispatch.approve', 'expense.approve'],
   '/settings': ['ADMIN'],
   '/roles': ['ADMIN'],
   '/audit-logs': ['audit.view', 'AUDITOR', 'ADMIN'],
@@ -41,6 +41,15 @@ export function usePermissions() {
     return ['ADMIN'];
   }, [user]);
 
+  const isSuperAdmin = useMemo(() => {
+    if (!user) return false;
+    return (
+      roles.includes('SUPER_ADMIN') ||
+      user?.role?.toUpperCase() === 'SUPER_ADMIN' ||
+      Boolean(user?.isSuperAdmin)
+    );
+  }, [roles, user]);
+
   const isAdmin = useMemo(() => {
     if (!user) return true;
     return (
@@ -59,6 +68,22 @@ export function usePermissions() {
     return (
       roles.includes('BRANCH_MANAGER') ||
       roles.includes('HUB_MANAGER')
+    );
+  }, [roles, user]);
+
+  const isBranchAssistant = useMemo(() => {
+    if (!user) return false;
+    return (
+      roles.includes('BRANCH_ASSISTANT') ||
+      roles.includes('ASSISTANT')
+    );
+  }, [roles, user]);
+
+  const isBA = useMemo(() => {
+    if (!user) return false;
+    return (
+      roles.includes('BUSINESS_ASSOCIATE') ||
+      roles.includes('BA')
     );
   }, [roles, user]);
 
@@ -103,13 +128,37 @@ export function usePermissions() {
   const hasRole = (roleName) => roles.includes(roleName);
 
   const canAccessRoute = (routePath) => {
-    if (isAdmin) return true;
-    if (!user) return true;
-    const permissions = user.permissions || [];
-    if (permissions.includes('*')) return true;
-
     const normalized = routePath.replace(/\/+$/, '') || '/';
     if (normalized === '/dashboard') return true;
+
+    // Super Admin: Operational branch approvals are strictly for transport tenant organizations
+    if (isSuperAdmin && (normalized === '/approvals' || normalized.startsWith('/approvals/'))) {
+      return false;
+    }
+
+    if (isAdmin) return true;
+    if (!user) return true;
+
+    // Strict boundary for Business Associates (BA): only dashboard, bookings, deliveries/pod, support
+    if (isBA) {
+      const allowedBaRoutes = ['/dashboard', '/bookings', '/deliveries', '/pods', '/support'];
+      return allowedBaRoutes.some((path) => normalized === path || normalized.startsWith(path + '/'));
+    }
+
+    // Strict boundary for Branch Assistant: bookings, load-planning, dispatches, unload-planning, deliveries/pod, support, dashboard
+    if (isBranchAssistant) {
+      const allowedAssistantRoutes = ['/dashboard', '/bookings', '/load-planning', '/unload-planning', '/dispatches', '/deliveries', '/pods', '/support'];
+      return allowedAssistantRoutes.some((path) => normalized === path || normalized.startsWith(path + '/'));
+    }
+
+    // Strict boundary for Auditors: only audit logs, reports, support, and dashboard
+    if (isAuditor) {
+      const allowedAuditorRoutes = ['/dashboard', '/audit-logs', '/reports', '/support'];
+      return allowedAuditorRoutes.some((path) => normalized === path || normalized.startsWith(path + '/'));
+    }
+
+    const permissions = user.permissions || [];
+    if (permissions.includes('*')) return true;
 
     // Check exact or prefix match in ROUTE_PERMISSIONS
     const matchedKey = Object.keys(ROUTE_PERMISSIONS).find(
@@ -283,7 +332,10 @@ export function usePermissions() {
     user,
     roles,
     isAdmin,
+    isSuperAdmin,
     isBranchManager,
+    isBranchAssistant,
+    isBA,
     hasPermission,
     hasRole,
     canAccessRoute,
@@ -347,7 +399,7 @@ export function usePermissions() {
     canExportReportTab,
     // Administration & Audit permissions
     canManageRoles: isAdmin || hasPermission('role.manage'),
-    canManageUsers: isAdmin || hasPermission('role.manage') || hasPermission('settings.manage') || hasPermission('user.manage'),
+    canManageUsers: isAdmin || isBranchManager || hasPermission('role.manage') || hasPermission('settings.manage') || hasPermission('user.manage'),
     canManageSettings: isAdmin || hasPermission('settings.manage') || hasPermission('role.manage'),
     isAuditor,
     isAccountant,

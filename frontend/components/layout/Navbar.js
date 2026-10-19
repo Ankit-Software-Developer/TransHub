@@ -227,7 +227,7 @@ export default function Navbar() {
 
   return (
     <>
-      <header className={`h-16 py-[2px] px-4 sm:px-6 flex items-center justify-between gap-4 sticky top-0 z-20 border-b backdrop-blur-xl transition-colors ${
+      <header className={`h-16 py-[2px] px-4 sm:px-6 flex items-center justify-between gap-4 sticky top-0 z-40 border-b backdrop-blur-xl transition-colors ${
         isDark
           ? 'bg-[#090D18]/95 border-slate-800 text-white shadow-xs'
           : 'bg-white/95 border-slate-200 text-slate-800 shadow-[0_1px_3px_rgba(0,0,0,0.04)]'

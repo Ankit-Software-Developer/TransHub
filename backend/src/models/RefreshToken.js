@@ -32,6 +32,7 @@ module.exports = (sequelize) => {
     },
   }, {
     tableName: 'refresh_tokens',
+    engine: 'InnoDB',
     indexes: [
       { fields: ['user_id'] },
       { fields: ['token_hash'] },

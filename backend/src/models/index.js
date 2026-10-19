@@ -274,12 +274,20 @@ const initTenantModels = (targetSequelize) => {
   Trip.hasMany(Expense, { foreignKey: 'trip_id', as: 'expenses' });
   Expense.belongsTo(Trip, { foreignKey: 'trip_id', as: 'trip' });
   Expense.belongsTo(ExpenseCategory, { foreignKey: 'category_id', as: 'category' });
+  Expense.belongsTo(Vehicle, { foreignKey: 'vehicle_id', as: 'vehicle' });
+  Expense.belongsTo(Driver, { foreignKey: 'driver_id', as: 'driver' });
+  Expense.belongsTo(Branch, { foreignKey: 'branch_id', as: 'branch' });
+  Branch.hasMany(Expense, { foreignKey: 'branch_id', as: 'expenses' });
 
   Trip.hasMany(DriverAdvance, { foreignKey: 'trip_id', as: 'advances' });
   DriverAdvance.belongsTo(Trip, { foreignKey: 'trip_id', as: 'trip' });
+  DriverAdvance.belongsTo(Driver, { foreignKey: 'driver_id', as: 'driver' });
 
   Trip.hasOne(TripSettlement, { foreignKey: 'trip_id', as: 'settlement' });
   TripSettlement.belongsTo(Trip, { foreignKey: 'trip_id', as: 'trip' });
+  Trip.hasMany(FuelEntry, { foreignKey: 'trip_id', as: 'fuelEntries' });
+  FuelEntry.belongsTo(Trip, { foreignKey: 'trip_id', as: 'trip' });
+  FuelEntry.belongsTo(Driver, { foreignKey: 'driver_id', as: 'driver' });
 
   // Invoicing & Ledger
   Organization.hasMany(Invoice, { foreignKey: 'organization_id', as: 'invoices' });

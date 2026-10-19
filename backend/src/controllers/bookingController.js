@@ -99,6 +99,7 @@ const listBookings = async (req, res) => {
       status: (status && status !== 'ALL') ? status : null,
       search,
       paymentType: payment_type,
+      loadType: req.query.load_type || req.query.loadType || null,
       fromDate,
       toDate,
       page,

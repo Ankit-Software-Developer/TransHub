@@ -14,6 +14,7 @@ import branchClosureService from '../../../services/branchClosureService';
 import DateRangeFilter from '../../../components/ui/DateRangeFilter';
 import DataTable from '../../../components/ui/DataTable';
 import BranchFilterDropdown from '../../../components/ui/BranchFilterDropdown';
+import BuiltyTypeBadge from '../../../components/ui/BuiltyTypeBadge';
 import {
   BarChart3,
   FileSpreadsheet,
@@ -50,6 +51,13 @@ import {
   AlertTriangle,
   ChevronDown,
   ChevronUp,
+  MapPin,
+  Scale,
+  PackageCheck,
+  Coins,
+  Percent,
+  ShieldAlert,
+  IndianRupee,
 } from 'lucide-react';
 
 const REGISTERS = [
@@ -76,6 +84,128 @@ const AGEING_FREIGHT_OPTIONS = [
   { value: 'TO_PAY', label: 'TO-PAY (Destination Delivery Cash)', desc: 'Cash / UPI due upon delivery at branch', dotColor: 'bg-amber-500', ringColor: 'ring-amber-500/25' },
   { value: 'PAID', label: 'PAID (Booking Dockets)', desc: 'Advance bookings cleared at origin', dotColor: 'bg-emerald-500', ringColor: 'ring-emerald-500/25' },
 ];
+
+/**
+ * Executive Responsive KPI Summary Card
+ */
+const SummaryKpiCard = ({
+  icon: Icon,
+  label,
+  value,
+  badgeText,
+  accentColor = 'blue',
+  subLeft,
+  subRight,
+  fullSubtitle,
+  isAlert = false,
+  alertBadgeText = null,
+  isDark = false,
+}) => {
+  const accentBorderClass = {
+    blue: 'before:bg-blue-500',
+    indigo: 'before:bg-indigo-500',
+    emerald: 'before:bg-emerald-500',
+    rose: 'before:bg-rose-500',
+    purple: 'before:bg-purple-500',
+    amber: 'before:bg-amber-500',
+    cyan: 'before:bg-cyan-500',
+    teal: 'before:bg-teal-500',
+    orange: 'before:bg-orange-500',
+    slate: 'before:bg-slate-400',
+  }[accentColor] || 'before:bg-blue-500';
+
+  const valueColorClass = {
+    blue: 'text-blue-600 dark:text-blue-400',
+    indigo: 'text-indigo-600 dark:text-indigo-400',
+    emerald: 'text-emerald-600 dark:text-emerald-400',
+    rose: 'text-rose-600 dark:text-rose-400',
+    purple: 'text-purple-600 dark:text-purple-400',
+    amber: 'text-amber-500 dark:text-amber-400',
+    cyan: 'text-cyan-600 dark:text-cyan-400',
+    teal: 'text-teal-600 dark:text-teal-400',
+    orange: 'text-orange-600 dark:text-orange-400',
+    slate: 'text-slate-900 dark:text-white',
+  }[accentColor] || 'text-slate-900 dark:text-white';
+
+  const badgeBgClass = {
+    blue: 'bg-blue-100 text-blue-800 dark:bg-blue-950/80 dark:text-blue-300 border-blue-200/60 dark:border-blue-800/60',
+    indigo: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/80 dark:text-indigo-300 border-indigo-200/60 dark:border-indigo-800/60',
+    emerald: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border-emerald-200/60 dark:border-emerald-800/60',
+    rose: 'bg-rose-100 text-rose-800 dark:bg-rose-950/80 dark:text-rose-300 border-rose-200/60 dark:border-rose-800/60',
+    purple: 'bg-purple-100 text-purple-800 dark:bg-purple-950/80 dark:text-purple-300 border-purple-200/60 dark:border-purple-800/60',
+    amber: 'bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 border-amber-200/60 dark:border-amber-800/60',
+    cyan: 'bg-cyan-100 text-cyan-800 dark:bg-cyan-950/80 dark:text-cyan-300 border-cyan-200/60 dark:border-cyan-800/60',
+    teal: 'bg-teal-100 text-teal-800 dark:bg-teal-950/80 dark:text-teal-300 border-teal-200/60 dark:border-teal-800/60',
+    orange: 'bg-orange-100 text-orange-800 dark:bg-orange-950/80 dark:text-orange-300 border-orange-200/60 dark:border-orange-800/60',
+    slate: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-200 dark:border-slate-700',
+  }[accentColor] || 'bg-slate-100 text-slate-700';
+
+  const iconColorClass = {
+    blue: 'text-blue-500',
+    indigo: 'text-indigo-500',
+    emerald: 'text-emerald-500',
+    rose: 'text-rose-500',
+    purple: 'text-purple-500',
+    amber: 'text-amber-500',
+    cyan: 'text-cyan-500',
+    teal: 'text-teal-500',
+    orange: 'text-orange-500',
+    slate: 'text-slate-400',
+  }[accentColor] || 'text-blue-500';
+
+  return (
+    <div
+      className={`relative overflow-hidden p-4 rounded-2xl border transition-all duration-200 before:absolute before:top-0 before:left-0 before:right-0 before:h-1 ${accentBorderClass} ${
+        isAlert
+          ? 'bg-rose-500/10 border-rose-500/30'
+          : isDark
+          ? 'bg-gradient-to-br from-[#0D1424] to-[#080D1A] border-slate-800 hover:border-slate-700 shadow-xs hover:shadow-md'
+          : 'bg-gradient-to-br from-white to-slate-50/80 border-slate-200/90 hover:border-slate-300 shadow-xs hover:shadow-md'
+      }`}
+    >
+      <div className="flex items-center justify-between gap-1.5">
+        <div className="flex items-center gap-1.5 min-w-0">
+          {Icon && <Icon className={`w-3.5 h-3.5 shrink-0 ${iconColorClass}`} />}
+          <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 truncate">
+            {label}
+          </span>
+        </div>
+        {alertBadgeText ? (
+          <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-rose-600 text-white animate-pulse shrink-0">
+            {alertBadgeText}
+          </span>
+        ) : badgeText ? (
+          <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border shrink-0 ${badgeBgClass}`}>
+            {badgeText}
+          </span>
+        ) : null}
+      </div>
+
+      <div className="mt-2">
+        <p className={`text-2xl font-black tracking-tight font-mono tabular-nums truncate ${valueColorClass}`}>
+          {value}
+        </p>
+      </div>
+
+      {(fullSubtitle || subLeft || subRight) && (
+        <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-1.5 pt-2 border-t border-slate-100 dark:border-slate-800/70 truncate flex items-center justify-between gap-2">
+          {fullSubtitle ? (
+            <span className="truncate">{fullSubtitle}</span>
+          ) : (
+            <>
+              <span className="truncate">{subLeft}</span>
+              {subRight && (
+                <span className="font-semibold text-slate-700 dark:text-slate-300 shrink-0 ml-auto">
+                  {subRight}
+                </span>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
 
 export default function ReportsPage() {
   const { term, plural } = useTerminology();
@@ -135,22 +265,65 @@ export default function ReportsPage() {
   const [activeTab, setActiveTab] = useState('DOCKETS');
   const [loading, setLoading] = useState(true);
   const [branches, setBranches] = useState([]);
-  const [selectedBranch, setSelectedBranch] = useState('ALL');
+  const [selectedBranch, setSelectedBranch] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const storedStr = localStorage.getItem('transporter_user');
+        if (storedStr) {
+          const parsed = JSON.parse(storedStr);
+          const bId = parsed.branch_id || parsed.branchId || parsed.branch?.id;
+          if (bId) return bId;
+        }
+      } catch (e) {}
+    }
+    return 'ALL';
+  });
   const branchBreakdownScrollRef = useRef(null);
+  const branchInitializedRef = useRef(false);
+
+  // Sync selected branch with user login branch or store active branch
+  useEffect(() => {
+    const targetBranchId = userBranchId || (activeBranch?.id && activeBranch.id !== 'ALL' ? activeBranch.id : null);
+    if (!isAdmin) {
+      // Non-admin users are strictly restricted to their login branch
+      if (targetBranchId && selectedBranch !== targetBranchId) {
+        setSelectedBranch(targetBranchId);
+      }
+    } else {
+      // Admin / Owner users default to their login branch / active station on initial load
+      if (targetBranchId && !branchInitializedRef.current) {
+        setSelectedBranch(targetBranchId);
+        branchInitializedRef.current = true;
+      }
+    }
+  }, [isAdmin, userBranchId, activeBranch?.id, selectedBranch]);
+
+  // When activeBranch explicitly changes in store (e.g. user toggles top header branch dropdown)
+  const prevStoreBranchRef = useRef(activeBranch?.id);
+  useEffect(() => {
+    if (activeBranch?.id !== undefined && activeBranch?.id !== prevStoreBranchRef.current) {
+      prevStoreBranchRef.current = activeBranch?.id;
+      if (activeBranch?.id && activeBranch.id !== 'ALL') {
+        setSelectedBranch(activeBranch.id);
+      } else if ((activeBranch?.id === 'ALL' || activeBranch?.id === null) && isAdmin) {
+        setSelectedBranch('ALL');
+      }
+    }
+  }, [activeBranch?.id, isAdmin]);
 
   const currentBranchName = useMemo(() => {
-    const bId = !isAdmin ? userBranchId : selectedBranch;
+    const bId = !isAdmin ? (userBranchId || selectedBranch) : selectedBranch;
     if (!bId || bId === 'ALL') return 'All Network Branches';
     const found = branches.find((b) => String(b.id) === String(bId));
     return found?.name || found?.branch_name || user?.branch?.name || user?.branch_name || 'My Branch';
   }, [isAdmin, userBranchId, selectedBranch, branches, user]);
 
-  useEffect(() => {
-    // Non-admin users are strictly restricted to their login branch
-    if (!isAdmin && userBranchId && selectedBranch !== userBranchId) {
-      setSelectedBranch(userBranchId);
-    }
-  }, [isAdmin, userBranchId, selectedBranch]);
+  const currentBranchCode = useMemo(() => {
+    const bId = !isAdmin ? (userBranchId || selectedBranch) : selectedBranch;
+    if (!bId || bId === 'ALL') return 'ALL';
+    const found = branches.find((b) => String(b.id) === String(bId));
+    return found?.code || found?.branch_code || user?.branch?.code || user?.branch_code || '';
+  }, [isAdmin, userBranchId, selectedBranch, branches, user]);
 
   useEffect(() => {
     // If the active tab is restricted for the current user's role, automatically revert to DOCKETS
@@ -236,6 +409,13 @@ export default function ReportsPage() {
   const [selectedReceiptModal, setSelectedReceiptModal] = useState(null);
   const [selectedPodModal, setSelectedPodModal] = useState(null);
   const [selectedDepositDetails, setSelectedDepositDetails] = useState(null);
+
+  // GST Register (SAC 9965) State
+  const [gstFilter, setGstFilter] = useState('ALL');
+  const [selectedTaxAuditItem, setSelectedTaxAuditItem] = useState(null);
+  const [showHsnDocSummary, setShowHsnDocSummary] = useState(false);
+  const [gstCopied, setGstCopied] = useState(false);
+  const [auditCopied, setAuditCopied] = useState(false);
 
   const openRemitModal = useCallback((row = null) => {
     const todayStr = new Date().toISOString().slice(0, 10);
@@ -390,6 +570,7 @@ export default function ReportsPage() {
         params.view_mode = collectionSubView;
         res = await reportService.getDailyCollectionReport(params);
       } else if (activeTab === 'GST') {
+        if (gstFilter !== 'ALL') params.tax_type = gstFilter;
         res = await reportService.getGstTaxReport(params);
       }
 
@@ -409,7 +590,7 @@ export default function ReportsPage() {
     } finally {
       setLoading(false);
     }
-  }, [activeTab, page, limit, selectedBranch, dateFrom, dateTo, debouncedSearch, paymentTypeFilter, paymentClearanceFilter, podStatusFilter, collectionSubView, ageingPaymentTypeFilter, isAdmin, userBranchId]);
+  }, [activeTab, page, limit, selectedBranch, dateFrom, dateTo, debouncedSearch, paymentTypeFilter, paymentClearanceFilter, podStatusFilter, collectionSubView, ageingPaymentTypeFilter, gstFilter, isAdmin, userBranchId]);
 
   useEffect(() => {
     loadReportData();
@@ -435,6 +616,10 @@ export default function ReportsPage() {
     }
     if (tabId === 'COLLECTIONS') {
       setCollectionSubView('DEPOSITS');
+    }
+    if (tabId === 'GST') {
+      setGstFilter('ALL');
+      setShowHsnDocSummary(false);
     }
   };
 
@@ -666,40 +851,50 @@ export default function ReportsPage() {
       }
     } else if (activeTab === 'GST') {
       headers = [
-        'LR Number',
-        'Booking Date',
-        'Branch',
-        'SAC Code',
-        'Consignor Name',
-        'Consignor GSTIN',
-        'Consignee Name',
-        'Consignee GSTIN',
-        'Taxable Freight (INR)',
-        'Tax Rate %',
-        'Tax Type',
+        'GSTIN/UIN of Recipient',
+        'Receiver Legal Name',
+        'Invoice/LR Number',
+        'Invoice Date',
+        'Invoice Value (INR)',
+        'Place of Supply',
+        'Reverse Charge (Y/N)',
+        'Applicable % of Tax Rate',
+        'Taxable Value (INR)',
         'CGST (INR)',
         'SGST (INR)',
         'IGST (INR)',
-        'Total GST (INR)',
-        'Invoice Value (INR)',
+        'Cess Amount (INR)',
+        'SAC Code',
+        'Supply Category',
+        'Consignor Name',
+        'Consignor GSTIN',
+        'Origin Branch / Hub',
+        'Destination Hub',
+        'Charged Weight (KG)',
+        'E-Way Bill Number',
       ];
       rowsFormatted = dataRows.map((r) => [
+        `"${r.recipientGst || r.consigneeGst || 'URP'}"`,
+        `"${(r.recipientName || r.consigneeName || '').replace(/"/g, '""')}"`,
         `"${r.lrNumber || ''}"`,
         `"${r.bookingDate || ''}"`,
-        `"${r.branch || ''}"`,
-        `"${r.sacCode || '9965'}"`,
-        `"${(r.consignorName || '').replace(/"/g, '""')}"`,
-        `"${r.consignorGst || ''}"`,
-        `"${(r.consigneeName || '').replace(/"/g, '""')}"`,
-        `"${r.consigneeGst || ''}"`,
-        r.taxableValue || 0,
+        r.totalInvoiceValue || 0,
+        `"${r.placeOfSupply || '27-Maharashtra'}"`,
+        `"${r.reverseChargeFlag || (r.isRcm ? 'Y' : 'N')}"`,
         r.taxRatePct || 5,
-        `"${r.taxType || ''}"`,
+        r.taxableValue || 0,
         r.cgst || 0,
         r.sgst || 0,
         r.igst || 0,
-        r.totalGst || 0,
-        r.totalInvoiceValue || 0,
+        0,
+        `"${r.sacCode || '9965'}"`,
+        `"${r.supplyCategory || (r.isB2B ? 'B2B (Registered)' : 'B2C (Unregistered)')}"`,
+        `"${(r.consignorName || '').replace(/"/g, '""')}"`,
+        `"${r.consignorGst || 'URP'}"`,
+        `"${(typeof r.branch === 'object' ? r.branch?.name : r.branch) || ''}"`,
+        `"${(typeof r.destBranch === 'object' ? r.destBranch?.name : r.destBranch) || ''}"`,
+        r.chargedWeight || 0,
+        `"${r.ewayBillNo || ''}"`,
       ]);
     }
 
@@ -949,8 +1144,30 @@ export default function ReportsPage() {
           </option>
         </select>
       )}
+
+      {/* Contextual Filter: GST Tax Register (SAC 9965) */}
+      {activeTab === 'GST' && (
+        <select
+          value={gstFilter}
+          onChange={(e) => {
+            setGstFilter(e.target.value);
+            setPage(1);
+          }}
+          className={`text-xs font-bold rounded-xl border px-3 py-2 outline-none transition-all cursor-pointer shadow-xs ${
+            isDark
+              ? 'bg-slate-900/90 border-slate-800 text-slate-200 focus:border-indigo-400'
+              : 'bg-white border-slate-200 text-slate-700 focus:border-indigo-500'
+          }`}
+        >
+          <option value="ALL">All Supplies (SAC 9965)</option>
+          <option value="RCM">RCM Reverse Charge (5%)</option>
+          <option value="FORWARD">Forward Charge (GTA Direct)</option>
+          <option value="B2B">B2B Registered (Table 4)</option>
+          <option value="B2C">B2C Retail (Table 7)</option>
+        </select>
+      )}
     </>
-  ), [activeTab, paymentTypeFilter, paymentClearanceFilter, podStatusFilter, isAdmin, selectedBranch, branches, currentBranchName, isDark, isPodMenuOpen, activePodOption, availablePodOptions, collectionSubView, summary, isAgeingMenuOpen, activeAgeingOption, ageingPaymentTypeFilter]);
+  ), [activeTab, paymentTypeFilter, paymentClearanceFilter, podStatusFilter, isAdmin, selectedBranch, branches, currentBranchName, isDark, isPodMenuOpen, activePodOption, availablePodOptions, collectionSubView, summary, isAgeingMenuOpen, activeAgeingOption, ageingPaymentTypeFilter, gstFilter]);
 
   // Enterprise DataTable Column Specifications for all 6 Registers
   const columns = useMemo(() => {
@@ -959,17 +1176,20 @@ export default function ReportsPage() {
         {
           key: 'lr_number',
           header: 'LR #',
-          width: 140,
-          minWidth: 120,
+          width: 195,
+          minWidth: 180,
           sortable: true,
           exportValue: (row) => row.lr_number || row.docket_number,
           render: (val, row) => (
             <div>
-              <span className="font-mono font-bold text-xs text-blue-600 dark:text-cyan-400 bg-blue-50/80 dark:bg-blue-950/60 border border-blue-200/70 dark:border-blue-800/60 px-2 py-0.5 rounded-md shadow-2xs whitespace-nowrap">
-                {row.lr_number || row.docket_number}
-              </span>
+              <div className="flex items-center gap-1.5 whitespace-nowrap">
+                <span className="font-mono font-bold text-xs text-blue-600 dark:text-cyan-400 bg-blue-50/80 dark:bg-blue-950/60 border border-blue-200/70 dark:border-blue-800/60 px-2 py-0.5 rounded-md shadow-2xs whitespace-nowrap">
+                  {row.lr_number || row.docket_number}
+                </span>
+                <BuiltyTypeBadge docket={row} />
+              </div>
               {row.docket_number && row.docket_number !== row.lr_number && (
-                <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                <div className="text-[10px] text-slate-400 font-mono mt-0.5 whitespace-nowrap">
                   DOC: {row.docket_number}
                 </div>
               )}
@@ -1543,13 +1763,16 @@ export default function ReportsPage() {
         {
           key: 'docketNumber',
           header: 'Docket / LR #',
-          width: 140,
-          minWidth: 125,
+          width: 195,
+          minWidth: 180,
           sortable: true,
           render: (val, row) => (
-            <span className="font-mono font-black text-xs text-blue-600 dark:text-blue-400">
-              {row.docketNumber || row.lrNumber}
-            </span>
+            <div className="flex items-center gap-1.5 whitespace-nowrap">
+              <span className="font-mono font-bold text-xs text-blue-600 dark:text-cyan-400 bg-blue-50/80 dark:bg-blue-950/60 border border-blue-200/70 dark:border-blue-800/60 px-2 py-0.5 rounded-md shadow-2xs whitespace-nowrap">
+                {row.docketNumber || row.lrNumber}
+              </span>
+              <BuiltyTypeBadge docket={row} />
+            </div>
           ),
         },
         {
@@ -1983,8 +2206,8 @@ export default function ReportsPage() {
           {
             key: 'coveredDockets',
             header: 'Covered Dockets',
-            width: 200,
-            minWidth: 180,
+            width: 235,
+            minWidth: 210,
             render: (val, row) => {
               const dockets = (row.coveredDockets && row.coveredDockets.length > 0)
                 ? row.coveredDockets
@@ -2012,9 +2235,10 @@ export default function ReportsPage() {
                     className="w-full flex items-center justify-between gap-1.5 px-2 py-1 rounded-md bg-slate-50/90 dark:bg-slate-900/80 hover:bg-blue-50 dark:hover:bg-blue-950/60 border border-slate-200/80 dark:border-slate-800 text-[11px] font-mono transition-all cursor-pointer group shadow-2xs"
                     title="Click to view full docket and transaction details"
                   >
-                    <div className="flex items-center gap-1 font-semibold text-slate-800 dark:text-slate-200 group-hover:text-blue-600 dark:group-hover:text-cyan-400 truncate">
+                    <div className="flex items-center gap-1.5 font-semibold text-slate-800 dark:text-slate-200 group-hover:text-blue-600 dark:group-hover:text-cyan-400 truncate">
                       <Truck className="w-3 h-3 text-blue-500 shrink-0" />
                       <span>{single.docketNumber}</span>
+                      <BuiltyTypeBadge docket={single} />
                     </div>
                     {paidAmt !== undefined && paidAmt !== null && (
                       <span className="font-bold text-emerald-600 dark:text-emerald-400 shrink-0">
@@ -2063,12 +2287,13 @@ export default function ReportsPage() {
                           title={`Click to view docket ${d.docketNumber || 'LR'} breakdown`}
                         >
                           {/* Left: Index + Truck Icon + Docket No */}
-                          <div className="flex items-center gap-1 min-w-0">
+                          <div className="flex items-center gap-1.5 min-w-0 whitespace-nowrap">
                             <span className="text-slate-400 text-[10px] w-3.5 shrink-0">{idx + 1}.</span>
                             <Truck className="w-3 h-3 text-slate-400 group-hover:text-blue-500 shrink-0" />
                             <span className="font-semibold text-slate-800 dark:text-slate-200 group-hover:text-blue-600 dark:group-hover:text-cyan-400 truncate">
                               {d.docketNumber}
                             </span>
+                            <BuiltyTypeBadge docket={d} />
                           </div>
 
                           {/* Right: Paid Amount + PAID / DUE Status Badge */}
@@ -2418,102 +2643,199 @@ export default function ReportsPage() {
       return [
         {
           key: 'lrNumber',
-          header: 'LR #',
-          width: 120,
+          header: 'LR # & Service',
+          width: 190,
+          minWidth: 170,
+          sortable: true,
           render: (val, row) => (
-            <span className="font-mono font-bold text-xs text-indigo-600 dark:text-indigo-400">{row.lrNumber}</span>
+            <div>
+              <div className="flex items-center gap-1.5 whitespace-nowrap">
+                <span className="font-mono font-bold text-xs text-indigo-600 dark:text-indigo-400 bg-indigo-50/80 dark:bg-indigo-950/60 border border-indigo-200/70 dark:border-indigo-800/60 px-2 py-0.5 rounded-md shadow-2xs whitespace-nowrap">
+                  {row.lrNumber}
+                </span>
+                <BuiltyTypeBadge docket={row} />
+              </div>
+              <div className="flex items-center gap-1 mt-0.5">
+                <span className="text-[10px] text-slate-400 font-mono font-medium">SAC {row.sacCode || '9965'}</span>
+                <span className="text-[9px] px-1 rounded font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                  {row.paymentType || 'TO_PAY'}
+                </span>
+              </div>
+            </div>
           ),
         },
         {
           key: 'bookingDate',
-          header: 'Date',
-          width: 100,
-          render: (val, row) => <span className="font-mono text-[11px] text-slate-500">{row.bookingDate}</span>,
-        },
-        {
-          key: 'branch',
-          header: 'Branch',
-          width: 120,
+          header: 'Date & Route',
+          width: 145,
+          minWidth: 130,
+          sortable: true,
           render: (val, row) => (
-            <span className="text-xs">
-              {typeof row.branch === 'object' ? (row.branch?.name || row.branch?.branch_name || 'Head Office') : (row.branch || 'Head Office')}
-            </span>
+            <div>
+              <div className="font-mono text-xs text-slate-800 dark:text-slate-200 font-semibold">{row.bookingDate}</div>
+              <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate max-w-[135px] font-medium" title={`${row.originCity} → ${row.destCity}`}>
+                {row.originCity} → {row.destCity}
+              </div>
+            </div>
           ),
         },
         {
           key: 'consignorName',
-          header: 'Consignor',
-          width: 150,
+          header: 'Consignor (Origin)',
+          width: 165,
+          minWidth: 150,
           render: (val, row) => (
-            <div className="max-w-[140px] truncate" title={row.consignorName}>
+            <div className="max-w-[160px] truncate" title={row.consignorName}>
               <div className="font-bold text-xs text-slate-900 dark:text-white truncate">{row.consignorName}</div>
-              <span className="block font-mono text-[10px] text-slate-400">{row.consignorGst}</span>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className={`px-1 py-0.2 rounded font-mono text-[9px] font-bold shrink-0 ${
+                  row.consignorGst && row.consignorGst !== 'URP'
+                    ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300'
+                    : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+                }`}>
+                  {row.consignorGst && row.consignorGst !== 'URP' ? 'B2B' : 'URP'}
+                </span>
+                <span className="font-mono text-[10px] text-slate-400 truncate">{row.consignorGst}</span>
+              </div>
             </div>
           ),
         },
         {
           key: 'consigneeName',
-          header: 'Consignee',
-          width: 150,
+          header: 'Consignee (Recipient)',
+          width: 165,
+          minWidth: 150,
           render: (val, row) => (
-            <div className="max-w-[140px] truncate" title={row.consigneeName}>
+            <div className="max-w-[160px] truncate" title={row.consigneeName}>
               <div className="font-bold text-xs text-slate-900 dark:text-white truncate">{row.consigneeName}</div>
-              <span className="block font-mono text-[10px] text-slate-400">{row.consigneeGst}</span>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className={`px-1 py-0.2 rounded font-mono text-[9px] font-bold shrink-0 ${
+                  row.consigneeGst && row.consigneeGst !== 'URP'
+                    ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300'
+                    : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+                }`}>
+                  {row.consigneeGst && row.consigneeGst !== 'URP' ? 'B2B' : 'URP'}
+                </span>
+                <span className="font-mono text-[10px] text-slate-400 truncate">{row.consigneeGst}</span>
+              </div>
+            </div>
+          ),
+        },
+        {
+          key: 'placeOfSupply',
+          header: 'Place of Supply',
+          width: 140,
+          minWidth: 125,
+          render: (val, row) => (
+            <div>
+              <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate" title={row.posStateName || row.destCity}>
+                {row.posStateName || row.destCity || 'State Supply'}
+              </div>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className="font-mono text-[10px] text-slate-400">Code: {row.posCode || '27'}</span>
+                <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${
+                  row.isInterState
+                    ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
+                    : 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300'
+                }`}>
+                  {row.isInterState ? 'IGST' : 'CGST+SGST'}
+                </span>
+              </div>
             </div>
           ),
         },
         {
           key: 'taxableValue',
-          header: 'Taxable (₹)',
+          header: 'Taxable Freight (₹)',
           align: 'right',
-          width: 120,
+          width: 135,
+          minWidth: 120,
+          sortable: true,
           render: (val, row) => (
-            <span className="font-mono font-bold text-xs text-slate-900 dark:text-white">
-              {formatINR(row.taxableValue)}
-            </span>
+            <div className="text-right">
+              <span className="font-mono font-bold text-xs text-slate-900 dark:text-white block">
+                {formatINR(row.taxableValue)}
+              </span>
+              <span className="text-[10px] text-slate-400 font-mono">
+                {row.chargedWeight ? `${row.chargedWeight} kg` : `${row.packagesCount || 1} pkgs`}
+              </span>
+            </div>
           ),
         },
         {
           key: 'taxType',
-          header: 'Tax Type',
+          header: 'Tax Liability / RCM',
           align: 'center',
-          width: 110,
+          width: 140,
+          minWidth: 125,
           render: (val, row) => (
-            <span className="inline-block px-2.5 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-              {row.taxType}
-            </span>
+            <div className="flex flex-col items-center gap-0.5">
+              <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                row.isRcm
+                  ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200 dark:border-blue-800/60'
+                  : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60'
+              }`}>
+                {row.isRcm ? 'RCM (5%)' : 'Forward (GTA)'}
+              </span>
+              <span className="text-[9px] text-slate-400 font-medium">
+                {row.isRcm ? 'Recipient Pays Tax' : 'Transporter Liability'}
+              </span>
+            </div>
           ),
         },
         {
-          key: 'cgst',
-          header: 'CGST (₹)',
+          key: 'taxBreakdown',
+          header: 'GST Breakdown',
           align: 'right',
-          width: 100,
-          render: (val, row) => <span className="font-mono text-xs text-slate-500">{formatINR(row.cgst)}</span>,
-        },
-        {
-          key: 'sgst',
-          header: 'SGST (₹)',
-          align: 'right',
-          width: 100,
-          render: (val, row) => <span className="font-mono text-xs text-slate-500">{formatINR(row.sgst)}</span>,
-        },
-        {
-          key: 'igst',
-          header: 'IGST (₹)',
-          align: 'right',
-          width: 100,
-          render: (val, row) => <span className="font-mono text-xs text-slate-500">{formatINR(row.igst)}</span>,
+          width: 145,
+          minWidth: 130,
+          render: (val, row) => (
+            <div className="text-right text-xs">
+              {row.isInterState ? (
+                <div>
+                  <span className="font-mono text-slate-700 dark:text-slate-200 font-bold">{formatINR(row.igst)}</span>
+                  <span className="text-[9.5px] text-amber-600 dark:text-amber-400 font-semibold block">IGST ({row.taxRatePct}%)</span>
+                </div>
+              ) : (
+                <div>
+                  <span className="font-mono text-slate-700 dark:text-slate-200 font-bold">{formatINR(row.totalGst)}</span>
+                  <span className="text-[9px] text-slate-400 block font-mono">
+                    C: {formatINR(row.cgst)} + S: {formatINR(row.sgst)}
+                  </span>
+                </div>
+              )}
+            </div>
+          ),
         },
         {
           key: 'totalInvoiceValue',
-          header: 'Total Invoice (₹)',
+          header: 'Invoice Total (₹)',
           align: 'right',
-          width: 130,
+          width: 135,
+          minWidth: 120,
+          sortable: true,
           render: (val, row) => (
             <span className="font-mono font-bold text-xs text-indigo-600 dark:text-indigo-400">
               {formatINR(row.totalInvoiceValue)}
             </span>
+          ),
+        },
+        {
+          key: 'action',
+          header: 'Tax Audit & Slip',
+          align: 'center',
+          width: 125,
+          minWidth: 110,
+          render: (val, row) => (
+            <button
+              type="button"
+              onClick={() => setSelectedTaxAuditItem(row)}
+              className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60 transition-all cursor-pointer shadow-2xs"
+              title="Audit SAC 9965 tax classification & GSTR-1 parameters"
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>Tax Audit</span>
+            </button>
           ),
         },
       ];
@@ -2547,9 +2869,18 @@ export default function ReportsPage() {
                   <BarChart3 className="w-5 h-5" />
                 </div>
                 <div>
-                  <h1 className={`text-2xl font-extrabold tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                    Reports &amp; Operational Analytics
-                  </h1>
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <h1 className={`text-2xl font-extrabold tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                      Reports &amp; Operational Analytics
+                    </h1>
+                    {!isAdmin && (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30">
+                        <Building2 className="w-3.5 h-3.5" />
+                        <span>{currentBranchName}: {currentBranchCode || 'Active'}</span>
+                        <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"></span>
+                      </span>
+                    )}
+                  </div>
                   <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                     {canViewAuditCompliance
                       ? 'Audited commercial registers, receivables ageing, vehicle profitability, cash ledgers, and tax statements.'
@@ -2620,327 +2951,569 @@ export default function ReportsPage() {
           </div>
 
 
-
-          {/* Summary Metric Ribbon */}
+          {/* Summary Metric Ribbon - Executive Responsive Cards */}
           {summary && (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3.5">
               {activeTab === 'DOCKETS' && (
                 <>
-                  <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'}`}>
-                    <span className="text-[10px] font-bold uppercase text-slate-400">Total Dockets</span>
-                    <p className="text-xl font-black text-blue-500 mt-1">{summary.totalBookings || 0}</p>
-                    <span className="text-[11px] text-slate-400">
-                      {summary.isFiltered && summary.filteredBookings !== undefined && summary.filteredBookings !== summary.totalBookings
-                        ? `${summary.filteredBookings} of ${summary.totalBookings} Selected • ${summary.totalPackages || 0} Pkgs`
-                        : `${summary.totalPackages || 0} Packages`}
-                    </span>
-                  </div>
-                  <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'}`}>
-                    <span className="text-[10px] font-bold uppercase text-slate-400">Charged Weight</span>
-                    <p className="text-xl font-black text-slate-800 dark:text-slate-100 mt-1">
-                      {((summary.totalChargedWeight || 0) / 1000).toFixed(2)} <span className="text-xs font-medium">Tonnes</span>
-                    </p>
-                    <span className="text-[11px] text-slate-400">{summary.totalActualWeight || 0} kg actual</span>
-                  </div>
-                  <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'}`}>
-                    <span className="text-[10px] font-bold uppercase text-slate-400">Total Revenue</span>
-                    <p className="text-xl font-black text-blue-600 dark:text-blue-400 mt-1">
-                      {formatINR(summary.totalRevenue)}
-                    </p>
-                    <span className="text-[11px] text-slate-400">
-                      {summary.isFiltered && summary.filteredRevenue !== undefined && summary.filteredRevenue !== summary.totalRevenue
-                        ? `Selected: ${formatINR(summary.filteredRevenue)} • GST: ${formatINR(summary.totalTaxAmount)}`
-                        : `GST: ${formatINR(summary.totalTaxAmount)}`}
-                    </span>
-                  </div>
-                  <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'}`}>
-                    <span className="text-[10px] font-bold uppercase text-emerald-500">Total Cleared Revenue</span>
-                    <p className="text-xl font-black text-emerald-500 mt-1">
-                      {formatINR(summary.totalClearedRevenue !== undefined ? summary.totalClearedRevenue : (summary.breakdown?.clearedRevenue ?? summary.totalRevenue ?? 0))}
-                    </p>
-                    <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">
-                      {summary.breakdown?.cleared || 0} Dockets Cleared
-                    </span>
-                  </div>
-                  <div className={`p-4 rounded-2xl border ${
-                    (summary.totalPendingRevenue || summary.breakdown?.pendingRevenue || 0) > 0
-                      ? 'bg-amber-500/10 border-amber-500/30'
-                      : (isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200')
-                  } col-span-2 md:col-span-1`}>
-                    <span className="text-[10px] font-bold uppercase text-amber-500">Total Pending Revenue</span>
-                    <p className="text-xl font-black text-amber-500 mt-1">
-                      {formatINR(summary.totalPendingRevenue !== undefined ? summary.totalPendingRevenue : (summary.breakdown?.pendingRevenue || 0))}
-                    </p>
-                    <span className="text-[11px] text-amber-600 dark:text-amber-400 font-semibold">
-                      {summary.breakdown?.pending || 0} Dockets Pending
-                    </span>
-                  </div>
+                  <SummaryKpiCard
+                    icon={FileText}
+                    label="Total Dockets"
+                    value={summary.totalBookings || 0}
+                    badgeText="Bookings"
+                    accentColor="blue"
+                    subLeft={
+                      summary.isFiltered && summary.filteredBookings !== undefined && summary.filteredBookings !== summary.totalBookings
+                        ? `${summary.filteredBookings} of ${summary.totalBookings} Selected`
+                        : `${summary.totalPackages || 0} Packages`
+                    }
+                    subRight={`${summary.totalPackages || 0} Pkgs`}
+                    isDark={isDark}
+                  />
+                  <SummaryKpiCard
+                    icon={Scale}
+                    label="Charged Weight"
+                    value={`${((summary.totalChargedWeight || 0) / 1000).toFixed(2)} MT`}
+                    badgeText="Tonnage"
+                    accentColor="cyan"
+                    subLeft={`${summary.totalActualWeight || 0} kg actual`}
+                    subRight="Charged Yield"
+                    isDark={isDark}
+                  />
+                  <SummaryKpiCard
+                    icon={IndianRupee}
+                    label="Total Revenue"
+                    value={formatINR(summary.totalRevenue)}
+                    badgeText="Gross Freight"
+                    accentColor="indigo"
+                    subLeft={
+                      summary.isFiltered && summary.filteredRevenue !== undefined && summary.filteredRevenue !== summary.totalRevenue
+                        ? `Selected: ${formatINR(summary.filteredRevenue)}`
+                        : `GST: ${formatINR(summary.totalTaxAmount)}`
+                    }
+                    subRight={`GST: ${formatINR(summary.totalTaxAmount)}`}
+                    isDark={isDark}
+                  />
+                  <SummaryKpiCard
+                    icon={CheckCircle2}
+                    label="Cleared Revenue"
+                    value={formatINR(summary.totalClearedRevenue !== undefined ? summary.totalClearedRevenue : (summary.breakdown?.clearedRevenue ?? summary.totalRevenue ?? 0))}
+                    badgeText="Collected"
+                    accentColor="emerald"
+                    subLeft={`${summary.breakdown?.cleared || 0} Dockets Cleared`}
+                    subRight="Settled"
+                    isDark={isDark}
+                  />
+                  <SummaryKpiCard
+                    icon={AlertCircle}
+                    label="Pending Revenue"
+                    value={formatINR(summary.totalPendingRevenue !== undefined ? summary.totalPendingRevenue : (summary.breakdown?.pendingRevenue || 0))}
+                    badgeText="To-Collect"
+                    accentColor="amber"
+                    subLeft={`${summary.breakdown?.pending || 0} Dockets Pending`}
+                    subRight="Uncollected"
+                    isAlert={(summary.totalPendingRevenue || summary.breakdown?.pendingRevenue || 0) > 0}
+                    alertBadgeText={(summary.totalPendingRevenue || summary.breakdown?.pendingRevenue || 0) > 0 ? "Pending" : null}
+                    isDark={isDark}
+                  />
                 </>
               )}
 
               {activeTab === 'AGEING' && (
                 <>
-                  <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'}`}>
-                    <span className="text-[10px] font-bold uppercase text-slate-400">Total Receivables</span>
-                    <p className="text-xl font-black text-rose-500 mt-1">{formatINR(summary.totalReceivables)}</p>
-                    <span className="text-[11px] text-slate-400 block truncate" title={`TBB: ${formatINR(summary.totalTbbReceivables || 0)} | To-Pay: ${formatINR(summary.totalTopayReceivables || 0)}`}>
-                      TBB: {formatINR(summary.totalTbbReceivables || 0)} • To-Pay: {formatINR(summary.totalTopayReceivables || 0)}
-                    </span>
-                  </div>
-                  <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'}`}>
-                    <span className="text-[10px] font-bold uppercase text-slate-400">0 - 30 Days (Current)</span>
-                    <p className="text-xl font-black text-emerald-500 mt-1">{formatINR(summary.bucket0_30)}</p>
-                    <span className="text-[11px] text-emerald-600 dark:text-emerald-400">Standard Terms</span>
-                  </div>
-                  <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'}`}>
-                    <span className="text-[10px] font-bold uppercase text-slate-400">31 - 60 Days</span>
-                    <p className="text-xl font-black text-amber-500 mt-1">{formatINR(summary.bucket31_60)}</p>
-                    <span className="text-[11px] text-amber-600 dark:text-amber-400">Follow-up due</span>
-                  </div>
-                  <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'}`}>
-                    <span className="text-[10px] font-bold uppercase text-slate-400">61 - 90 Days</span>
-                    <p className="text-xl font-black text-orange-500 mt-1">{formatINR(summary.bucket61_90)}</p>
-                    <span className="text-[11px] text-orange-600 dark:text-orange-400">Delayed</span>
-                  </div>
-                  <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'} col-span-2 md:col-span-1`}>
-                    <span className="text-[10px] font-bold uppercase text-slate-400">90+ Days (Critical)</span>
-                    <p className="text-xl font-black text-rose-600 mt-1">{formatINR(summary.bucket90Plus)}</p>
-                    <span className="text-[11px] text-rose-500">Stop Credit Alert</span>
-                  </div>
+                  <SummaryKpiCard
+                    icon={Wallet}
+                    label="Total Receivables"
+                    value={formatINR(summary.totalReceivables)}
+                    badgeText="Ledger Balance"
+                    accentColor="rose"
+                    subLeft={`TBB: ${formatINR(summary.totalTbbReceivables || 0)}`}
+                    subRight={`To-Pay: ${formatINR(summary.totalTopayReceivables || 0)}`}
+                    isDark={isDark}
+                  />
+                  <SummaryKpiCard
+                    icon={Calendar}
+                    label="0 - 30 Days (Current)"
+                    value={formatINR(summary.bucket0_30)}
+                    badgeText="Normal Terms"
+                    accentColor="emerald"
+                    subLeft="Standard Terms"
+                    subRight="On Track"
+                    isDark={isDark}
+                  />
+                  <SummaryKpiCard
+                    icon={Clock}
+                    label="31 - 60 Days"
+                    value={formatINR(summary.bucket31_60)}
+                    badgeText="Follow-Up"
+                    accentColor="amber"
+                    subLeft="Follow-up due"
+                    subRight="Payment Notice"
+                    isDark={isDark}
+                  />
+                  <SummaryKpiCard
+                    icon={AlertTriangle}
+                    label="61 - 90 Days"
+                    value={formatINR(summary.bucket61_90)}
+                    badgeText="Delayed"
+                    accentColor="orange"
+                    subLeft="Delayed Recovery"
+                    subRight="Escalation"
+                    isDark={isDark}
+                  />
+                  <SummaryKpiCard
+                    icon={AlertCircle}
+                    label="90+ Days (Critical)"
+                    value={formatINR(summary.bucket90Plus)}
+                    badgeText="Critical"
+                    accentColor="rose"
+                    subLeft="Stop Credit Alert"
+                    subRight="High Risk"
+                    isAlert={Number(summary.bucket90Plus || 0) > 0}
+                    alertBadgeText={Number(summary.bucket90Plus || 0) > 0 ? "Action Req." : null}
+                    isDark={isDark}
+                  />
                 </>
               )}
 
               {activeTab === 'TRIPS' && (
                 <>
-                  <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'}`}>
-                    <span className="text-[10px] font-bold uppercase text-slate-400">Trips Dispatched</span>
-                    <p className="text-xl font-black text-purple-500 mt-1">{summary.totalTrips || 0}</p>
-                    <span className="text-[11px] text-slate-400">Line-haul movements</span>
-                  </div>
-                  <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'}`}>
-                    <span className="text-[10px] font-bold uppercase text-slate-400">Loaded Revenue</span>
-                    <p className="text-xl font-black text-slate-800 dark:text-slate-100 mt-1">{formatINR(summary.totalRevenue)}</p>
-                    <span className="text-[11px] text-slate-400">Total freight</span>
-                  </div>
-                  <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'}`}>
-                    <span className="text-[10px] font-bold uppercase text-slate-400">Operating Cost</span>
-                    <p className="text-xl font-black text-rose-500 mt-1">{formatINR(summary.totalOperatingCost)}</p>
-                    <span className="text-[11px] text-slate-400">Diesel, Tolls &amp; Advances</span>
-                  </div>
-                  <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'}`}>
-                    <span className="text-[10px] font-bold uppercase text-slate-400">Net Profit</span>
-                    <p className="text-xl font-black text-emerald-500 mt-1">{formatINR(summary.netProfit)}</p>
-                    <span className="text-[11px] text-emerald-600 dark:text-emerald-400">Contribution margin</span>
-                  </div>
-                  <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'} col-span-2 md:col-span-1`}>
-                    <span className="text-[10px] font-bold uppercase text-slate-400">Profit Margin %</span>
-                    <p className="text-xl font-black text-blue-500 mt-1">{summary.averageMarginPct || 0}%</p>
-                    <span className="text-[11px] text-slate-400">Avg fleet yield</span>
-                  </div>
+                  <SummaryKpiCard
+                    icon={Truck}
+                    label="Trips Dispatched"
+                    value={summary.totalTrips || 0}
+                    badgeText="Line-Haul"
+                    accentColor="purple"
+                    subLeft="Active line-haul trips"
+                    subRight="Fleet Operations"
+                    isDark={isDark}
+                  />
+                  <SummaryKpiCard
+                    icon={IndianRupee}
+                    label="Loaded Revenue"
+                    value={formatINR(summary.totalRevenue)}
+                    badgeText="Gross Freight"
+                    accentColor="blue"
+                    subLeft="Total freight manifest"
+                    subRight="Manifested"
+                    isDark={isDark}
+                  />
+                  <SummaryKpiCard
+                    icon={Coins}
+                    label="Operating Cost"
+                    value={formatINR(summary.totalOperatingCost)}
+                    badgeText="Trips Expense"
+                    accentColor="rose"
+                    subLeft="Diesel, Tolls & Advances"
+                    subRight="Disbursed"
+                    isDark={isDark}
+                  />
+                  <SummaryKpiCard
+                    icon={TrendingUp}
+                    label="Net Profit"
+                    value={formatINR(summary.netProfit)}
+                    badgeText="EBITDA"
+                    accentColor="emerald"
+                    subLeft="Contribution margin"
+                    subRight="Net Profit"
+                    isDark={isDark}
+                  />
+                  <SummaryKpiCard
+                    icon={Percent}
+                    label="Profit Margin %"
+                    value={`${summary.averageMarginPct || 0}%`}
+                    badgeText="Fleet Yield"
+                    accentColor="cyan"
+                    subLeft="Average fleet yield"
+                    subRight="Operating Ratio"
+                    isDark={isDark}
+                  />
                 </>
               )}
 
               {activeTab === 'POD' && (
                 <>
-                  <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'}`}>
-                    <span className="text-[10px] font-bold uppercase text-slate-400">Delivered Units</span>
-                    <p className="text-xl font-black text-emerald-500 mt-1">{summary.totalDelivered || 0}</p>
-                    <span className="text-[11px] text-slate-400">
-                      of {summary.totalConsignments || 0} Bookings ({summary.totalConsignments ? Math.round(((summary.totalDelivered || 0) / summary.totalConsignments) * 100) : 0}% Closed)
-                    </span>
-                  </div>
-                  <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'}`}>
-                    <span className="text-[10px] font-bold uppercase text-slate-400">Pending Delivery</span>
-                    <p className="text-xl font-black text-blue-500 mt-1">
-                      {summary.totalPending !== undefined ? summary.totalPending : Math.max(0, (summary.totalConsignments || 0) - (summary.totalDelivered || 0))}
-                    </p>
-                    <span className="text-[11px] text-blue-600 dark:text-blue-400">In Transit &amp; Godown Hubs</span>
-                  </div>
-                  <div className={`p-4 rounded-2xl border transition-all ${
-                    (summary.pendingOverdueCount || 0) > 0
-                      ? 'bg-rose-500/10 border-rose-500/30'
-                      : isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'
-                  }`}>
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold uppercase text-rose-500">Critical Overdue</span>
-                      {(summary.pendingOverdueCount || 0) > 0 && (
-                        <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-black uppercase tracking-wider bg-rose-600 text-white animate-pulse">
-                          Priority
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xl font-black text-rose-600 dark:text-rose-400 mt-1">{summary.pendingOverdueCount || 0}</p>
-                    <span className="text-[11px] font-semibold text-rose-500">
-                      {(summary.pendingOverdueCount || 0) > 0 ? 'Urgent Priority Delivery Required' : 'Zero Overdue Backlog'}
-                    </span>
-                  </div>
+                  <SummaryKpiCard
+                    icon={PackageCheck}
+                    label="Delivered Units"
+                    value={summary.totalDelivered || 0}
+                    badgeText={`${summary.totalConsignments ? Math.round(((summary.totalDelivered || 0) / summary.totalConsignments) * 100) : 0}% Closed`}
+                    accentColor="emerald"
+                    subLeft={`of ${summary.totalConsignments || 0} Bookings`}
+                    subRight="Confirmed"
+                    isDark={isDark}
+                  />
+                  <SummaryKpiCard
+                    icon={Truck}
+                    label="Pending Delivery"
+                    value={summary.totalPending !== undefined ? summary.totalPending : Math.max(0, (summary.totalConsignments || 0) - (summary.totalDelivered || 0))}
+                    badgeText="In Transit"
+                    accentColor="blue"
+                    subLeft="In Transit & Hub Godowns"
+                    subRight="En Route"
+                    isDark={isDark}
+                  />
+                  <SummaryKpiCard
+                    icon={AlertCircle}
+                    label="Critical Overdue"
+                    value={summary.pendingOverdueCount || 0}
+                    badgeText={(summary.pendingOverdueCount || 0) > 0 ? "Priority" : "Normal"}
+                    accentColor="rose"
+                    subLeft={(summary.pendingOverdueCount || 0) > 0 ? "Urgent Priority Required" : "Zero Overdue Backlog"}
+                    subRight={(summary.pendingOverdueCount || 0) > 0 ? "SLA Breached" : "Clear"}
+                    isAlert={(summary.pendingOverdueCount || 0) > 0}
+                    alertBadgeText={(summary.pendingOverdueCount || 0) > 0 ? "Priority" : null}
+                    isDark={isDark}
+                  />
                   {canViewAuditCompliance ? (
-                    <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'}`}>
-                      <span className="text-[10px] font-bold uppercase text-slate-400">PODs Verified &amp; Signed</span>
-                      <p className="text-xl font-black text-teal-500 mt-1">{summary.podVerifiedCount || 0}</p>
-                      <span className="text-[11px] text-teal-600 dark:text-teal-400">
-                        Audited ({summary.podUploadedCount || 0} Pending Audit)
-                      </span>
-                    </div>
+                    <SummaryKpiCard
+                      icon={ShieldCheck}
+                      label="PODs Verified & Signed"
+                      value={summary.podVerifiedCount || 0}
+                      badgeText="Audited"
+                      accentColor="teal"
+                      subLeft="Physically Verified"
+                      subRight={`${summary.podUploadedCount || 0} Pending Audit`}
+                      isDark={isDark}
+                    />
                   ) : (
-                    <div className={`p-4 rounded-2xl border transition-all ${
-                      (summary.podPendingCount || 0) > 0
-                        ? 'bg-amber-500/10 border-amber-500/30'
-                        : isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'
-                    }`}>
-                      <span className={`text-[10px] font-bold uppercase ${
-                        (summary.podPendingCount || 0) > 0 ? 'text-amber-500' : 'text-slate-400'
-                      }`}>
-                        POD Slips Uploaded
-                      </span>
-                      <p className="text-xl font-black text-teal-500 mt-1">
-                        {(summary.podUploadedCount || 0) + (summary.podVerifiedCount || 0)}
-                      </p>
-                      <span className={`text-[11px] font-semibold ${
-                        (summary.podPendingCount || 0) > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-400'
-                      }`}>
-                        {(summary.podPendingCount || 0) > 0
-                          ? `${summary.podPendingCount} Delivered • Upload Due`
-                          : 'All Delivered Slips Uploaded'}
-                      </span>
-                    </div>
+                    <SummaryKpiCard
+                      icon={FileSpreadsheet}
+                      label="POD Slips Uploaded"
+                      value={(summary.podUploadedCount || 0) + (summary.podVerifiedCount || 0)}
+                      badgeText={(summary.podPendingCount || 0) > 0 ? "Action Due" : "100% Up to Date"}
+                      accentColor={(summary.podPendingCount || 0) > 0 ? "amber" : "teal"}
+                      subLeft={(summary.podPendingCount || 0) > 0 ? `${summary.podPendingCount} Slips Due` : "All Delivered Uploaded"}
+                      subRight="POD Ledger"
+                      isAlert={(summary.podPendingCount || 0) > 0}
+                      isDark={isDark}
+                    />
                   )}
-                  <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'} col-span-2 md:col-span-1`}>
-                    <span className="text-[10px] font-bold uppercase text-slate-400">
-                      {canViewAuditCompliance ? 'SLA Turnaround Rate' : 'POD Collection Rate'}
-                    </span>
-                    <p className="text-xl font-black text-cyan-500 mt-1">{summary.complianceRatePct || 100}%</p>
-                    <span className="text-[11px] text-slate-400">
-                      {canViewAuditCompliance ? 'Standard SLA Compliance' : 'Delivered Slips Uploaded'}
-                    </span>
-                  </div>
+                  <SummaryKpiCard
+                    icon={CheckCircle2}
+                    label={canViewAuditCompliance ? "SLA Turnaround Rate" : "POD Collection Rate"}
+                    value={`${summary.complianceRatePct || 100}%`}
+                    badgeText="Compliance"
+                    accentColor="cyan"
+                    subLeft={canViewAuditCompliance ? "Standard SLA Compliance" : "Delivered Slips Uploaded"}
+                    subRight="On Time"
+                    isDark={isDark}
+                  />
                 </>
               )}
 
               {activeTab === 'COLLECTIONS' && (
                 <>
-                  {/* 1. Total Branch Revenue */}
-                  <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'}`}>
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold uppercase text-slate-400">Total Branch Revenue</span>
-                      {(summary?.totalTbbAmount || 0) > 0 && (
-                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" title={`Includes ₹${formatINR(summary?.totalTbbAmount)} TBB Booked`}>
-                          Incl. TBB
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xl font-black text-slate-900 dark:text-white mt-1">
-                      {formatINR(summary?.totalBranchRevenue ?? summary?.totalRevenue)}
-                    </p>
-                    <span className="text-[11px] text-slate-400">All Dockets (Paid + To-Pay Booked &amp; Delivered)</span>
-                  </div>
-
-                  {/* 2. Pending in Branch */}
-                  <div className={`p-4 rounded-2xl border ${
-                    (summary?.totalPendingInBranch ?? summary?.totalUnclosedCash ?? 0) > 0
-                      ? 'bg-amber-500/10 border-amber-500/30'
-                      : (isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200')
-                  }`}>
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold uppercase text-amber-500">Pending in Branch</span>
-                      {(summary?.totalPendingInBranch ?? summary?.totalUnclosedCash ?? 0) > 0 ? (
-                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
-                          {summary?.totalDeliveredDocketsCount ? `${summary.totalDeliveredDocketsCount} Delivered` : 'Awaiting Deposit'}
-                        </span>
-                      ) : (
-                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
-                          All Deposited
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xl font-black text-amber-500 mt-1">
-                      {formatINR(summary?.totalPendingInBranch ?? summary?.totalUnclosedCash ?? 0)}
-                    </p>
-                    <span className="text-[11px] text-amber-600 dark:text-amber-400 font-semibold block truncate" title="Cash in Drawer Awaiting Deposit (Delivered Dockets)">
-                      {(summary?.totalPendingInBranch ?? summary?.totalUnclosedCash ?? 0) > 0 ? 'Cash in Drawer Awaiting Deposit' : 'All Collections Remitted'}
-                    </span>
-                  </div>
-
-                  {/* 3. Deposited to Bank */}
-                  <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'}`}>
-                    <span className="text-[10px] font-bold uppercase text-emerald-500">Deposited to Bank</span>
-                    <p className="text-xl font-black text-emerald-600 dark:text-emerald-400 mt-1">{formatINR(summary?.totalRemittedToBank || 0)}</p>
-                    <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">Bank Remitted (Cash / Online UTR)</span>
-                  </div>
-
-                  {/* 4. Total Pending Revenue */}
-                  <div className={`p-4 rounded-2xl border ${
-                    (summary?.totalPendingRevenue !== undefined ? summary.totalPendingRevenue : (summary?.totalBranchRevenue || 0) - (summary?.totalRemittedToBank || 0)) > 0
-                      ? 'bg-rose-500/10 border-rose-500/30'
-                      : (isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200')
-                  }`}>
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold uppercase text-rose-500">Total Pending Revenue</span>
-                      {(summary?.totalPendingRevenue !== undefined ? summary.totalPendingRevenue : (summary?.totalBranchRevenue || 0) - (summary?.totalRemittedToBank || 0)) > 0 ? (
-                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300">
-                          Unremitted
-                        </span>
-                      ) : (
-                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
-                          Remitted
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xl font-black text-rose-600 dark:text-rose-400 mt-1">
-                      {formatINR(summary?.totalPendingRevenue !== undefined ? summary.totalPendingRevenue : Math.max(0, (summary?.totalBranchRevenue ?? summary?.totalRevenue ?? 0) - (summary?.totalRemittedToBank || 0)))}
-                    </p>
-                    <span className="text-[11px] text-rose-600 dark:text-rose-400 font-medium block truncate" title="Total branch revenue not deposited to bank">
-                      {(summary?.totalPendingRevenue !== undefined ? summary.totalPendingRevenue : (summary?.totalBranchRevenue || 0) - (summary?.totalRemittedToBank || 0)) > 0 ? 'Not Deposited to Bank' : 'All Revenue Remitted'}
-                    </span>
-                  </div>
-
-                  {/* 5. 30-Day Daybook Total Card */}
-                  <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'}`}>
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold uppercase text-slate-400">30-Day Daybook Total</span>
-                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
-                        30 Days
-                      </span>
-                    </div>
-                    <p className="text-xl font-black text-slate-900 dark:text-white mt-1">
-                      {formatINR(summary?.totalPendingInBranch ?? summary?.totalUnclosedCash ?? 0)}
-                    </p>
-                    <div className="flex items-center justify-between text-[11px] mt-1 pt-1.5 border-t border-slate-100 dark:border-slate-800/80">
-                      <span className="text-slate-500 font-medium">
-                        Deposited: <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">{formatINR(summary?.totalRemittedToBank || 0)}</span>
-                      </span>
-                      <span className="text-slate-500 font-medium">
-                        Revenue: <span className="font-mono font-bold text-slate-900 dark:text-white">{formatINR(summary?.totalBranchRevenue ?? summary?.totalRevenue ?? 0)}</span>
-                      </span>
-                    </div>
-                  </div>
+                  <SummaryKpiCard
+                    icon={Wallet}
+                    label="Total Branch Revenue"
+                    value={formatINR(summary?.totalBranchRevenue ?? summary?.totalRevenue)}
+                    badgeText={(summary?.totalTbbAmount || 0) > 0 ? "Incl. TBB" : "Gross Booked"}
+                    accentColor="blue"
+                    subLeft="All Dockets Booked & Delivered"
+                    subRight="Total Revenue"
+                    isDark={isDark}
+                  />
+                  <SummaryKpiCard
+                    icon={Coins}
+                    label="Pending in Branch"
+                    value={formatINR(summary?.totalPendingInBranch ?? summary?.totalUnclosedCash ?? 0)}
+                    badgeText={(summary?.totalPendingInBranch ?? summary?.totalUnclosedCash ?? 0) > 0 ? "In Drawer" : "All Deposited"}
+                    accentColor={(summary?.totalPendingInBranch ?? summary?.totalUnclosedCash ?? 0) > 0 ? "amber" : "emerald"}
+                    subLeft="Cash in Drawer Awaiting Deposit"
+                    subRight={(summary?.totalPendingInBranch ?? summary?.totalUnclosedCash ?? 0) > 0 ? "To Deposit" : "Clear"}
+                    isAlert={(summary?.totalPendingInBranch ?? summary?.totalUnclosedCash ?? 0) > 0}
+                    isDark={isDark}
+                  />
+                  <SummaryKpiCard
+                    icon={Building2}
+                    label="Deposited to Bank"
+                    value={formatINR(summary?.totalRemittedToBank || 0)}
+                    badgeText="Bank Remitted"
+                    accentColor="emerald"
+                    subLeft="Cash & Online Bank UTR"
+                    subRight="Verified Deposit"
+                    isDark={isDark}
+                  />
+                  <SummaryKpiCard
+                    icon={AlertTriangle}
+                    label="Total Pending Revenue"
+                    value={formatINR(summary?.totalPendingRevenue !== undefined ? summary.totalPendingRevenue : Math.max(0, (summary?.totalBranchRevenue ?? summary?.totalRevenue ?? 0) - (summary?.totalRemittedToBank || 0)))}
+                    badgeText={(summary?.totalPendingRevenue || 0) > 0 ? "Unremitted" : "All Settled"}
+                    accentColor={(summary?.totalPendingRevenue || 0) > 0 ? "rose" : "emerald"}
+                    subLeft={(summary?.totalPendingRevenue || 0) > 0 ? "Not Deposited to Bank" : "All Revenue Remitted"}
+                    subRight="Daybook Reconciliation"
+                    isAlert={(summary?.totalPendingRevenue || 0) > 0}
+                    isDark={isDark}
+                  />
+                  <SummaryKpiCard
+                    icon={Calendar}
+                    label="30-Day Daybook Total"
+                    value={formatINR(summary?.totalPendingInBranch ?? summary?.totalUnclosedCash ?? 0)}
+                    badgeText="30-Day Cycle"
+                    accentColor="purple"
+                    subLeft={`Deposited: ${formatINR(summary?.totalRemittedToBank || 0)}`}
+                    subRight={`Rev: ${formatINR(summary?.totalBranchRevenue ?? summary?.totalRevenue ?? 0)}`}
+                    isDark={isDark}
+                  />
                 </>
               )}
 
               {activeTab === 'GST' && (
                 <>
-                  <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'}`}>
-                    <span className="text-[10px] font-bold uppercase text-slate-400">Taxable Freight</span>
-                    <p className="text-xl font-black text-indigo-500 mt-1">{formatINR(summary.totalTaxableValue)}</p>
-                    <span className="text-[11px] text-slate-400">SAC Code 9965</span>
-                  </div>
-                  <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'}`}>
-                    <span className="text-[10px] font-bold uppercase text-slate-400">Tax Liability</span>
-                    <p className="text-xl font-black text-rose-500 mt-1">{formatINR(summary.totalTaxLiability)}</p>
-                    <span className="text-[11px] text-slate-400">Output GST</span>
-                  </div>
-                  <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'}`}>
-                    <span className="text-[10px] font-bold uppercase text-slate-400">RCM Turnover</span>
-                    <p className="text-xl font-black text-blue-500 mt-1">{formatINR(summary.rcmTaxableTurnover)}</p>
-                    <span className="text-[11px] text-slate-400">Reverse Charge</span>
-                  </div>
-                  <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'} col-span-2 md:col-span-2`}>
-                    <span className="text-[10px] font-bold uppercase text-slate-400">Forward Charge Turnover</span>
-                    <p className="text-xl font-black text-emerald-500 mt-1">{formatINR(summary.forwardChargeTurnover)}</p>
-                    <span className="text-[11px] text-emerald-600 dark:text-emerald-400">Direct GTA collection</span>
-                  </div>
+                  <SummaryKpiCard
+                    icon={Receipt}
+                    label="Taxable Freight"
+                    value={formatINR(summary.totalTaxableValue)}
+                    badgeText="SAC 9965"
+                    accentColor="indigo"
+                    subLeft={`${summary.hsnSummary?.totalQuantityTonnes || 0} MT`}
+                    subRight={`${summary.totalConsignments || 0} Consignments`}
+                    isDark={isDark}
+                  />
+                  <SummaryKpiCard
+                    icon={ShieldAlert}
+                    label="RCM Turnover"
+                    value={formatINR(summary.rcmTaxableTurnover)}
+                    badgeText="5% Recipient Tax"
+                    accentColor="blue"
+                    subLeft={`${summary.rcmCount || 0} B2B LRs`}
+                    subRight="Recipient Pays RCM"
+                    isDark={isDark}
+                  />
+                  <SummaryKpiCard
+                    icon={CheckCircle2}
+                    label="Forward Charge"
+                    value={formatINR(summary.forwardChargeTurnover)}
+                    badgeText="Transporter Tax"
+                    accentColor="emerald"
+                    subLeft={`${summary.forwardCount || 0} LRs`}
+                    subRight={`Tax: ${formatINR(summary.forwardTaxAmount || 0)}`}
+                    isDark={isDark}
+                  />
+                  <SummaryKpiCard
+                    icon={Coins}
+                    label="Total GST Generated"
+                    value={formatINR(summary.totalTaxLiability)}
+                    badgeText="Output Tax"
+                    accentColor="rose"
+                    fullSubtitle={`C: ${formatINR(summary.totalCgst || 0)} • S: ${formatINR(summary.totalSgst || 0)} • I: ${formatINR(summary.totalIgst || 0)}`}
+                    isDark={isDark}
+                  />
+                  <SummaryKpiCard
+                    icon={FileSpreadsheet}
+                    label="GSTR-1 Doc Series"
+                    value={`${summary.docSeriesSummary?.fromDocNo || 'LR-1'} → ${summary.docSeriesSummary?.toDocNo || 'LR-N'}`}
+                    badgeText="Table 13"
+                    accentColor="purple"
+                    subLeft={`${summary.docSeriesSummary?.totalIssued || 0} Issued`}
+                    subRight="0 Cancelled"
+                    isDark={isDark}
+                  />
                 </>
               )}
+            </div>
+          )}
+
+          {/* Statutory Transporter GST Registration & SAC 9965 Control Banner */}
+          {activeTab === 'GST' && (
+            <div className={`p-4 sm:p-5 rounded-2xl border transition-all duration-200 ${
+              isDark
+                ? 'bg-gradient-to-br from-[#0D1424] to-[#080D1A] border-slate-800 shadow-sm'
+                : 'bg-gradient-to-br from-white to-slate-50/80 border-slate-200 shadow-xs'
+            }`}>
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                {/* Left: Transporter Identity, Station & GSTIN */}
+                <div className="flex items-start sm:items-center gap-3.5">
+                  <div className="w-11 h-11 rounded-2xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-200/60 dark:border-indigo-800/60 flex items-center justify-center shrink-0 shadow-2xs">
+                    <Receipt className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-base font-black tracking-tight text-slate-900 dark:text-white">
+                        {summary?.transporterLegalName || 'TransHub Logistics Ltd'}
+                      </h3>
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black font-mono bg-indigo-100 text-indigo-800 dark:bg-indigo-950/70 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60">
+                        <span>GSTIN: {summary?.transporterGstin || '27AABCT9845P1Z2'}</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(summary?.transporterGstin || '27AABCT9845P1Z2');
+                            setGstCopied(true);
+                            setTimeout(() => setGstCopied(false), 2000);
+                          }}
+                          className="hover:text-indigo-500 cursor-pointer ml-0.5"
+                          title="Copy GSTIN"
+                        >
+                          {gstCopied ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
+                        </button>
+                      </span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                        POS State: {summary?.transporterState || '27-Maharashtra'}
+                      </span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-100/70 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200/50 dark:border-blue-800/50 flex items-center gap-1">
+                        <MapPin className="w-3 h-3" />
+                        <span>Station: {currentBranchName}</span>
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                      Statutory Goods Transport Agency (GTA) Freight Register • SAC Code <span className="font-semibold text-slate-700 dark:text-slate-200">9965 / 996511</span> (CBIC Notif. 11/2017-CT)
+                    </p>
+                  </div>
+                </div>
+
+                {/* Right: Quick Action Controls */}
+                <div className="flex flex-wrap items-center gap-2 self-start lg:self-auto shrink-0">
+                  {canExportCurrentTab && (
+                    <button
+                      type="button"
+                      onClick={handleExportCsv}
+                      className="inline-flex items-center space-x-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold shadow-md shadow-indigo-500/20 transition-all hover:scale-[1.02] cursor-pointer"
+                      title="Download complete GSTR-1 compliant CSV report"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>Download GSTR-1 CSV</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setShowHsnDocSummary((prev) => !prev)}
+                    className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                      showHsnDocSummary
+                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                        : isDark
+                        ? 'bg-slate-900 border-slate-700 text-slate-200 hover:bg-slate-800'
+                        : 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200/80 shadow-2xs'
+                    }`}
+                  >
+                    <Layers className="w-3.5 h-3.5" />
+                    <span>Table 12 &amp; 13 Schedule</span>
+                    {showHsnDocSummary ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Collapsible GSTR-1 Table 12 & 13 Audit Panel */}
+              {showHsnDocSummary && (
+                <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800/80 grid grid-cols-1 lg:grid-cols-2 gap-4 animate-in fade-in duration-200">
+                  {/* Table 12: HSN/SAC Summary */}
+                  <div className={`p-3.5 rounded-xl border ${isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50/70 border-slate-200/80'}`}>
+                    <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-200/60 dark:border-slate-800/60">
+                      <span className="text-[11px] font-black uppercase text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5">
+                        <FileText className="w-3.5 h-3.5" />
+                        <span>GSTR-1 Table 12: HSN/SAC Summary</span>
+                      </span>
+                      <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300">
+                        SAC 9965
+                      </span>
+                    </div>
+                    <div className="space-y-1.5 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Description:</span>
+                        <span className="font-semibold text-slate-800 dark:text-slate-200">Road Freight Transport Services</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Total Quantity / Weight:</span>
+                        <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
+                          {summary?.hsnSummary?.totalQuantityTonnes || 0} MT ({summary?.hsnSummary?.totalQuantityKg || 0} KG)
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Taxable Value:</span>
+                        <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                          {formatINR(summary?.hsnSummary?.taxableValue || summary?.totalTaxableValue)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between pt-1 border-t border-slate-200/40 dark:border-slate-800/40 text-[11px]">
+                        <span className="text-slate-500">CGST: <strong className="font-mono text-slate-700 dark:text-slate-200">{formatINR(summary?.hsnSummary?.cgst || summary?.totalCgst)}</strong></span>
+                        <span className="text-slate-500">SGST: <strong className="font-mono text-slate-700 dark:text-slate-200">{formatINR(summary?.hsnSummary?.sgst || summary?.totalSgst)}</strong></span>
+                        <span className="text-slate-500">IGST: <strong className="font-mono text-slate-700 dark:text-slate-200">{formatINR(summary?.hsnSummary?.igst || summary?.totalIgst)}</strong></span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Table 13: Document Issued Series */}
+                  <div className={`p-3.5 rounded-xl border ${isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50/70 border-slate-200/80'}`}>
+                    <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-200/60 dark:border-slate-800/60">
+                      <span className="text-[11px] font-black uppercase text-purple-600 dark:text-purple-400 flex items-center gap-1.5">
+                        <ShieldCheck className="w-3.5 h-3.5" />
+                        <span>GSTR-1 Table 13: Documents Issued</span>
+                      </span>
+                      <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300">
+                        Consignment Note (LR)
+                      </span>
+                    </div>
+                    <div className="space-y-1.5 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Document Type:</span>
+                        <span className="font-semibold text-slate-800 dark:text-slate-200">Consignment Note / Bilty (LR)</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Series Range:</span>
+                        <span className="font-mono font-bold text-slate-900 dark:text-white">
+                          {summary?.docSeriesSummary?.fromDocNo || 'N/A'} → {summary?.docSeriesSummary?.toDocNo || 'N/A'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Total Issued Count:</span>
+                        <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                          {summary?.docSeriesSummary?.totalIssued || summary?.totalConsignments || 0} Dockets
+                        </span>
+                      </div>
+                      <div className="flex justify-between pt-1 border-t border-slate-200/40 dark:border-slate-800/40 text-[11px]">
+                        <span className="text-slate-500">Cancelled: <strong className="font-mono text-slate-700 dark:text-slate-200">0</strong></span>
+                        <span className="text-slate-500">Net Valid: <strong className="font-mono text-emerald-600 dark:text-emerald-400">{summary?.docSeriesSummary?.netIssued || summary?.totalConsignments || 0}</strong></span>
+                        <span className="text-slate-500">Action: <strong className="text-emerald-600 font-semibold">Ready for CA filing</strong></span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Quick Segment Filter Pill Bar */}
+              <div className="mt-3.5 pt-3.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+                <span className="text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider shrink-0 mr-1 flex items-center gap-1.5">
+                  <Filter className="w-3.5 h-3.5" />
+                  <span>GST View:</span>
+                </span>
+                {[
+                  { id: 'ALL', label: 'All Supplies (SAC 9965)', count: summary?.totalConsignments || 0 },
+                  { id: 'RCM', label: 'RCM Supplies (5% Recipient Tax)', count: summary?.rcmCount || 0 },
+                  { id: 'FORWARD', label: 'Forward Charge (GTA Direct)', count: summary?.forwardCount || 0 },
+                  { id: 'B2B', label: 'B2B Registered (Table 4)', count: summary?.b2bCount || 0 },
+                  { id: 'B2C', label: 'B2C Retail (Table 7)', count: summary?.b2cCount || 0 },
+                ].map((pill) => {
+                  const isSelected = gstFilter === pill.id;
+                  return (
+                    <button
+                      key={pill.id}
+                      type="button"
+                      onClick={() => {
+                        setGstFilter(pill.id);
+                        setPage(1);
+                      }}
+                      className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer shrink-0 select-none border ${
+                        isSelected
+                          ? 'bg-indigo-600 border-indigo-600 text-white shadow-xs scale-[1.02]'
+                          : isDark
+                          ? 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800 hover:text-white'
+                          : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100 shadow-2xs'
+                      }`}
+                    >
+                      <span>{pill.label}</span>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ${
+                        isSelected
+                          ? 'bg-white/25 text-white'
+                          : isDark
+                          ? 'bg-slate-800 text-slate-300'
+                          : 'bg-slate-100 text-slate-700'
+                      }`}>
+                        {pill.count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           )}
 
@@ -3594,9 +4167,10 @@ export default function ReportsPage() {
                 </div>
                 <div>
                   <h3 className="text-sm font-black tracking-tight">Proof of Delivery (POD) Slip</h3>
-                  <p className="text-[11px] text-slate-400 font-mono">
-                    Docket #{selectedPodModal.docketNumber || selectedPodModal.lrNumber}
-                    {selectedPodModal.lrNumber && selectedPodModal.lrNumber !== selectedPodModal.docketNumber ? ` • LR #${selectedPodModal.lrNumber}` : ''}
+                  <p className="text-[11px] text-slate-400 font-mono flex items-center gap-1.5 mt-0.5 whitespace-nowrap">
+                    <span>Docket #{selectedPodModal.docketNumber || selectedPodModal.lrNumber}</span>
+                    {selectedPodModal.lrNumber && selectedPodModal.lrNumber !== selectedPodModal.docketNumber ? <span>• LR #{selectedPodModal.lrNumber}</span> : null}
+                    <BuiltyTypeBadge docket={selectedPodModal} />
                   </p>
                 </div>
               </div>
@@ -3854,8 +4428,9 @@ export default function ReportsPage() {
                             return (
                               <div key={idx} className="p-2.5 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/40 text-xs">
                                 <div className="space-y-0.5">
-                                  <div className="flex items-center gap-2">
+                                  <div className="flex items-center gap-2 whitespace-nowrap">
                                     <span className="font-mono font-bold text-blue-600 dark:text-cyan-400">{cd.docketNumber}</span>
+                                    <BuiltyTypeBadge docket={cd} />
                                     <span className="text-[10px] text-slate-400">({cd.originCity} → {cd.destCity})</span>
                                   </div>
                                   <div className="text-[10px] text-slate-400 font-mono">
@@ -3892,9 +4467,12 @@ export default function ReportsPage() {
                     <div className="flex justify-between items-center pb-2 border-b border-blue-200/40 dark:border-blue-800/40">
                       <div>
                         <span className="text-slate-400 block text-[10px]">Docket / LR Number</span>
-                        <strong className="text-sm font-black font-mono text-slate-900 dark:text-white">
-                          {selectedDepositDetails.linkedDocket.docketNumber}
-                        </strong>
+                        <div className="flex items-center gap-2 mt-0.5 whitespace-nowrap">
+                          <strong className="text-sm font-black font-mono text-slate-900 dark:text-white">
+                            {selectedDepositDetails.linkedDocket.docketNumber}
+                          </strong>
+                          <BuiltyTypeBadge docket={selectedDepositDetails.linkedDocket} />
+                        </div>
                       </div>
                       <div className="text-right">
                         <span className="text-slate-400 block text-[10px]">Freight Amount</span>
@@ -4130,7 +4708,12 @@ export default function ReportsPage() {
                       <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-mono text-[11px]">
                         {selectedPartyDetails.detailedDockets.map((d) => (
                           <tr key={d.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40">
-                            <td className="p-2.5 font-bold text-slate-900 dark:text-white">{d.docketNumber}</td>
+                            <td className="p-2.5 font-bold text-slate-900 dark:text-white">
+                              <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                                <span>{d.docketNumber}</span>
+                                <BuiltyTypeBadge docket={d} />
+                              </div>
+                            </td>
                             <td className="p-2.5">
                               <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
                                 d.paymentType === 'TBB' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40'
@@ -4190,6 +4773,300 @@ Thank you for your business!`;
                 className="px-5 py-2 rounded-xl text-xs font-bold bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 cursor-pointer transition-colors"
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Consignment Tax Audit Breakdown & Statutory GSTR-1 Parameters (SAC 9965) */}
+      {selectedTaxAuditItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className={`relative w-full max-w-3xl max-h-[92vh] flex flex-col rounded-3xl border shadow-2xl overflow-hidden transition-all ${
+            isDark ? 'bg-[#0B1020] border-slate-800 text-white shadow-indigo-500/5' : 'bg-white border-slate-200/90 text-slate-900 shadow-slate-900/10'
+          }`}>
+            {/* Modal Header */}
+            <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800/80 flex items-center justify-between shrink-0 bg-slate-50/50 dark:bg-slate-950/30">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-indigo-500 shadow-xs shrink-0">
+                  <Receipt className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-black tracking-tight text-slate-900 dark:text-white">
+                      Tax Audit: LR #{selectedTaxAuditItem.lrNumber}
+                    </h3>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60">
+                      SAC {selectedTaxAuditItem.sacCode || '9965'}
+                    </span>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                      selectedTaxAuditItem.isRcm
+                        ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border border-blue-200/60 dark:border-blue-800/60'
+                        : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/60'
+                    }`}>
+                      {selectedTaxAuditItem.isRcm ? 'Reverse Charge (RCM 5%)' : 'Forward Charge (GTA)'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Statutory Road Freight GST Audit • Booked on <strong className="font-mono text-slate-700 dark:text-slate-300">{selectedTaxAuditItem.bookingDate}</strong> • Mode: <span className="font-semibold">{selectedTaxAuditItem.paymentType}</span>
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedTaxAuditItem(null)}
+                className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-5">
+              {/* Transporter Jurisdiction Header */}
+              <div className="p-3.5 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">GTA Supplier (Transporter)</span>
+                  <div className="font-black text-slate-900 dark:text-white mt-0.5">
+                    {summary?.transporterLegalName || 'TransHub Logistics Ltd'}
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <div>
+                    <span className="text-[10px] text-slate-400 block">Supplier GSTIN</span>
+                    <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{summary?.transporterGstin || '27AABCT9845P1Z2'}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 block">Supplier State</span>
+                    <span className="font-bold text-slate-800 dark:text-slate-200">{summary?.transporterState || '27-Maharashtra'}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Two-Column Party Profiles: Consignor vs Consignee */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Consignor Card */}
+                <div className={`p-4 rounded-2xl border ${isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50/80 border-slate-200'}`}>
+                  <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-200/60 dark:border-slate-800/60">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Consignor (Origin Party)</span>
+                    <span className={`px-2 py-0.2 rounded font-mono text-[9px] font-bold ${
+                      selectedTaxAuditItem.consignorGst && selectedTaxAuditItem.consignorGst !== 'URP'
+                        ? 'bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300'
+                        : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                    }`}>
+                      {selectedTaxAuditItem.consignorGst && selectedTaxAuditItem.consignorGst !== 'URP' ? 'B2B Registered' : 'Unregistered (URP)'}
+                    </span>
+                  </div>
+                  <div className="font-bold text-sm text-slate-900 dark:text-white truncate">
+                    {selectedTaxAuditItem.consignorName}
+                  </div>
+                  <div className="mt-2 space-y-1 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">GSTIN:</span>
+                      <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{selectedTaxAuditItem.consignorGst}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Origin Location:</span>
+                      <span className="text-slate-700 dark:text-slate-300 font-medium">
+                        {selectedTaxAuditItem.originCity} ({selectedTaxAuditItem.consignorState || 'Origin'})
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Dispatch Branch:</span>
+                      <span className="text-slate-700 dark:text-slate-300 font-medium">
+                        {typeof selectedTaxAuditItem.branch === 'object' ? selectedTaxAuditItem.branch?.name : selectedTaxAuditItem.branch}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Consignee Card */}
+                <div className={`p-4 rounded-2xl border ${isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50/80 border-slate-200'}`}>
+                  <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-200/60 dark:border-slate-800/60">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Consignee (Recipient / Destination)</span>
+                    <span className={`px-2 py-0.2 rounded font-mono text-[9px] font-bold ${
+                      selectedTaxAuditItem.consigneeGst && selectedTaxAuditItem.consigneeGst !== 'URP'
+                        ? 'bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300'
+                        : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                    }`}>
+                      {selectedTaxAuditItem.consigneeGst && selectedTaxAuditItem.consigneeGst !== 'URP' ? 'B2B Registered' : 'Unregistered (URP)'}
+                    </span>
+                  </div>
+                  <div className="font-bold text-sm text-slate-900 dark:text-white truncate">
+                    {selectedTaxAuditItem.consigneeName}
+                  </div>
+                  <div className="mt-2 space-y-1 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">GSTIN:</span>
+                      <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{selectedTaxAuditItem.consigneeGst}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Destination Location:</span>
+                      <span className="text-slate-700 dark:text-slate-300 font-medium">
+                        {selectedTaxAuditItem.destCity} ({selectedTaxAuditItem.consigneeState || 'Destination'})
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Receiving Branch:</span>
+                      <span className="text-slate-700 dark:text-slate-300 font-medium">
+                        {typeof selectedTaxAuditItem.destBranch === 'object' ? selectedTaxAuditItem.destBranch?.name : selectedTaxAuditItem.destBranch}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Statutory Tax Rule & RCM Determination */}
+              <div className={`p-4 rounded-2xl border ${
+                selectedTaxAuditItem.isRcm
+                  ? 'bg-blue-500/10 border-blue-500/30'
+                  : 'bg-emerald-500/10 border-emerald-500/30'
+              }`}>
+                <div className="flex items-start gap-3">
+                  <div className={`p-2 rounded-xl shrink-0 mt-0.5 ${
+                    selectedTaxAuditItem.isRcm ? 'bg-blue-500/20 text-blue-600 dark:text-blue-400' : 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400'
+                  }`}>
+                    <ShieldCheck className="w-5 h-5" />
+                  </div>
+                  <div className="space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h4 className={`text-xs font-black uppercase tracking-wider ${
+                        selectedTaxAuditItem.isRcm ? 'text-blue-600 dark:text-blue-400' : 'text-emerald-600 dark:text-emerald-400'
+                      }`}>
+                        {selectedTaxAuditItem.isRcm ? 'Reverse Charge Mechanism (RCM 5%) Applies' : 'Forward Charge GTA Tax Collection Applies'}
+                      </h4>
+                      <span className="text-[10px] font-bold px-2 py-0.2 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                        Place of Supply: {selectedTaxAuditItem.placeOfSupply}
+                      </span>
+                      <span className="text-[10px] font-bold px-2 py-0.2 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                        {selectedTaxAuditItem.isInterState ? 'Inter-State (IGST)' : 'Intra-State (CGST+SGST)'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                      {selectedTaxAuditItem.isRcm ? (
+                        <>
+                          Under CBIC Notification No. 11/2017-Central Tax (Rate) &amp; 13/2017-Central Tax (Rate), since the recipient party is registered under GST (GSTIN: <span className="font-mono font-bold text-slate-800 dark:text-slate-100">{selectedTaxAuditItem.recipientGst}</span>) and the freight is billed at the statutory 5% GTA rate, the GST liability of <strong className="font-mono text-blue-600 dark:text-blue-400">{formatINR(selectedTaxAuditItem.totalGst)}</strong> is payable <strong>directly by the recipient under RCM</strong>. The transporter will not collect or remit this tax.
+                        </>
+                      ) : (
+                        <>
+                          Supplied to an unregistered retail person (B2C) or billed under standard Forward Charge. The transporter collects total GST of <strong className="font-mono text-emerald-600 dark:text-emerald-400">{formatINR(selectedTaxAuditItem.totalGst)}</strong> from the customer and discharges this liability to the government via Monthly GSTR-3B.
+                        </>
+                      )}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Valuation & Itemized Tax Computation Table */}
+              <div>
+                <h4 className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200 mb-2">
+                  Commercial Valuation &amp; Statutory GST Computation
+                </h4>
+                <div className="border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden">
+                  <table className="w-full text-xs text-left">
+                    <thead className="bg-slate-100 dark:bg-slate-800/60 font-bold text-slate-600 dark:text-slate-300">
+                      <tr>
+                        <th className="p-3">Freight &amp; Cargo Parameter</th>
+                        <th className="p-3">Specification</th>
+                        <th className="p-3 text-right">Taxable Freight</th>
+                        <th className="p-3 text-center">Tax Rate</th>
+                        <th className="p-3 text-right">CGST</th>
+                        <th className="p-3 text-right">SGST</th>
+                        <th className="p-3 text-right">IGST</th>
+                        <th className="p-3 text-right">Total Invoice</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-mono text-[11px]">
+                      <tr className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40">
+                        <td className="p-3 font-sans font-bold text-slate-900 dark:text-white">
+                          Road Freight Transport (SAC 9965)
+                        </td>
+                        <td className="p-3 font-sans text-slate-500">
+                          {selectedTaxAuditItem.chargedWeight} kg • {selectedTaxAuditItem.packagesCount} pkgs
+                        </td>
+                        <td className="p-3 text-right font-bold text-slate-900 dark:text-white">
+                          {formatINR(selectedTaxAuditItem.taxableValue)}
+                        </td>
+                        <td className="p-3 text-center font-bold">
+                          {selectedTaxAuditItem.taxRatePct}%
+                        </td>
+                        <td className="p-3 text-right text-slate-600 dark:text-slate-300">
+                          {formatINR(selectedTaxAuditItem.cgst)}
+                        </td>
+                        <td className="p-3 text-right text-slate-600 dark:text-slate-300">
+                          {formatINR(selectedTaxAuditItem.sgst)}
+                        </td>
+                        <td className="p-3 text-right text-slate-600 dark:text-slate-300">
+                          {formatINR(selectedTaxAuditItem.igst)}
+                        </td>
+                        <td className="p-3 text-right font-bold text-indigo-600 dark:text-indigo-400">
+                          {formatINR(selectedTaxAuditItem.totalInvoiceValue)}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* GSTR-1 Return Filing Cross-Reference */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30">
+                  <span className="text-[10px] text-slate-400 uppercase font-bold block">GSTR-1 Table 4</span>
+                  <strong className="text-slate-900 dark:text-white block mt-0.5">
+                    {selectedTaxAuditItem.isB2B ? 'Eligible B2B Supply' : 'N/A (Retail B2C)'}
+                  </strong>
+                  <span className="text-[10px] text-slate-500">Reverse Charge: {selectedTaxAuditItem.reverseChargeFlag}</span>
+                </div>
+                <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30">
+                  <span className="text-[10px] text-slate-400 uppercase font-bold block">GSTR-1 Table 7</span>
+                  <strong className="text-slate-900 dark:text-white block mt-0.5">
+                    {!selectedTaxAuditItem.isB2B ? 'Eligible B2C Others' : 'Reported in Table 4'}
+                  </strong>
+                  <span className="text-[10px] text-slate-500">Net Taxable: {formatINR(selectedTaxAuditItem.taxableValue)}</span>
+                </div>
+                <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30">
+                  <span className="text-[10px] text-slate-400 uppercase font-bold block">GSTR-1 Table 12</span>
+                  <strong className="text-slate-900 dark:text-white block mt-0.5">SAC Code 9965</strong>
+                  <span className="text-[10px] text-slate-500">{selectedTaxAuditItem.chargedWeight} KG Freight</span>
+                </div>
+                <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30">
+                  <span className="text-[10px] text-slate-400 uppercase font-bold block">GSTR-1 Table 13</span>
+                  <strong className="text-slate-900 dark:text-white block mt-0.5">LR Document Series</strong>
+                  <span className="text-[10px] text-emerald-600 font-semibold">Valid Sequence</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-3.5 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 flex items-center justify-between shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  const auditSummary = `TransHub GST Tax Audit (SAC 9965)
+LR Number: ${selectedTaxAuditItem.lrNumber}
+Date: ${selectedTaxAuditItem.bookingDate}
+Consignor: ${selectedTaxAuditItem.consignorName} (GSTIN: ${selectedTaxAuditItem.consignorGst})
+Consignee: ${selectedTaxAuditItem.consigneeName} (GSTIN: ${selectedTaxAuditItem.consigneeGst})
+Place of Supply: ${selectedTaxAuditItem.placeOfSupply}
+Taxable Value: INR ${selectedTaxAuditItem.taxableValue}
+Tax Type: ${selectedTaxAuditItem.taxType} (Reverse Charge: ${selectedTaxAuditItem.reverseChargeFlag})
+Total GST: INR ${selectedTaxAuditItem.totalGst} (CGST: ${selectedTaxAuditItem.cgst}, SGST: ${selectedTaxAuditItem.sgst}, IGST: ${selectedTaxAuditItem.igst})
+Total Invoice: INR ${selectedTaxAuditItem.totalInvoiceValue}`;
+                  navigator.clipboard.writeText(auditSummary);
+                  setAuditCopied(true);
+                  setTimeout(() => setAuditCopied(false), 2000);
+                }}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/20 cursor-pointer active:scale-95 transition-all"
+              >
+                {auditCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{auditCopied ? 'Audit Summary Copied!' : 'Copy Tax Summary'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedTaxAuditItem(null)}
+                className="px-5 py-2 rounded-xl text-xs font-bold bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 cursor-pointer transition-colors"
+              >
+                Close Audit
               </button>
             </div>
           </div>

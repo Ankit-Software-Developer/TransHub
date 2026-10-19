@@ -13,9 +13,14 @@ const createBooking = async ({ tenantId, organizationId, branchId, userId, paylo
   const ConsignmentStatusHistory = models?.ConsignmentStatusHistory || defaultModels.ConsignmentStatusHistory;
   const AuditLog = models?.AuditLog || defaultModels.AuditLog;
 
-  // Ensure transport_mode column exists in the tenant's MySQL database (outside transaction to avoid MySQL implicit commit)
+  // Ensure transport_mode and load_type columns exist in the tenant's MySQL database (outside transaction to avoid MySQL implicit commit)
   try {
     await db.query("ALTER TABLE consignments ADD COLUMN transport_mode VARCHAR(30) DEFAULT 'ROAD';");
+  } catch (e) {
+    // Column already exists or alter ignored
+  }
+  try {
+    await db.query("ALTER TABLE consignments ADD COLUMN load_type ENUM('PTL', 'FTL') DEFAULT 'PTL';");
   } catch (e) {
     // Column already exists or alter ignored
   }
@@ -53,7 +58,9 @@ const createBooking = async ({ tenantId, organizationId, branchId, userId, paylo
     }
 
     // 2. Financial calculation
-    const rate = parseFloat(payload.rate || 0);
+    const isFtl = (payload.load_type || payload.loadType || 'PTL').toUpperCase() === 'FTL';
+    const isFixedRate = payload.rate_type === 'FIXED' || (isFtl && (payload.ftlPricingMode === 'FIXED' || payload.ftl_pricing_mode === 'FIXED'));
+    const rate = isFixedRate ? 0 : parseFloat(payload.rate || 0);
     const chargedWeight = parseFloat(payload.charged_weight || payload.actual_weight || 0);
     const packagesCount = parseInt(payload.packages_count || 1, 10);
 
@@ -61,7 +68,7 @@ const createBooking = async ({ tenantId, organizationId, branchId, userId, paylo
     if (!freightAmount && rate > 0) {
       if (payload.rate_type === 'PER_PACKAGE') {
         freightAmount = roundToTwo(packagesCount * rate);
-      } else {
+      } else if (!isFixedRate) {
         // Default PER_KG
         freightAmount = roundToTwo(chargedWeight * rate);
       }
@@ -70,16 +77,42 @@ const createBooking = async ({ tenantId, organizationId, branchId, userId, paylo
     const loading = parseFloat(payload.loading_charges || 0);
     const unloading = parseFloat(payload.unloading_charges || 0);
     const handling = parseFloat(payload.handling_charges || 0);
-    const hamali = parseFloat(payload.hamali_charges || 0);
+    // If hamali is provided equal to loading (from combined Loading/Hamali UI input), do not double charge
+    const rawHamali = parseFloat(payload.hamali_charges || 0);
+    const hamali = (rawHamali > 0 && rawHamali === loading && !payload.explicit_separate_hamali)
+      ? 0
+      : rawHamali;
     const doorDelivery = parseFloat(payload.door_delivery_charges || 0);
     const otherCharges = parseFloat(payload.other_charges || 0);
     const discount = parseFloat(payload.discount_amount || 0);
 
     const subtotal = addDecimals(freightAmount, loading, unloading, handling, hamali, doorDelivery, otherCharges);
     const taxable = Math.max(0, subtotal - discount);
-    const taxPercent = parseFloat(payload.tax_percent || 5.0);
-    const taxAmount = roundToTwo((taxable * taxPercent) / 100);
-    const totalAmount = roundToTwo(taxable + taxAmount);
+
+    // Respect user-specified tax terms (e.g. 5% GTA RCM has ₹0 tax added to docket)
+    const isRcm = payload.is_rcm === true ||
+      payload.gst_mode === 'RCM' ||
+      payload.gstMode === 'RCM' ||
+      (payload.tax_amount !== undefined && parseFloat(payload.tax_amount) === 0 && parseFloat(payload.tax_percent || 0) > 0);
+
+    const taxPercent = (payload.tax_percent !== undefined && payload.tax_percent !== null && payload.tax_percent !== '')
+      ? parseFloat(payload.tax_percent)
+      : 0.0;
+
+    let taxAmount = 0.0;
+    if (payload.tax_amount !== undefined && payload.tax_amount !== null && payload.tax_amount !== '') {
+      taxAmount = parseFloat(payload.tax_amount);
+    } else if (isRcm) {
+      taxAmount = 0.0;
+    } else {
+      taxAmount = roundToTwo((taxable * taxPercent) / 100);
+    }
+
+    const totalAmount = (payload.total_amount !== undefined && payload.total_amount !== null && !isNaN(parseFloat(payload.total_amount)))
+      ? parseFloat(payload.total_amount)
+      : (payload.totalAmount !== undefined && payload.totalAmount !== null && !isNaN(parseFloat(payload.totalAmount)))
+        ? parseFloat(payload.totalAmount)
+        : roundToTwo(taxable + taxAmount);
 
     const Customer = models?.Customer || defaultModels.Customer;
 
@@ -166,6 +199,14 @@ const createBooking = async ({ tenantId, organizationId, branchId, userId, paylo
       dest_branch_id: payload.dest_branch_id || null,
       consignor_id: consignorId,
       consignee_id: consigneeId,
+      consignor_name: consignorName,
+      consignee_name: consigneeName,
+      consignor_phone: (payload.consignor_phone || payload.consignorPhone || '').replace(/\D/g, '') || null,
+      consignee_phone: (payload.consignee_phone || payload.consigneePhone || '').replace(/\D/g, '') || null,
+      consignor_address: payload.consignor_address || payload.pickup_address || null,
+      consignee_address: payload.consignee_address || payload.delivery_address || null,
+      consignor_gstin: payload.consignor_gstin || payload.consignorGstin || null,
+      consignee_gstin: payload.consignee_gstin || payload.consigneeGstin || null,
       origin_city: payload.origin_city || 'Delhi',
       destination_city: payload.destination_city || 'Mumbai',
       booking_date: booking.booking_date,
@@ -183,7 +224,8 @@ const createBooking = async ({ tenantId, organizationId, branchId, userId, paylo
       payment_type: payload.payment_type || 'TO_PAY',
       delivery_type: payload.delivery_type || 'GODOWN_DELIVERY',
       transport_mode: (payload.transport_mode || payload.transportMode || 'ROAD').toUpperCase(),
-      rate_type: payload.rate_type || 'PER_KG',
+      load_type: (payload.load_type || payload.loadType || 'PTL').toUpperCase() === 'FTL' ? 'FTL' : 'PTL',
+      rate_type: isFixedRate ? 'FIXED' : (payload.rate_type || 'PER_KG'),
       rate,
       freight_amount: freightAmount,
       loading_charges: loading,
@@ -205,13 +247,13 @@ const createBooking = async ({ tenantId, organizationId, branchId, userId, paylo
     try {
       consignment = await Consignment.create(consignmentData, { transaction });
     } catch (createErr) {
-      if (createErr.message && createErr.message.includes('transport_mode')) {
-        // Safe fallback if column is not yet propagated in MySQL
-        delete consignmentData.transport_mode;
-        consignment = await Consignment.create(consignmentData, { transaction });
-      } else {
-        throw createErr;
-      }
+      const partyCols = ['consignor_name', 'consignee_name', 'consignor_phone', 'consignee_phone', 'consignor_address', 'consignee_address', 'consignor_gstin', 'consignee_gstin', 'transport_mode', 'load_type'];
+      partyCols.forEach(col => {
+        if (createErr.message && createErr.message.includes(col)) {
+          delete consignmentData[col];
+        }
+      });
+      consignment = await Consignment.create(consignmentData, { transaction });
     }
 
     // 5. Create Consignment Item
@@ -237,6 +279,28 @@ const createBooking = async ({ tenantId, organizationId, branchId, userId, paylo
 
     await transaction.commit();
 
+    try {
+      const fullConsignment = await Consignment.findOne({
+        where: { id: consignment.id },
+        include: [
+          ...(Customer ? [
+            { model: Customer, as: 'consignor', attributes: ['id', 'customer_code', 'name', 'phone', 'city', 'billing_address', 'gstin'] },
+            { model: Customer, as: 'consignee', attributes: ['id', 'customer_code', 'name', 'phone', 'city', 'billing_address', 'gstin'] },
+          ] : []),
+          ...(Branch ? [
+            { model: Branch, as: 'originBranch', attributes: ['id', 'branch_code', 'branch_name', 'city'] },
+            { model: Branch, as: 'destBranch', attributes: ['id', 'branch_code', 'branch_name', 'city'] },
+            { model: Branch, as: 'currentBranch', attributes: ['id', 'branch_code', 'branch_name', 'city'] },
+          ] : []),
+        ],
+      });
+      if (fullConsignment) {
+        return fullConsignment;
+      }
+    } catch (reloadErr) {
+      console.warn('Could not reload full consignment with associations:', reloadErr.message);
+    }
+
     return consignment;
   } catch (error) {
     await transaction.rollback();
@@ -254,6 +318,7 @@ const listConsignments = async ({
   status = null,
   search = null,
   paymentType = null,
+  loadType = null,
   fromDate = null,
   toDate = null,
   page = 1,
@@ -328,6 +393,10 @@ const listConsignments = async ({
     where.payment_type = paymentType;
   }
 
+  if (loadType && loadType !== 'ALL') {
+    where.load_type = loadType.toUpperCase();
+  }
+
   if (fromDate && toDate) {
     where.booking_date = {
       [Op.between]: [fromDate, toDate],
@@ -368,10 +437,23 @@ const listConsignments = async ({
   if (Branch) {
     includeList.push({ model: Branch, as: 'originBranch', attributes: ['id', 'branch_code', 'branch_name', 'city'] });
     includeList.push({ model: Branch, as: 'destBranch', attributes: ['id', 'branch_code', 'branch_name', 'city'] });
+    includeList.push({ model: Branch, as: 'currentBranch', attributes: ['id', 'branch_code', 'branch_name', 'city'] });
   }
   if (Customer) {
-    includeList.push({ model: Customer, as: 'consignor', attributes: ['id', 'customer_code', 'name', 'phone', 'city'] });
-    includeList.push({ model: Customer, as: 'consignee', attributes: ['id', 'customer_code', 'name', 'phone', 'city'] });
+    includeList.push({
+      model: Customer,
+      as: 'consignor',
+      attributes: ['id', 'customer_code', 'name', 'phone', 'city', 'billing_address', 'gstin'],
+      required: false,
+      paranoid: false,
+    });
+    includeList.push({
+      model: Customer,
+      as: 'consignee',
+      attributes: ['id', 'customer_code', 'name', 'phone', 'city', 'billing_address', 'gstin'],
+      required: false,
+      paranoid: false,
+    });
   }
   if (Pod) {
     includeList.push({ model: Pod, as: 'pod' });
@@ -418,8 +500,69 @@ const listConsignments = async ({
     include: includeList,
   });
 
+  // Batch resolve any orphaned customer IDs if association missed them
+  const missingCustIds = [];
+  rows.forEach((r) => {
+    const j = r.toJSON ? r.toJSON() : r;
+    if ((!j.consignor || !j.consignor.name) && j.consignor_id) missingCustIds.push(j.consignor_id);
+    if ((!j.consignee || !j.consignee.name) && j.consignee_id) missingCustIds.push(j.consignee_id);
+  });
+
+  let extraCustMap = {};
+  if (missingCustIds.length > 0 && Customer) {
+    try {
+      const extraCusts = await Customer.findAll({
+        where: { id: { [Op.in]: [...new Set(missingCustIds)] } },
+        attributes: ['id', 'customer_code', 'name', 'phone', 'city', 'billing_address', 'gstin'],
+        paranoid: false,
+      });
+      extraCusts.forEach((c) => {
+        const cj = c.toJSON ? c.toJSON() : c;
+        extraCustMap[cj.id] = cj;
+      });
+    } catch (e) {
+      // ignore
+    }
+  }
+
   const formattedRows = rows.map((r) => {
     const json = r.toJSON ? r.toJSON() : r;
+
+    // Attach from extraCustMap if missed
+    if ((!json.consignor || !json.consignor.name) && json.consignor_id && extraCustMap[json.consignor_id]) {
+      json.consignor = extraCustMap[json.consignor_id];
+    }
+    if ((!json.consignee || !json.consignee.name) && json.consignee_id && extraCustMap[json.consignee_id]) {
+      json.consignee = extraCustMap[json.consignee_id];
+    }
+
+    // Synthesize consignor from snapshot columns if still missing
+    if (!json.consignor || !json.consignor.name) {
+      if (json.consignor_name) {
+        json.consignor = {
+          id: json.consignor_id,
+          name: json.consignor_name,
+          phone: json.consignor_phone || '',
+          city: json.origin_city || '',
+          billing_address: json.consignor_address || '',
+          gstin: json.consignor_gstin || '',
+        };
+      }
+    }
+    // Synthesize consignee from snapshot columns if still missing
+    if (!json.consignee || !json.consignee.name) {
+      if (json.consignee_name) {
+        json.consignee = {
+          id: json.consignee_id,
+          name: json.consignee_name,
+          phone: json.consignee_phone || '',
+          city: json.destination_city || '',
+          billing_address: json.consignee_address || '',
+          gstin: json.consignee_gstin || '',
+        };
+      }
+    }
+
     const activeTrip = (json.trips && json.trips.length > 0)
       ? (json.trips.find((t) => t.status === 'RUNNING' || t.status === 'IN_TRANSIT' || t.status === 'DISPATCHED') || json.trips[json.trips.length - 1])
       : null;
@@ -701,8 +844,18 @@ const updateBooking = async ({ id, tenantId, organizationId, payload, models, se
       lr_number: payload.lr_number || payload.docket_number || consignment.lr_number,
       origin_city: payload.origin_city || consignment.origin_city,
       destination_city: payload.destination_city || consignment.destination_city,
+      origin_branch_id: payload.origin_branch_id !== undefined ? payload.origin_branch_id : consignment.origin_branch_id,
+      dest_branch_id: payload.dest_branch_id !== undefined ? payload.dest_branch_id : consignment.dest_branch_id,
       consignor_id: consignorId,
       consignee_id: consigneeId,
+      consignor_name: consignorName || consignment.consignor_name,
+      consignee_name: consigneeName || consignment.consignee_name,
+      consignor_phone: payload.consignor_phone || consignment.consignor_phone,
+      consignee_phone: payload.consignee_phone || consignment.consignee_phone,
+      consignor_address: payload.consignor_address || consignment.consignor_address,
+      consignee_address: payload.consignee_address || consignment.consignee_address,
+      consignor_gstin: payload.consignor_gstin || consignment.consignor_gstin,
+      consignee_gstin: payload.consignee_gstin || consignment.consignee_gstin,
       material_description: payload.material_description || payload.cargo_type || payload.cargoType || consignment.material_description,
       packages_count: packagesCount,
       package_type: payload.package_type || consignment.package_type,
@@ -723,14 +876,16 @@ const updateBooking = async ({ id, tenantId, organizationId, payload, models, se
       delivery_type: payload.delivery_type || payload.deliveryType || consignment.delivery_type,
       payment_type: payload.payment_type || payload.payment_mode || consignment.payment_type,
       transport_mode: payload.transport_mode || payload.transportMode || consignment.transport_mode || 'ROAD',
+      load_type: payload.load_type || payload.loadType || consignment.load_type || 'PTL',
       status: payload.status || consignment.status,
     };
 
     try {
       await consignment.update(updateFields, { transaction });
     } catch (updateErr) {
-      if (updateErr.message && updateErr.message.includes('transport_mode')) {
+      if (updateErr.message && (updateErr.message.includes('transport_mode') || updateErr.message.includes('load_type'))) {
         delete updateFields.transport_mode;
+        delete updateFields.load_type;
         await consignment.update(updateFields, { transaction });
       } else {
         throw updateErr;
@@ -741,6 +896,7 @@ const updateBooking = async ({ id, tenantId, organizationId, payload, models, se
       await Booking.update({
         origin_city: consignment.origin_city,
         destination_city: consignment.destination_city,
+        dest_branch_id: consignment.dest_branch_id,
         consignor_id: consignorId,
         consignee_id: consigneeId,
       }, {

@@ -5,7 +5,9 @@ const userController = require('../../controllers/userController');
 const authenticate = require('../../middleware/authenticate');
 const tenantResolver = require('../../middleware/tenantResolver');
 
-router.use(authenticate, tenantResolver);
+const branchAccess = require('../../middleware/branchAccess');
+
+router.use(authenticate, tenantResolver, branchAccess);
 
 router.get('/', userController.listUsers);
 router.post('/', userController.createUser);

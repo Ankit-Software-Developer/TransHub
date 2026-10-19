@@ -56,6 +56,11 @@ module.exports = (sequelize) => {
       type: DataTypes.ENUM('DIRECT', 'HUB', 'MULTI_STOP'),
       defaultValue: 'DIRECT',
     },
+    load_type: {
+      type: DataTypes.STRING(20),
+      defaultValue: 'PTL',
+      comment: 'PTL (Part Truck Load) or FTL (Full Truck Load)',
+    },
     start_odometer: {
       type: DataTypes.INTEGER,
       defaultValue: 0,
@@ -80,6 +85,11 @@ module.exports = (sequelize) => {
     expected_revenue: {
       type: DataTypes.DECIMAL(12, 2),
       defaultValue: 0.00,
+    },
+    vehicle_charge: {
+      type: DataTypes.DECIMAL(12, 2),
+      defaultValue: 0.00,
+      comment: 'Agreed Vehicle / Hire Charge for MARKET or ATTACHED vehicle',
     },
     total_expenses: {
       type: DataTypes.DECIMAL(12, 2),

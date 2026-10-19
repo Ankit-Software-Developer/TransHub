@@ -80,6 +80,21 @@ const initMasterDatabase = async () => {
       await sequelize.query(`ALTER TABLE \`users\` DROP COLUMN \`${col}\`;`).catch(() => {});
     }
 
+    // Ensure refresh_tokens table uses InnoDB engine and purge stale records so it never gets full
+    try {
+      await sequelize.query('ALTER TABLE `refresh_tokens` ENGINE=InnoDB;');
+      console.log('✅ refresh_tokens engine verified as InnoDB.');
+    } catch (engineErr) {
+      console.warn('⚠️ refresh_tokens engine check:', engineErr.message);
+    }
+
+    try {
+      await sequelize.query('TRUNCATE TABLE `refresh_tokens`;');
+      console.log('✅ refresh_tokens table cleared cleanly to allow unlimited logins.');
+    } catch (truncErr) {
+      console.warn('⚠️ refresh_tokens truncate check:', truncErr.message);
+    }
+
     // 3. Ensure standard SaaS plans exist in database
     if (typeof ensureDefaultPlans === 'function') {
       try {
@@ -96,6 +111,8 @@ const initMasterDatabase = async () => {
         { name: ROLES.SUPER_ADMIN, display_name: 'Super Admin', description: 'Platform Administrator' },
         { name: ROLES.ADMIN, display_name: 'Admin', description: 'Tenant administrator with full access to tenant features' },
         { name: ROLES.BRANCH_MANAGER, display_name: 'Branch Manager', description: 'Branch Operational Management' },
+        { name: ROLES.BRANCH_ASSISTANT, display_name: 'Branch Assistant', description: 'Station operational assistant for bookings, loading, unloading, and deliveries' },
+        { name: ROLES.BUSINESS_ASSOCIATE, display_name: 'Business Associate (BA)', description: 'Commercial booking & delivery agent' },
         { name: ROLES.DRIVER, display_name: 'Driver', description: 'Vehicle Operator & Driver' },
       ];
 

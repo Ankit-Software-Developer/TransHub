@@ -45,8 +45,24 @@ module.exports = (sequelize) => {
       allowNull: false,
       defaultValue: 0.00,
     },
+    vehicle_charge: {
+      type: DataTypes.DECIMAL(12, 2),
+      defaultValue: 0.00,
+    },
+    vehicle_ownership: {
+      type: DataTypes.STRING(20),
+      defaultValue: 'OWN',
+    },
+    net_payable_to_vendor: {
+      type: DataTypes.DECIMAL(12, 2),
+      defaultValue: 0.00,
+    },
+    profit_margin: {
+      type: DataTypes.DECIMAL(12, 2),
+      defaultValue: 0.00,
+    },
     settlement_type: {
-      type: DataTypes.ENUM('REFUND_FROM_DRIVER', 'PAYABLE_TO_DRIVER', 'BALANCED'),
+      type: DataTypes.STRING(50),
       defaultValue: 'BALANCED',
     },
     status: {

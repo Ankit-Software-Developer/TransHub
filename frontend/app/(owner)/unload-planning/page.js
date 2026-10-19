@@ -1179,7 +1179,7 @@ function UnloadPlanningContent() {
                                   >
                                     {/* LR Number */}
                                     <td className="px-4 py-3.5 font-bold text-slate-900 dark:text-white">
-                                      <div className="flex items-center gap-1.5">
+                                      <div className="flex items-center gap-1.5 flex-wrap">
                                         <FileText className="w-3.5 h-3.5 text-blue-500" />
                                         <span>{c.lr_number || c.docket_number}</span>
                                       </div>

@@ -98,6 +98,28 @@ export default function SupportPage() {
   const [newDescription, setNewDescription] = useState('');
   const [newAttachment, setNewAttachment] = useState('');
 
+  // Branch & User Resolution for Support Routing
+  const userBranchId =
+    user?.branchId ||
+    user?.branch_id ||
+    user?.branch?.id ||
+    user?.assigned_branch_id ||
+    (activeBranch?.id && activeBranch.id !== 'ALL' ? activeBranch.id : '');
+
+  const userBranchCode =
+    user?.branchCode ||
+    user?.branch_code ||
+    user?.branch?.branch_code ||
+    user?.branch?.code ||
+    (activeBranch?.code && activeBranch.code !== 'ALL' ? activeBranch.code : '');
+
+  const userBranchName =
+    user?.branchName ||
+    user?.branch_name ||
+    user?.branch?.branch_name ||
+    user?.branch?.name ||
+    (activeBranch?.name && activeBranch.name !== 'All Branches' ? activeBranch.name : '');
+
   // Check roles
   const userRoles = (user?.roles || []).map((r) => (typeof r === 'string' ? r : r.name || ''));
   const isSuperAdmin = userRoles.includes('SUPER_ADMIN') || user?.role === 'SUPER_ADMIN';
@@ -113,9 +135,50 @@ export default function SupportPage() {
   // Load branches
   useEffect(() => {
     api.get('/branches?limit=100').then((res) => {
-      if (res.data?.data) setBranches(res.data.data);
+      const bList = Array.isArray(res.data?.data) ? res.data.data : (res.data?.data?.rows || []);
+      if (bList.length > 0) setBranches(bList);
     }).catch(() => {});
   }, []);
+
+  // Determine active login branch object
+  const activeLoginBranch = useMemo(() => {
+    if (userBranchId) {
+      const match = branches.find((b) => String(b.id) === String(userBranchId));
+      if (match) return match;
+    }
+    if (activeBranch?.id && activeBranch.id !== 'ALL') {
+      const match = branches.find((b) => String(b.id) === String(activeBranch.id));
+      if (match) return match;
+    }
+    if (user?.branch) {
+      return {
+        id: user.branch.id || userBranchId,
+        branch_name: user.branch.name || user.branch.branch_name || userBranchName || 'Assigned Branch',
+        name: user.branch.name || user.branch.branch_name || userBranchName || 'Assigned Branch',
+        branch_code: user.branch.code || user.branch.branch_code || userBranchCode || 'HUB',
+        code: user.branch.code || user.branch.branch_code || userBranchCode || 'HUB',
+        city: user.branch.city || user?.city || '',
+      };
+    }
+    if (branches.length > 0) {
+      return branches.find((b) => b.is_head_office) || branches[0];
+    }
+    return {
+      id: userBranchId || '1',
+      branch_name: userBranchName || 'Assigned Branch',
+      name: userBranchName || 'Assigned Branch',
+      branch_code: userBranchCode || 'HUB',
+      code: userBranchCode || 'HUB',
+      city: user?.city || '',
+    };
+  }, [branches, userBranchId, userBranchCode, userBranchName, activeBranch, user]);
+
+  // Pre-select login branch automatically when modal is open or when branch data resolves
+  useEffect(() => {
+    if (activeLoginBranch?.id) {
+      setNewBranchId(String(activeLoginBranch.id));
+    }
+  }, [activeLoginBranch, isNewTicketOpen]);
 
   // Fetch tickets
   const fetchTickets = useCallback(async () => {
@@ -181,7 +244,7 @@ export default function SupportPage() {
         category: newCategory,
         priority: newPriority,
         reference_code: newRefCode.trim() || null,
-        branch_id: newBranchId || user?.branch_id || (activeBranch?.id !== 'ALL' ? activeBranch?.id : null),
+        branch_id: newBranchId || activeLoginBranch?.id || user?.branch_id || (activeBranch?.id !== 'ALL' ? activeBranch?.id : null),
         attachment_url: newAttachment.trim() || null,
       };
 
@@ -283,9 +346,18 @@ export default function SupportPage() {
                   <LifeBuoy className="w-5 h-5" />
                 </div>
                 <div>
-                  <h1 className={`text-2xl font-extrabold tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                    Support &amp; Operations Helpdesk
-                  </h1>
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <h1 className={`text-2xl font-extrabold tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                      Support &amp; Operations Helpdesk
+                    </h1>
+                    {!isAdmin && userBranchId && (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30">
+                        <Building2 className="w-3.5 h-3.5" />
+                        <span>{activeLoginBranch?.branch_name || activeLoginBranch?.name || userBranchName}: {activeLoginBranch?.branch_code || activeLoginBranch?.code || userBranchCode || 'HUB'}</span>
+                        <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"></span>
+                      </span>
+                    )}
+                  </div>
                   <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                     Multi-tier hierarchical ticket flow: Branch Staff → Transporter Admin → Platform Super Admin
                   </p>
@@ -903,21 +975,56 @@ export default function SupportPage() {
                     </div>
 
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                        Branch
-                      </label>
-                      <select
-                        value={newBranchId}
-                        onChange={(e) => setNewBranchId(e.target.value)}
-                        className={`w-full text-xs font-semibold rounded-xl border px-3 py-2 outline-none ${
-                          isDark ? 'bg-slate-900 border-slate-800 text-slate-200' : 'bg-slate-50 border-slate-200'
-                        }`}
-                      >
-                        <option value="">Current Assigned Hub</option>
-                        {branches.map((b) => (
-                          <option key={b.id} value={b.id}>{b.name || b.branch_name}</option>
-                        ))}
-                      </select>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                          Branch
+                        </label>
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 border border-amber-200/80 dark:border-amber-800/80 px-1.5 py-0.5 rounded-md shadow-2xs">
+                          <Lock className="w-2.5 h-2.5" />
+                          <span>Login Branch</span>
+                        </span>
+                      </div>
+
+                      <div className="relative">
+                        <div
+                          className={`w-full flex items-center justify-between gap-2.5 rounded-xl border px-3 py-2 text-xs font-semibold select-none cursor-not-allowed ${
+                            isDark
+                              ? 'bg-slate-900/90 border-slate-800 text-slate-200'
+                              : 'bg-slate-100/90 border-slate-200 text-slate-700'
+                          }`}
+                          title="Locked to your assigned login branch"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <Building2 className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                            <span className="font-mono font-bold text-[10.5px] uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-blue-100 dark:bg-blue-950/80 text-blue-700 dark:text-cyan-400 border border-blue-200 dark:border-blue-800 shrink-0 shadow-2xs">
+                              {activeLoginBranch?.branch_code || activeLoginBranch?.code || userBranchCode || 'HUB'}
+                            </span>
+                            <span className="font-bold text-xs text-slate-900 dark:text-white truncate">
+                              {activeLoginBranch?.branch_name || activeLoginBranch?.name || userBranchName || 'Assigned Branch'}
+                            </span>
+                            {(activeLoginBranch?.city || user?.city) && (
+                              <span className="text-[10.5px] text-slate-400 dark:text-slate-500 shrink-0 font-normal">
+                                • {activeLoginBranch?.city || user?.city}
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-1 shrink-0 text-slate-400">
+                            <Lock className="w-3.5 h-3.5" />
+                          </div>
+                        </div>
+
+                        {/* Hidden input to ensure value is preserved in form submission */}
+                        <input
+                          type="hidden"
+                          name="branch_id"
+                          value={newBranchId || activeLoginBranch?.id || ''}
+                        />
+                      </div>
+
+                      <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 flex items-center gap-1">
+                        <span>Requests are automatically routed to your assigned login branch.</span>
+                      </p>
                     </div>
                   </div>
 

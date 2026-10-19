@@ -227,11 +227,36 @@ const ensureStandardRoles = async (Role, Permission, RolePermission, tenantId, U
         'settings.view',
       ],
     },
+    {
+      name: 'BRANCH_ASSISTANT',
+      display_name: 'Branch Assistant',
+      description: 'Branch staff under branch manager assisting with booking, loading/dispatch, unloading, and run-sheet deliveries',
+      is_system: true,
+      perms: [
+        'booking.view', 'booking.create', 'booking.update', 'consignment.update', 'booking.export',
+        'branch.view',
+        'customer.view',
+        'vehicle.view',
+        'dispatch.view', 'dispatch.create', 'dispatch.manage', 'dispatch.export',
+        'delivery.view', 'delivery.create', 'delivery.manage', 'pod.upload', 'pod.verify',
+      ],
+    },
+    {
+      name: 'BUSINESS_ASSOCIATE',
+      display_name: 'Business Associate (BA)',
+      description: 'Booking & delivery associate/agent operating booking counters and POD delivery upload',
+      is_system: true,
+      perms: [
+        'booking.view', 'booking.create', 'booking.update',
+        'customer.view', 'customer.create',
+        'delivery.view', 'delivery.create', 'delivery.manage', 'pod.upload',
+      ],
+    },
   ];
 
   // 3. Demote active roles to Custom and remove unused legacy pre-seeded roles
   try {
-    const standardRoleNames = ['ADMIN', 'BRANCH_MANAGER', 'AUDITOR', 'AUDIT'];
+    const standardRoleNames = ['ADMIN', 'BRANCH_MANAGER', 'AUDITOR', 'AUDIT', 'BRANCH_ASSISTANT', 'BUSINESS_ASSOCIATE'];
     const extraRoles = await Role.findAll({
       where: {
         name: { [Op.notIn]: standardRoleNames },
@@ -312,7 +337,10 @@ const ensureStandardRoles = async (Role, Permission, RolePermission, tenantId, U
           await RolePermission.create({ role_id: role.id, permission_id: p.id }).catch(() => {});
         }
       }
-    } else if (!created && (rDef.name === 'AUDITOR' || rDef.name === 'BRANCH_MANAGER')) {
+    } else if (!created && (['AUDITOR', 'BRANCH_MANAGER', 'BRANCH_ASSISTANT', 'BUSINESS_ASSOCIATE'].includes(rDef.name))) {
+      if (!role.is_system) {
+        await role.update({ is_system: true, display_name: rDef.display_name }).catch(() => {});
+      }
       const existingPerms = (await role.getPermissions?.()) || [];
       const existingCodes = existingPerms.map((p) => p.code);
       if (existingPerms.length === 0) {

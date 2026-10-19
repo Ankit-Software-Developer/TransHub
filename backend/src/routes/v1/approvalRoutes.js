@@ -12,5 +12,6 @@ router.get('/badge-counts', approvalController.getBadgeCounts);
 router.get('/:id', approvalController.getApprovalById);
 router.post('/', approvalController.createApproval);
 router.patch('/:id/action', approvalController.handleAction);
+router.put('/:id/resubmit', approvalController.resubmitApproval);
 
 module.exports = router;

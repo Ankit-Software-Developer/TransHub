@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const { Op } = require('sequelize');
 const {
   sequelize,
   User,
@@ -165,13 +166,43 @@ const generateTokens = async (user, ipAddress = null, deviceInfo = null, databas
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + 7);
 
-  await RefreshToken.create({
-    user_id: user.id,
-    token_hash: tokenHash,
-    ip_address: ipAddress,
-    device_info: deviceInfo,
-    expires_at: expiresAt,
-  });
+  try {
+    // 1. Clean up expired or revoked tokens so table never overflows
+    await RefreshToken.destroy({
+      where: {
+        [Op.or]: [
+          { expires_at: { [Op.lt]: new Date() } },
+          { is_revoked: true },
+        ],
+      },
+      force: true,
+    }).catch(() => {});
+
+    await RefreshToken.create({
+      user_id: user.id,
+      token_hash: tokenHash,
+      ip_address: ipAddress,
+      device_info: deviceInfo,
+      expires_at: expiresAt,
+    });
+  } catch (tokenErr) {
+    console.error('RefreshToken create notice:', tokenErr.message);
+    try {
+      // Emergency recovery if table is full or in-memory table exceeded: convert to InnoDB & truncate
+      await sequelize.query('ALTER TABLE `refresh_tokens` ENGINE=InnoDB;').catch(() => {});
+      await sequelize.query('TRUNCATE TABLE `refresh_tokens`;').catch(() => {});
+      await RefreshToken.create({
+        user_id: user.id,
+        token_hash: tokenHash,
+        ip_address: ipAddress,
+        device_info: deviceInfo,
+        expires_at: expiresAt,
+      });
+      console.log('✅ Recovered from refresh_tokens table condition; session saved.');
+    } catch (fallbackErr) {
+      console.warn('⚠️ User login allowed without persistent DB refresh token:', fallbackErr.message);
+    }
+  }
 
   return {
     accessToken,
