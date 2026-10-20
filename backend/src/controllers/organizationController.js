@@ -294,6 +294,7 @@ const updateOrganizationProfile = async (req, res) => {
       accountHolderName,
       upiId,
       themeColor,
+      transporterType,
       settings: customSettings,
     } = req.body;
 
@@ -318,6 +319,9 @@ const updateOrganizationProfile = async (req, res) => {
       ...(gstin !== undefined ? { gstin: (gstin || '').trim().toUpperCase() } : {}),
       ...(pan !== undefined ? { pan: (pan || '').trim().toUpperCase() } : {}),
       ...(themeColor !== undefined ? { themeColor } : {}),
+      ...(transporterType !== undefined && ['FTL', 'PTL', 'BOTH'].includes(String(transporterType).toUpperCase().trim())
+        ? { transporterType: String(transporterType).toUpperCase().trim() }
+        : {}),
     };
 
     const updateFields = {

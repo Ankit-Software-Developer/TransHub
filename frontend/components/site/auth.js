@@ -239,17 +239,25 @@ export function SocialButtons({ onSelect }) {
   );
 }
 
-/** Compact security line in the trust-strip style of the reference. */
-export function SecurityNote() {
+/** Compact security line in the trust-strip style without disclosing internal technical details. */
+export function SecurityNote({
+  title = 'Authorized Access Only',
+  subtitle = 'Protected session & confidential data',
+  badge = 'Protected',
+}) {
   return (
     <div className="mt-4 flex items-center justify-between gap-3 border-t border-[#E9EEF5] pt-3.5 dark:border-white/10">
       <span className="flex items-center gap-2 text-xs text-[#3A4756] dark:text-slate-400">
         <ShieldCheck className="h-[18px] w-[18px] shrink-0 text-[#259E6E] dark:text-[#4ADE80]" strokeWidth={1.75} />
         <span>
-          <strong className={`font-bold ${NAVY}`}>Enterprise-grade security</strong> · 256-bit SSL · End-to-end encrypted
+          <strong className={`font-bold ${NAVY}`}>{title}</strong> · {subtitle}
         </span>
       </span>
-      <span className="shrink-0 rounded-[4px] border border-[#259E6E]/30 bg-[#259E6E]/10 px-1.5 py-0.5 text-[10.5px] font-bold text-[#1E7F59] dark:text-[#4ADE80]">SOC 2</span>
+      {badge && (
+        <span className="shrink-0 rounded-[4px] border border-[#259E6E]/30 bg-[#259E6E]/10 px-1.5 py-0.5 text-[10.5px] font-bold text-[#1E7F59] dark:text-[#4ADE80]">
+          {badge}
+        </span>
+      )}
     </div>
   );
 }

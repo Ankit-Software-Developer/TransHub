@@ -9,6 +9,7 @@ import Sidebar from '../../../components/layout/Sidebar';
 import Navbar from '../../../components/layout/Navbar';
 import { useTheme } from '../../../components/ThemeProvider';
 import { usePermissions } from '../../../hooks/usePermissions';
+import { useOperationsType } from '../../../hooks/useOperationsType';
 import { useStore } from '../../../store/useStore';
 import BranchFilterDropdown from '../../../components/ui/BranchFilterDropdown';
 import api from '../../../services/api';
@@ -84,6 +85,7 @@ export default function LoadPlanningPage() {
   const user = useStore((state) => state.user);
   const activeBranch = useStore((state) => state.activeBranch);
   const { isAdmin, isBranchManager, canCreateDispatch } = usePermissions();
+  const { isOnlyFTL, isOnlyPTL, isBoth } = useOperationsType();
 
   // Branch Manager Scope Identification
   const userBranchId = user?.branchId || user?.branch_id || user?.branch?.id || user?.assigned_branch_id || null;
@@ -188,7 +190,16 @@ export default function LoadPlanningPage() {
   const [submittingDriver, setSubmittingDriver] = useState(false);
   const [driverError, setDriverError] = useState('');
   // Operation Mode: PTL (Consolidated Sundry Truck) vs FTL (Dedicated Direct Full Truck Load)
-  const [operationMode, setOperationMode] = useState('PTL');
+  const [operationMode, setOperationMode] = useState(() => (isOnlyFTL ? 'FTL' : 'PTL'));
+
+  // Sync operationMode if transporter company type loads or updates asynchronously
+  useEffect(() => {
+    if (isOnlyFTL) {
+      setOperationMode('FTL');
+    } else if (isOnlyPTL) {
+      setOperationMode('PTL');
+    }
+  }, [isOnlyFTL, isOnlyPTL]);
   const [selectedFtlDocketId, setSelectedFtlDocketId] = useState(null);
   const [ftlSearchFilter, setFtlSearchFilter] = useState('');
 
@@ -1175,22 +1186,34 @@ export default function LoadPlanningPage() {
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div>
               <div className="flex items-center space-x-3">
-                <div className="p-2.5 rounded-2xl bg-gradient-to-tr from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/20 shrink-0">
-                  <Boxes className="w-6 h-6" />
+                <div className={`p-2.5 rounded-2xl ${
+                  operationMode === 'FTL'
+                    ? 'bg-gradient-to-tr from-purple-600 to-indigo-600 shadow-purple-500/20'
+                    : 'bg-gradient-to-tr from-cyan-500 to-blue-600 shadow-cyan-500/20'
+                } text-white shadow-lg shrink-0`}>
+                  {operationMode === 'FTL' ? <Truck className="w-6 h-6" /> : <Boxes className="w-6 h-6" />}
                 </div>
                 <div>
                   <div className="flex items-center gap-2.5 flex-wrap">
                     <h1 className={`text-xl sm:text-2xl font-black tracking-tight ${isDark ? 'text-white' : 'text-slate-900'
                       }`}>
-                      Load Planning & Dispatch Operations
+                      {operationMode === 'FTL' ? 'FTL Dedicated Vehicle Dispatch' : 'Load Planning & Dispatch Operations'}
                     </h1>
-                    <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-500 dark:text-cyan-400 border border-cyan-500/20 whitespace-nowrap shrink-0">
-                      <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
-                      Live Operations
+                    <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full border whitespace-nowrap shrink-0 ${
+                      operationMode === 'FTL'
+                        ? 'bg-purple-500/10 text-purple-400 border-purple-500/20'
+                        : 'bg-cyan-500/10 text-cyan-500 dark:text-cyan-400 border-cyan-500/20'
+                    }`}>
+                      <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${
+                        operationMode === 'FTL' ? 'bg-purple-400' : 'bg-cyan-400'
+                      }`} />
+                      {operationMode === 'FTL' ? 'FTL Dispatch' : 'Live Operations'}
                     </span>
                   </div>
                   <p className={`text-xs mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                    Photorealistic 3D cargo stowage, fleet allocation, and trip manifest dispatch.
+                    {operationMode === 'FTL'
+                      ? 'Point-to-point dedicated vehicle allocation, driver assignment, and trip dispatch.'
+                      : 'Photorealistic 3D cargo stowage, fleet allocation, and trip manifest dispatch.'}
                   </p>
                 </div>
               </div>
@@ -1227,60 +1250,62 @@ export default function LoadPlanningPage() {
             </div>
           </div>
 
-          {/* Operation Mode Selector: PTL vs FTL */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-2 rounded-2xl border bg-white/80 dark:bg-[#0B1020]/90 border-slate-200 dark:border-slate-800 shadow-sm">
-            <div className="flex items-center gap-3 flex-wrap">
-              <div className="flex items-center p-1 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setOperationMode('PTL');
-                    setLoadedIds(new Set());
-                  }}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-black transition-all ${
-                    operationMode === 'PTL'
-                      ? 'bg-blue-600 text-white shadow-md shadow-blue-500/25'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                  }`}
-                >
-                  <Boxes className="w-4 h-4" />
-                  <span>PTL (Part Truck Load)</span>
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono font-bold ${
-                    operationMode === 'PTL' ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
-                  }`}>
-                    {ptlConsignments.length}
-                  </span>
-                </button>
+          {/* Operation Mode Selector: PTL vs FTL (Only visible if company supports BOTH modes) */}
+          {isBoth && (
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-2 rounded-2xl border bg-white/80 dark:bg-[#0B1020]/90 border-slate-200 dark:border-slate-800 shadow-sm">
+              <div className="flex items-center gap-3 flex-wrap">
+                <div className="flex items-center p-1 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOperationMode('PTL');
+                      setLoadedIds(new Set());
+                    }}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-black transition-all ${
+                      operationMode === 'PTL'
+                        ? 'bg-blue-600 text-white shadow-md shadow-blue-500/25'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    <Boxes className="w-4 h-4" />
+                    <span>PTL (Part Truck Load)</span>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono font-bold ${
+                      operationMode === 'PTL' ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                    }`}>
+                      {ptlConsignments.length}
+                    </span>
+                  </button>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setOperationMode('FTL');
-                    setSelectedFtlDocketId(null);
-                  }}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-black transition-all ${
-                    operationMode === 'FTL'
-                      ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-500/25'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                  }`}
-                >
-                  <Truck className="w-4 h-4" />
-                  <span>FTL (Full Truck Load)</span>
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono font-bold ${
-                    operationMode === 'FTL' ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
-                  }`}>
-                    {ftlConsignments.length}
-                  </span>
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOperationMode('FTL');
+                      setSelectedFtlDocketId(null);
+                    }}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-black transition-all ${
+                      operationMode === 'FTL'
+                        ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-500/25'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    <Truck className="w-4 h-4" />
+                    <span>FTL (Full Truck Load)</span>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono font-bold ${
+                      operationMode === 'FTL' ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                    }`}>
+                      {ftlConsignments.length}
+                    </span>
+                  </button>
+                </div>
+
+                <span className="text-[11px] text-slate-500 dark:text-slate-400 hidden md:inline">
+                  {operationMode === 'PTL'
+                    ? '📦 Multi-docket consolidation with 3D cargo stowage engine'
+                    : '🚛 Dedicated point-to-point truck dispatch: Select FTL docket ➔ Assign Vehicle & Driver'}
+                </span>
               </div>
-
-              <span className="text-[11px] text-slate-500 dark:text-slate-400 hidden md:inline">
-                {operationMode === 'PTL'
-                  ? '📦 Multi-docket consolidation with 3D cargo stowage engine'
-                  : '🚛 Dedicated point-to-point truck dispatch: Select FTL docket ➔ Assign Vehicle & Driver'}
-              </span>
             </div>
-          </div>
+          )}
 
           {/* Operational KPI Strip */}
           {operationMode === 'PTL' ? (
@@ -2725,7 +2750,7 @@ export default function LoadPlanningPage() {
           <div className={`relative w-full max-w-lg max-h-[85vh] sm:max-h-[88vh] rounded-3xl border shadow-2xl flex flex-col overflow-hidden my-auto ${isDark ? 'bg-[#0E1526] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
             }`}>
             {/* Pinned Header */}
-            <div className={`flex items-center justify-between border-b px-6 py-4 shrink-0 ${isDark ? 'border-slate-800 bg-[#0E1526]' : 'border-slate-200 bg-white'
+            <div className={`flex items-center justify-between border-b px-4 sm:px-6 py-3.5 sm:py-4 shrink-0 ${isDark ? 'border-slate-800 bg-[#0E1526]' : 'border-slate-200 bg-white'
               }`}>
               <div className="flex items-center gap-3">
                 <div className={`p-2.5 rounded-2xl border ${isDark ? 'bg-purple-600/20 text-purple-400 border-purple-500/30' : 'bg-purple-50 text-purple-600 border-purple-200'
@@ -2748,7 +2773,7 @@ export default function LoadPlanningPage() {
             </div>
 
             <form onSubmit={handleCreateMarketVehicle} className="flex-1 flex flex-col overflow-hidden">
-              <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+              <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 space-y-4">
                 {marketError && (
                   <div className="p-3 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-500 text-xs font-semibold flex items-center gap-2">
                     <AlertCircle className="w-4 h-4 shrink-0" />
@@ -2990,12 +3015,12 @@ export default function LoadPlanningPage() {
               </div>
 
               {/* Pinned Action Buttons Footer */}
-              <div className={`flex items-center justify-end gap-2.5 px-6 py-3.5 border-t shrink-0 ${isDark ? 'border-slate-800 bg-[#0E1526]' : 'border-slate-200 bg-slate-50'
+              <div className={`flex flex-col-reverse sm:flex-row sm:items-center justify-end gap-2.5 px-4 sm:px-6 py-3.5 border-t shrink-0 ${isDark ? 'border-slate-800 bg-[#0E1526]' : 'border-slate-200 bg-slate-50'
                 }`}>
                 <button
                   type="button"
                   onClick={() => setMarketModalOpen(false)}
-                  className={`px-4 py-2 rounded-xl border text-xs font-bold transition-all ${isDark
+                  className={`w-full sm:w-auto px-4 py-2 rounded-xl border text-xs font-bold transition-all text-center ${isDark
                       ? 'border-slate-700 text-slate-400 hover:text-white hover:bg-slate-800'
                       : 'border-slate-300 text-slate-700 hover:bg-slate-100 hover:text-slate-900 shadow-sm'
                     }`}
@@ -3005,7 +3030,7 @@ export default function LoadPlanningPage() {
                 <button
                   type="submit"
                   disabled={submittingMarket}
-                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-purple-500/20 disabled:opacity-50"
+                  className="w-full sm:w-auto justify-center px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-purple-500/20 disabled:opacity-50"
                 >
                   {submittingMarket && <RotateCw className="w-3.5 h-3.5 animate-spin" />}
                   <span>Onboard & Assign to Trip</span>
@@ -3021,7 +3046,7 @@ export default function LoadPlanningPage() {
         <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5 md:p-6 overflow-hidden">
           <div className={`relative w-full max-w-md max-h-[85vh] sm:max-h-[88vh] rounded-3xl border shadow-2xl flex flex-col overflow-hidden my-auto ${isDark ? 'bg-[#0E1526] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
             }`}>
-            <div className={`flex items-center justify-between border-b px-6 py-4 shrink-0 ${isDark ? 'border-slate-800 bg-[#0E1526]' : 'border-slate-200 bg-white'
+            <div className={`flex items-center justify-between border-b px-4 sm:px-6 py-3.5 sm:py-4 shrink-0 ${isDark ? 'border-slate-800 bg-[#0E1526]' : 'border-slate-200 bg-white'
               }`}>
               <div className="flex items-center gap-3">
                 <div className={`p-2.5 rounded-2xl border ${isDark ? 'bg-blue-600/20 text-cyan-400 border-cyan-500/30' : 'bg-blue-50 text-blue-600 border-blue-200'
@@ -3044,7 +3069,7 @@ export default function LoadPlanningPage() {
             </div>
 
             <form onSubmit={handleCreateQuickDriver} className="flex-1 flex flex-col overflow-hidden">
-              <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3.5">
+              <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 space-y-3.5">
                 {driverError && (
                   <div className="p-3 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-500 text-xs font-semibold flex items-center gap-2">
                     <AlertCircle className="w-4 h-4 shrink-0" />
@@ -3127,12 +3152,12 @@ export default function LoadPlanningPage() {
               </div>
 
               {/* Pinned Action Buttons Footer */}
-              <div className={`flex items-center justify-end gap-2.5 px-6 py-3.5 border-t shrink-0 ${isDark ? 'border-slate-800 bg-[#0E1526]' : 'border-slate-200 bg-slate-50'
+              <div className={`flex flex-col-reverse sm:flex-row sm:items-center justify-end gap-2.5 px-4 sm:px-6 py-3.5 border-t shrink-0 ${isDark ? 'border-slate-800 bg-[#0E1526]' : 'border-slate-200 bg-slate-50'
                 }`}>
                 <button
                   type="button"
                   onClick={() => setDriverModalOpen(false)}
-                  className={`px-4 py-2 rounded-xl border text-xs font-bold transition-all ${isDark
+                  className={`w-full sm:w-auto px-4 py-2 rounded-xl border text-xs font-bold transition-all text-center ${isDark
                       ? 'border-slate-700 text-slate-400 hover:text-white hover:bg-slate-800'
                       : 'border-slate-300 text-slate-700 hover:bg-slate-100 hover:text-slate-900 shadow-sm'
                     }`}
@@ -3142,7 +3167,7 @@ export default function LoadPlanningPage() {
                 <button
                   type="submit"
                   disabled={submittingDriver}
-                  className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-blue-500/20 disabled:opacity-50"
+                  className="w-full sm:w-auto justify-center px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-blue-500/20 disabled:opacity-50"
                 >
                   {submittingDriver && <RotateCw className="w-3.5 h-3.5 animate-spin" />}
                   <span>Save & Assign Driver</span>
@@ -3522,7 +3547,7 @@ export default function LoadPlanningPage() {
             </div>
 
             {/* Pinned Footer Actions */}
-            <div className={`flex items-center justify-end gap-2.5 px-6 py-3.5 border-t shrink-0 ${isDark ? 'border-slate-800 bg-[#0E1526]' : 'border-slate-200 bg-slate-50'
+            <div className={`flex flex-col-reverse sm:flex-row sm:items-center justify-end gap-2.5 px-4 sm:px-6 py-3.5 border-t shrink-0 ${isDark ? 'border-slate-800 bg-[#0E1526]' : 'border-slate-200 bg-slate-50'
               }`}>
               <button
                 type="button"
@@ -3531,7 +3556,7 @@ export default function LoadPlanningPage() {
                   setAdvanceMode('');
                   setDispatchModalOpen(false);
                 }}
-                className={`px-4 py-2 rounded-xl border text-xs font-bold transition-all ${isDark
+                className={`w-full sm:w-auto px-4 py-2.5 rounded-xl border text-xs font-bold transition-all text-center cursor-pointer ${isDark
                     ? 'border-slate-700 text-slate-400 hover:text-white hover:bg-slate-800'
                     : 'border-slate-300 text-slate-700 hover:bg-slate-100 hover:text-slate-900 shadow-sm'
                   }`}
@@ -3544,7 +3569,7 @@ export default function LoadPlanningPage() {
                 disabled={dispatching || !destBranchId || !selectedDriverId}
                 onClick={operationMode === 'FTL' ? handleDispatchFtl : handleConfirmDispatch}
                 title={!destBranchId ? 'Please select a destination hub first' : !selectedDriverId ? 'Please select a driver first' : 'Authorize & Dispatch'}
-                className={`px-5 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer ${
+                className={`w-full sm:w-auto justify-center px-5 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer ${
                   operationMode === 'FTL'
                     ? 'bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white shadow-purple-500/20'
                     : 'bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white shadow-cyan-500/20'

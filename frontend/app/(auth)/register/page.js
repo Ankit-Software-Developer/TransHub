@@ -27,6 +27,9 @@ import {
   Loader2,
   Lock,
   Mail,
+  MapPin,
+  Navigation,
+  Boxes,
   Phone,
   Rocket,
   ShieldCheck,
@@ -35,6 +38,36 @@ import {
   Users,
   Zap,
 } from 'lucide-react';
+
+const TRANSPORTER_TYPES = [
+  {
+    id: 'FTL',
+    code: 'FTL',
+    name: 'FTL',
+    fullName: 'Full Truckload',
+    badge: 'DIRECT FLEET',
+    desc: 'Point-to-point dedicated vehicle bookings',
+    icon: Truck,
+  },
+  {
+    id: 'PTL',
+    code: 'PTL',
+    name: 'PTL',
+    fullName: 'Part Truckload / Parcel',
+    badge: 'SUNDRY / LTL',
+    desc: 'Consolidated shipments, manifest & load planning',
+    icon: Boxes,
+  },
+  {
+    id: 'BOTH',
+    code: 'BOTH',
+    name: 'Both (FTL + PTL)',
+    fullName: 'Full Operations Suite',
+    badge: 'RECOMMENDED',
+    desc: 'Dedicated direct trips & parcel loading sheets',
+    icon: Zap,
+  },
+];
 
 const PLANS = [
   {
@@ -144,9 +177,18 @@ function RegisterContent() {
   // Start with 'pro' plan by default per user request
   const [selectedPlanId, setSelectedPlanId] = useState('pro');
   const [billingCycle, setBillingCycle] = useState('MONTHLY');
+  const [transporterType, setTransporterType] = useState('BOTH'); // 'FTL' | 'PTL' | 'BOTH'
   const [countryCode, setCountryCode] = useState('+91');
   const [emailError, setEmailError] = useState(null);
   const [phoneError, setPhoneError] = useState(null);
+
+  // System location detection & Pincode state
+  const [pincode, setPincode] = useState('');
+  const [city, setCity] = useState('');
+  const [state, setState] = useState('');
+  const [detectingLocation, setDetectingLocation] = useState(false);
+  const [locationDetected, setLocationDetected] = useState(false);
+
   const [formData, setFormData] = useState({
     fullName: '',
     companyName: '',
@@ -215,6 +257,119 @@ function RegisterContent() {
     }
   };
 
+  // Helper to fetch details from Indian Postal Pincode API
+  const lookupPincodeDetails = async (pin) => {
+    if (!pin || pin.length !== 6 || !/^\d{6}$/.test(pin)) return;
+    try {
+      const res = await fetch(`https://api.postalpincode.in/pincode/${pin}`);
+      const data = await res.json();
+      if (data && data[0]?.Status === 'Success' && data[0]?.PostOffice?.length > 0) {
+        const po = data[0].PostOffice[0];
+        const detectedCity = po.District || po.Block || po.Division || po.Name || '';
+        const detectedState = po.State || '';
+        if (detectedCity) setCity(detectedCity);
+        if (detectedState) setState(detectedState);
+        setLocationDetected(true);
+      }
+    } catch (e) {
+      // ignore
+    }
+  };
+
+  const handlePincodeChange = (e) => {
+    const digits = e.target.value.replace(/\D/g, '').slice(0, 6);
+    setPincode(digits);
+    if (digits.length === 6) {
+      lookupPincodeDetails(digits);
+    }
+  };
+
+  const detectLocation = async () => {
+    setDetectingLocation(true);
+    let resolved = false;
+
+    // 1. Try Browser HTML5 Geolocation API (GPS high precision)
+    if (typeof window !== 'undefined' && 'geolocation' in navigator) {
+      try {
+        const position = await new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true,
+            timeout: 5000,
+            maximumAge: 60000,
+          });
+        });
+
+        if (position?.coords) {
+          const { latitude, longitude } = position.coords;
+          try {
+            const geoRes = await fetch(
+              `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&addressdetails=1`,
+              { headers: { 'Accept-Language': 'en' } }
+            );
+            const geoData = await geoRes.json();
+            const addr = geoData.address || {};
+            const pin = addr.postcode?.replace(/\D/g, '').slice(0, 6);
+            const detectedCity = addr.city || addr.town || addr.village || addr.suburb || addr.state_district || addr.county || '';
+            const detectedState = addr.state || '';
+
+            if (pin && pin.length === 6) {
+              setPincode(pin);
+              if (detectedCity) setCity(detectedCity);
+              if (detectedState) setState(detectedState);
+              setLocationDetected(true);
+              resolved = true;
+            }
+          } catch (osmErr) {}
+        }
+      } catch (geoErr) {
+        // Geolocation denied or timed out; fall through to IP
+      }
+    }
+
+    // 2. Fallback to IP-based Geolocation if GPS didn't resolve
+    if (!resolved) {
+      try {
+        const ipRes = await fetch('https://ipapi.co/json/');
+        const ipData = await ipRes.json();
+        const pin = ipData.postal?.replace(/\D/g, '').slice(0, 6);
+        const detectedCity = ipData.city || ipData.region || '';
+        const detectedState = ipData.region || '';
+
+        if (pin && pin.length === 6) {
+          setPincode(pin);
+          if (detectedCity) setCity(detectedCity);
+          if (detectedState) setState(detectedState);
+          setLocationDetected(true);
+          resolved = true;
+        } else if (detectedCity || detectedState) {
+          if (detectedCity) setCity(detectedCity);
+          if (detectedState) setState(detectedState);
+          setLocationDetected(true);
+        }
+      } catch (ipErr) {
+        try {
+          const ipWho = await fetch('https://ipwho.is/');
+          const whoData = await ipWho.json();
+          const pin = whoData.postal?.replace(/\D/g, '').slice(0, 6);
+          if (pin && pin.length === 6) {
+            setPincode(pin);
+            if (whoData.city) setCity(whoData.city);
+            if (whoData.region) setState(whoData.region);
+            setLocationDetected(true);
+            resolved = true;
+          }
+        } catch (whoErr) {}
+      }
+    }
+
+    setDetectingLocation(false);
+  };
+
+  // Run auto-detection on mount in background
+  useEffect(() => {
+    detectLocation();
+  }, []);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -254,6 +409,11 @@ function RegisterContent() {
         accountType: 'FLEET_OWNER',
         planCode: currentPlan.code,
         billingCycle,
+        transporterType,
+        city: city.trim(),
+        state: state.trim(),
+        pincode: pincode.trim(),
+        address: city.trim() ? `${city.trim()} Terminal / Head Office` : 'Head Office Terminal',
       });
 
       // Directly redirect to transporter operations dashboard
@@ -390,6 +550,51 @@ function RegisterContent() {
           </div>
         </div>
 
+        {/* Operations Type Selector: FTL, PTL, or BOTH */}
+        <div className="mt-2.5 space-y-1.5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-[#45607A] dark:text-slate-400">
+              Operations Type:
+            </span>
+            <span className="text-[10px] text-cyan-600 dark:text-cyan-400 font-bold">
+              {transporterType === 'FTL' ? '🚛 Dedicated Direct Fleet' : transporterType === 'PTL' ? '📦 Consolidated Parcel/Hub' : '🔄 Full Hybrid FTL + PTL'}
+            </span>
+          </div>
+
+          <div
+            role="radiogroup"
+            aria-label="Select operations type"
+            className="grid grid-cols-3 gap-1.5 p-1 rounded-xl border border-cyan-500/35 bg-slate-100/80 dark:bg-[#071324] shadow-[0_0_12px_rgba(0,240,255,0.08)]"
+          >
+            {TRANSPORTER_TYPES.map((t) => {
+              const selected = transporterType === t.id;
+              const TIcon = t.icon;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  onClick={() => setTransporterType(t.id)}
+                  className={`flex flex-col items-center justify-center rounded-lg py-1.5 px-1 text-center transition-all duration-200 cursor-pointer ${
+                    selected
+                      ? 'bg-gradient-to-r from-blue-600 to-cyan-500 text-white shadow-md shadow-cyan-500/30 scale-[1.01]'
+                      : 'text-[#14203A] dark:text-slate-300 hover:bg-white dark:hover:bg-white/10 hover:text-[#0564D1]'
+                  }`}
+                >
+                  <div className="flex items-center justify-center gap-1 w-full leading-none">
+                    <TIcon className="h-3 w-3 shrink-0" />
+                    <span className="truncate text-[11px] font-bold">{t.name}</span>
+                  </div>
+                  <span className={`block text-[9.5px] truncate mt-0.5 ${selected ? 'text-white/90' : 'text-slate-500 dark:text-slate-400'}`}>
+                    {t.fullName}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         <form onSubmit={handleSubmit} className="mt-2.5 space-y-3">
           <div className="grid gap-3 sm:grid-cols-2">
             <Field id="reg-name" label="Full name" icon={User}>
@@ -502,6 +707,78 @@ function RegisterContent() {
             </Field>
           </div>
 
+          {/* Head Office Branch Location & Pincode Detection */}
+          <div className="rounded-xl border border-cyan-500/35 bg-slate-50/80 dark:bg-[#06172D] p-3 space-y-2 shadow-xs">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-[#45607A] dark:text-slate-300 flex items-center gap-1.5">
+                <MapPin className="h-3.5 w-3.5 text-cyan-600 dark:text-cyan-400 shrink-0" />
+                Head Office Branch Location
+              </span>
+              <button
+                type="button"
+                onClick={detectLocation}
+                disabled={detectingLocation}
+                className="inline-flex items-center gap-1 text-[10.5px] font-bold text-cyan-700 dark:text-cyan-300 hover:text-cyan-800 bg-cyan-100/80 dark:bg-cyan-950/70 hover:bg-cyan-200/80 dark:hover:bg-cyan-900/80 px-2 py-0.5 rounded-md border border-cyan-300/50 dark:border-cyan-700/60 transition cursor-pointer"
+                title="Detect current system location"
+              >
+                {detectingLocation ? (
+                  <>
+                    <Loader2 className="h-3 w-3 animate-spin shrink-0" />
+                    Detecting GPS...
+                  </>
+                ) : (
+                  <>
+                    <Navigation className="h-3 w-3 shrink-0" />
+                    Auto-Detect System Location
+                  </>
+                )}
+              </button>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400">PIN Code (6 digits)</label>
+                <input
+                  type="text"
+                  maxLength={6}
+                  value={pincode}
+                  onChange={handlePincodeChange}
+                  placeholder="e.g. 110020"
+                  className="mt-0.5 w-full h-8 px-2.5 rounded-lg border border-cyan-500/30 bg-white dark:bg-[#071324] text-xs font-mono font-bold text-slate-800 dark:text-white outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400">City / District</label>
+                <input
+                  type="text"
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
+                  placeholder="e.g. South Delhi"
+                  className="mt-0.5 w-full h-8 px-2.5 rounded-lg border border-cyan-500/30 bg-white dark:bg-[#071324] text-xs font-medium text-slate-800 dark:text-white outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400">State</label>
+                <input
+                  type="text"
+                  value={state}
+                  onChange={(e) => setState(e.target.value)}
+                  placeholder="e.g. Delhi"
+                  className="mt-0.5 w-full h-8 px-2.5 rounded-lg border border-cyan-500/30 bg-white dark:bg-[#071324] text-xs font-medium text-slate-800 dark:text-white outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20"
+                />
+              </div>
+            </div>
+
+            {locationDetected && (
+              <div className="flex items-center gap-1.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 pt-0.5">
+                <CheckCircle2 className="h-3 w-3 shrink-0" />
+                <span>
+                  Detected Location: <strong>{[city, state].filter(Boolean).join(', ')}{pincode ? ` · PIN ${pincode}` : ''}</strong>
+                </span>
+              </div>
+            )}
+          </div>
+
           <Field
             id="reg-password"
             label="Create password"
@@ -557,14 +834,6 @@ function RegisterContent() {
             )}
           </button>
         </form>
-
-        <Divider>Or sign up with</Divider>
-        <SocialButtons
-          onSelect={(provider) => {
-            setError(null);
-            setInfo(`${provider} Registration triggered in demo mode.`);
-          }}
-        />
 
       </AuthCard>
     </AuthLayout>

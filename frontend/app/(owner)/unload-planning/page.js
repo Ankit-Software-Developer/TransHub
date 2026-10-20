@@ -8,6 +8,7 @@ import Sidebar from '../../../components/layout/Sidebar';
 import Navbar from '../../../components/layout/Navbar';
 import { useTheme } from '../../../components/ThemeProvider';
 import { usePermissions } from '../../../hooks/usePermissions';
+import { useOperationsType } from '../../../hooks/useOperationsType';
 import { useStore } from '../../../store/useStore';
 import BranchFilterDropdown from '../../../components/ui/BranchFilterDropdown';
 import api from '../../../services/api';
@@ -56,6 +57,7 @@ function UnloadPlanningContent() {
   const user = useStore((state) => state.user);
   const activeBranch = useStore((state) => state.activeBranch);
   const { isAdmin, isBranchManager } = usePermissions();
+  const { isOnlyFTL } = useOperationsType();
 
   const userBranchId = user?.branchId || user?.branch_id || user?.branch?.id || user?.assigned_branch_id || null;
 
@@ -484,6 +486,27 @@ function UnloadPlanningContent() {
         <Navbar />
 
         <main className="flex-1 p-6 max-w-7xl mx-auto w-full space-y-6">
+          {isOnlyFTL && (
+            <div className="p-4 rounded-2xl border border-purple-500/30 bg-purple-500/10 text-purple-700 dark:text-purple-300 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-purple-500/20 text-purple-400 shrink-0">
+                  <Truck className="w-5 h-5" />
+                </div>
+                <div className="text-xs">
+                  <span className="font-bold text-sm block sm:inline mr-1">FTL Operations Mode Active:</span>
+                  <span>
+                    Your company is set to dedicated point-to-point Full Truckloads. Unload planning and branch parcel deconsolidation are part of PTL operations.
+                  </span>
+                </div>
+              </div>
+              <Link
+                href="/settings"
+                className="text-xs font-bold px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white shrink-0 self-start sm:self-auto transition-colors"
+              >
+                Settings: Switch to PTL / Both
+              </Link>
+            </div>
+          )}
           {/* Header */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>

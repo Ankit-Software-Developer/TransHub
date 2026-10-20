@@ -781,13 +781,13 @@ export default function ApprovalsPage() {
               />
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
               {/* Request Type Filter */}
-              <div className="relative">
+              <div className="relative flex-1 sm:flex-none min-w-[140px]">
                 <select
                   value={typeFilter}
                   onChange={(e) => setTypeFilter(e.target.value)}
-                  className={`pl-3 pr-8 py-2 rounded-xl text-xs border font-semibold focus:outline-none appearance-none cursor-pointer transition-all ${typeFilter !== 'ALL'
+                  className={`w-full pl-3 pr-8 py-2 rounded-xl text-xs border font-semibold focus:outline-none appearance-none cursor-pointer transition-all ${typeFilter !== 'ALL'
                       ? isDark
                         ? 'bg-blue-600/20 border-blue-500/50 text-blue-300'
                         : 'bg-blue-50 border-blue-300 text-blue-800'
@@ -805,11 +805,11 @@ export default function ApprovalsPage() {
               </div>
 
               {/* Status Filter */}
-              <div className="relative">
+              <div className="relative flex-1 sm:flex-none min-w-[120px]">
                 <select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
-                  className={`pl-3 pr-8 py-2 rounded-xl text-xs border font-semibold focus:outline-none appearance-none cursor-pointer transition-all ${statusFilter !== 'ALL'
+                  className={`w-full pl-3 pr-8 py-2 rounded-xl text-xs border font-semibold focus:outline-none appearance-none cursor-pointer transition-all ${statusFilter !== 'ALL'
                       ? isDark
                         ? 'bg-amber-600/20 border-amber-500/50 text-amber-300'
                         : 'bg-amber-50 border-amber-300 text-amber-800'
@@ -838,11 +838,11 @@ export default function ApprovalsPage() {
               </div>
 
               {/* Priority Filter */}
-              <div className="relative">
+              <div className="relative flex-1 sm:flex-none min-w-[110px]">
                 <select
                   value={priorityFilter}
                   onChange={(e) => setPriorityFilter(e.target.value)}
-                  className={`pl-3 pr-8 py-2 rounded-xl text-xs border font-semibold focus:outline-none appearance-none cursor-pointer transition-all ${priorityFilter !== 'ALL'
+                  className={`w-full pl-3 pr-8 py-2 rounded-xl text-xs border font-semibold focus:outline-none appearance-none cursor-pointer transition-all ${priorityFilter !== 'ALL'
                       ? isDark
                         ? 'bg-rose-600/20 border-rose-500/50 text-rose-300'
                         : 'bg-rose-50 border-rose-300 text-rose-800'
@@ -1119,7 +1119,7 @@ export default function ApprovalsPage() {
           {/* 6. Review & Detail Modal Drawer */}
           <Modal isOpen={Boolean(selectedRequest)} onClose={() => setSelectedRequest(null)}>
             {selectedRequest && (
-              <div className={`w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl border shadow-2xl p-6 space-y-6 ${isDark ? 'bg-[#0E1526] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
+              <div className={`w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl border shadow-2xl p-4 sm:p-6 space-y-4 sm:space-y-6 my-auto ${isDark ? 'bg-[#0E1526] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
                 }`}>
                 {/* Modal Header */}
                 <div className="flex items-center justify-between border-b pb-4 border-slate-800/80">
@@ -1138,7 +1138,7 @@ export default function ApprovalsPage() {
                   </div>
                   <button
                     onClick={() => setSelectedRequest(null)}
-                    className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800"
+                    className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer"
                   >
                     <X className="w-5 h-5" />
                   </button>
@@ -1232,15 +1232,15 @@ export default function ApprovalsPage() {
                       <Paperclip className="w-3.5 h-3.5" />
                       <span>Supporting Document / Voucher Receipt</span>
                     </label>
-                    <div className="p-3 rounded-xl border border-slate-800 flex items-center justify-between bg-slate-900/60">
-                      <span className="text-xs font-mono truncate max-w-sm">
+                    <div className="p-3 rounded-xl border border-slate-800 flex items-center justify-between gap-2 bg-slate-900/60">
+                      <span className="text-xs font-mono truncate min-w-0 flex-1">
                         {selectedRequest.supporting_document_url}
                       </span>
                       <a
                         href={selectedRequest.supporting_document_url}
                         target="_blank"
                         rel="noreferrer"
-                        className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center gap-1"
+                        className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center gap-1 shrink-0"
                       >
                         <span>View Receipt</span>
                         <ExternalLink className="w-3 h-3" />
@@ -1371,10 +1371,10 @@ export default function ApprovalsPage() {
                   }
 
                   return (
-                    <div className="border-t pt-4 border-slate-800 flex flex-wrap items-center justify-end gap-2">
+                    <div className="border-t pt-4 border-slate-800 flex flex-wrap sm:flex-nowrap items-center justify-end gap-2">
                       <button
                         onClick={() => openActionDialog(selectedRequest.id, 'APPROVE')}
-                        className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-emerald-600/20 cursor-pointer"
+                        className="flex-1 sm:flex-none justify-center px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-emerald-600/20 cursor-pointer"
                       >
                         <Check className="w-4 h-4" />
                         <span>Approve Request</span>
@@ -1382,7 +1382,7 @@ export default function ApprovalsPage() {
 
                       <button
                         onClick={() => openActionDialog(selectedRequest.id, 'RETURN')}
-                        className="px-4 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-orange-500/20 cursor-pointer"
+                        className="flex-1 sm:flex-none justify-center px-4 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-orange-500/20 cursor-pointer"
                       >
                         <RotateCcw className="w-4 h-4" />
                         <span>Return for Revision</span>
@@ -1390,7 +1390,7 @@ export default function ApprovalsPage() {
 
                       <button
                         onClick={() => openActionDialog(selectedRequest.id, 'REJECT')}
-                        className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-rose-600/20 cursor-pointer"
+                        className="flex-1 sm:flex-none justify-center px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-rose-600/20 cursor-pointer"
                       >
                         <X className="w-4 h-4" />
                         <span>Reject</span>
@@ -1399,7 +1399,7 @@ export default function ApprovalsPage() {
                       {isBranchManager && !isAdmin && (
                         <button
                           onClick={() => openActionDialog(selectedRequest.id, 'ESCALATE')}
-                          className="px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-purple-600/20 cursor-pointer"
+                          className="flex-1 sm:flex-none justify-center px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-purple-600/20 cursor-pointer"
                         >
                           <ArrowUpRight className="w-4 h-4" />
                           <span>Escalate to Admin</span>
@@ -1415,10 +1415,10 @@ export default function ApprovalsPage() {
           {/* 7. Action Confirmation Modal (Approve, Return, Reject, Escalate) */}
           <Modal isOpen={Boolean(actionModal.open)} onClose={() => setActionModal({ open: false, action: null, reqId: null })}>
             {actionModal.open && (
-              <div className={`w-full max-w-md rounded-3xl border shadow-2xl p-6 space-y-4 ${isDark ? 'bg-[#0E1526] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
+              <div className={`w-full max-w-md max-h-[90vh] overflow-y-auto rounded-3xl border shadow-2xl p-4 sm:p-6 space-y-4 my-auto ${isDark ? 'bg-[#0E1526] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
                 }`}>
                 <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${actionModal.action === 'APPROVE'
+                  <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${actionModal.action === 'APPROVE'
                       ? 'bg-emerald-500/20 text-emerald-500'
                       : actionModal.action === 'RETURN'
                         ? 'bg-orange-500/20 text-orange-500'
@@ -1493,11 +1493,11 @@ export default function ApprovalsPage() {
                   />
                 </div>
 
-                <div className="flex items-center justify-end gap-2 pt-2">
+                <div className="flex flex-col-reverse sm:flex-row items-center justify-end gap-2 pt-2">
                   <button
                     type="button"
                     onClick={() => setActionModal({ open: false, action: null, reqId: null })}
-                    className="px-4 py-2 rounded-xl border border-slate-700 text-xs font-bold text-slate-400 hover:text-white cursor-pointer"
+                    className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-slate-700 text-xs font-bold text-slate-400 hover:text-white cursor-pointer"
                   >
                     Cancel
                   </button>
@@ -1506,7 +1506,7 @@ export default function ApprovalsPage() {
                     type="button"
                     disabled={actionSubmitting || (actionModal.action !== 'APPROVE' && !actionComments.trim())}
                     onClick={submitAction}
-                    className={`px-5 py-2 rounded-xl text-white font-bold text-xs flex items-center gap-2 cursor-pointer ${actionModal.action === 'APPROVE'
+                    className={`w-full sm:w-auto justify-center px-5 py-2.5 rounded-xl text-white font-bold text-xs flex items-center gap-2 cursor-pointer ${actionModal.action === 'APPROVE'
                         ? 'bg-emerald-600 hover:bg-emerald-700'
                         : actionModal.action === 'RETURN'
                           ? 'bg-orange-500 hover:bg-orange-600'
@@ -1534,91 +1534,93 @@ export default function ApprovalsPage() {
           {/* 8. Submit New Request Modal */}
           <Modal isOpen={Boolean(createModalOpen)} onClose={() => setCreateModalOpen(false)}>
             {createModalOpen && (
-              <div className={`w-full max-w-xl rounded-3xl border shadow-2xl p-6 sm:p-7 space-y-5 ${isDark ? 'bg-[#0B1020] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
+              <div className={`w-full max-w-xl max-h-[90vh] rounded-3xl border shadow-2xl flex flex-col overflow-hidden my-auto ${isDark ? 'bg-[#0B1020] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
                 }`}>
-                {/* Header */}
-                <div className="flex items-center justify-between pb-3.5 border-b border-slate-100 dark:border-slate-800">
-                  <div className="flex items-center gap-3">
+                {/* Pinned Header */}
+                <div className="flex items-center justify-between p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 shrink-0">
+                  <div className="flex items-center gap-3 min-w-0">
                     <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-cyan-500 text-white flex items-center justify-center shadow-lg shadow-blue-500/25 shrink-0">
                       <ShieldCheck className="w-5 h-5 text-white" />
                     </div>
-                    <div>
-                      <h3 className="text-base font-extrabold tracking-tight">New Operational Request</h3>
-                      <p className="text-xs text-slate-400">Internal station authorization for expenses, credit, discounts & claims</p>
+                    <div className="min-w-0">
+                      <h3 className="text-base font-extrabold tracking-tight truncate">New Operational Request</h3>
+                      <p className="text-xs text-slate-400 truncate">Internal station authorization for expenses, credit, discounts & claims</p>
                     </div>
                   </div>
                   <button
                     onClick={() => setCreateModalOpen(false)}
-                    className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60 transition-colors"
+                    className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60 transition-colors shrink-0 cursor-pointer"
                     title="Close"
                   >
                     <X className="w-5 h-5" />
                   </button>
                 </div>
 
-                {/* Dynamic Hierarchy Routing Pipeline based on role */}
-                <div className={`p-3.5 rounded-2xl border ${isDark ? 'bg-slate-900/60 border-slate-800/80' : 'bg-slate-50 border-slate-200/80'
-                  }`}>
-                  <div className="flex items-center justify-between text-xs font-semibold mb-2">
-                    {isBranchAssistant ? (
-                      <>
-                        <div className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400">
-                          <span className="w-5 h-5 rounded-full bg-blue-500 text-white flex items-center justify-center font-bold text-[10px]">1</span>
-                          <span>Branch Assistant (You)</span>
-                        </div>
-                        <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
-                        <div className="flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400 font-bold">
-                          <span className="w-5 h-5 rounded-full bg-indigo-500 text-white flex items-center justify-center font-bold text-[10px]">2</span>
-                          <span>Branch Manager (Reviewer)</span>
-                        </div>
-                        <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
-                        <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
-                          <span className="w-5 h-5 rounded-full bg-slate-300 dark:bg-slate-700 text-slate-700 dark:text-slate-300 flex items-center justify-center font-bold text-[10px]">3</span>
-                          <span>Head Office Admin</span>
-                        </div>
-                      </>
-                    ) : isBranchManager ? (
-                      <>
-                        <div className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400 font-bold">
-                          <span className="w-5 h-5 rounded-full bg-blue-500 text-white flex items-center justify-center font-bold text-[10px]">1</span>
-                          <span>Branch Manager (You)</span>
-                        </div>
-                        <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
-                        <div className="flex items-center gap-1.5 text-purple-600 dark:text-purple-400 font-bold">
-                          <span className="w-5 h-5 rounded-full bg-purple-600 text-white flex items-center justify-center font-bold text-[10px]">2</span>
-                          <span>Transporter Admin / Head Office</span>
-                        </div>
-                        <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
-                        <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
-                          <span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-500 flex items-center justify-center font-bold text-[10px]">✓</span>
-                          <span>Ledger Override</span>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="flex items-center gap-1.5 text-purple-600 dark:text-purple-400 font-bold">
-                          <span className="w-5 h-5 rounded-full bg-purple-600 text-white flex items-center justify-center font-bold text-[10px]">1</span>
-                          <span>Executive Head Office (You)</span>
-                        </div>
-                        <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
-                        <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-bold">
-                          <span className="w-5 h-5 rounded-full bg-emerald-500 text-white flex items-center justify-center font-bold text-[10px]">✓</span>
-                          <span>Direct Station Authorization & Ledger Update</span>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
-                    {isBranchAssistant
-                      ? 'Your request routes to your Branch Manager for approval. Cancellations or amounts over ₹20,000 escalate to Head Office.'
-                      : isBranchManager
-                        ? 'As Branch Manager, your bilty cancellation, discount, or branch expense requests route directly to Transporter Head Office.'
-                        : 'Executive Head Office request. Approved changes take immediate effect across network branches and accounts.'}
-                  </p>
-                </div>
+                <form onSubmit={handleCreateSubmit} className="flex-1 flex flex-col overflow-hidden">
+                  {/* Scrollable Form Body */}
+                  <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
+                    {/* Dynamic Hierarchy Routing Pipeline based on role */}
+                    <div className={`p-3.5 rounded-2xl border ${isDark ? 'bg-slate-900/60 border-slate-800/80' : 'bg-slate-50 border-slate-200/80'
+                      }`}>
+                      <div className="flex flex-wrap sm:flex-nowrap items-center justify-between text-xs font-semibold gap-1.5 mb-2">
+                        {isBranchAssistant ? (
+                          <>
+                            <div className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400">
+                              <span className="w-5 h-5 rounded-full bg-blue-500 text-white flex items-center justify-center font-bold text-[10px]">1</span>
+                              <span className="text-[11px]">Branch Assistant (You)</span>
+                            </div>
+                            <ArrowRight className="w-3.5 h-3.5 text-slate-400 hidden sm:inline" />
+                            <div className="flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400 font-bold">
+                              <span className="w-5 h-5 rounded-full bg-indigo-500 text-white flex items-center justify-center font-bold text-[10px]">2</span>
+                              <span className="text-[11px]">Branch Manager</span>
+                            </div>
+                            <ArrowRight className="w-3.5 h-3.5 text-slate-400 hidden sm:inline" />
+                            <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
+                              <span className="w-5 h-5 rounded-full bg-slate-300 dark:bg-slate-700 text-slate-700 dark:text-slate-300 flex items-center justify-center font-bold text-[10px]">3</span>
+                              <span className="text-[11px]">Head Office Admin</span>
+                            </div>
+                          </>
+                        ) : isBranchManager ? (
+                          <>
+                            <div className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400 font-bold">
+                              <span className="w-5 h-5 rounded-full bg-blue-500 text-white flex items-center justify-center font-bold text-[10px]">1</span>
+                              <span className="text-[11px]">Branch Manager (You)</span>
+                            </div>
+                            <ArrowRight className="w-3.5 h-3.5 text-slate-400 hidden sm:inline" />
+                            <div className="flex items-center gap-1.5 text-purple-600 dark:text-purple-400 font-bold">
+                              <span className="w-5 h-5 rounded-full bg-purple-600 text-white flex items-center justify-center font-bold text-[10px]">2</span>
+                              <span className="text-[11px]">Head Office</span>
+                            </div>
+                            <ArrowRight className="w-3.5 h-3.5 text-slate-400 hidden sm:inline" />
+                            <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                              <span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-500 flex items-center justify-center font-bold text-[10px]">✓</span>
+                              <span className="text-[11px]">Ledger Override</span>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="flex items-center gap-1.5 text-purple-600 dark:text-purple-400 font-bold">
+                              <span className="w-5 h-5 rounded-full bg-purple-600 text-white flex items-center justify-center font-bold text-[10px]">1</span>
+                              <span className="text-[11px]">Executive Head Office (You)</span>
+                            </div>
+                            <ArrowRight className="w-3.5 h-3.5 text-slate-400 hidden sm:inline" />
+                            <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-bold">
+                              <span className="w-5 h-5 rounded-full bg-emerald-500 text-white flex items-center justify-center font-bold text-[10px]">✓</span>
+                              <span className="text-[11px]">Direct Authorization</span>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                        {isBranchAssistant
+                          ? 'Your request routes to your Branch Manager for approval. Cancellations or amounts over ₹20,000 escalate to Head Office.'
+                          : isBranchManager
+                            ? 'As Branch Manager, your bilty cancellation, discount, or branch expense requests route directly to Transporter Head Office.'
+                            : 'Executive Head Office request. Approved changes take immediate effect across network branches and accounts.'}
+                      </p>
+                    </div>
 
-                <form onSubmit={handleCreateSubmit} className="space-y-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                     {/* Request Type Custom Categorized Dropdown */}
                     <div className="space-y-1.5 relative" ref={typeDropdownRef}>
                       <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
@@ -1900,16 +1902,20 @@ export default function ApprovalsPage() {
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between pt-3 border-t border-slate-100 dark:border-slate-800">
+                  </div>
+
+                  {/* Pinned Action Buttons Footer */}
+                  <div className={`flex flex-col-reverse sm:flex-row sm:items-center justify-between gap-3 p-3.5 sm:px-6 border-t shrink-0 ${isDark ? 'border-slate-800 bg-[#0E1526]' : 'border-slate-100 bg-slate-50/80'
+                    }`}>
                     <span className="text-[11px] text-slate-400">
                       * Required for audit &amp; compliance
                     </span>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 w-full sm:w-auto">
                       <button
                         type="button"
                         onClick={() => setCreateModalOpen(false)}
-                        className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                        className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer text-center"
                       >
                         Cancel
                       </button>
@@ -1917,7 +1923,7 @@ export default function ApprovalsPage() {
                       <button
                         type="submit"
                         disabled={createSubmitting}
-                        className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold shadow-lg shadow-blue-600/30 flex items-center gap-2 disabled:opacity-50 transition-all active:scale-95 cursor-pointer"
+                        className="flex-1 sm:flex-none justify-center px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold shadow-lg shadow-blue-600/30 flex items-center gap-2 disabled:opacity-50 transition-all active:scale-95 cursor-pointer text-center"
                       >
                         {createSubmitting ? (
                           <RefreshCw className="w-4 h-4 animate-spin" />
@@ -1936,19 +1942,19 @@ export default function ApprovalsPage() {
           {/* 8. Edit & Resubmit Modal for Returned Requests */}
           <Modal isOpen={Boolean(resubmitModal.open)} onClose={() => setResubmitModal({ open: false, request: null })}>
             {resubmitModal.open && resubmitModal.request && (
-              <div className={`w-full max-w-lg rounded-3xl border shadow-2xl p-6 space-y-5 ${isDark ? 'bg-[#0E1526] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
+              <div className={`w-full max-w-lg max-h-[90vh] rounded-3xl border shadow-2xl flex flex-col overflow-hidden my-auto ${isDark ? 'bg-[#0E1526] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
                 }`}>
-                {/* Header */}
-                <div className="flex items-center justify-between border-b pb-4 border-slate-800/80">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2.5 rounded-2xl bg-orange-600/20 text-orange-500 border border-orange-500/30">
-                      <RotateCcw className="w-6 h-6" />
+                {/* Pinned Header */}
+                <div className="flex items-center justify-between border-b p-4 sm:p-5 border-slate-800/80 shrink-0">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="p-2.5 rounded-2xl bg-orange-600/20 text-orange-500 border border-orange-500/30 shrink-0">
+                      <RotateCcw className="w-5 h-5 sm:w-6 sm:h-6" />
                     </div>
-                    <div>
-                      <h3 className="text-base font-black">
+                    <div className="min-w-0">
+                      <h3 className="text-base font-black truncate">
                         Edit &amp; Resubmit Request
                       </h3>
-                      <p className="text-xs text-slate-400">
+                      <p className="text-xs text-slate-400 truncate">
                         Ref: <span className="font-bold text-orange-400">{resubmitModal.request.reference_code || resubmitModal.request.id.slice(0, 8)}</span> • {resubmitModal.request.request_type}
                       </p>
                     </div>
@@ -1956,111 +1962,113 @@ export default function ApprovalsPage() {
                   <button
                     type="button"
                     onClick={() => setResubmitModal({ open: false, request: null })}
-                    className="p-1.5 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-white cursor-pointer"
+                    className="p-1.5 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-white cursor-pointer shrink-0"
                   >
                     <X className="w-5 h-5" />
                   </button>
                 </div>
 
-                {/* Reviewer's feedback banner */}
-                {resubmitModal.request.reviewer_comments && (
-                  <div className="p-3.5 rounded-2xl bg-orange-500/10 border border-orange-500/30 text-orange-600 dark:text-orange-400 text-xs space-y-1">
-                    <span className="font-bold flex items-center gap-1.5">
-                      <RotateCcw className="w-3.5 h-3.5" />
-                      Reviewer Reason for Return:
-                    </span>
-                    <p className="text-slate-800 dark:text-slate-200 pl-5 font-semibold leading-relaxed">
-                      "{resubmitModal.request.reviewer_comments}"
-                    </p>
-                  </div>
-                )}
-
                 {/* Resubmit Form */}
-                <form onSubmit={handleResubmit} className="space-y-4">
-                  {/* Amount */}
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
-                      Revised Amount (₹)
-                    </label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-slate-400">₹</span>
-                      <input
-                        type="number"
-                        step="any"
-                        min="0"
-                        value={resubmitForm.amount}
-                        onChange={(e) => setResubmitForm({ ...resubmitForm, amount: e.target.value })}
-                        placeholder="0.00"
-                        className={`w-full pl-8 pr-3 py-2.5 rounded-xl text-xs font-semibold border transition-all focus:outline-none focus:border-orange-500 ${isDark ? 'bg-slate-900 border-slate-800 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
-                          }`}
-                      />
-                    </div>
-                  </div>
+                <form onSubmit={handleResubmit} className="flex-1 flex flex-col overflow-hidden">
+                  <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
+                    {/* Reviewer's feedback banner */}
+                    {resubmitModal.request.reviewer_comments && (
+                      <div className="p-3.5 rounded-2xl bg-orange-500/10 border border-orange-500/30 text-orange-600 dark:text-orange-400 text-xs space-y-1">
+                        <span className="font-bold flex items-center gap-1.5">
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          Reviewer Reason for Return:
+                        </span>
+                        <p className="text-slate-800 dark:text-slate-200 pl-5 font-semibold leading-relaxed">
+                          "{resubmitModal.request.reviewer_comments}"
+                        </p>
+                      </div>
+                    )}
 
-                  {/* Priority */}
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
-                      Urgency / Priority
-                    </label>
-                    <div className="grid grid-cols-3 gap-2">
-                      {['LOW', 'NORMAL', 'URGENT'].map((p) => (
-                        <button
-                          key={p}
-                          type="button"
-                          onClick={() => setResubmitForm({ ...resubmitForm, priority: p })}
-                          className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer ${resubmitForm.priority === p
-                              ? 'bg-orange-500/20 border-orange-500 text-orange-500 shadow-sm'
-                              : isDark
-                                ? 'border-slate-800 bg-slate-900/60 text-slate-400 hover:border-slate-700'
-                                : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300'
+                    {/* Amount */}
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
+                        Revised Amount (₹)
+                      </label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-slate-400">₹</span>
+                        <input
+                          type="number"
+                          step="any"
+                          min="0"
+                          value={resubmitForm.amount}
+                          onChange={(e) => setResubmitForm({ ...resubmitForm, amount: e.target.value })}
+                          placeholder="0.00"
+                          className={`w-full pl-8 pr-3 py-2.5 rounded-xl text-xs font-semibold border transition-all focus:outline-none focus:border-orange-500 ${isDark ? 'bg-slate-900 border-slate-800 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
                             }`}
-                        >
-                          {p}
-                        </button>
-                      ))}
+                        />
+                      </div>
                     </div>
-                  </div>
 
-                  {/* Revised Notes / Clarification */}
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
-                      Your Clarification &amp; Revision Notes *
-                    </label>
-                    <textarea
-                      required
-                      rows={3}
-                      value={resubmitForm.requester_notes}
-                      onChange={(e) => setResubmitForm({ ...resubmitForm, requester_notes: e.target.value })}
-                      placeholder="Explain what changes were made in response to the reviewer's comments..."
-                      className={`w-full p-3 rounded-xl text-xs font-semibold border transition-all leading-relaxed focus:outline-none focus:border-orange-500 ${isDark ? 'bg-slate-900 border-slate-800 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
-                        }`}
-                    />
-                  </div>
+                    {/* Priority */}
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
+                        Urgency / Priority
+                      </label>
+                      <div className="grid grid-cols-3 gap-2">
+                        {['LOW', 'NORMAL', 'URGENT'].map((p) => (
+                          <button
+                            key={p}
+                            type="button"
+                            onClick={() => setResubmitForm({ ...resubmitForm, priority: p })}
+                            className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer ${resubmitForm.priority === p
+                                ? 'bg-orange-500/20 border-orange-500 text-orange-500 shadow-sm'
+                                : isDark
+                                  ? 'border-slate-800 bg-slate-900/60 text-slate-400 hover:border-slate-700'
+                                  : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300'
+                              }`}
+                          >
+                            {p}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
 
-                  {/* Supporting Document */}
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
-                      Supporting Document / Bill Link
-                    </label>
-                    <div className="relative">
-                      <Link2 className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                      <input
-                        type="url"
-                        value={resubmitForm.supporting_document_url}
-                        onChange={(e) => setResubmitForm({ ...resubmitForm, supporting_document_url: e.target.value })}
-                        placeholder="https://... (Receipt or updated voucher link)"
-                        className={`w-full pl-9 pr-3 py-2.5 rounded-xl text-xs font-semibold border transition-all focus:outline-none focus:border-orange-500 ${isDark ? 'bg-slate-900 border-slate-800 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
+                    {/* Revised Notes / Clarification */}
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
+                        Your Clarification &amp; Revision Notes *
+                      </label>
+                      <textarea
+                        required
+                        rows={3}
+                        value={resubmitForm.requester_notes}
+                        onChange={(e) => setResubmitForm({ ...resubmitForm, requester_notes: e.target.value })}
+                        placeholder="Explain what changes were made in response to the reviewer's comments..."
+                        className={`w-full p-3 rounded-xl text-xs font-semibold border transition-all leading-relaxed focus:outline-none focus:border-orange-500 ${isDark ? 'bg-slate-900 border-slate-800 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
                           }`}
                       />
+                    </div>
+
+                    {/* Supporting Document */}
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
+                        Supporting Document / Bill Link
+                      </label>
+                      <div className="relative">
+                        <Link2 className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input
+                          type="url"
+                          value={resubmitForm.supporting_document_url}
+                          onChange={(e) => setResubmitForm({ ...resubmitForm, supporting_document_url: e.target.value })}
+                          placeholder="https://... (Receipt or updated voucher link)"
+                          className={`w-full pl-9 pr-3 py-2.5 rounded-xl text-xs font-semibold border transition-all focus:outline-none focus:border-orange-500 ${isDark ? 'bg-slate-900 border-slate-800 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
+                            }`}
+                        />
+                      </div>
                     </div>
                   </div>
 
                   {/* Modal Actions */}
-                  <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
+                  <div className="flex flex-col-reverse sm:flex-row items-center justify-end gap-2.5 p-3.5 sm:px-6 border-t border-slate-100 dark:border-slate-800 shrink-0">
                     <button
                       type="button"
                       onClick={() => setResubmitModal({ open: false, request: null })}
-                      className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                      className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer text-center"
                     >
                       Cancel
                     </button>
@@ -2068,7 +2076,7 @@ export default function ApprovalsPage() {
                     <button
                       type="submit"
                       disabled={resubmitSubmitting}
-                      className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white text-xs font-bold shadow-lg shadow-orange-600/30 flex items-center gap-2 disabled:opacity-50 transition-all active:scale-95 cursor-pointer"
+                      className="w-full sm:w-auto justify-center px-5 py-2.5 rounded-xl bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white text-xs font-bold shadow-lg shadow-orange-600/30 flex items-center gap-2 disabled:opacity-50 transition-all active:scale-95 cursor-pointer text-center"
                     >
                       {resubmitSubmitting ? (
                         <RefreshCw className="w-4 h-4 animate-spin" />

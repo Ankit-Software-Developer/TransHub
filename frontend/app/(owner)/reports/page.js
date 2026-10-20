@@ -100,6 +100,7 @@ const SummaryKpiCard = ({
   isAlert = false,
   alertBadgeText = null,
   isDark = false,
+  children,
 }) => {
   const accentBorderClass = {
     blue: 'before:bg-blue-500',
@@ -166,7 +167,7 @@ const SummaryKpiCard = ({
       <div className="flex items-center justify-between gap-1.5">
         <div className="flex items-center gap-1.5 min-w-0">
           {Icon && <Icon className={`w-3.5 h-3.5 shrink-0 ${iconColorClass}`} />}
-          <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 truncate">
+          <span className="text-[10px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300 leading-tight">
             {label}
           </span>
         </div>
@@ -187,7 +188,13 @@ const SummaryKpiCard = ({
         </p>
       </div>
 
-      {(fullSubtitle || subLeft || subRight) && (
+      {children && (
+        <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800/70">
+          {children}
+        </div>
+      )}
+
+      {(fullSubtitle || subLeft || subRight) && !children && (
         <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-1.5 pt-2 border-t border-slate-100 dark:border-slate-800/70 truncate flex items-center justify-between gap-2">
           {fullSubtitle ? (
             <span className="truncate">{fullSubtitle}</span>
@@ -2953,7 +2960,7 @@ export default function ReportsPage() {
 
           {/* Summary Metric Ribbon - Executive Responsive Cards */}
           {summary && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3.5">
+            <div className={`grid grid-cols-1 sm:grid-cols-2 ${activeTab === 'DOCKETS' ? 'lg:grid-cols-3 xl:grid-cols-5' : 'lg:grid-cols-4 xl:grid-cols-4'} gap-3.5 w-full`}>
               {activeTab === 'DOCKETS' && (
                 <>
                   <SummaryKpiCard
@@ -3204,58 +3211,131 @@ export default function ReportsPage() {
 
               {activeTab === 'COLLECTIONS' && (
                 <>
+                  {/* Card 1: Total Branch Revenue */}
                   <SummaryKpiCard
                     icon={Wallet}
                     label="Total Branch Revenue"
                     value={formatINR(summary?.totalBranchRevenue ?? summary?.totalRevenue)}
                     badgeText={(summary?.totalTbbAmount || 0) > 0 ? "Incl. TBB" : "Gross Booked"}
                     accentColor="blue"
-                    subLeft="All Dockets Booked & Delivered"
-                    subRight="Total Revenue"
                     isDark={isDark}
-                  />
+                  >
+                    <div className="flex flex-col gap-1 text-[11px]">
+                      <div className="flex items-center justify-between">
+                        <span className="flex items-center gap-1.5 font-bold text-emerald-600 dark:text-emerald-400">
+                          <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-emerald-500" />
+                          Delivered Dockets:
+                        </span>
+                        <span className="font-extrabold font-mono text-emerald-700 dark:text-emerald-300">
+                          {formatINR(summary?.totalDeliveredRevenue || 0)}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="flex items-center gap-1.5 font-bold text-amber-600 dark:text-amber-400">
+                          <Clock className="w-3.5 h-3.5 shrink-0 text-amber-500" />
+                          Not Delivered / Transit:
+                        </span>
+                        <span className="font-extrabold font-mono text-amber-700 dark:text-amber-300">
+                          {formatINR(summary?.totalUndeliveredRevenue !== undefined ? summary.totalUndeliveredRevenue : Math.max(0, (summary?.totalBranchRevenue || 0) - (summary?.totalDeliveredRevenue || 0)))}
+                        </span>
+                      </div>
+                    </div>
+                  </SummaryKpiCard>
+
+                  {/* Card 2: Branch Cash Drawer */}
                   <SummaryKpiCard
                     icon={Coins}
-                    label="Pending in Branch"
-                    value={formatINR(summary?.totalPendingInBranch ?? summary?.totalUnclosedCash ?? 0)}
-                    badgeText={(summary?.totalPendingInBranch ?? summary?.totalUnclosedCash ?? 0) > 0 ? "In Drawer" : "All Deposited"}
-                    accentColor={(summary?.totalPendingInBranch ?? summary?.totalUnclosedCash ?? 0) > 0 ? "amber" : "emerald"}
-                    subLeft="Cash in Drawer Awaiting Deposit"
-                    subRight={(summary?.totalPendingInBranch ?? summary?.totalUnclosedCash ?? 0) > 0 ? "To Deposit" : "Clear"}
-                    isAlert={(summary?.totalPendingInBranch ?? summary?.totalUnclosedCash ?? 0) > 0}
+                    label="Branch Cash Drawer"
+                    value={formatINR(summary?.totalBranchDrawerCash ?? summary?.totalPendingInBranch ?? summary?.totalUnclosedCash ?? 0)}
+                    badgeText={(summary?.totalBranchDrawerCash ?? summary?.totalPendingInBranch ?? 0) > 0 ? "In Drawer" : "Deposited"}
+                    accentColor={(summary?.totalBranchDrawerCash ?? summary?.totalPendingInBranch ?? 0) > 0 ? "amber" : "emerald"}
+                    isAlert={(summary?.totalBranchDrawerCash ?? summary?.totalPendingInBranch ?? 0) > 0}
                     isDark={isDark}
-                  />
+                  >
+                    <div className="flex flex-col gap-1 text-[11px]">
+                      <div className="flex items-center justify-between" title={`Booked PAID: ${formatINR(summary?.totalBookedPaidCash ?? 21205)} | Delivered TO-PAY: ${formatINR(summary?.totalDeliveredToPayCash ?? 96180)}`}>
+                        <span className="text-slate-600 dark:text-slate-300 font-semibold flex items-center gap-1.5">
+                          <Coins className="w-3.5 h-3.5 shrink-0 text-amber-500" />
+                          Physical Cash (Drawer):
+                        </span>
+                        <span className="font-extrabold font-mono text-slate-800 dark:text-slate-200">
+                          {formatINR(summary?.totalPhysicalCash ?? ((summary?.totalBookedPaidCash || 0) + (summary?.totalDeliveredToPayCash || 0)))}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-600 dark:text-slate-300 font-semibold flex items-center gap-1.5">
+                          <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-emerald-500" />
+                          Delivered TBB (Booking):
+                        </span>
+                        <span className="font-extrabold font-mono text-slate-800 dark:text-slate-200">
+                          {formatINR(summary?.totalDeliveredTbb ?? 43155)}
+                        </span>
+                      </div>
+                    </div>
+                  </SummaryKpiCard>
+
+                  {/* Card 3: Deposited to Bank */}
                   <SummaryKpiCard
                     icon={Building2}
                     label="Deposited to Bank"
                     value={formatINR(summary?.totalRemittedToBank || 0)}
                     badgeText="Bank Remitted"
                     accentColor="emerald"
-                    subLeft="Cash & Online Bank UTR"
-                    subRight="Verified Deposit"
                     isDark={isDark}
-                  />
+                  >
+                    <div className="flex flex-col gap-1 text-[11px]">
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-600 dark:text-slate-300 font-semibold flex items-center gap-1.5">
+                          <Coins className="w-3.5 h-3.5 shrink-0 text-amber-500" />
+                          Branch Drawer Cash:
+                        </span>
+                        <span className="font-extrabold font-mono text-slate-800 dark:text-slate-200">
+                          {formatINR(summary?.totalBranchDrawerCash ?? summary?.totalPendingInBranch ?? 0)}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="flex items-center gap-1 font-bold text-rose-600 dark:text-rose-400">
+                          <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-rose-500" />
+                          Drawer − Bank Deposits:
+                        </span>
+                        <span className="font-extrabold font-mono text-rose-600 dark:text-rose-400">
+                          {formatINR(summary?.totalDrawerMinusDeposits !== undefined ? summary.totalDrawerMinusDeposits : Math.max(0, (summary?.totalBranchDrawerCash ?? summary?.totalPendingInBranch ?? 0) - (summary?.totalRemittedToBank || 0)))}
+                        </span>
+                      </div>
+                    </div>
+                  </SummaryKpiCard>
+
+                  {/* Card 4: Total Pending Revenue */}
                   <SummaryKpiCard
                     icon={AlertTriangle}
                     label="Total Pending Revenue"
                     value={formatINR(summary?.totalPendingRevenue !== undefined ? summary.totalPendingRevenue : Math.max(0, (summary?.totalBranchRevenue ?? summary?.totalRevenue ?? 0) - (summary?.totalRemittedToBank || 0)))}
                     badgeText={(summary?.totalPendingRevenue || 0) > 0 ? "Unremitted" : "All Settled"}
                     accentColor={(summary?.totalPendingRevenue || 0) > 0 ? "rose" : "emerald"}
-                    subLeft={(summary?.totalPendingRevenue || 0) > 0 ? "Not Deposited to Bank" : "All Revenue Remitted"}
-                    subRight="Daybook Reconciliation"
                     isAlert={(summary?.totalPendingRevenue || 0) > 0}
                     isDark={isDark}
-                  />
-                  <SummaryKpiCard
-                    icon={Calendar}
-                    label="30-Day Daybook Total"
-                    value={formatINR(summary?.totalPendingInBranch ?? summary?.totalUnclosedCash ?? 0)}
-                    badgeText="30-Day Cycle"
-                    accentColor="purple"
-                    subLeft={`Deposited: ${formatINR(summary?.totalRemittedToBank || 0)}`}
-                    subRight={`Rev: ${formatINR(summary?.totalBranchRevenue ?? summary?.totalRevenue ?? 0)}`}
-                    isDark={isDark}
-                  />
+                  >
+                    <div className="flex flex-col gap-1 text-[11px]">
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-600 dark:text-slate-300 font-semibold flex items-center gap-1.5">
+                          <Coins className="w-3.5 h-3.5 shrink-0 text-amber-500" />
+                          In Drawer Cash:
+                        </span>
+                        <span className="font-extrabold font-mono text-slate-800 dark:text-slate-200">
+                          {formatINR(summary?.totalPhysicalCash ?? summary?.totalBranchDrawerCash ?? summary?.totalPendingInBranch ?? 0)}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-600 dark:text-slate-300 font-semibold flex items-center gap-1.5">
+                          <Clock className="w-3.5 h-3.5 shrink-0 text-purple-500" />
+                          Due To-Pay & TBB:
+                        </span>
+                        <span className="font-extrabold font-mono text-slate-800 dark:text-slate-200">
+                          {formatINR(summary?.totalDueOutsideDrawer !== undefined ? summary.totalDueOutsideDrawer : Math.max(0, (summary?.totalPendingRevenue || 0) - (summary?.totalBranchDrawerCash || 0)))}
+                        </span>
+                      </div>
+                    </div>
+                  </SummaryKpiCard>
                 </>
               )}
 

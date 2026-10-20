@@ -9,6 +9,7 @@ import Sidebar from '../../../components/layout/Sidebar';
 import Navbar from '../../../components/layout/Navbar';
 import { useTheme } from '../../../components/ThemeProvider';
 import { useTerminology } from '../../../hooks/useTerminology';
+import { useOperationsType } from '../../../hooks/useOperationsType';
 import { useStore } from '../../../store/useStore';
 import BuiltyTypeBadge from '../../../components/ui/BuiltyTypeBadge';
 import api from '../../../services/api';
@@ -1040,6 +1041,7 @@ function FtlVehicleSelectDropdown({
 export default function BookingsMasterPage() {
   const { theme } = useTheme();
   const { term, plural, newDocLabel } = useTerminology();
+  const { isOnlyFTL, isOnlyPTL, isBoth } = useOperationsType();
   const activeBranch = useStore((state) => state.activeBranch);
 
   const isDark = theme === 'dark';
@@ -1057,7 +1059,12 @@ export default function BookingsMasterPage() {
   const [sortOrder, setSortOrder] = useState('DESC');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('PENDING');
-  const [loadTypeFilter, setLoadTypeFilter] = useState('ALL'); // 'ALL' | 'PTL' | 'FTL'
+  const [loadTypeFilter, setLoadTypeFilter] = useState(() => (isOnlyFTL ? 'FTL' : isOnlyPTL ? 'PTL' : 'ALL'));
+
+  useEffect(() => {
+    if (isOnlyFTL) setLoadTypeFilter('FTL');
+    else if (isOnlyPTL) setLoadTypeFilter('PTL');
+  }, [isOnlyFTL, isOnlyPTL]);
   const [statusSummary, setStatusSummary] = useState({
     total: 0,
     pending: 0,
@@ -1160,14 +1167,24 @@ export default function BookingsMasterPage() {
   // Bilty Print Preview Modal State
   const user = useStore((state) => state.user);
   const userBranchId = user?.branch_id || user?.branchId || user?.branch?.id || null;
-  const isGlobalUser = user?.role === 'SUPER_ADMIN' || user?.role === 'TRANSPORT_OWNER' || user?.role === 'ADMIN';
+  const isGlobalUser = isAdmin || isSuperAdmin;
   const isRestrictedBranchUser = !isGlobalUser && !!userBranchId;
   const setActiveBranch = useStore((state) => state.setActiveBranch);
 
-  const activeBranchIdFromStore = (activeBranch && typeof activeBranch === 'object') ? activeBranch.id : (activeBranch !== 'ALL' ? activeBranch : null);
-  const [selectedBranchId, setSelectedBranchId] = useState(
-    isRestrictedBranchUser && userBranchId ? userBranchId : (activeBranchIdFromStore || 'ALL')
-  );
+  const resolveStoreBranchId = (val) => {
+    if (!val) return 'ALL';
+    if (typeof val === 'object') {
+      if (!val.id || val.code === 'ALL' || val.id === 'ALL') return 'ALL';
+      return String(val.id);
+    }
+    if (val === 'ALL') return 'ALL';
+    return String(val);
+  };
+
+  const [selectedBranchId, setSelectedBranchId] = useState(() => {
+    if (isRestrictedBranchUser && userBranchId) return userBranchId;
+    return resolveStoreBranchId(activeBranch);
+  });
 
   useEffect(() => {
     if (isRestrictedBranchUser && userBranchId && selectedBranchId !== userBranchId) {
@@ -1177,8 +1194,8 @@ export default function BookingsMasterPage() {
 
   useEffect(() => {
     if (isAdmin && activeBranch) {
-      const storeId = (typeof activeBranch === 'object' && activeBranch.id) ? activeBranch.id : (activeBranch !== 'ALL' ? activeBranch : 'ALL');
-      if (storeId && storeId !== selectedBranchId) {
+      const storeId = resolveStoreBranchId(activeBranch);
+      if (storeId !== selectedBranchId) {
         setSelectedBranchId(storeId);
         setPage(1);
       }
@@ -1716,7 +1733,7 @@ export default function BookingsMasterPage() {
     pickupDate: new Date().toISOString().split('T')[0],
     transportMode: 'ROAD', // 'ROAD' | 'RAIL' | 'AIR'
     deliveryType: 'DOOR_DELIVERY', // Default to DOOR_DELIVERY
-    loadType: 'PTL', // 'PTL' | 'FTL'
+    loadType: isOnlyFTL ? 'FTL' : 'PTL', // 'PTL' | 'FTL'
     ftlVehicleType: '',
     ftlPricingMode: 'FIXED', // 'FIXED' | 'PER_KG'
     ftlFreightAmount: '',
@@ -2766,7 +2783,7 @@ export default function BookingsMasterPage() {
         return;
       }
 
-      const isFtl = (formData.loadType || 'PTL').toUpperCase() === 'FTL';
+      const isFtl = isOnlyFTL || (formData.loadType || 'PTL').toUpperCase() === 'FTL';
 
       const payload = {
         docket_number: isManualDocket ? customDocNum : undefined,
@@ -3482,46 +3499,48 @@ export default function BookingsMasterPage() {
                   All ({totalBookingsCount})
                 </button>
 
-                {/* Movement / Load Type Filter (PTL vs FTL) */}
-                <div className={`hidden sm:flex items-center ml-2 p-0.5 rounded-xl border ${
-                  isDark ? 'bg-slate-950/80 border-slate-800' : 'bg-slate-200/70 border-slate-300/80'
-                }`}>
-                  <button
-                    type="button"
-                    onClick={() => { setLoadTypeFilter('ALL'); setPage(1); }}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                      loadTypeFilter === 'ALL'
-                        ? 'bg-blue-600 text-white shadow-xs'
-                        : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    All Loads
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setLoadTypeFilter('PTL'); setPage(1); }}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 transition-all cursor-pointer ${
-                      loadTypeFilter === 'PTL'
-                        ? 'bg-amber-500 text-white shadow-xs'
-                        : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    <span>📦</span>
-                    <span>PTL</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setLoadTypeFilter('FTL'); setPage(1); }}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 transition-all cursor-pointer ${
-                      loadTypeFilter === 'FTL'
-                        ? 'bg-purple-600 text-white shadow-xs'
-                        : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    <span>🚛</span>
-                    <span>FTL</span>
-                  </button>
-                </div>
+                {/* Movement / Load Type Filter (PTL vs FTL) - Only shown for hybrid (BOTH) transporters */}
+                {isBoth && (
+                  <div className={`hidden sm:flex items-center ml-2 p-0.5 rounded-xl border ${
+                    isDark ? 'bg-slate-950/80 border-slate-800' : 'bg-slate-200/70 border-slate-300/80'
+                  }`}>
+                    <button
+                      type="button"
+                      onClick={() => { setLoadTypeFilter('ALL'); setPage(1); }}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        loadTypeFilter === 'ALL'
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      All Loads
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setLoadTypeFilter('PTL'); setPage(1); }}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                        loadTypeFilter === 'PTL'
+                          ? 'bg-amber-500 text-white shadow-xs'
+                          : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      <span>📦</span>
+                      <span>PTL</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setLoadTypeFilter('FTL'); setPage(1); }}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                        loadTypeFilter === 'FTL'
+                          ? 'bg-purple-600 text-white shadow-xs'
+                          : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      <span>🚛</span>
+                      <span>FTL</span>
+                    </button>
+                  </div>
+                )}
               </div>
             }
           />
@@ -3821,90 +3840,122 @@ export default function BookingsMasterPage() {
                         )}
                       </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                        {/* PTL Option */}
-                        <button
-                          type="button"
-                          onClick={() => setFormData(prev => ({ ...prev, loadType: 'PTL' }))}
-                          className={`p-2.5 sm:p-3 rounded-xl border text-left transition-all cursor-pointer ${
-                            (formData.loadType || 'PTL') === 'PTL'
-                              ? isDark
-                                ? 'bg-amber-500/10 border-amber-500/70 text-white ring-2 ring-amber-500/30 shadow-xs'
-                                : 'bg-amber-50/80 border-amber-400 text-slate-900 ring-2 ring-amber-400/30 shadow-xs'
-                              : isDark
-                                ? 'bg-slate-900/80 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
-                                : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="font-bold text-xs flex items-center gap-2">
-                              <span className="text-base">📦</span>
-                              <span>PTL (Part Truck Load)</span>
-                            </span>
-                            {(formData.loadType || 'PTL') === 'PTL' ? (
-                              <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-amber-500 text-white shadow-xs">
-                                Selected
+                      {isOnlyFTL ? (
+                        <div className="p-3.5 rounded-xl border border-purple-500/30 bg-purple-500/10 text-purple-700 dark:text-purple-300 flex items-center justify-between">
+                          <div className="flex items-center gap-2.5">
+                            <span className="text-xl">🚛</span>
+                            <div>
+                              <span className="font-bold text-xs block">Full Truck Load (FTL) Booking</span>
+                              <span className="text-[10.5px] text-purple-600/90 dark:text-purple-300/80">
+                                Dedicated point-to-point vehicle movement (Transporter set to FTL operations)
                               </span>
-                            ) : (
-                              <span className="w-3.5 h-3.5 rounded-full border border-slate-400" />
-                            )}
+                            </div>
                           </div>
-                          <p className={`text-[10.5px] mt-1 leading-snug line-clamp-1 sm:line-clamp-none ${
-                            (formData.loadType || 'PTL') === 'PTL'
-                              ? isDark ? 'text-amber-300/90' : 'text-amber-900/80 font-medium'
-                              : 'text-slate-400'
-                          }`}>
-                            Loose parcels, packages &amp; sundry bilties consolidated with other cargo at hubs.
-                          </p>
-                        </button>
-
-                        {/* FTL Option */}
-                        <button
-                          type="button"
-                          onClick={() => setFormData(prev => ({
-                            ...prev,
-                            loadType: 'FTL',
-                            transportMode: 'ROAD',
-                            deliveryType: 'DOOR_DELIVERY',
-                            ftlPricingMode: prev.ftlPricingMode || 'FIXED'
-                          }))}
-                          className={`p-2.5 sm:p-3 rounded-xl border text-left transition-all cursor-pointer ${
-                            (formData.loadType || 'PTL') === 'FTL'
-                              ? isDark
-                                ? 'bg-purple-500/10 border-purple-500/70 text-white ring-2 ring-purple-500/30 shadow-xs'
-                                : 'bg-purple-50/80 border-purple-400 text-slate-900 ring-2 ring-purple-400/30 shadow-xs'
-                              : isDark
-                                ? 'bg-slate-900/80 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
-                                : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="font-bold text-xs flex items-center gap-2">
-                              <span className="text-base">🚛</span>
-                              <span>FTL (Full Truck Load)</span>
-                            </span>
-                            {(formData.loadType || 'PTL') === 'FTL' ? (
-                              <div className="flex items-center gap-1.5">
-                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 border border-purple-500/30">
-                                  Direct • No Hub
-                                </span>
-                                <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-purple-600 text-white shadow-xs">
+                          <span className="text-[9px] font-black uppercase px-2.5 py-1 rounded-full bg-purple-600 text-white shadow-xs shrink-0">
+                            Dedicated FTL
+                          </span>
+                        </div>
+                      ) : isOnlyPTL ? (
+                        <div className="p-3.5 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-300 flex items-center justify-between">
+                          <div className="flex items-center gap-2.5">
+                            <span className="text-xl">📦</span>
+                            <div>
+                              <span className="font-bold text-xs block">Part Truck Load (PTL / Sundry) Booking</span>
+                              <span className="text-[10.5px] text-amber-700/90 dark:text-amber-300/80">
+                                Loose parcels &amp; sundry bilties for hub consolidation and load planning
+                              </span>
+                            </div>
+                          </div>
+                          <span className="text-[9px] font-black uppercase px-2.5 py-1 rounded-full bg-amber-500 text-white shadow-xs shrink-0">
+                            Sundry PTL
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                          {/* PTL Option */}
+                          <button
+                            type="button"
+                            onClick={() => setFormData(prev => ({ ...prev, loadType: 'PTL' }))}
+                            className={`p-2.5 sm:p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                              (formData.loadType || 'PTL') === 'PTL'
+                                ? isDark
+                                  ? 'bg-amber-500/10 border-amber-500/70 text-white ring-2 ring-amber-500/30 shadow-xs'
+                                  : 'bg-amber-50/80 border-amber-400 text-slate-900 ring-2 ring-amber-400/30 shadow-xs'
+                                : isDark
+                                  ? 'bg-slate-900/80 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                                  : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-xs flex items-center gap-2">
+                                <span className="text-base">📦</span>
+                                <span>PTL (Part Truck Load)</span>
+                              </span>
+                              {(formData.loadType || 'PTL') === 'PTL' ? (
+                                <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-amber-500 text-white shadow-xs">
                                   Selected
                                 </span>
-                              </div>
-                            ) : (
-                              <span className="w-3.5 h-3.5 rounded-full border border-slate-400" />
-                            )}
-                          </div>
-                          <p className={`text-[10.5px] mt-1 leading-snug line-clamp-1 sm:line-clamp-none ${
-                            (formData.loadType || 'PTL') === 'FTL'
-                              ? isDark ? 'text-purple-300/90' : 'text-purple-900/80 font-medium'
-                              : 'text-slate-400'
-                          }`}>
-                            Entire dedicated truck from shipper direct to consignee with no cross-docking.
-                          </p>
-                        </button>
-                      </div>
+                              ) : (
+                                <span className="w-3.5 h-3.5 rounded-full border border-slate-400" />
+                              )}
+                            </div>
+                            <p className={`text-[10.5px] mt-1 leading-snug line-clamp-1 sm:line-clamp-none ${
+                              (formData.loadType || 'PTL') === 'PTL'
+                                ? isDark ? 'text-amber-300/90' : 'text-amber-900/80 font-medium'
+                                : 'text-slate-400'
+                            }`}>
+                              Loose parcels, packages &amp; sundry bilties consolidated with other cargo at hubs.
+                            </p>
+                          </button>
+
+                          {/* FTL Option */}
+                          <button
+                            type="button"
+                            onClick={() => setFormData(prev => ({
+                              ...prev,
+                              loadType: 'FTL',
+                              transportMode: 'ROAD',
+                              deliveryType: 'DOOR_DELIVERY',
+                              ftlPricingMode: prev.ftlPricingMode || 'FIXED'
+                            }))}
+                            className={`p-2.5 sm:p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                              (formData.loadType || 'PTL') === 'FTL'
+                                ? isDark
+                                  ? 'bg-purple-500/10 border-purple-500/70 text-white ring-2 ring-purple-500/30 shadow-xs'
+                                  : 'bg-purple-50/80 border-purple-400 text-slate-900 ring-2 ring-purple-400/30 shadow-xs'
+                                : isDark
+                                  ? 'bg-slate-900/80 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                                  : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-xs flex items-center gap-2">
+                                <span className="text-base">🚛</span>
+                                <span>FTL (Full Truck Load)</span>
+                              </span>
+                              {(formData.loadType || 'PTL') === 'FTL' ? (
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 border border-purple-500/30">
+                                    Direct • No Hub
+                                  </span>
+                                  <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-purple-600 text-white shadow-xs">
+                                    Selected
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="w-3.5 h-3.5 rounded-full border border-slate-400" />
+                              )}
+                            </div>
+                            <p className={`text-[10.5px] mt-1 leading-snug line-clamp-1 sm:line-clamp-none ${
+                              (formData.loadType || 'PTL') === 'FTL'
+                                ? isDark ? 'text-purple-300/90' : 'text-purple-900/80 font-medium'
+                                : 'text-slate-400'
+                            }`}>
+                              Entire dedicated truck from shipper direct to consignee with no cross-docking.
+                            </p>
+                          </button>
+                        </div>
+                      )}
                     </div>
 
                     {/* 2-Column Parties Grid: Consignor (Shipper) and Consignee (Receiver) */}

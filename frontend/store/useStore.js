@@ -15,6 +15,10 @@ export const useStore = create((set) => ({
     terminology: (typeof window !== 'undefined' && localStorage.getItem('transporter_terminology')) || user?.documentTerminology || user?.document_terminology || 'Docket',
   }),
 
+  setTransporterType: (transporterType) => set((state) => ({
+    user: state.user ? { ...state.user, transporterType } : state.user,
+  })),
+
   setActiveBranch: (branch) => set({ activeBranch: branch }),
   setDateFilter: (filter) => set({ dateFilter: filter }),
   setTerminology: (term) => {

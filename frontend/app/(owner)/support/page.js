@@ -889,23 +889,30 @@ export default function SupportPage() {
           {/* Create New Support Ticket Modal */}
           <Modal isOpen={Boolean(isNewTicketOpen)} onClose={() => setIsNewTicketOpen(false)}>
             {isNewTicketOpen && (
-              <div className="w-full max-w-lg bg-white dark:bg-[#0B1020] rounded-2xl border border-slate-200 dark:border-slate-800 p-6 space-y-4 shadow-2xl">
-                <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
-                  <div className="flex items-center space-x-2">
-                    <LifeBuoy className="w-5 h-5 text-blue-600" />
-                    <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
-                      Generate Support Request
-                    </h3>
+              <div className="w-full max-w-xl bg-white dark:bg-[#0B1020] rounded-2xl border border-slate-200 dark:border-slate-800 p-6 space-y-4 shadow-2xl">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+                  <div className="flex items-center space-x-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold">
+                      <LifeBuoy className="w-4.5 h-4.5" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
+                        Generate Support Request
+                      </h3>
+                      <p className="text-[11px] text-slate-400">
+                        Submit an operational issue or assistance ticket
+                      </p>
+                    </div>
                   </div>
                   <button
                     onClick={() => setIsNewTicketOpen(false)}
-                    className="p-1 rounded-lg text-slate-400 hover:text-slate-600"
+                    className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                   >
                     <X className="w-5 h-5" />
                   </button>
                 </div>
 
-                <form onSubmit={handleCreateTicket} className="space-y-3.5">
+                <form onSubmit={handleCreateTicket} className="space-y-4">
                   <div>
                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                       Subject / Issue Summary *
@@ -916,13 +923,13 @@ export default function SupportPage() {
                       value={newSubject}
                       onChange={(e) => setNewSubject(e.target.value)}
                       placeholder="e.g. Weight entry locked on Docket DEL-1049"
-                      className={`w-full text-xs font-semibold rounded-xl border px-3 py-2 outline-none ${
-                        isDark ? 'bg-slate-900 border-slate-800 text-slate-200' : 'bg-slate-50 border-slate-200'
+                      className={`w-full h-10 text-xs font-semibold rounded-xl border px-3.5 outline-none transition-all focus:border-blue-500 ${
+                        isDark ? 'bg-slate-900 border-slate-800 text-slate-200' : 'bg-slate-50 border-slate-200 text-slate-900'
                       }`}
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 gap-3.5">
                     <div>
                       <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                         Category
@@ -930,8 +937,8 @@ export default function SupportPage() {
                       <select
                         value={newCategory}
                         onChange={(e) => setNewCategory(e.target.value)}
-                        className={`w-full text-xs font-semibold rounded-xl border px-3 py-2 outline-none ${
-                          isDark ? 'bg-slate-900 border-slate-800 text-slate-200' : 'bg-slate-50 border-slate-200'
+                        className={`w-full h-10 text-xs font-semibold rounded-xl border px-3 outline-none transition-all focus:border-blue-500 ${
+                          isDark ? 'bg-slate-900 border-slate-800 text-slate-200' : 'bg-slate-50 border-slate-200 text-slate-900'
                         }`}
                       >
                         {CATEGORIES.map((c) => (
@@ -947,8 +954,8 @@ export default function SupportPage() {
                       <select
                         value={newPriority}
                         onChange={(e) => setNewPriority(e.target.value)}
-                        className={`w-full text-xs font-semibold rounded-xl border px-3 py-2 outline-none ${
-                          isDark ? 'bg-slate-900 border-slate-800 text-slate-200' : 'bg-slate-50 border-slate-200'
+                        className={`w-full h-10 text-xs font-semibold rounded-xl border px-3 outline-none transition-all focus:border-blue-500 ${
+                          isDark ? 'bg-slate-900 border-slate-800 text-slate-200' : 'bg-slate-50 border-slate-200 text-slate-900'
                         }`}
                       >
                         {PRIORITIES.map((p) => (
@@ -958,7 +965,7 @@ export default function SupportPage() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 gap-3.5">
                     <div>
                       <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                         Referenced Docket / Trip / Bill #
@@ -968,63 +975,60 @@ export default function SupportPage() {
                         value={newRefCode}
                         onChange={(e) => setNewRefCode(e.target.value)}
                         placeholder="e.g. BK-2026-0042"
-                        className={`w-full text-xs font-semibold rounded-xl border px-3 py-2 outline-none ${
-                          isDark ? 'bg-slate-900 border-slate-800 text-slate-200' : 'bg-slate-50 border-slate-200'
+                        className={`w-full h-10 text-xs font-semibold rounded-xl border px-3.5 outline-none transition-all focus:border-blue-500 ${
+                          isDark ? 'bg-slate-900 border-slate-800 text-slate-200' : 'bg-slate-50 border-slate-200 text-slate-900'
                         }`}
                       />
                     </div>
 
                     <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
-                          Branch
-                        </label>
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 border border-amber-200/80 dark:border-amber-800/80 px-1.5 py-0.5 rounded-md shadow-2xs">
-                          <Lock className="w-2.5 h-2.5" />
-                          <span>Login Branch</span>
-                        </span>
-                      </div>
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        Branch
+                      </label>
 
-                      <div className="relative">
-                        <div
-                          className={`w-full flex items-center justify-between gap-2.5 rounded-xl border px-3 py-2 text-xs font-semibold select-none cursor-not-allowed ${
-                            isDark
-                              ? 'bg-slate-900/90 border-slate-800 text-slate-200'
-                              : 'bg-slate-100/90 border-slate-200 text-slate-700'
+                      {isTransporterAdmin && !userBranchId ? (
+                        <select
+                          value={newBranchId}
+                          onChange={(e) => setNewBranchId(e.target.value)}
+                          className={`w-full h-10 text-xs font-semibold rounded-xl border px-3 outline-none transition-all focus:border-blue-500 ${
+                            isDark ? 'bg-slate-900 border-slate-800 text-slate-200' : 'bg-slate-50 border-slate-200 text-slate-900'
                           }`}
-                          title="Locked to your assigned login branch"
                         >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <Building2 className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-                            <span className="font-mono font-bold text-[10.5px] uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-blue-100 dark:bg-blue-950/80 text-blue-700 dark:text-cyan-400 border border-blue-200 dark:border-blue-800 shrink-0 shadow-2xs">
+                          <option value="">Head Office / All Branches</option>
+                          {branches.map((b) => (
+                            <option key={b.id} value={b.id}>
+                              {b.branch_name || b.name} ({b.branch_code || b.code})
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <div className="relative">
+                          <div
+                            className={`w-full h-10 flex items-center justify-between gap-2.5 rounded-xl border px-3 text-xs font-semibold select-none ${
+                              isDark
+                                ? 'bg-slate-900/90 border-slate-800 text-slate-200'
+                                : 'bg-slate-100/90 border-slate-200 text-slate-700'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <Building2 className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                              <span className="font-bold text-xs text-slate-900 dark:text-white truncate">
+                                {activeLoginBranch?.branch_name || activeLoginBranch?.name || userBranchName || 'Assigned Branch'}
+                              </span>
+                            </div>
+
+                            <span className="font-mono font-bold text-[10.5px] uppercase tracking-wider px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-950/80 text-blue-700 dark:text-cyan-400 border border-blue-200 dark:border-blue-800 shrink-0 shadow-2xs">
                               {activeLoginBranch?.branch_code || activeLoginBranch?.code || userBranchCode || 'HUB'}
                             </span>
-                            <span className="font-bold text-xs text-slate-900 dark:text-white truncate">
-                              {activeLoginBranch?.branch_name || activeLoginBranch?.name || userBranchName || 'Assigned Branch'}
-                            </span>
-                            {(activeLoginBranch?.city || user?.city) && (
-                              <span className="text-[10.5px] text-slate-400 dark:text-slate-500 shrink-0 font-normal">
-                                • {activeLoginBranch?.city || user?.city}
-                              </span>
-                            )}
                           </div>
 
-                          <div className="flex items-center gap-1 shrink-0 text-slate-400">
-                            <Lock className="w-3.5 h-3.5" />
-                          </div>
+                          <input
+                            type="hidden"
+                            name="branch_id"
+                            value={newBranchId || activeLoginBranch?.id || ''}
+                          />
                         </div>
-
-                        {/* Hidden input to ensure value is preserved in form submission */}
-                        <input
-                          type="hidden"
-                          name="branch_id"
-                          value={newBranchId || activeLoginBranch?.id || ''}
-                        />
-                      </div>
-
-                      <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 flex items-center gap-1">
-                        <span>Requests are automatically routed to your assigned login branch.</span>
-                      </p>
+                      )}
                     </div>
                   </div>
 
@@ -1038,8 +1042,8 @@ export default function SupportPage() {
                       value={newDescription}
                       onChange={(e) => setNewDescription(e.target.value)}
                       placeholder="Explain the problem or requirement clearly so the transporter admin can action it..."
-                      className={`w-full text-xs font-semibold rounded-xl border p-3 outline-none ${
-                        isDark ? 'bg-slate-900 border-slate-800 text-slate-200' : 'bg-slate-50 border-slate-200'
+                      className={`w-full text-xs font-semibold rounded-xl border p-3 outline-none transition-all focus:border-blue-500 ${
+                        isDark ? 'bg-slate-900 border-slate-800 text-slate-200' : 'bg-slate-50 border-slate-200 text-slate-900'
                       }`}
                     />
                   </div>
@@ -1048,14 +1052,14 @@ export default function SupportPage() {
                     <button
                       type="button"
                       onClick={() => setIsNewTicketOpen(false)}
-                      className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                      className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                     >
                       Cancel
                     </button>
                     <button
                       type="submit"
                       disabled={submittingTicket}
-                      className="px-4 py-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white shadow-md shadow-blue-500/20"
+                      className="px-4 py-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white shadow-md shadow-blue-500/20 transition-all"
                     >
                       {submittingTicket ? 'Generating...' : 'Submit Ticket'}
                     </button>

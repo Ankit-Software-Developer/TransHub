@@ -152,19 +152,19 @@ const generateTokens = async (user, ipAddress = null, deviceInfo = null, databas
   const accessToken = jwt.sign(
     payload,
     process.env.JWT_ACCESS_SECRET || 'transporter_access_secret_super_secure_key_2026_xyz',
-    { expiresIn: process.env.JWT_ACCESS_EXPIRES || '15m' }
+    { expiresIn: process.env.JWT_ACCESS_EXPIRES || '24h' }
   );
 
   const rawRefreshToken = jwt.sign(
     payload,
     process.env.JWT_REFRESH_SECRET || 'transporter_refresh_secret_super_secure_key_2026_abc',
-    { expiresIn: process.env.JWT_REFRESH_EXPIRES || '7d' }
+    { expiresIn: process.env.JWT_REFRESH_EXPIRES || '30d' }
   );
 
   // Hash refresh token for storage (SHA-256 prevents bcrypt 72-byte truncation)
   const tokenHash = crypto.createHash('sha256').update(rawRefreshToken).digest('hex');
   const expiresAt = new Date();
-  expiresAt.setDate(expiresAt.getDate() + 7);
+  expiresAt.setDate(expiresAt.getDate() + 30);
 
   try {
     // 1. Clean up expired or revoked tokens so table never overflows
@@ -225,6 +225,7 @@ const register = async ({
   address = null,
   branchName = null,
   branchCode = null,
+  transporterType = 'BOTH',
   ipAddress = null,
   userAgent = null,
 }) => {
@@ -297,6 +298,10 @@ const register = async ({
     }, { transaction: t });
 
     // 2. Create Organization
+    const validTransporterType = ['FTL', 'PTL', 'BOTH'].includes(String(transporterType || '').toUpperCase().trim())
+      ? String(transporterType).toUpperCase().trim()
+      : 'BOTH';
+
     const organization = await Organization.create({
       tenant_id: tenant.id,
       business_name: businessName,
@@ -307,6 +312,7 @@ const register = async ({
         registered_plan: selectedPlan.plan_code,
         trial_duration_days: 30,
         trial_end_date: trialEnd.toISOString(),
+        transporterType: validTransporterType,
       },
     }, { transaction: t });
 
@@ -330,7 +336,7 @@ const register = async ({
     const finalBranchCity = (city || '').trim() || 'Head Office';
     const finalBranchState = (state || '').trim() || 'General';
     const finalBranchPincode = (pincode || '').trim() || '110001';
-    const finalBranchAddress = (address || '').trim() || 'Head Office Terminal';
+    const finalBranchAddress = (address || '').trim() || (finalBranchCity !== 'Head Office' ? `${finalBranchCity} Terminal / Transport Hub` : 'Head Office Terminal');
 
     // 4. Create Primary User in Master DB
     const user = await User.create({
@@ -518,6 +524,7 @@ const register = async ({
         roles: [adminRole.name],
         permissions: ['*'],
         documentTerminology: organization.document_terminology,
+        transporterType: validTransporterType,
         subscription: {
           id: subscription.id,
           planCode: selectedPlan.plan_code,
@@ -753,6 +760,7 @@ const login = async ({ email, password, ipAddress, userAgent }) => {
       tagline: orgData?.settings?.tagline || user.organization?.settings?.tagline || null,
       themeColor: orgData?.settings?.themeColor || user.organization?.settings?.themeColor || null,
       documentTerminology: orgData?.document_terminology || user.organization?.document_terminology || 'Bilty',
+      transporterType: orgData?.settings?.transporterType || user.organization?.settings?.transporterType || 'BOTH',
       branchId: activeBranchId,
       branchName,
       branchCode,
@@ -824,6 +832,23 @@ const refreshAccessToken = async (rawRefreshToken) => {
   }
 
   if (!matchedTokenRecord) {
+    // Check if this token was recently rotated (within 60s grace window for concurrent requests)
+    const recentlyRotated = await RefreshToken.findOne({
+      where: {
+        user_id: user.id,
+        token_hash: incomingHash,
+        is_revoked: true,
+        updated_at: {
+          [Op.gte]: new Date(Date.now() - 60 * 1000),
+        },
+      },
+    });
+
+    if (recentlyRotated) {
+      // Re-issue tokens gracefully for concurrent requests from the same user session
+      return generateTokens(user);
+    }
+
     // Possible token reuse attack - invalidate all user sessions
     await RefreshToken.update({ is_revoked: true }, { where: { user_id: user.id } });
     throw new Error('Refresh token reuse detected. Session terminated for security.');

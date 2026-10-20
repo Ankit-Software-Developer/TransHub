@@ -1359,8 +1359,10 @@ const getDailyCollectionReport = async (req, res) => {
           branchName: bName,
           paidBookingsCount: 0,
           paidCashAmount: 0,
+          bookedPaidCashAmount: 0,
           toPayDeliveriesCount: 0,
           toPayCashAmount: 0,
+          pendingToPayAmount: 0,
           tbbCount: 0,
           tbbAmount: 0,
           totalCollected: 0,
@@ -1384,19 +1386,19 @@ const getDailyCollectionReport = async (req, res) => {
         grouped[key].paidBookingsCount += 1;
         grouped[key].paidCashAmount += amt;
         grouped[key].totalCollected += amt;
+        // Physical cash collected at origin booking counter (enters drawer immediately upon booking)
+        if (!isDirectBank) {
+          grouped[key].bookedPaidCashAmount += amt;
+        } else {
+          grouped[key].directBankAmount += amt;
+        }
         if (isDelivered) {
           grouped[key].deliveredAmount += amt;
           grouped[key].deliveredPaidAmount += amt;
-          if (!isDirectBank) {
-            grouped[key].deliveredPaidCashAmount += amt;
-          } else {
-            grouped[key].directBankAmount += amt;
-          }
+          grouped[key].deliveredPaidCashAmount += (!isDirectBank ? amt : 0);
           grouped[key].deliveredDocketsCount += 1;
-          grouped[key].clearedAmount += amt;
-        } else {
-          grouped[key].pendingAmount += amt;
         }
+        grouped[key].clearedAmount += amt;
       } else if (isToPay) {
         grouped[key].toPayDeliveriesCount += 1;
         grouped[key].toPayCashAmount += amt;
@@ -1412,6 +1414,8 @@ const getDailyCollectionReport = async (req, res) => {
           grouped[key].deliveredDocketsCount += 1;
           grouped[key].clearedAmount += amt;
         } else {
+          // Awaiting delivery & collection from consignee at destination
+          grouped[key].pendingToPayAmount += amt;
           grouped[key].pendingAmount += amt;
         }
       } else if (isTbb) {
@@ -1749,27 +1753,32 @@ const getDailyCollectionReport = async (req, res) => {
     let gDeliveredAmount = 0;
     let gDeliveredPaidAmount = 0;
     let gDeliveredPaidCashAmount = 0;
+    let gBookedPaidCashAmount = 0;
     let gDeliveredTbbAmount = 0;
     let gDeliveredToPayAmount = 0;
     let gDeliveredToPayCashAmount = 0;
+    let gPendingToPayAmount = 0;
     let gDirectBankAmount = 0;
     let gDeliveredDocketsCount = 0;
     let gClearedRevenue = 0;
     let gPendingRevenue = 0;
-    const isDirectBankDeposit = (d) => {
+
+    // Distinguish between physical cash remitted from drawer vs direct bank receipts (NEFT / Doorstep UPI)
+    const isDrawerCashDeposit = (d) => {
       if (!d) return false;
       const mode = String(d.depositMode || d.deposit_mode || '').toUpperCase();
       const src = String(d.sourceType || '').toUpperCase();
       const rem = String(d.remarks || '').toUpperCase();
-      return mode === 'UPI' || mode === 'DIRECT_UPI' || mode === 'ONLINE' || mode === 'NET_BANKING' ||
-             src === 'DIRECT_UPI_DELIVERY' ||
-             rem.includes('BYPASSES BRANCH CASH DRAWER') ||
-             rem.includes('DIRECT UPI');
+      // TBB corporate payments are direct bank transfers (NEFT/RTGS) - never in branch cash drawer
+      if (src === 'TBB_INVOICE_PAYMENT') return false;
+      // Direct UPI at delivery bypasses branch cash drawer
+      if (src === 'DIRECT_UPI_DELIVERY' || mode === 'DIRECT_UPI' || (mode === 'UPI' && rem.includes('BYPASSES BRANCH CASH DRAWER'))) return false;
+      return mode === 'CASH_DEPOSIT' || mode === 'COUNTER_CASH' || mode === 'CASH' || mode === 'BANK_DEPOSIT' || mode === 'CDM';
     };
 
     let gRemittedTotalBank = depositTransactions.reduce((acc, d) => acc + (d.remittedAmount || 0), 0);
     let gRemittedCashFromDrawer = depositTransactions
-      .filter((d) => !isDirectBankDeposit(d))
+      .filter((d) => isDrawerCashDeposit(d))
       .reduce((acc, d) => acc + (d.remittedAmount || 0), 0);
 
     collectionRows.forEach((r) => {
@@ -1780,9 +1789,11 @@ const getDailyCollectionReport = async (req, res) => {
       gDeliveredAmount += (r.deliveredAmount || 0);
       gDeliveredPaidAmount += (r.deliveredPaidAmount || 0);
       gDeliveredPaidCashAmount += (r.deliveredPaidCashAmount || 0);
+      gBookedPaidCashAmount += (r.bookedPaidCashAmount || 0);
       gDeliveredTbbAmount += (r.deliveredTbbAmount || 0);
       gDeliveredToPayAmount += (r.deliveredToPayAmount || 0);
       gDeliveredToPayCashAmount += (r.deliveredToPayCashAmount || 0);
+      gPendingToPayAmount += (r.pendingToPayAmount || 0);
       gDirectBankAmount += (r.directBankAmount || 0);
       gDeliveredDocketsCount += (r.deliveredDocketsCount || 0);
       gClearedRevenue += r.clearedAmount;
@@ -1818,14 +1829,16 @@ const getDailyCollectionReport = async (req, res) => {
         r.remittedAmount = 0;
       }
 
-      // Physical cash remitted from drawer (excludes Direct UPI which already bypassed the drawer directly into corporate bank account)
-      const cashRemittedFromDrawer = (matchClosure && !isDirectBankDeposit(matchClosure))
+      // Physical cash remitted from drawer
+      const cashRemittedFromDrawer = (matchClosure && isDrawerCashDeposit(matchClosure))
         ? parseFloat(Number(matchClosure.remitted_amount || 0).toFixed(2))
         : 0;
       r.cashRemittedFromDrawer = cashRemittedFromDrawer;
 
-      // Pending in branch drawer awaiting deposit: Physical delivered cash minus actual physical cash remitted
-      r.pendingCash = parseFloat(Math.max(0, ((r.deliveredPaidCashAmount || 0) + (r.deliveredToPayCashAmount || 0)) - cashRemittedFromDrawer).toFixed(2));
+      // Pending in branch drawer awaiting deposit: Physical booked cash + delivered to-pay cash minus physical cash remitted
+      const physicalCashInDrawer = ((r.bookedPaidCashAmount || 0) + (r.deliveredToPayCashAmount || 0)) - cashRemittedFromDrawer;
+      r.pendingCash = parseFloat(Math.max(0, physicalCashInDrawer).toFixed(2));
+      r.branchDrawerCash = r.pendingCash;
     });
 
     // View Mode: 'DEPOSITS' (Bank Deposit Transactions list) vs 'DAILY_COLLECTIONS'
@@ -1860,7 +1873,9 @@ const getDailyCollectionReport = async (req, res) => {
           branchId: r.branchId,
           branchName: bName,
           paidCashAmount: 0,
+          bookedPaidCashAmount: 0,
           toPayCashAmount: 0,
+          pendingToPayAmount: 0,
           tbbAmount: 0,
           deliveredAmount: 0,
           deliveredPaidAmount: 0,
@@ -1882,7 +1897,9 @@ const getDailyCollectionReport = async (req, res) => {
         };
       }
       branchBreakdownMap[bKey].paidCashAmount += r.paidCashAmount;
+      branchBreakdownMap[bKey].bookedPaidCashAmount += (r.bookedPaidCashAmount || 0);
       branchBreakdownMap[bKey].toPayCashAmount += r.toPayCashAmount;
+      branchBreakdownMap[bKey].pendingToPayAmount += (r.pendingToPayAmount || 0);
       branchBreakdownMap[bKey].tbbAmount += r.tbbAmount;
       branchBreakdownMap[bKey].deliveredAmount += (r.deliveredAmount || 0);
       branchBreakdownMap[bKey].deliveredPaidAmount += (r.deliveredPaidAmount || 0);
@@ -1917,30 +1934,49 @@ const getDailyCollectionReport = async (req, res) => {
       clearedAmount: parseFloat(b.clearedAmount.toFixed(2)),
       pendingAmount: parseFloat(b.pendingAmount.toFixed(2)),
       remittedAmount: parseFloat(b.remittedAmount.toFixed(2)),
-      pendingCash: parseFloat(Math.max(0, ((b.deliveredPaidCashAmount || 0) + (b.deliveredToPayCashAmount || 0)) - (b.remittedDrawerCash || 0)).toFixed(2)),
-      drawerCash: parseFloat(Math.max(0, ((b.deliveredPaidCashAmount || 0) + (b.deliveredToPayCashAmount || 0)) - (b.remittedDrawerCash || 0)).toFixed(2)),
+      pendingCash: parseFloat(Math.max(0, ((b.bookedPaidCashAmount || 0) + (b.deliveredToPayCashAmount || 0)) - (b.remittedDrawerCash || 0)).toFixed(2)),
+      drawerCash: parseFloat(Math.max(0, ((b.bookedPaidCashAmount || 0) + (b.deliveredToPayCashAmount || 0)) - (b.remittedDrawerCash || 0)).toFixed(2)),
+      pendingToPayAmount: parseFloat((b.pendingToPayAmount || 0).toFixed(2)),
     }));
+
+    const totalBranchRev = gPaidAmount + gTbbAmount + gToPayAmount;
+    const totalDelivRev = gDeliveredAmount;
+    const totalUndelivRev = Math.max(0, totalBranchRev - totalDelivRev);
+    const totalDelivTbb = gDeliveredTbbAmount;
+    // Branch Drawer Cash includes Booked PAID cash + Delivered TO-PAY cash + Delivered TBB of booking branch
+    const totalBranchDrawerCash = Math.max(0, (gBookedPaidCashAmount + gDeliveredToPayCashAmount + totalDelivTbb) - gRemittedCashFromDrawer);
+    const totalPhysicalCashInDrawer = Math.max(0, (gBookedPaidCashAmount + gDeliveredToPayCashAmount) - gRemittedCashFromDrawer);
+    const totalDrawerMinusDep = Math.max(0, totalBranchDrawerCash - gRemittedTotalBank);
 
     const summary = {
       totalRecords: displayedRows.length,
-      totalBranchRevenue: parseFloat((gPaidAmount + gTbbAmount + gToPayAmount).toFixed(2)),
-      totalRevenue: parseFloat((gPaidAmount + gTbbAmount + gToPayAmount).toFixed(2)),
-      totalBookedRevenue: parseFloat((gPaidAmount + gTbbAmount + gToPayAmount).toFixed(2)),
-      totalDeliveredRevenue: parseFloat(gDeliveredAmount.toFixed(2)),
+      totalBranchRevenue: parseFloat(totalBranchRev.toFixed(2)),
+      totalRevenue: parseFloat(totalBranchRev.toFixed(2)),
+      totalBookedRevenue: parseFloat(totalBranchRev.toFixed(2)),
+      totalDeliveredRevenue: parseFloat(totalDelivRev.toFixed(2)),
+      totalUndeliveredRevenue: parseFloat(totalUndelivRev.toFixed(2)),
       totalDeliveredPaid: parseFloat(gDeliveredPaidAmount.toFixed(2)),
       totalDeliveredTbb: parseFloat(gDeliveredTbbAmount.toFixed(2)),
       totalDeliveredToPay: parseFloat(gDeliveredToPayAmount.toFixed(2)),
       totalDeliveredDocketsCount: gDeliveredDocketsCount,
       totalClearedRevenue: parseFloat(gClearedRevenue.toFixed(2)),
-      totalPendingRevenue: parseFloat(Math.max(0, (gPaidAmount + gTbbAmount + gToPayAmount) - gRemittedTotalBank).toFixed(2)),
-      totalPendingBranchRevenue: parseFloat(Math.max(0, (gDeliveredPaidCashAmount + gDeliveredToPayCashAmount) - gRemittedCashFromDrawer).toFixed(2)),
+      totalPendingRevenue: parseFloat(Math.max(0, totalBranchRev - gRemittedTotalBank).toFixed(2)),
+      totalPendingBranchRevenue: parseFloat(totalBranchDrawerCash.toFixed(2)),
       totalPaidCollected: parseFloat(gPaidAmount.toFixed(2)),
       totalToPayCollected: parseFloat(gToPayAmount.toFixed(2)),
       totalTbbAmount: parseFloat(gTbbAmount.toFixed(2)),
       totalCashCollected: parseFloat((gPaidAmount + gToPayAmount).toFixed(2)),
+      totalBookedPaidCash: parseFloat(gBookedPaidCashAmount.toFixed(2)),
+      totalDeliveredToPayCash: parseFloat(gDeliveredToPayCashAmount.toFixed(2)),
+      totalPhysicalCash: parseFloat(totalPhysicalCashInDrawer.toFixed(2)),
+      totalPendingToPay: parseFloat(gPendingToPayAmount.toFixed(2)),
       totalRemittedToBank: parseFloat(gRemittedTotalBank.toFixed(2)),
-      totalUnclosedCash: parseFloat(Math.max(0, (gDeliveredPaidCashAmount + gDeliveredToPayCashAmount) - gRemittedCashFromDrawer).toFixed(2)),
-      totalPendingInBranch: parseFloat(Math.max(0, (gDeliveredPaidCashAmount + gDeliveredToPayCashAmount) - gRemittedCashFromDrawer).toFixed(2)),
+      totalRemittedDrawerCash: parseFloat(gRemittedCashFromDrawer.toFixed(2)),
+      totalUnclosedCash: parseFloat(totalBranchDrawerCash.toFixed(2)),
+      totalPendingInBranch: parseFloat(totalBranchDrawerCash.toFixed(2)),
+      totalBranchDrawerCash: parseFloat(totalBranchDrawerCash.toFixed(2)),
+      totalDrawerMinusDeposits: parseFloat(totalDrawerMinusDep.toFixed(2)),
+      totalDueOutsideDrawer: parseFloat(Math.max(0, (totalBranchRev - gRemittedTotalBank) - totalPhysicalCashInDrawer).toFixed(2)),
       totalDepositsCount: depositTransactions.length,
       viewMode,
       depositTransactions,

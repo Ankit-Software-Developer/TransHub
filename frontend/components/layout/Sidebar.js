@@ -35,6 +35,7 @@ import {
   LifeBuoy
 } from 'lucide-react';
 import { usePermissions } from '../../hooks/usePermissions';
+import { useOperationsType } from '../../hooks/useOperationsType';
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -42,6 +43,7 @@ export default function Sidebar() {
   const user = useStore((state) => state.user);
   const { theme } = useTheme();
   const { isAdmin, isSuperAdmin, isBranchAssistant, isBA, isAuditor, canAccessRoute, canViewAudit, hasRole, hasPermission } = usePermissions();
+  const { isOnlyFTL, isOnlyPTL, isBoth, transporterType } = useOperationsType();
   const [collapsed, setCollapsed] = useState(false);
   const [pendingApprovals, setPendingApprovals] = useState(0);
   const [pendingTickets, setPendingTickets] = useState(0);
@@ -79,12 +81,12 @@ export default function Sidebar() {
 
   const navItems = isBA ? [
     { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-    { label: plural || 'Bookings', href: '/bookings', icon: FileText },
+    { label: 'Docket (LR / Bilties)', href: '/bookings', icon: FileText },
     { label: 'Deliveries & POD', href: '/deliveries', icon: CheckCircle2 },
     { label: 'Support & Helpdesk', href: '/support', icon: LifeBuoy, badge: pendingTickets },
   ] : (isBranchAssistant && !isAdmin) ? [
     { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-    { label: plural || 'Bookings', href: '/bookings', icon: FileText },
+    { label: 'Docket (LR / Bilties)', href: '/bookings', icon: FileText },
     { label: 'Load Planning', href: '/load-planning', icon: Boxes },
     { label: 'Unload Planning', href: '/unload-planning', icon: PackageCheck },
     { label: 'Dispatches', href: '/dispatches', icon: Route },
@@ -101,7 +103,7 @@ export default function Sidebar() {
     { label: 'Fleet Management', href: '/fleet', icon: Truck },
     { label: 'Customers', href: '/customers', icon: Users },
     { label: 'Staff & Team', href: '/staff', icon: UserCheck },
-    { label: plural || 'Bookings', href: '/bookings', icon: FileText },
+    { label: 'Docket (LR / Bilties)', href: '/bookings', icon: FileText },
     { label: 'Trips', href: '/trips', icon: Route },
     { label: 'Load Planning', href: '/load-planning', icon: Boxes },
     { label: 'Unload Planning', href: '/unload-planning', icon: PackageCheck },
@@ -176,11 +178,31 @@ export default function Sidebar() {
                     )}
                   </span>
                 </div>
-                <p className={`text-[10px] font-semibold tracking-wider uppercase truncate ${
-                  isDark ? 'text-slate-400' : 'text-slate-500'
-                }`}>
-                  {user?.tagline || 'Logistics Without Limits'}
-                </p>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span
+                    className={`inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[8.5px] font-black uppercase tracking-wider border shrink-0 leading-tight ${
+                      isOnlyFTL
+                        ? 'bg-purple-500/15 text-purple-600 dark:text-purple-300 border-purple-500/30'
+                        : isOnlyPTL
+                        ? 'bg-amber-500/15 text-amber-600 dark:text-amber-300 border-amber-500/30'
+                        : 'bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border-cyan-500/30'
+                    }`}
+                    title={
+                      isOnlyFTL
+                        ? 'Full Truckload Operations (FTL)'
+                        : isOnlyPTL
+                        ? 'Part Truckload Operations (PTL)'
+                        : 'Hybrid Operations (FTL + PTL)'
+                    }
+                  >
+                    {isOnlyFTL ? '🚛 FTL' : isOnlyPTL ? '📦 PTL' : '🔄 FTL+PTL'}
+                  </span>
+                  <p className={`text-[10px] font-semibold tracking-wider uppercase truncate ${
+                    isDark ? 'text-slate-400' : 'text-slate-500'
+                  }`}>
+                    {user?.tagline || 'Logistics'}
+                  </p>
+                </div>
               </div>
             </Link>
 
@@ -200,7 +222,14 @@ export default function Sidebar() {
 
       {/* Navigation List */}
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        {navItems.filter((item) => canAccessRoute(item.href)).map((item) => {
+        {navItems
+          .filter((item) => {
+            if (isOnlyFTL && (item.href === '/load-planning' || item.href === '/unload-planning')) {
+              return false;
+            }
+            return canAccessRoute(item.href);
+          })
+          .map((item) => {
           const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href));
           const Icon = item.icon;
 

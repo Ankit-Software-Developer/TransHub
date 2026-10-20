@@ -68,11 +68,26 @@ export default function BranchFilterDropdown({
     return map;
   }, [branchStats]);
 
+  // Normalize selectedBranchId to string ID or 'ALL'
+  const normalizedId = useMemo(() => {
+    if (!selectedBranchId) return 'ALL';
+    if (typeof selectedBranchId === 'object') {
+      if (!selectedBranchId.id || selectedBranchId.code === 'ALL' || selectedBranchId.id === 'ALL') {
+        return 'ALL';
+      }
+      return String(selectedBranchId.id);
+    }
+    if (selectedBranchId === 'ALL' || selectedBranchId === 'null' || selectedBranchId === 'undefined') {
+      return 'ALL';
+    }
+    return String(selectedBranchId);
+  }, [selectedBranchId]);
+
   // Find active branch
   const activeBranch = useMemo(() => {
-    if (!selectedBranchId || selectedBranchId === 'ALL') return null;
-    return branches.find((b) => String(b.id) === String(selectedBranchId)) || null;
-  }, [selectedBranchId, branches]);
+    if (normalizedId === 'ALL') return null;
+    return branches.find((b) => String(b.id) === normalizedId) || null;
+  }, [normalizedId, branches]);
 
   // Filtered branches list
   const filteredBranches = useMemo(() => {
@@ -96,16 +111,16 @@ export default function BranchFilterDropdown({
 
   // Label display for trigger button
   const displayLabel = useMemo(() => {
-    if (!selectedBranchId || selectedBranchId === 'ALL') {
+    if (normalizedId === 'ALL') {
       return allLabel;
     }
     if (activeBranch) {
-      return activeBranch.branch_name || activeBranch.name || 'Selected Branch';
+      return activeBranch.branch_name || activeBranch.name || allLabel;
     }
-    return 'Selected Branch';
-  }, [selectedBranchId, activeBranch, allLabel]);
+    return allLabel;
+  }, [normalizedId, activeBranch, allLabel]);
 
-  const isAllSelected = !selectedBranchId || selectedBranchId === 'ALL';
+  const isAllSelected = normalizedId === 'ALL';
 
   return (
     <div className={`relative inline-block text-left ${className}`} ref={dropdownRef}>

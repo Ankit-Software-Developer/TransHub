@@ -48,14 +48,14 @@ const login = async (req, res, next) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 15 * 60 * 1000, // 15 mins
+      maxAge: 24 * 60 * 60 * 1000, // 24 hours
     });
 
     res.cookie('refreshToken', result.refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
     });
 
     return successResponse(res, 'Login successful', result);
@@ -83,14 +83,14 @@ const refresh = async (req, res, next) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 15 * 60 * 1000,
+      maxAge: 24 * 60 * 60 * 1000, // 24 hours
     });
 
     res.cookie('refreshToken', tokens.refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
+      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
     });
 
     return successResponse(res, 'Token refreshed successfully', tokens);
@@ -230,6 +230,7 @@ const me = async (req, res) => {
     roles: req.userRoles,
     permissions: req.userPermissions,
     documentTerminology: orgData?.document_terminology || req.tenant?.documentTerminology || 'Bilty',
+    transporterType: orgData?.settings?.transporterType || 'BOTH',
     subscription: subscriptionData,
   });
 };
@@ -251,6 +252,7 @@ const register = async (req, res, next) => {
       address,
       branchName,
       branchCode,
+      transporterType,
     } = req.body;
 
     if (!fullName || !email || !password) {
@@ -275,6 +277,7 @@ const register = async (req, res, next) => {
       address,
       branchName,
       branchCode,
+      transporterType,
       ipAddress,
       userAgent,
     });
@@ -285,7 +288,7 @@ const register = async (req, res, next) => {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',
-        maxAge: 15 * 60 * 1000, // 15 mins
+        maxAge: 24 * 60 * 60 * 1000, // 24 hours
       });
     }
 
@@ -294,7 +297,7 @@ const register = async (req, res, next) => {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
       });
     }
 
