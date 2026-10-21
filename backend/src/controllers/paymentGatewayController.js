@@ -42,8 +42,8 @@ const generateUpiQr = async (req, res) => {
       }
     }
 
-    const effectiveVpa = (vpa || orgVpa || process.env.COMPANY_UPI_VPA || 'balajilogistics@hdfcbank').trim();
-    const effectivePayee = (payee_name || orgPayeeName || process.env.COMPANY_NAME || 'Balaji Logistics').trim();
+    const effectiveVpa = (vpa || orgVpa || process.env.COMPANY_UPI_VPA || (orgPayeeName ? `${orgPayeeName.toLowerCase().replace(/[^a-z0-9]/g, '')}@upi` : 'payments@upi')).trim();
+    const effectivePayee = (payee_name || orgPayeeName || process.env.COMPANY_NAME || 'TransHub Logistics').trim();
 
     const qrResult = await paymentGatewayService.generateDynamicUpiQr({
       amount: parseFloat(amount || 0),

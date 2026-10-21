@@ -214,18 +214,18 @@ export default function DispatchesPage() {
       <div className="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto">
         <Navbar />
 
-        <main className="flex-1 p-5 sm:p-6 lg:p-8 max-w-[1720px] mx-auto w-full space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
+        <main className="flex-1 p-3.5 sm:p-5 lg:p-6 xl:p-8 space-y-4 sm:space-y-6 w-full max-w-full">
+          <div className="flex items-start sm:items-center justify-between gap-3 sm:gap-4">
+            <div className="min-w-0 flex-1">
               <div className="flex items-center space-x-2.5">
-                <div className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-ping" />
-                <h1 className={`text-2xl sm:text-3xl font-black tracking-tight ${
+                <div className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-ping shrink-0" />
+                <h1 className={`text-base sm:text-lg lg:text-xl xl:text-2xl font-black tracking-tight ${
                   isDark ? 'text-white' : 'text-slate-900'
                 }`}>
                   Dispatch Challans & Gate Out
                 </h1>
               </div>
-              <p className={`text-xs sm:text-sm mt-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+              <p className={`text-xs lg:text-[13px] xl:text-sm mt-0.5 sm:mt-1 truncate sm:whitespace-normal ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                 Branch outbound line-haul dispatches and stamped challan manifests
               </p>
             </div>
@@ -233,7 +233,7 @@ export default function DispatchesPage() {
             {canCreateDispatch && (
               <Link
                 href="/load-planning"
-                className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md shadow-blue-600/30 transition-all active:scale-95"
+                className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md shadow-blue-600/30 transition-all active:scale-95 shrink-0 whitespace-nowrap"
               >
                 <Plus className="w-4 h-4" />
                 <span>Create New Dispatch</span>

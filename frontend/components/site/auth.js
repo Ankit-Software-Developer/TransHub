@@ -151,7 +151,7 @@ export function AuthLayout({ header, showcase, children }) {
       </main>
 
       <footer className="shrink-0 border-t border-[#E6ECF3]/80 bg-[#F9FBFD]/70 py-4 text-center text-xs text-[#5B6878] backdrop-blur-md lg:py-2.5 lg:text-[11px] dark:border-white/10 dark:bg-[#070C18]/70 dark:text-slate-500 lg:[@media(max-height:780px)]:hidden">
-        © {new Date().getFullYear()} TransHub TMS · Enterprise Multi-Tenant Transport Management
+        © {new Date().getFullYear()} TransHub TMS · Enterprise Transport Management & Logistics
       </footer>
     </div>
   );

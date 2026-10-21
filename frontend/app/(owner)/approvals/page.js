@@ -495,7 +495,7 @@ export default function ApprovalsPage() {
             </div>
             <h2 className="text-xl font-black">Super Admin Notice</h2>
             <p className="text-xs text-slate-400 max-w-md mt-2 leading-relaxed">
-              The Operational Approvals Center is for logistics tenant organizations and their branch networks. Platform Super Admin does not participate in tenant branch-level approvals.
+              The Operational Approvals Center is for logistics transport organizations and their branch networks. Platform Super Admin does not participate in transport branch-level approvals.
             </p>
           </main>
         </div>
@@ -510,36 +510,36 @@ export default function ApprovalsPage() {
       <div className="flex-1 flex flex-col h-screen overflow-y-auto min-w-0">
         <Navbar />
 
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 space-y-6 max-w-[1720px] mx-auto w-full">
+        <main className="flex-1 p-3.5 sm:p-5 lg:p-6 xl:p-8 space-y-4 sm:space-y-6 w-full max-w-full">
           {/* 1. Header Bar */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
+          <div className="flex items-start sm:items-center justify-between gap-3 sm:gap-4">
+            <div className="min-w-0 flex-1">
               <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-500 text-white shadow-lg shadow-blue-500/20">
+                <div className="p-2.5 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-500 text-white shadow-lg shadow-blue-500/20 shrink-0">
                   <ShieldCheck className="w-6 h-6" />
                 </div>
-                <div>
-                  <h1 className="text-xl sm:text-2xl font-black tracking-tight flex flex-wrap items-center gap-2">
+                <div className="min-w-0">
+                  <h1 className="text-base sm:text-lg lg:text-xl xl:text-2xl font-black tracking-tight flex flex-wrap items-center gap-2">
                     Approvals & Requests Center
-                    <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/30">
+                    <span className="hidden xl:inline-flex items-center px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/30 shrink-0">
                       Workflow Engine
                     </span>
                     {!isAdmin && userBranchId && (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30">
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30 shrink-0">
                         <Building2 className="w-3.5 h-3.5" />
                         <span>{userBranchName}: {userBranchCode}</span>
                         <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"></span>
                       </span>
                     )}
                   </h1>
-                  <p className={`text-xs sm:text-sm mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                  <p className={`text-xs sm:text-sm mt-0.5 truncate sm:whitespace-normal ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                     Hierarchical operational authorizations for branches, hubs, and executive head office
                   </p>
                 </div>
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-col sm:flex-row items-end sm:items-center gap-1.5 sm:gap-3 shrink-0">
               <button
                 onClick={() => { fetchCounters(); fetchRequests(); }}
                 className={`p-2.5 rounded-xl border text-xs font-semibold flex items-center gap-2 transition-all ${isDark
@@ -768,7 +768,7 @@ export default function ApprovalsPage() {
           <div className={`p-4 rounded-2xl border flex flex-col md:flex-row md:items-center justify-between gap-3 ${isDark ? 'bg-[#0B1020] border-slate-800/80' : 'bg-white border-slate-200'
             }`}>
             <div className="flex-1 relative">
-              <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
               <input
                 type="text"
                 value={search}

@@ -76,40 +76,40 @@ export default function BookingTrendChart({
     }`}>
       {/* Header with Title, Quick Stats, and Line/Bar Toggle */}
       <div className="flex-1 flex flex-col min-h-0">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
-          <div className="flex items-center space-x-2.5">
-            <div className={`p-2 rounded-xl border ${
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 mb-3">
+          <div className="flex items-center space-x-2.5 min-w-0">
+            <div className={`p-2 rounded-xl border shrink-0 ${
               isDark ? 'bg-cyan-500/10 border-cyan-500/20 text-cyan-400' : 'bg-blue-50 border-blue-200 text-blue-600'
             }`}>
               <Activity className="w-4 h-4" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className={`text-sm sm:text-base font-bold tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className={`text-sm sm:text-base font-bold tracking-tight whitespace-nowrap ${isDark ? 'text-white' : 'text-slate-900'}`}>
                   Booking Trend & Docket Velocity
                 </h3>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-500 dark:text-cyan-400 border border-blue-500/20 font-bold">
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-500 dark:text-cyan-400 border border-blue-500/20 font-bold shrink-0">
                   Last 7 Days
                 </span>
               </div>
-              <p className={`text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+              <p className={`text-[11px] truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                 Daily LR / Bilty creation patterns and consignment throughput
               </p>
             </div>
           </div>
 
           {/* Quick Metrics & Line vs Bar Switcher */}
-          <div className="flex items-center gap-2.5 self-start sm:self-center">
+          <div className="flex items-center gap-2 self-start lg:self-center flex-wrap sm:flex-nowrap shrink-0">
             {/* Stat Pill: Total Bookings */}
-            <div className={`px-3 py-1.5 rounded-xl border hidden md:flex items-center gap-2 ${
+            <div className={`px-3 py-1.5 rounded-xl border hidden sm:flex items-center gap-2 ${
               isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-100 border-slate-200'
             }`}>
               <span className={`text-[10px] uppercase font-bold tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Total</span>
               <span className={`font-mono font-black text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>{totalBookings}</span>
             </div>
 
-            {/* Stat Pill: Peak */}
-            <div className={`px-3 py-1.5 rounded-xl border hidden md:flex items-center gap-2 ${
+            {/* Stat Pill: Peak (Hidden on small/medium screens & 1024px laptops, visible on xl+ desktop) */}
+            <div className={`px-3 py-1.5 rounded-xl border hidden xl:flex items-center gap-2 ${
               isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-100 border-slate-200'
             }`}>
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />

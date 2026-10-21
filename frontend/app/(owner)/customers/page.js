@@ -1295,26 +1295,30 @@ export default function CustomersPage() {
       <div className="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto">
         <Navbar />
 
-        <main className="flex-1 p-5 sm:p-6 lg:p-8 max-w-[1720px] mx-auto w-full space-y-6">
+        <main className="flex-1 p-3.5 sm:p-5 lg:p-6 xl:p-8 space-y-4 sm:space-y-5 w-full max-w-full">
           {/* Header & Main Actions */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <div className="flex items-center space-x-2.5">
-                <div className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-ping" />
-                <h1 className={`text-2xl sm:text-3xl font-black tracking-tight ${
-                  isDark ? 'text-white' : 'text-slate-900'
-                }`}>
-                  Customer Master Directory
-                </h1>
+          <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3.5 sm:gap-4">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-500 text-white shadow-md shadow-blue-500/20 flex items-center justify-center shrink-0">
+                  <Users className="w-5 h-5 sm:w-6 sm:h-6" />
+                </div>
+                <div className="min-w-0">
+                  <h1 className={`text-base sm:text-lg lg:text-xl xl:text-2xl font-black tracking-tight text-balance sm:whitespace-nowrap ${
+                    isDark ? 'text-white' : 'text-slate-900'
+                  }`}>
+                    Customer Master Directory
+                  </h1>
+                  <p className={`text-xs sm:text-[13px] xl:text-sm mt-0.5 sm:mt-1 truncate sm:whitespace-normal ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                    {isAdmin
+                      ? 'Commercial clients, consignors, consignees, branch-wise credit caps, and corporate TBB contracts across all hubs.'
+                      : `Managing customers in ${userBranch?.branch_name || 'your local branch'} territory (PIN: ${userBranch?.pincode || 'Local Hub'}), with revolving credit cap up to ₹${(userBranch?.max_customer_credit_limit ? userBranch.max_customer_credit_limit / 100000 : 10).toFixed(0)} Lakhs.`}
+                  </p>
+                </div>
               </div>
-              <p className={`text-xs sm:text-sm mt-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                {isAdmin
-                  ? 'Commercial clients, consignors, consignees, branch-wise credit caps, and corporate TBB contracts across all hubs.'
-                  : `Managing customers in ${userBranch?.branch_name || 'your local branch'} territory (PIN: ${userBranch?.pincode || 'Local Hub'}), with revolving credit cap up to ₹${(userBranch?.max_customer_credit_limit ? userBranch.max_customer_credit_limit / 100000 : 10).toFixed(0)} Lakhs.`}
-              </p>
             </div>
 
-            <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 flex-wrap sm:flex-nowrap">
               {isAdmin && (
                 <BranchFilterDropdown
                   selectedBranchId={branchFilter}
@@ -1352,71 +1356,71 @@ export default function CustomersPage() {
           </div>
 
           {/* Top Summary Metrics: Multi-Branch & Revolving Credit Telemetry */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
             {/* Card 1: Total Directory Clients */}
-            <div className={`p-4 rounded-2xl border transition-all ${
+            <div className={`p-3 sm:p-3.5 xl:p-4 rounded-xl xl:rounded-2xl border transition-all ${
               isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-white border-slate-200'
             }`}>
-              <div className="flex items-center justify-between text-slate-400 mb-1">
-                <span className="text-[11px] font-bold uppercase tracking-wider">Directory Clients</span>
-                <Users className="w-4 h-4 text-blue-500" />
+              <div className="flex items-center justify-between text-slate-400 mb-0.5">
+                <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider">Directory Clients</span>
+                <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-500" />
               </div>
-              <div className="text-2xl font-black">{metaStats?.total_customers ?? totalCount}</div>
-              <div className="text-[10px] text-slate-400 mt-1">
+              <div className="text-xl sm:text-2xl font-black">{metaStats?.total_customers ?? totalCount}</div>
+              <div className="text-[10px] text-slate-400 mt-0.5 truncate">
                 Consignors & Consignees
               </div>
             </div>
 
             {/* Card 2: Corporate TBB Contract Accounts */}
-            <div className={`p-4 rounded-2xl border transition-all ${
+            <div className={`p-3 sm:p-3.5 xl:p-4 rounded-xl xl:rounded-2xl border transition-all ${
               isDark ? 'bg-slate-900/60 border-amber-500/20' : 'bg-amber-50/40 border-amber-200'
             }`}>
-              <div className="flex items-center justify-between text-amber-500 mb-1">
-                <span className="text-[11px] font-bold uppercase tracking-wider">TBB Contract Accounts</span>
-                <CreditCard className="w-4 h-4 text-amber-500" />
+              <div className="flex items-center justify-between text-amber-500 mb-0.5">
+                <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider">TBB Contract</span>
+                <CreditCard className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-500" />
               </div>
-              <div className="text-2xl font-black text-amber-500">
+              <div className="text-xl sm:text-2xl font-black text-amber-500">
                 {metaStats?.tbb_customers_count ?? 0}
               </div>
-              <div className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 mt-1">
-                ₹{(metaStats?.total_credit_assigned ? metaStats.total_credit_assigned / 100000 : 0).toFixed(1)} Lakhs Revolving Cap
+              <div className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 mt-0.5 truncate">
+                ₹{(metaStats?.total_credit_assigned ? metaStats.total_credit_assigned / 100000 : 0).toFixed(1)}L Revolving Cap
               </div>
             </div>
 
             {/* Card 3: Normal Commercial Clients */}
-            <div className={`p-4 rounded-2xl border transition-all ${
+            <div className={`p-3 sm:p-3.5 xl:p-4 rounded-xl xl:rounded-2xl border transition-all ${
               isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-white border-slate-200'
             }`}>
-              <div className="flex items-center justify-between text-slate-400 mb-1">
-                <span className="text-[11px] font-bold uppercase tracking-wider">Normal Clients</span>
-                <TrendingUp className="w-4 h-4 text-emerald-500" />
+              <div className="flex items-center justify-between text-slate-400 mb-0.5">
+                <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider">Normal Clients</span>
+                <TrendingUp className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-500" />
               </div>
-              <div className="text-2xl font-black text-emerald-500">
+              <div className="text-xl sm:text-2xl font-black text-emerald-500">
                 {metaStats?.normal_customers_count ?? metaStats?.spot_customers_count ?? totalCount}
               </div>
-              <div className="text-[10px] text-slate-400 mt-1">
-                Standard Cash / To-Pay (No Credit)
+              <div className="text-[10px] text-slate-400 mt-0.5 truncate">
+                Cash / To-Pay (No Credit)
               </div>
             </div>
 
             {/* Card 4: Branch Status / Active Scope */}
-            <div className={`p-4 rounded-2xl border transition-all ${
+            <div className={`p-3 sm:p-3.5 xl:p-4 rounded-xl xl:rounded-2xl border transition-all ${
               isDark ? 'bg-slate-900/60 border-purple-500/20' : 'bg-purple-50/40 border-purple-200'
             }`}>
-              <div className="flex items-center justify-between text-purple-400 mb-1">
-                <span className="text-[11px] font-bold uppercase tracking-wider">
-                  {isAdmin ? 'Branch Network' : 'Your Assigned Hub'}
+              <div className="flex items-center justify-between text-purple-400 mb-0.5">
+                <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider truncate">
+                  {isAdmin ? 'Branch Network' : 'Your Hub'}
                 </span>
-                <Building2 className="w-4 h-4 text-purple-500" />
+                <Building2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-purple-500 shrink-0" />
               </div>
-              <div className="text-sm font-bold truncate">
+              <div className="text-xs sm:text-sm font-bold truncate">
                 {isAdmin
                   ? `${branches.length} Operational Hubs`
                   : userBranch?.branch_name || 'Branch Manager Hub'}
               </div>
-              <div className="text-[10px] text-purple-500/90 font-mono mt-1 truncate">
+              <div className="text-[10px] text-purple-500/90 font-mono mt-0.5 truncate">
                 {isAdmin
-                  ? 'Admin View: All Branches'
+                  ? 'All Branches'
                   : `PIN: ${userBranch?.pincode || '—'} • Cap: ₹${(userBranch?.max_customer_credit_limit ? userBranch.max_customer_credit_limit / 100000 : 10).toFixed(0)}L`}
               </div>
             </div>
@@ -1451,39 +1455,105 @@ export default function CustomersPage() {
             branchFilterable={false}
 
             filtersSlot={
-              <div className="space-y-2.5 w-full pt-1">
-                {/* Secondary Filter Row: Branch Territory (Branch Mgr) + Billing Modes */}
-                <div className="flex flex-wrap items-center justify-between gap-2.5">
-                  <div className="flex flex-wrap items-center gap-2">
-                    {/* If Branch Manager, display active branch territory indicator */}
-                    {!isAdmin && userBranch && (
-                      <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-bold ${
-                        isDark
-                          ? 'bg-slate-900/90 border-slate-800 text-slate-300'
-                          : 'bg-white border-slate-200 text-slate-700 shadow-xs'
-                      }`}>
-                        <MapPin className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-                        <span className="text-slate-400 font-medium">Branch Territory:</span>
-                        <span className="font-bold text-blue-600 dark:text-cyan-400">{userBranch.branch_name}</span>
-                        <span className="text-[11px] font-mono text-slate-400">[{userBranch.pincode || 'Local Hub'}]</span>
-                      </div>
-                    )}
-                  </div>
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 text-xs font-bold w-full">
+                {/* Left: Customer Role Filters */}
+                <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5 shrink min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => { setTypeFilter('ALL'); setPage(1); }}
+                    className={`px-2.5 py-1.5 rounded-xl transition-all cursor-pointer whitespace-nowrap shrink-0 flex items-center gap-1.5 ${
+                      typeFilter === 'ALL'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : isDark
+                        ? 'bg-slate-900 text-slate-400 hover:text-white'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    <span>All Roles</span>
+                    <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
+                      typeFilter === 'ALL'
+                        ? 'bg-white/20 text-white'
+                        : isDark
+                        ? 'bg-slate-800 text-slate-400'
+                        : 'bg-slate-200 text-slate-600'
+                    }`}>
+                      {totalCount}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setTypeFilter('CONSIGNOR'); setPage(1); }}
+                    className={`px-2.5 py-1.5 rounded-xl transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+                      typeFilter === 'CONSIGNOR'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : isDark
+                        ? 'bg-slate-900 text-slate-400 hover:text-white'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    <span>Consignors</span>
+                    <span className="hidden xl:inline"> (Shippers)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setTypeFilter('CONSIGNEE'); setPage(1); }}
+                    className={`px-2.5 py-1.5 rounded-xl transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+                      typeFilter === 'CONSIGNEE'
+                        ? 'bg-cyan-500 text-slate-950 font-black shadow-xs'
+                        : isDark
+                        ? 'bg-slate-900 text-slate-400 hover:text-white'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    <span>Consignees</span>
+                    <span className="hidden xl:inline"> (Receivers)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setTypeFilter('BOTH'); setPage(1); }}
+                    className={`px-2.5 py-1.5 rounded-xl transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+                      typeFilter === 'BOTH'
+                        ? 'bg-purple-600 text-white shadow-xs'
+                        : isDark
+                        ? 'bg-slate-900 text-slate-400 hover:text-white'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    <span>Dual Role</span>
+                    <span className="hidden xl:inline"> (Both)</span>
+                  </button>
+                </div>
 
-                  {/* Billing Mode Quick Filter */}
-                  <div className="flex items-center gap-1.5 text-xs font-bold">
-                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1 hidden sm:inline">
+                {/* Right: Branch Territory (if non-admin) + Billing Mode Quick Filters (Corner Docked!) */}
+                <div className="flex items-center gap-2 shrink-0 md:ml-auto overflow-x-auto scrollbar-none py-0.5">
+                  {!isAdmin && userBranch && (
+                    <div className={`flex items-center gap-1.5 px-2 py-1 rounded-xl border text-xs font-bold shrink-0 ${
+                      isDark
+                        ? 'bg-slate-900/90 border-slate-800 text-slate-300'
+                        : 'bg-white border-slate-200 text-slate-700 shadow-xs'
+                    }`}>
+                      <MapPin className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                      <span className="text-slate-400 font-medium hidden sm:inline">Territory:</span>
+                      <span className="font-bold text-blue-600 dark:text-cyan-400">{userBranch.branch_name}</span>
+                    </div>
+                  )}
+
+                  {/* Billing Mode Segmented Capsule */}
+                  <div className={`flex items-center p-0.5 rounded-xl border gap-0.5 text-xs font-bold shrink-0 ${
+                    isDark ? 'bg-slate-950/70 border-slate-800' : 'bg-slate-100/90 border-slate-200/90'
+                  }`}>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2 hidden lg:inline">
                       Billing:
                     </span>
                     <button
                       type="button"
                       onClick={() => { setBillingFilter('ALL'); setPage(1); }}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
                         billingFilter === 'ALL'
                           ? 'bg-blue-600 text-white shadow-xs'
                           : isDark
-                          ? 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'
-                          : 'bg-white border border-slate-200 text-slate-600 hover:text-slate-900'
+                          ? 'text-slate-400 hover:text-white'
+                          : 'text-slate-600 hover:text-slate-900'
                       }`}
                     >
                       All
@@ -1491,12 +1561,12 @@ export default function CustomersPage() {
                     <button
                       type="button"
                       onClick={() => { setBillingFilter('TBB'); setPage(1); }}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 border ${
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 whitespace-nowrap shrink-0 ${
                         billingFilter === 'TBB'
-                          ? 'bg-amber-500 text-white border-amber-600 shadow-xs'
+                          ? 'bg-amber-500 text-white shadow-xs'
                           : isDark
-                          ? 'bg-slate-900 border-slate-800 text-slate-400 hover:text-amber-400'
-                          : 'bg-white border-slate-200 text-slate-600 hover:text-amber-600'
+                          ? 'text-slate-400 hover:text-amber-400'
+                          : 'text-slate-600 hover:text-amber-600'
                       }`}
                     >
                       <span>⭐ TBB Credit</span>
@@ -1511,12 +1581,12 @@ export default function CustomersPage() {
                     <button
                       type="button"
                       onClick={() => { setBillingFilter('NORMAL'); setPage(1); }}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 border ${
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 whitespace-nowrap shrink-0 ${
                         billingFilter === 'NORMAL' || billingFilter === 'SPOT'
-                          ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs'
+                          ? 'bg-emerald-600 text-white shadow-xs'
                           : isDark
-                          ? 'bg-slate-900 border-slate-800 text-slate-400 hover:text-emerald-400'
-                          : 'bg-white border-slate-200 text-slate-600 hover:text-emerald-600'
+                          ? 'text-slate-400 hover:text-emerald-400'
+                          : 'text-slate-600 hover:text-emerald-600'
                       }`}
                     >
                       <span>📦 Normal</span>
@@ -1529,62 +1599,6 @@ export default function CustomersPage() {
                       )}
                     </button>
                   </div>
-                </div>
-
-                {/* Row 2: Customer Role Filters (Consignor, Consignee, Both) */}
-                <div className="flex flex-wrap items-center gap-1.5 text-xs font-bold pt-1 border-t border-slate-200 dark:border-slate-800">
-                  <button
-                    type="button"
-                    onClick={() => { setTypeFilter('ALL'); setPage(1); }}
-                    className={`px-3 py-1.5 rounded-xl transition-all ${
-                      typeFilter === 'ALL'
-                        ? 'bg-blue-600 text-white shadow-sm'
-                        : isDark
-                        ? 'bg-slate-900 text-slate-400 hover:text-white'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                    }`}
-                  >
-                    All Roles ({totalCount})
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setTypeFilter('CONSIGNOR'); setPage(1); }}
-                    className={`px-3 py-1.5 rounded-xl transition-all ${
-                      typeFilter === 'CONSIGNOR'
-                        ? 'bg-blue-600 text-white shadow-sm'
-                        : isDark
-                        ? 'bg-slate-900 text-slate-400 hover:text-white'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                    }`}
-                  >
-                    Consignors (Shippers)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setTypeFilter('CONSIGNEE'); setPage(1); }}
-                    className={`px-3 py-1.5 rounded-xl transition-all ${
-                      typeFilter === 'CONSIGNEE'
-                        ? 'bg-cyan-500 text-slate-950 font-black shadow-sm'
-                        : isDark
-                        ? 'bg-slate-900 text-slate-400 hover:text-white'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                    }`}
-                  >
-                    Consignees (Receivers)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setTypeFilter('BOTH'); setPage(1); }}
-                    className={`px-3 py-1.5 rounded-xl transition-all ${
-                      typeFilter === 'BOTH'
-                        ? 'bg-purple-600 text-white shadow-sm'
-                        : isDark
-                        ? 'bg-slate-900 text-slate-400 hover:text-white'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                    }`}
-                  >
-                    Dual Role (Both)
-                  </button>
                 </div>
               </div>
             }

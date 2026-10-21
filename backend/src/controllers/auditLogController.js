@@ -53,7 +53,7 @@ const autoSeedAuditIfEmpty = async ({ AuditLogModel, models, tenantId, organizat
     const performerName = (user?.first_name || user?.last_name)
       ? `${user.first_name || ''} ${user.last_name || ''}`.trim()
       : (user?.name || 'Administrator');
-    const performerEmail = user?.email || 'admin@balajilogistic.com';
+    const performerEmail = user?.email || 'admin@transhub.in';
     const performerRole = 'ADMIN';
     const performerMeta = { id: user?.id || null, name: performerName, email: performerEmail, role: performerRole };
 
@@ -221,7 +221,7 @@ const autoSeedAuditIfEmpty = async ({ AuditLogModel, models, tenantId, organizat
       old_values: null,
       new_values: {
         _summary: 'Configured transport organization profile, GST compliance & operational rules',
-        _entity_name: 'Balaji Logistics Enterprise',
+        _entity_name: 'Transport Enterprise Profile',
         _performer: performerMeta,
         settings_version: 'v2.4',
         status: 'ACTIVE',

@@ -29,6 +29,17 @@ const updateTerminology = async (req, res) => {
       await org.update({ document_terminology: terminology });
     }
 
+    // Also update in master DB Organization to keep master & auth token in sync
+    const { Organization: MasterOrg } = require('../models');
+    if (MasterOrg && OrganizationModel !== MasterOrg) {
+      try {
+        await MasterOrg.update(
+          { document_terminology: terminology },
+          { where: { id: req.tenant.organizationId } }
+        );
+      } catch (_) {}
+    }
+
     return successResponse(res, `Document terminology updated to ${terminology}`, org);
   } catch (error) {
     return errorResponse(res, error.message, null, 500);

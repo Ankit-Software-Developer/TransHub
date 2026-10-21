@@ -28,7 +28,7 @@ module.exports = (sequelize) => {
       type: DataTypes.STRING(30),
     },
     vehicle_type: {
-      type: DataTypes.ENUM('TRUCK', 'MINI_TRUCK', 'TRAILER', 'CONTAINER', 'PICKUP', 'TEMPO', 'OTHER'),
+      type: DataTypes.STRING(50),
       defaultValue: 'TRUCK',
     },
     ownership: {

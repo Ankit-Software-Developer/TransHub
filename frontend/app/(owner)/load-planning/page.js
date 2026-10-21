@@ -1180,22 +1180,22 @@ export default function LoadPlanningPage() {
       <div className="flex-1 flex flex-col min-w-0">
         <Navbar />
 
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 space-y-6 max-w-[1720px] mx-auto w-full">
+        <main className="flex-1 p-3.5 sm:p-5 lg:p-6 xl:p-8 space-y-4 sm:space-y-6 w-full max-w-full">
 
           {/* Header Action Bar */}
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-            <div>
+          <div className="flex items-start sm:items-center justify-between gap-3 sm:gap-4">
+            <div className="min-w-0 flex-1">
               <div className="flex items-center space-x-3">
                 <div className={`p-2.5 rounded-2xl ${
                   operationMode === 'FTL'
                     ? 'bg-gradient-to-tr from-purple-600 to-indigo-600 shadow-purple-500/20'
                     : 'bg-gradient-to-tr from-cyan-500 to-blue-600 shadow-cyan-500/20'
                 } text-white shadow-lg shrink-0`}>
-                  {operationMode === 'FTL' ? <Truck className="w-6 h-6" /> : <Boxes className="w-6 h-6" />}
+                  {operationMode === 'FTL' ? <Truck className="w-5 h-5 sm:w-6 sm:h-6" /> : <Boxes className="w-5 h-5 sm:w-6 sm:h-6" />}
                 </div>
-                <div>
+                <div className="min-w-0">
                   <div className="flex items-center gap-2.5 flex-wrap">
-                    <h1 className={`text-xl sm:text-2xl font-black tracking-tight ${isDark ? 'text-white' : 'text-slate-900'
+                    <h1 className={`text-base sm:text-lg lg:text-xl xl:text-2xl font-black tracking-tight ${isDark ? 'text-white' : 'text-slate-900'
                       }`}>
                       {operationMode === 'FTL' ? 'FTL Dedicated Vehicle Dispatch' : 'Load Planning & Dispatch Operations'}
                     </h1>
@@ -1210,7 +1210,7 @@ export default function LoadPlanningPage() {
                       {operationMode === 'FTL' ? 'FTL Dispatch' : 'Live Operations'}
                     </span>
                   </div>
-                  <p className={`text-xs mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                  <p className={`text-xs mt-0.5 truncate sm:whitespace-normal ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                     {operationMode === 'FTL'
                       ? 'Point-to-point dedicated vehicle allocation, driver assignment, and trip dispatch.'
                       : 'Photorealistic 3D cargo stowage, fleet allocation, and trip manifest dispatch.'}
@@ -1220,7 +1220,7 @@ export default function LoadPlanningPage() {
             </div>
 
             {/* Branch Context & Operational Actions */}
-            <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <div className="flex flex-col sm:flex-row items-end sm:items-center gap-1.5 sm:gap-2 shrink-0">
               {/* Branch Selector: only for multi-branch admins who can switch origin docks */}
               {!isRestrictedBranchUser && (
                 <BranchFilterDropdown
@@ -1470,13 +1470,13 @@ export default function LoadPlanningPage() {
 
                 {/* Instant Search Bar */}
                 <div className="relative my-3 shrink-0">
-                  <Search className={`w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 ${isDark ? 'text-slate-500' : 'text-slate-400'}`} />
+                  <Search className={`w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none ${isDark ? 'text-slate-500' : 'text-slate-400'}`} />
                   <input
                     type="text"
                     placeholder="Search by LR#, Shipper, City..."
                     value={searchFilter}
                     onChange={(e) => setSearchFilter(e.target.value)}
-                    className={`w-full pl-8 pr-3 py-1.5 text-xs rounded-xl border focus:outline-none transition-all ${
+                    className={`w-full pl-9 pr-3 py-1.5 text-xs rounded-xl border focus:outline-none transition-all ${
                       isDark ? 'bg-slate-900/80 border-slate-700 text-white placeholder-slate-500 focus:border-purple-400' : 'bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400 focus:border-purple-600'
                     }`}
                   />
@@ -2121,7 +2121,7 @@ export default function LoadPlanningPage() {
 
                   {/* Search input */}
                   <div className="relative my-3 shrink-0">
-                    <Search className={`w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 ${
+                    <Search className={`w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none ${
                       isDark ? 'text-slate-500' : 'text-slate-400'
                     }`} />
                     <input
@@ -2129,7 +2129,7 @@ export default function LoadPlanningPage() {
                       placeholder="Search FTL by LR#, Shipper, Consignee, City..."
                       value={ftlSearchFilter}
                       onChange={(e) => setFtlSearchFilter(e.target.value)}
-                      className={`w-full pl-8 pr-8 py-2 text-xs rounded-xl border focus:outline-none focus:ring-1 focus:ring-purple-500 transition-colors ${
+                      className={`w-full pl-9 pr-8 py-2 text-xs rounded-xl border focus:outline-none focus:ring-1 focus:ring-purple-500 transition-colors ${
                         isDark ? 'bg-slate-900/80 border-slate-700 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400'
                       }`}
                     />
@@ -2922,7 +2922,7 @@ export default function LoadPlanningPage() {
                       type="text"
                       value={marketForm.owner_name}
                       onChange={(e) => setMarketForm({ ...marketForm, owner_name: e.target.value })}
-                      placeholder="e.g. Balaji Roadways"
+                      placeholder="e.g. Associated Transporter / Fleet Vendor"
                       className={`w-full px-3 py-2 rounded-xl text-xs border focus:outline-none transition-all ${isDark
                           ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
                           : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 shadow-sm'

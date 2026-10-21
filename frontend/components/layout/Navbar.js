@@ -31,6 +31,7 @@ import {
   CloudSun,
   Clock,
   Settings as SettingsIcon,
+  Menu,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -71,7 +72,7 @@ export default function Navbar() {
   const router = useRouter();
   const { user, logout } = useAuth();
   const { isAdmin } = usePermissions();
-  const { activeBranch, setActiveBranch, dateFilter, setDateFilter, toggleSearchModal, isFleetCommsOpen, toggleFleetComms } = useStore();
+  const { activeBranch, setActiveBranch, dateFilter, setDateFilter, toggleSearchModal, isFleetCommsOpen, toggleFleetComms, toggleMobileSidebar } = useStore();
   const { theme } = useTheme();
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showAlertsDropdown, setShowAlertsDropdown] = useState(false);
@@ -227,18 +228,28 @@ export default function Navbar() {
 
   return (
     <>
-      <header className={`h-16 py-[2px] px-4 sm:px-6 flex items-center justify-between gap-4 sticky top-0 z-40 border-b backdrop-blur-xl transition-colors ${
+      <header className={`h-16 py-[2px] px-4 sm:px-6 flex items-center justify-between gap-4 sticky top-0 z-50 border-b backdrop-blur-xl transition-colors ${
         isDark
           ? 'bg-[#090D18]/95 border-slate-800 text-white shadow-xs'
           : 'bg-white/95 border-slate-200 text-slate-800 shadow-[0_1px_3px_rgba(0,0,0,0.04)]'
       }`}>
-        {/* Left: Organization / Operational Context */}
-        <div className="flex items-center space-x-3 shrink-0">
-          <div className="flex items-center gap-2 px-3 py-1 rounded-xl bg-slate-100/80 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800 text-xs">
+        {/* Left: Mobile Hamburger Toggle + Organization / Operational Context */}
+        <div className="flex items-center space-x-2 sm:space-x-3 shrink-0">
+          <button
+            type="button"
+            onClick={toggleMobileSidebar}
+            className="md:hidden p-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100/90 dark:bg-slate-900/90 text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-cyan-400 hover:border-blue-400 dark:hover:border-cyan-500/50 transition-colors cursor-pointer shrink-0 shadow-xs"
+            aria-label="Toggle navigation menu"
+            title="Open Menu"
+          >
+            <Menu className="w-4 h-4 sm:w-5 sm:h-5" />
+          </button>
+
+          <div className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1 rounded-xl bg-slate-100/80 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800 text-xs">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-            <span className="text-slate-500 dark:text-slate-400 font-medium">Workspace:</span>
-            <span className="font-bold text-slate-800 dark:text-slate-200 truncate max-w-[150px] sm:max-w-[200px]">
-              {user?.businessName || user?.organizationName || 'balajilogistic'}
+            <span className="text-slate-500 dark:text-slate-400 font-medium hidden sm:inline">Workspace:</span>
+            <span className="font-bold text-slate-800 dark:text-slate-200 truncate max-w-[100px] xs:max-w-[140px] sm:max-w-[200px]">
+              {user?.businessName || user?.organizationName || 'TransHub'}
             </span>
           </div>
         </div>

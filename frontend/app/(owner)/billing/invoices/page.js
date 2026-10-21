@@ -2493,49 +2493,37 @@ export default function InvoicesMasterPage() {
         <div className="flex-1 flex flex-col min-w-0">
           <Navbar />
 
-          <main className="flex-1 p-5 sm:p-6 lg:p-8 space-y-6 max-w-[1720px] mx-auto w-full">
+          <main className="flex-1 p-3.5 sm:p-5 lg:p-6 xl:p-8 space-y-4 sm:space-y-5 lg:space-y-6 w-full max-w-full">
             
-            {/* Header Action Bar */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
+            {/* Header Action Bar: 80% Heading & 20% Corner Actions */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
+              <div className="w-full sm:w-[75%] lg:w-[80%] min-w-0">
                 <div className="flex items-center space-x-2.5">
-                  <Receipt className="w-6 h-6 text-cyan-400" />
-                  <h1 className={`text-2xl sm:text-3xl font-black tracking-tight ${
+                  <Receipt className="w-5 h-5 sm:w-6 sm:h-6 text-cyan-400 shrink-0" />
+                  <h1 className={`text-base sm:text-lg lg:text-xl xl:text-2xl font-black tracking-tight whitespace-nowrap ${
                     isDark ? 'text-white' : 'text-slate-900'
                   }`}>
                     GST Freight Billing & Invoices
                   </h1>
                 </div>
-                <p className={`text-xs sm:text-sm mt-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                <p className={`text-xs lg:text-[13px] xl:text-sm mt-0.5 sm:mt-1 truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                   Operational TBB credit billing, delivery branch reconciliation, and customer receivables.
                 </p>
               </div>
 
-              <div className="flex items-center space-x-3">
-                <button
-                  onClick={loadDatabaseRecords}
-                  className={`p-2 rounded-xl border text-xs font-bold transition-all ${
-                    isDark
-                      ? 'bg-slate-900/80 border-slate-800 text-slate-300 hover:text-white'
-                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                  }`}
-                  title="Refresh Database Records"
-                >
-                  <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-cyan-400' : ''}`} />
-                </button>
-
+              <div className="w-full sm:w-[25%] lg:w-[20%] flex items-center justify-start sm:justify-end gap-1.5 sm:gap-2 shrink-0">
                 {canExport && (
                   <button
                     onClick={handleExportGstr1}
-                    className={`flex items-center space-x-2 px-3.5 py-2 rounded-xl border text-xs font-bold transition-all ${
+                    className={`flex items-center space-x-1 px-2.5 sm:px-3 py-2 rounded-xl border text-xs font-bold transition-all shrink-0 whitespace-nowrap cursor-pointer ${
                       isDark
                         ? 'bg-slate-900/80 border-slate-800 text-slate-300 hover:text-white hover:border-cyan-500'
                         : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-xs'
                     }`}
                     title="Export official GSTR-1 Outward B2B Supply Sheet"
                   >
-                    <Download className="w-4 h-4 text-cyan-400" />
-                    <span className="hidden sm:inline">Export GSTR-1</span>
+                    <Download className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                    <span>Export GSTR-1</span>
                   </button>
                 )}
 
@@ -2547,11 +2535,11 @@ export default function InvoicesMasterPage() {
                       setWizardPaymentFilter('ALL');
                       setIsGenerateModalOpen(true);
                     }}
-                    className="flex items-center space-x-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 transition-all active:scale-95"
+                    className="flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 transition-all active:scale-95 shrink-0 whitespace-nowrap cursor-pointer"
                     title="Consolidate multiple delivered dockets into a single monthly invoice for corporate clients"
                   >
-                    <Layers className="w-4 h-4" />
-                    <span>+ Batch / Consolidated Invoice</span>
+                    <Layers className="w-4 h-4 shrink-0" />
+                    <span>+ Batch Invoice</span>
                   </button>
                 )}
               </div>
@@ -2559,7 +2547,7 @@ export default function InvoicesMasterPage() {
 
             {/* Feedback Toast */}
             {toastMessage && (
-              <div className={`p-3.5 rounded-2xl border text-xs font-semibold flex items-center space-x-2.5 shadow-md animate-in fade-in ${
+              <div className={`p-3 rounded-xl border text-xs font-semibold flex items-center space-x-2.5 shadow-md animate-in fade-in ${
                 toastMessage.type === 'error'
                   ? 'bg-rose-500/10 border-rose-500/30 text-rose-500 dark:text-rose-400'
                   : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
@@ -2570,19 +2558,19 @@ export default function InvoicesMasterPage() {
             )}
 
             {/* Top 6 Financial KPIs (Including Live Unbilled TBB Credit) */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2.5 sm:gap-3.5">
               {/* Card 1: Total Invoiced */}
               <div
                 onClick={() => setActiveTab('INVOICES')}
-                className={`p-4 rounded-2xl border cursor-pointer transition-all hover:scale-[1.01] ${
+                className={`p-3 sm:p-3.5 lg:p-4 rounded-2xl border cursor-pointer transition-all hover:scale-[1.01] ${
                   activeTab === 'INVOICES' ? 'ring-2 ring-blue-500/40' : ''
                 } ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}
               >
-                <div className="text-[11px] font-semibold text-slate-400 mb-1">Total Invoiced</div>
-                <div className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white font-mono">
+                <div className="text-[11px] font-semibold text-slate-400 mb-0.5 sm:mb-1">Total Invoiced</div>
+                <div className="text-lg sm:text-xl lg:text-2xl font-black text-slate-900 dark:text-white font-mono">
                   ₹ {kpis.totalInvoiced.toLocaleString('en-IN')}
                 </div>
-                <div className="text-[10px] text-slate-400 mt-1">
+                <div className="text-[10px] text-slate-400 mt-0.5 sm:mt-1 truncate">
                   {invoiceCounts.totalActive} Active {invoiceCounts.cancelled > 0 ? `(${invoiceCounts.cancelled} Cancelled)` : 'Invoices'}
                 </div>
               </div>
@@ -2590,30 +2578,30 @@ export default function InvoicesMasterPage() {
               {/* Card 2: Unbilled TBB Dockets */}
               <div
                 onClick={() => setIsGenerateModalOpen(true)}
-                className={`p-4 rounded-2xl border cursor-pointer transition-all hover:scale-[1.01] ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}
+                className={`p-3 sm:p-3.5 lg:p-4 rounded-2xl border cursor-pointer transition-all hover:scale-[1.01] ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}
                 title="Delivered TBB consignments waiting for invoice generation"
               >
-                <div className="text-[11px] font-semibold text-purple-600 dark:text-purple-400 mb-1 flex items-center justify-between">
+                <div className="text-[11px] font-semibold text-purple-600 dark:text-purple-400 mb-0.5 sm:mb-1 flex items-center justify-between">
                   <span>Unbilled TBB Dockets</span>
                   {kpis.unbilledTbbCount > 0 && (
                     <span className="w-2 h-2 rounded-full bg-purple-500 animate-ping" />
                   )}
                 </div>
-                <div className="text-xl sm:text-2xl font-black text-purple-600 dark:text-purple-400 font-mono">
+                <div className="text-lg sm:text-xl lg:text-2xl font-black text-purple-600 dark:text-purple-400 font-mono">
                   ₹ {kpis.unbilledTbbAmount.toLocaleString('en-IN')}
                 </div>
-                <div className="text-[10px] text-purple-500/80 mt-1">
-                  {kpis.unbilledTbbCount > 0 ? `${kpis.unbilledTbbCount} Delivered Ready to Bill` : '0 Dockets Awaiting Bill (All Billed)'}
+                <div className="text-[10px] text-purple-500/80 mt-0.5 sm:mt-1 truncate">
+                  {kpis.unbilledTbbCount > 0 ? `${kpis.unbilledTbbCount} Delivered Ready to Bill` : '0 Dockets Awaiting Bill'}
                 </div>
               </div>
 
               {/* Card 3: Total Received */}
-              <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
-                <div className="text-[11px] font-semibold text-slate-400 mb-1">Total Received</div>
-                <div className="text-xl sm:text-2xl font-black text-emerald-500 dark:text-emerald-400 font-mono">
+              <div className={`p-3 sm:p-3.5 lg:p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
+                <div className="text-[11px] font-semibold text-slate-400 mb-0.5 sm:mb-1">Total Received</div>
+                <div className="text-lg sm:text-xl lg:text-2xl font-black text-emerald-500 dark:text-emerald-400 font-mono">
                   ₹ {kpis.totalReceived.toLocaleString('en-IN')}
                 </div>
-                <div className="text-[10px] text-emerald-500/80 mt-1">{invoiceCounts.paid} Invoices Cleared</div>
+                <div className="text-[10px] text-emerald-500/80 mt-0.5 sm:mt-1 truncate">{invoiceCounts.paid} Invoices Cleared</div>
               </div>
 
               {/* Card 4: Outstanding Balance */}
@@ -2622,16 +2610,16 @@ export default function InvoicesMasterPage() {
                   setActiveTab('INVOICES');
                   setPaymentClearanceFilter('PENDING');
                 }}
-                className={`p-4 rounded-2xl border cursor-pointer transition-all hover:scale-[1.01] ${
+                className={`p-3 sm:p-3.5 lg:p-4 rounded-2xl border cursor-pointer transition-all hover:scale-[1.01] ${
                   isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'
                 }`}
               >
-                <div className="text-[11px] font-semibold text-slate-400 mb-1">Outstanding Balance</div>
-                <div className="text-xl sm:text-2xl font-black text-cyan-500 dark:text-cyan-400 font-mono">
+                <div className="text-[11px] font-semibold text-slate-400 mb-0.5 sm:mb-1">Outstanding Balance</div>
+                <div className="text-lg sm:text-xl lg:text-2xl font-black text-cyan-500 dark:text-cyan-400 font-mono">
                   ₹ {kpis.outstandingBalance.toLocaleString('en-IN')}
                 </div>
-                <div className="text-[10px] text-slate-400 mt-1">
-                  {invoiceCounts.pending} Invoices Pending {invoiceCounts.tbbPendingAmount > 0 ? `(TBB: ₹${invoiceCounts.tbbPendingAmount.toLocaleString('en-IN')})` : ''}
+                <div className="text-[10px] text-slate-400 mt-0.5 sm:mt-1 truncate">
+                  {invoiceCounts.pending} Invoices Pending
                 </div>
               </div>
 
@@ -2640,49 +2628,51 @@ export default function InvoicesMasterPage() {
                 onClick={() => {
                   setActiveTab('INVOICES');
                 }}
-                className={`p-4 rounded-2xl border cursor-pointer transition-all hover:scale-[1.01] ${
+                className={`p-3 sm:p-3.5 lg:p-4 rounded-2xl border cursor-pointer transition-all hover:scale-[1.01] ${
                   isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'
                 }`}
               >
-                <div className="text-[11px] font-semibold text-slate-400 mb-1">Overdue Receivables</div>
-                <div className={`text-xl sm:text-2xl font-black font-mono ${kpis.overdueReceivables > 0 ? 'text-rose-500 dark:text-rose-400' : 'text-slate-400'}`}>
+                <div className="text-[11px] font-semibold text-slate-400 mb-0.5 sm:mb-1">Overdue Receivables</div>
+                <div className={`text-lg sm:text-xl lg:text-2xl font-black font-mono ${kpis.overdueReceivables > 0 ? 'text-rose-500 dark:text-rose-400' : 'text-slate-400'}`}>
                   ₹ {kpis.overdueReceivables.toLocaleString('en-IN')}
                 </div>
-                <div className="text-[10px] text-rose-500/80 mt-1">
+                <div className="text-[10px] text-rose-500/80 mt-0.5 sm:mt-1 truncate">
                   {invoiceCounts.overdue > 0 ? `${invoiceCounts.overdue} Invoices Overdue` : 'Zero overdue'}
                 </div>
               </div>
 
-              <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
-                <div className="text-[11px] font-semibold text-slate-400 mb-1">Collection Efficiency</div>
-                <div className="text-xl sm:text-2xl font-black text-blue-500 dark:text-blue-400 font-mono">
+              {/* Card 6: Collection Efficiency */}
+              <div className={`p-3 sm:p-3.5 lg:p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
+                <div className="text-[11px] font-semibold text-slate-400 mb-0.5 sm:mb-1">Collection Efficiency</div>
+                <div className="text-lg sm:text-xl lg:text-2xl font-black text-blue-500 dark:text-blue-400 font-mono">
                   {kpis.efficiency}%
                 </div>
-                <div className="text-[10px] text-blue-500/80 mt-1">Settled vs Invoiced</div>
+                <div className="text-[10px] text-blue-500/80 mt-0.5 sm:mt-1 truncate">Settled vs Invoiced</div>
               </div>
             </div>
 
-
             {/* Invoice Register Header Strip */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-3">
-              <div className="flex items-center space-x-2.5">
-                <div className="p-2 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+              <div className="flex items-center space-x-2.5 min-w-0">
+                <div className="p-2 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 shrink-0">
                   <Receipt className="w-5 h-5" />
                 </div>
-                <div>
-                  <div className="flex items-center space-x-2">
-                    <h2 className="text-base font-bold text-slate-900 dark:text-white">GST Freight Invoice Register</h2>
-                    <span className="text-[11px] px-2.5 py-0.5 rounded-full font-mono font-bold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                    <h2 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white whitespace-nowrap">
+                      GST Freight Invoice Register
+                    </h2>
+                    <span className="text-[10px] sm:text-[11px] px-2 py-0.5 rounded-full font-mono font-bold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 shrink-0 whitespace-nowrap">
                       {invoiceCounts.all} Invoices • ₹{invoiceCounts.allAmount.toLocaleString('en-IN')}
                     </span>
                   </div>
-                  <p className="text-xs text-slate-400">
+                  <p className="text-xs text-slate-400 truncate sm:whitespace-normal">
                     Track issued corporate freight invoices, due dates, payments, and reverse cancelled bills.
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+              <div className="flex items-center gap-2 shrink-0 flex-nowrap self-start sm:self-auto">
                 {/* Branch Dropdown Selector positioned right before Deliveries & POD */}
                 {isUserAdmin && (
                   <BranchFilterDropdown
@@ -2703,22 +2693,23 @@ export default function InvoicesMasterPage() {
                     }
                     allLabel="All Branches"
                     allSubtitle="Global Network Invoicing"
-                    label="Branch:"
-                    showLabel={true}
+                    showLabel={false}
+                    size="sm"
                     align="right"
+                    className="shrink-0"
                   />
                 )}
 
                 <Link
                   href="/deliveries"
-                  className={`inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-xl border text-xs font-bold transition-all ${
+                  className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all shrink-0 whitespace-nowrap ${
                     isDark
                       ? 'bg-slate-900/60 border-slate-800 text-slate-300 hover:text-white hover:bg-slate-800'
                       : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-xs'
                   }`}
                   title="Go to Deliveries & POD to bill individual delivered dockets"
                 >
-                  <Truck className="w-4 h-4 text-emerald-500" />
+                  <Truck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
                   <span>Deliveries & POD</span>
                   {kpis.unbilledTbbCount > 0 && (
                     <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/20 font-mono">
@@ -2732,11 +2723,11 @@ export default function InvoicesMasterPage() {
             {/* TAB CONTENT: 1. TAX INVOICES TABLE */}
             {activeTab === 'INVOICES' && (
               invoices.length === 0 && !isLoading ? (
-                <div className={`p-12 rounded-3xl border text-center space-y-4 ${
+                <div className={`p-8 sm:p-10 rounded-2xl border text-center space-y-3.5 ${
                   isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'
                 }`}>
-                  <div className="w-14 h-14 rounded-2xl bg-cyan-500/10 text-cyan-500 flex items-center justify-center mx-auto">
-                    <Receipt className="w-7 h-7" />
+                  <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 text-cyan-500 flex items-center justify-center mx-auto">
+                    <Receipt className="w-6 h-6" />
                   </div>
                   <div className="max-w-md mx-auto space-y-1">
                     <h3 className="text-base font-bold text-slate-900 dark:text-white">

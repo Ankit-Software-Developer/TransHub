@@ -5,14 +5,15 @@ export const useStore = create((set) => ({
   user: null,
   activeBranch: { id: null, code: 'ALL', name: 'All Branches' },
   dateFilter: '30d',
-  terminology: typeof window !== 'undefined' && localStorage.getItem('transporter_terminology') ? localStorage.getItem('transporter_terminology') : 'Docket',
+  terminology: typeof window !== 'undefined' && localStorage.getItem('transporter_terminology') ? localStorage.getItem('transporter_terminology') : 'Bilty',
   isSearchModalOpen: false,
   isFleetCommsOpen: false,
+  isMobileSidebarOpen: false,
   theme: typeof window !== 'undefined' && localStorage.getItem('transporter_theme') === 'dark' ? 'dark' : 'light', // 'dark' or 'light'
 
   setUser: (user) => set({
     user,
-    terminology: (typeof window !== 'undefined' && localStorage.getItem('transporter_terminology')) || user?.documentTerminology || user?.document_terminology || 'Docket',
+    terminology: (typeof window !== 'undefined' && localStorage.getItem('transporter_terminology')) || user?.documentTerminology || user?.document_terminology || 'Bilty',
   }),
 
   setTransporterType: (transporterType) => set((state) => ({
@@ -33,6 +34,8 @@ export const useStore = create((set) => ({
   setSearchModalOpen: (open) => set({ isSearchModalOpen: open }),
   toggleFleetComms: () => set((state) => ({ isFleetCommsOpen: !state.isFleetCommsOpen })),
   setFleetCommsOpen: (open) => set({ isFleetCommsOpen: open }),
+  setMobileSidebarOpen: (open) => set({ isMobileSidebarOpen: open }),
+  toggleMobileSidebar: () => set((state) => ({ isMobileSidebarOpen: !state.isMobileSidebarOpen })),
   setTheme: (theme) => {
     if (typeof window !== 'undefined') {
       try {

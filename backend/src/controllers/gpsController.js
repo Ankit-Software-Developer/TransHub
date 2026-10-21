@@ -212,7 +212,7 @@ const updateConfig = async (req, res) => {
     }
 
     if (provider_name !== undefined) config.provider_name = provider_name.trim();
-    if (api_key !== undefined && api_key.trim()) config.api_key = api_key.trim();
+    if (api_key !== undefined && api_key.trim() && !api_key.includes('XXXX') && !api_key.includes('••••')) config.api_key = api_key.trim();
     if (api_secret !== undefined) config.api_secret = api_secret.trim() || null;
     if (client_id !== undefined) config.client_id = client_id.trim() || null;
     if (base_url !== undefined) config.base_url = base_url.trim() || null;
@@ -230,7 +230,7 @@ const updateConfig = async (req, res) => {
         if (masterConfigs.length > 0) {
           const masterCfg = masterConfigs[0];
           if (provider_name !== undefined) masterCfg.provider_name = provider_name.trim();
-          if (api_key !== undefined && api_key.trim()) masterCfg.api_key = api_key.trim();
+          if (api_key !== undefined && api_key.trim() && !api_key.includes('XXXX') && !api_key.includes('••••')) masterCfg.api_key = api_key.trim();
           if (api_secret !== undefined) masterCfg.api_secret = api_secret.trim() || null;
           if (client_id !== undefined) masterCfg.client_id = client_id.trim() || null;
           if (base_url !== undefined) masterCfg.base_url = base_url.trim() || null;

@@ -9,6 +9,7 @@ import { usePermissions } from '../../../hooks/usePermissions';
 import api from '../../../services/api';
 import Modal from '../../../components/ui/Modal';
 import LoadingState from '../../../components/ui/LoadingState';
+import DataTable from '../../../components/ui/DataTable';
 import {
   Users,
   UserPlus,
@@ -202,26 +203,33 @@ export default function StaffManagementPage() {
 
   // Filtered Users
   const filteredStaffUsers = useMemo(() => {
-    return staffUsers.filter((u) => {
-      const fullName = `${u.first_name || ''} ${u.last_name || ''}`.toLowerCase();
-      const matchSearch =
-        searchQuery === '' ||
-        fullName.includes(searchQuery.toLowerCase()) ||
-        u.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        u.phone?.includes(searchQuery) ||
-        u.staff_code?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        u.designation?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        u.aadhaar_number?.includes(searchQuery) ||
-        u.pan_number?.toLowerCase().includes(searchQuery.toLowerCase());
+    return staffUsers
+      .map((u) => ({
+        ...u,
+        full_name: `${u.first_name || ''} ${u.last_name || ''}`.trim(),
+        role_names: (u.roles || []).map((r) => r.display_name || r.name).join(', '),
+      }))
+      .filter((u) => {
+        const fullName = u.full_name.toLowerCase();
+        const matchSearch =
+          searchQuery === '' ||
+          fullName.includes(searchQuery.toLowerCase()) ||
+          u.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          u.phone?.includes(searchQuery) ||
+          u.staff_code?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          u.designation?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          u.aadhaar_number?.includes(searchQuery) ||
+          u.pan_number?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          u.role_names.toLowerCase().includes(searchQuery.toLowerCase());
 
-      const matchStatus = statusFilter === 'ALL' || u.status === statusFilter;
-      const matchBranch = branchFilter === 'ALL' || u.branch_id === branchFilter;
-      const matchRole =
-        roleFilter === 'ALL' ||
-        (u.roles && u.roles.some((r) => r.id === roleFilter || r.name === roleFilter));
+        const matchStatus = statusFilter === 'ALL' || u.status === statusFilter;
+        const matchBranch = branchFilter === 'ALL' || u.branch_id === branchFilter;
+        const matchRole =
+          roleFilter === 'ALL' ||
+          (u.roles && u.roles.some((r) => r.id === roleFilter || r.name === roleFilter));
 
-      return matchSearch && matchStatus && matchBranch && matchRole;
-    });
+        return matchSearch && matchStatus && matchBranch && matchRole;
+      });
   }, [staffUsers, searchQuery, statusFilter, branchFilter, roleFilter]);
 
   // Stats Counters
@@ -438,6 +446,194 @@ export default function StaffManagementPage() {
     a.click();
   };
 
+  // Staff Table Column Definitions for DataTable
+  const columns = useMemo(
+    () => [
+      {
+        key: 'staff_member',
+        header: 'Staff Member',
+        sortable: true,
+        exportValue: (staff) => `${staff?.first_name || ''} ${staff?.last_name || ''} (${staff?.staff_code || 'STF-NA'})`,
+        render: (_val, staff = {}) => {
+          const isUserAdmin = (staff.roles || []).some(
+            (r) => (r.name || '').toUpperCase().includes('ADMIN')
+          );
+          return (
+            <div className="flex items-center gap-3">
+              <div className={`w-9 h-9 rounded-xl font-bold flex items-center justify-center text-xs shrink-0 shadow-sm ${
+                isUserAdmin
+                  ? 'bg-gradient-to-tr from-amber-500 to-orange-500 text-white'
+                  : 'bg-gradient-to-tr from-blue-600 to-indigo-600 text-white'
+              }`}>
+                {staff.first_name ? staff.first_name.charAt(0).toUpperCase() : 'U'}
+              </div>
+              <div className="min-w-0">
+                <span className={`font-bold text-sm block truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                  {staff.first_name} {staff.last_name || ''}
+                </span>
+                <span className={`text-[11px] font-mono ${isDark ? 'text-blue-400' : 'text-blue-600'}`}>
+                  {staff.staff_code || 'STF-NA'}
+                </span>
+              </div>
+            </div>
+          );
+        },
+      },
+      {
+        key: 'contact_info',
+        header: 'Contact Info',
+        exportValue: (staff) => `${staff?.email || ''}${staff?.phone ? ' | ' + staff.phone : ''}`,
+        render: (_val, staff = {}) => (
+          <div className="space-y-0.5">
+            <div className={`flex items-center gap-1.5 font-medium ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
+              <Mail className="w-3 h-3 text-slate-400 shrink-0" />
+              <span className="truncate max-w-[170px]">{staff.email || '-'}</span>
+            </div>
+            {staff.phone && (
+              <div className={`flex items-center gap-1.5 text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                <Phone className="w-3 h-3 text-slate-400 shrink-0" />
+                <span>{staff.phone}</span>
+              </div>
+            )}
+          </div>
+        ),
+      },
+      {
+        key: 'designation',
+        header: 'Designation & Code',
+        sortable: true,
+        exportValue: (staff) => staff?.designation || 'Operational Staff',
+        render: (_val, staff = {}) => (
+          <div>
+            <span className={`font-semibold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
+              {staff.designation || 'Operational Staff'}
+            </span>
+            {staff.joining_date && (
+              <span className={`block text-[10px] mt-0.5 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                Joined: {staff.joining_date}
+              </span>
+            )}
+          </div>
+        ),
+      },
+      {
+        key: 'role',
+        header: 'Role / Access',
+        sortable: true,
+        exportValue: (staff) =>
+          staff?.roles && staff.roles.length > 0
+            ? (staff.roles[0].display_name || staff.roles[0].name)
+            : 'Staff',
+        render: (_val, staff = {}) => {
+          const roleName = staff.roles && staff.roles.length > 0
+            ? (staff.roles[0].display_name || staff.roles[0].name)
+            : 'Staff';
+
+          const isUserAdmin = (staff.roles || []).some(
+            (r) => (r.name || '').toUpperCase().includes('ADMIN')
+          );
+
+          return (
+            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border ${
+              isUserAdmin
+                ? 'bg-amber-500/10 text-amber-500 dark:text-amber-400 border-amber-500/30'
+                : roleName.toLowerCase().includes('manager')
+                ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/30'
+                : 'bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/30'
+            }`}>
+              <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+              <span>{roleName}</span>
+            </span>
+          );
+        },
+      },
+      {
+        key: 'branch',
+        header: 'Station / Branch',
+        sortable: true,
+        exportValue: (staff) => staff?.branch?.branch_name || staff?.branch?.city || 'All Branches (Enterprise)',
+        render: (_val, staff = {}) => (
+          <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold ${
+            isDark ? 'bg-slate-800 text-slate-300' : 'bg-slate-100 text-slate-700'
+          }`}>
+            <Building className="w-3 h-3 text-cyan-500 dark:text-cyan-400 shrink-0" />
+            <span className="truncate max-w-[150px]">
+              {staff.branch?.branch_name || staff.branch?.city || 'All Branches (Enterprise)'}
+            </span>
+          </span>
+        ),
+      },
+      {
+        key: 'status',
+        header: 'Status',
+        align: 'center',
+        sortable: true,
+        exportValue: (staff) => staff?.status || 'ACTIVE',
+        render: (_val, staff = {}) => (
+          <button
+            onClick={() => canManageUsers && handleToggleUserStatus(staff)}
+            disabled={!canManageUsers}
+            title={canManageUsers ? 'Click to toggle active status' : 'Staff status'}
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold transition-all ${
+              !canManageUsers ? 'cursor-default' : 'cursor-pointer hover:opacity-85'
+            } ${
+              staff.status === 'ACTIVE'
+                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                : staff.status === 'SUSPENDED'
+                ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30'
+                : 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30'
+            }`}
+          >
+            <span className={`w-1.5 h-1.5 rounded-full ${
+              staff.status === 'ACTIVE' ? 'bg-emerald-500' : 'bg-rose-500'
+            }`} />
+            <span>{staff.status === 'ACTIVE' ? 'Active' : staff.status || 'Active'}</span>
+          </button>
+        ),
+      },
+      ...(canManageUsers
+        ? [
+            {
+              key: 'actions',
+              header: 'Actions',
+              align: 'right',
+              excludeFromExport: true,
+              render: (_val, staff = {}) => (
+                <div className="flex items-center justify-end gap-1.5">
+                  <button
+                    onClick={() => openEditUserModal(staff)}
+                    className={`p-1.5 rounded-lg border transition-all cursor-pointer ${
+                      isDark
+                        ? 'border-slate-800 bg-slate-900 text-slate-300 hover:text-white hover:bg-slate-800'
+                        : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 shadow-xs'
+                    }`}
+                    title="Edit Staff Member"
+                  >
+                    <Edit2 className="w-3.5 h-3.5" />
+                  </button>
+
+                  <button
+                    onClick={() =>
+                      setDeleteConfirm({
+                        isOpen: true,
+                        id: staff.id,
+                        name: `${staff.first_name} ${staff.last_name || ''}`,
+                      })
+                    }
+                    className="p-1.5 rounded-lg border border-rose-500/30 bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 transition-all cursor-pointer"
+                    title="Delete Staff Member"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ),
+            },
+          ]
+        : []),
+    ],
+    [isDark, canManageUsers]
+  );
+
   return (
     <div className={`flex min-h-screen transition-colors duration-300 ${
       isDark ? 'bg-[#06080F] text-slate-100' : 'bg-[#F4F6FB] text-slate-900'
@@ -446,27 +642,29 @@ export default function StaffManagementPage() {
       <div className="flex-1 flex flex-col min-w-0">
         <Navbar />
 
-        <main className="flex-1 p-5 sm:p-6 lg:p-8 space-y-6 max-w-[1720px] mx-auto w-full">
+        <main className="flex-1 p-3.5 sm:p-5 lg:p-6 xl:p-8 space-y-4 sm:space-y-6 w-full max-w-full">
           
           {/* Header Action Bar */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <div className="flex items-center space-x-2.5">
-                <div className="w-9 h-9 rounded-xl bg-blue-600/15 text-blue-500 flex items-center justify-center font-bold">
-                  <Users className="w-5 h-5 text-blue-500" />
+          <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3.5 sm:gap-4">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-500 text-white shadow-md shadow-blue-500/20 flex items-center justify-center shrink-0">
+                  <Users className="w-5 h-5 sm:w-6 sm:h-6" />
                 </div>
-                <h1 className={`text-2xl sm:text-3xl font-black tracking-tight ${
-                  isDark ? 'text-white' : 'text-slate-900'
-                }`}>
-                  Transporter Staff & Roles Directory
-                </h1>
+                <div className="min-w-0">
+                  <h1 className={`text-base sm:text-lg lg:text-xl xl:text-2xl font-black tracking-tight text-balance sm:whitespace-nowrap ${
+                    isDark ? 'text-white' : 'text-slate-900'
+                  }`}>
+                    Transporter Staff & Roles Directory
+                  </h1>
+                  <p className={`text-xs sm:text-[13px] xl:text-sm mt-0.5 sm:mt-1 truncate sm:whitespace-normal ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                    Configure operational roles, branch managers, dispatchers, and permission assignments.
+                  </p>
+                </div>
               </div>
-              <p className={`text-xs sm:text-sm mt-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                Configure operational roles, branch managers, dispatchers, and permission assignments.
-              </p>
             </div>
 
-            <div className="flex items-center gap-2.5 flex-wrap">
+            <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 flex-wrap sm:flex-nowrap">
               {isAdmin && (
                 <BranchFilterDropdown
                   selectedBranchId={branchFilter}
@@ -483,9 +681,9 @@ export default function StaffManagementPage() {
               {canExport && (
                 <button
                   onClick={exportData}
-                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl border text-xs font-semibold shadow-sm transition-all ${
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold shadow-xs transition-all whitespace-nowrap cursor-pointer ${
                     isDark
-                      ? 'border-slate-800 bg-slate-900 text-slate-300 hover:text-white hover:bg-slate-800'
+                      ? 'border-slate-800 bg-slate-900 text-slate-300 hover:text-white hover:bg-slate-800 hover:border-slate-700'
                       : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
                   }`}
                   title="Export Staff CSV"
@@ -498,7 +696,7 @@ export default function StaffManagementPage() {
               {canManageUsers && (
                 <button
                   onClick={openAddUserModal}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/25 transition-all active:scale-95 cursor-pointer"
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/25 transition-all active:scale-95 whitespace-nowrap cursor-pointer shrink-0"
                 >
                   <UserPlus className="w-3.5 h-3.5" />
                   <span>+ Add Staff User</span>
@@ -606,271 +804,72 @@ export default function StaffManagementPage() {
             </div>
           </div>
 
-          {/* Filter Bar */}
-          <div className={`p-3.5 rounded-2xl border flex flex-col md:flex-row gap-3 items-center justify-between ${
-            isDark ? 'bg-[#0B1020]/90 border-slate-800/80' : 'bg-white border-slate-200/90 shadow-sm'
-          }`}>
-            <div className="flex-1 w-full relative">
-              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search staff by name, code (STF-001), email, phone, or designation..."
-                className={`w-full pl-10 pr-4 py-2 rounded-xl text-xs border focus:outline-none transition-all ${
-                  isDark
-                    ? 'bg-slate-950/80 border-slate-800 text-white focus:border-blue-500'
-                    : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
-                }`}
-              />
-            </div>
+          {/* Staff Directory DataTable with Full Footer, Pagination & Export */}
+          <DataTable
+            columns={columns}
+            data={filteredStaffUsers}
+            isLoading={loading}
+            searchQuery={searchQuery}
+            onSearchChange={(val) => setSearchQuery(val)}
+            searchPlaceholder="Search staff by name, code (STF-001), email, phone, or designation..."
+            headerFiltersSlot={
+              <div className="flex items-center gap-2">
+                {/* Role Filter */}
+                <div className="relative">
+                  <select
+                    value={roleFilter}
+                    onChange={(e) => setRoleFilter(e.target.value)}
+                    className={`pl-3 pr-8 py-1.5 rounded-xl text-xs border font-semibold focus:outline-none appearance-none cursor-pointer transition-all ${
+                      roleFilter !== 'ALL'
+                        ? isDark
+                          ? 'bg-blue-600/20 border-blue-500/50 text-blue-300'
+                          : 'bg-blue-50 border-blue-300 text-blue-800'
+                        : isDark
+                        ? 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-xs'
+                    }`}
+                  >
+                    <option value="ALL">All Roles</option>
+                    {staffRoles.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.display_name || r.name}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                </div>
 
-            <div className="flex items-center gap-2.5 w-full md:w-auto flex-wrap">
-              {/* Role Filter */}
-              <div className="relative">
-                <select
-                  value={roleFilter}
-                  onChange={(e) => setRoleFilter(e.target.value)}
-                  className={`pl-3 pr-8 py-2 rounded-xl text-xs border font-semibold focus:outline-none appearance-none cursor-pointer transition-all ${
-                    roleFilter !== 'ALL'
-                      ? isDark
-                        ? 'bg-blue-600/20 border-blue-500/50 text-blue-300'
-                        : 'bg-blue-50 border-blue-300 text-blue-800'
-                      : isDark
-                      ? 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700'
-                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-xs'
-                  }`}
-                >
-                  <option value="ALL">All Roles</option>
-                  {staffRoles.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.display_name || r.name}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                {/* Status Filter */}
+                <div className="relative">
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    className={`pl-3 pr-8 py-1.5 rounded-xl text-xs border font-semibold focus:outline-none appearance-none cursor-pointer transition-all ${
+                      statusFilter !== 'ALL'
+                        ? isDark
+                          ? 'bg-emerald-600/20 border-emerald-500/50 text-emerald-300'
+                          : 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                        : isDark
+                        ? 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-xs'
+                    }`}
+                  >
+                    <option value="ALL">All Statuses</option>
+                    <option value="ACTIVE">Active Users</option>
+                    <option value="SUSPENDED">Suspended</option>
+                    <option value="INACTIVE">Inactive</option>
+                  </select>
+                  <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                </div>
               </div>
-
-              {/* Status Filter */}
-              <div className="relative">
-                <select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                  className={`pl-3 pr-8 py-2 rounded-xl text-xs border font-semibold focus:outline-none appearance-none cursor-pointer transition-all ${
-                    statusFilter !== 'ALL'
-                      ? isDark
-                        ? 'bg-emerald-600/20 border-emerald-500/50 text-emerald-300'
-                        : 'bg-emerald-50 border-emerald-300 text-emerald-800'
-                      : isDark
-                      ? 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700'
-                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-xs'
-                  }`}
-                >
-                  <option value="ALL">All Statuses</option>
-                  <option value="ACTIVE">Active Users</option>
-                  <option value="SUSPENDED">Suspended</option>
-                  <option value="INACTIVE">Inactive</option>
-                </select>
-                <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-              </div>
-            </div>
-          </div>
-
-          {/* Staff Table */}
-          <div className={`rounded-2xl border overflow-hidden shadow-sm ${
-            isDark ? 'bg-[#0B1020] border-slate-800/80' : 'bg-white border-slate-200'
-          }`}>
-            <div className="overflow-x-auto overflow-y-auto max-h-[480px] sm:max-h-[540px] lg:max-h-[calc(100vh-290px)] min-h-[280px] scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700">
-              <table className="w-full text-left border-collapse min-w-[1100px]">
-                <thead className="sticky top-0 z-20 shadow-xs">
-                  <tr className={`border-b text-[11px] font-bold uppercase tracking-wider ${
-                    isDark ? 'border-slate-800/90 bg-[#0B1020] text-slate-400' : 'border-slate-200 bg-slate-50 text-slate-600'
-                  }`}>
-                    <th className="py-3.5 px-4 whitespace-nowrap min-w-[200px]">Staff Member</th>
-                    <th className="py-3.5 px-4 whitespace-nowrap min-w-[160px]">Contact Info</th>
-                    <th className="py-3.5 px-4 whitespace-nowrap min-w-[150px]">Designation & Code</th>
-                    <th className="py-3.5 px-4 whitespace-nowrap min-w-[140px]">Role / Access</th>
-                    <th className="py-3.5 px-4 whitespace-nowrap min-w-[150px]">Station / Branch</th>
-                    <th className="py-3.5 px-4 whitespace-nowrap min-w-[100px] text-center">Status</th>
-                    <th className="py-3.5 px-4 whitespace-nowrap min-w-[90px] text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className={`divide-y text-xs ${isDark ? 'divide-slate-800/40 text-slate-400' : 'divide-slate-200 text-slate-600'}`}>
-                  {loading ? (
-                    <tr>
-                      <td colSpan="7" className="py-8 text-center">
-                        <LoadingState
-                          title="Loading staff directory..."
-                          description="Fetching operational team, managers, and assigned branches"
-                          minHeight="min-h-[160px]"
-                        />
-                      </td>
-                    </tr>
-                  ) : filteredStaffUsers.length === 0 ? (
-                    <tr>
-                      <td colSpan="7" className="py-12 text-center text-slate-400">
-                        <Users className="w-8 h-8 mx-auto mb-2 text-slate-600 opacity-60" />
-                        <p className="font-semibold text-sm">No staff users found</p>
-                        <p className="text-[11px] mt-1">
-                          Click "+ Add Staff User" to register managers, dispatchers, or operators.
-                        </p>
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredStaffUsers.map((staff) => {
-                      const roleName = staff.roles && staff.roles.length > 0
-                        ? (staff.roles[0].display_name || staff.roles[0].name)
-                        : 'Staff';
-
-                      const isUserAdmin = (staff.roles || []).some(
-                        (r) => (r.name || '').toUpperCase().includes('ADMIN')
-                      );
-
-                      return (
-                        <tr
-                          key={staff.id}
-                          className={`transition-colors ${
-                            isDark ? 'hover:bg-slate-900/50' : 'hover:bg-slate-50/80'
-                          }`}
-                        >
-                          {/* Staff Info */}
-                          <td className="py-3.5 px-4">
-                            <div className="flex items-center gap-3">
-                              <div className={`w-9 h-9 rounded-xl font-bold flex items-center justify-center text-xs shrink-0 shadow-sm ${
-                                isUserAdmin
-                                  ? 'bg-gradient-to-tr from-amber-500 to-orange-500 text-white'
-                                  : 'bg-gradient-to-tr from-blue-600 to-indigo-600 text-white'
-                              }`}>
-                                {staff.first_name ? staff.first_name.charAt(0).toUpperCase() : 'U'}
-                              </div>
-                              <div>
-                                <span className={`font-bold text-sm block ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                                  {staff.first_name} {staff.last_name || ''}
-                                </span>
-                                <span className={`text-[11px] font-mono ${isDark ? 'text-blue-400' : 'text-blue-600'}`}>
-                                  {staff.staff_code || 'STF-NA'}
-                                </span>
-                              </div>
-                            </div>
-                          </td>
-
-                          {/* Contact Info */}
-                          <td className="py-3.5 px-4">
-                            <div className="space-y-0.5">
-                              <div className={`flex items-center gap-1.5 font-medium ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
-                                <Mail className="w-3 h-3 text-slate-400" />
-                                <span className="truncate max-w-[150px]">{staff.email}</span>
-                              </div>
-                              {staff.phone && (
-                                <div className={`flex items-center gap-1.5 text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                                  <Phone className="w-3 h-3 text-slate-400" />
-                                  <span>{staff.phone}</span>
-                                </div>
-                              )}
-                            </div>
-                          </td>
-
-                          {/* Designation */}
-                          <td className="py-3.5 px-4">
-                            <span className={`font-semibold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
-                              {staff.designation || 'Operational Staff'}
-                            </span>
-                            {staff.joining_date && (
-                              <span className={`block text-[10px] mt-0.5 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                                Joined: {staff.joining_date}
-                              </span>
-                            )}
-                          </td>
-
-                          {/* Role Badge */}
-                          <td className="py-3.5 px-4">
-                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border ${
-                              isUserAdmin
-                                ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
-                                : roleName.toLowerCase().includes('manager')
-                                ? 'bg-blue-500/10 text-blue-400 border-blue-500/30'
-                                : 'bg-slate-500/10 text-slate-400 border-slate-500/30'
-                            }`}>
-                              <ShieldCheck className="w-3.5 h-3.5" />
-                              {roleName}
-                            </span>
-                          </td>
-
-                          {/* Branch / Station */}
-                          <td className="py-3.5 px-4">
-                            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold ${
-                              isDark ? 'bg-slate-800 text-slate-300' : 'bg-slate-100 text-slate-700'
-                            }`}>
-                              <Building className="w-3 h-3 text-cyan-400" />
-                              {staff.branch?.branch_name || staff.branch?.city || 'All Branches (Enterprise)'}
-                            </span>
-                          </td>
-
-                          {/* Status Badge */}
-                          <td className="py-3.5 px-4 text-center">
-                            <button
-                              onClick={() => canManageUsers && handleToggleUserStatus(staff)}
-                              disabled={!canManageUsers}
-                              title={canManageUsers ? "Click to toggle active status" : "Staff status"}
-                              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold transition-all ${
-                                !canManageUsers ? 'cursor-default' : 'cursor-pointer hover:opacity-85'
-                              } ${
-                                staff.status === 'ACTIVE'
-                                  ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                                  : staff.status === 'SUSPENDED'
-                                  ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
-                                  : 'bg-rose-500/15 text-rose-400 border border-rose-500/30'
-                              }`}
-                            >
-                              <span className={`w-1.5 h-1.5 rounded-full ${
-                                staff.status === 'ACTIVE' ? 'bg-emerald-400' : 'bg-rose-500'
-                              }`} />
-                              <span>{staff.status === 'ACTIVE' ? 'Active' : staff.status}</span>
-                            </button>
-                          </td>
-
-                          {/* Actions */}
-                          <td className="py-3.5 px-4 text-right">
-                            <div className="flex items-center justify-end gap-1.5">
-                              {canManageUsers && (
-                                <>
-                                  <button
-                                    onClick={() => openEditUserModal(staff)}
-                                    className={`p-1.5 rounded-lg border transition-all ${
-                                      isDark
-                                        ? 'border-slate-800 bg-slate-900 text-slate-300 hover:text-white hover:bg-slate-800'
-                                        : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-                                    }`}
-                                    title="Edit Staff Member"
-                                  >
-                                    <Edit2 className="w-3.5 h-3.5" />
-                                  </button>
-
-                                  <button
-                                    onClick={() =>
-                                      setDeleteConfirm({
-                                        isOpen: true,
-                                        id: staff.id,
-                                        name: `${staff.first_name} ${staff.last_name || ''}`,
-                                      })
-                                    }
-                                    className="p-1.5 rounded-lg border border-rose-500/30 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 transition-all"
-                                    title="Delete Staff Member"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+            }
+            exportFilename="TransHub_Staff_Directory"
+            emptyTitle="No Staff Users Found"
+            emptySubtitle="No operational team members match your search or filter parameters."
+            branchFilterable={false}
+            dateFilterable={false}
+            pageSizeOptions={[10, 15, 25, 50, 100]}
+          />
 
         </main>
       </div>

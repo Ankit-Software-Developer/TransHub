@@ -197,7 +197,7 @@ export default function ProfilePage() {
       <div className="flex-1 flex flex-col min-w-0">
         <Navbar />
 
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full space-y-6">
+        <main className="flex-1 p-3.5 sm:p-5 lg:p-6 xl:p-8 space-y-4 sm:space-y-6 w-full max-w-full">
           
           {/* Notifications / Alerts */}
           {successMsg && (
@@ -279,10 +279,10 @@ export default function ProfilePage() {
                           ? 'bg-slate-800/80 border-slate-700 text-slate-300 hover:text-white'
                           : 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200'
                       }`}
-                      title="Click to copy Tenant ID"
+                      title="Click to copy Transport ID"
                     >
                       {copiedTenant ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3 text-slate-400" />}
-                      <span>ID: {user?.tenantId ? user.tenantId.substring(0, 10) + '...' : 'TENANT-ACTIVE'}</span>
+                      <span>ID: {user?.tenantId ? user.tenantId.substring(0, 10) + '...' : 'TRANSPORT-ACTIVE'}</span>
                     </button>
                   </div>
                 </div>
@@ -374,7 +374,7 @@ export default function ProfilePage() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">
-                        Email Address (Tenant Login)
+                        Email Address (Transport Login)
                       </label>
                       <div className="relative">
                         <input
@@ -390,7 +390,7 @@ export default function ProfilePage() {
                         </span>
                       </div>
                       <p className="text-[10px] text-slate-500 mt-1">
-                        Primary account identifier for multi-tenant isolation.
+                        Primary account identifier for transport isolation.
                       </p>
                     </div>
 
@@ -482,12 +482,12 @@ export default function ProfilePage() {
                   <div className={`p-3.5 rounded-2xl border ${
                     isDark ? 'bg-slate-900/50 border-slate-800' : 'bg-slate-50 border-slate-100'
                   }`}>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase">Tenant Encryption</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase">Transport Encryption</p>
                     <p className="text-xs font-extrabold text-emerald-400 mt-1 flex items-center gap-1.5">
                       <span className="w-2 h-2 rounded-full bg-emerald-400" />
                       Isolated Schema
                     </p>
-                    <p className="text-[10px] text-slate-500 mt-0.5">PostgreSQL multi-tenant DB</p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">PostgreSQL isolated storage</p>
                   </div>
 
                   <div className={`p-3.5 rounded-2xl border ${

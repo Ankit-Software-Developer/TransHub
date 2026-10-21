@@ -307,9 +307,12 @@ export default function DataTable({
     const el = tableScrollRef.current;
     if (!el) return;
     const updateWidth = () => {
-      if (el) setContainerWidth(el.clientWidth);
+      if (el && el.clientWidth > 0) {
+        setContainerWidth(el.clientWidth);
+      }
     };
     updateWidth();
+    const timer = setTimeout(updateWidth, 100);
 
     let ro;
     if (typeof ResizeObserver !== 'undefined') {
@@ -319,6 +322,7 @@ export default function DataTable({
     window.addEventListener('resize', updateWidth);
 
     return () => {
+      clearTimeout(timer);
       if (ro) ro.disconnect();
       window.removeEventListener('resize', updateWidth);
     };
@@ -577,16 +581,16 @@ export default function DataTable({
       isDark ? 'bg-[#0B1020]/95 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
     }`}>
       {/* Top Filter & Toolbar Area */}
-      <div className={`p-4 border-b space-y-3.5 ${
+      <div className={`p-3 sm:p-3.5 lg:p-4 border-b space-y-2.5 sm:space-y-3 ${
         isDark ? 'border-slate-800/80 bg-slate-950/20' : 'border-slate-100 bg-slate-50/50'
       }`}>
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-2.5 sm:gap-3">
           
           {/* Left: Search Box */}
-          <div className="flex flex-wrap items-center gap-2.5 flex-1 max-w-2xl">
+          <div className="flex items-center gap-2 flex-1 max-w-full xl:max-w-sm 2xl:max-w-md w-full min-w-0">
             {(searchable || onSearchChange) && (
-              <div className="relative flex-1 min-w-[220px]">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3 pointer-events-none" />
+              <div className="relative flex-1 min-w-[180px] w-full">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   type="text"
                   value={effectiveSearch}
@@ -600,8 +604,10 @@ export default function DataTable({
                 />
                 {effectiveSearch && (
                   <button
+                    type="button"
                     onClick={() => handleSearchChange('')}
-                    className={`absolute right-3 top-2.5 ${isDark ? 'text-slate-400 hover:text-white' : 'text-slate-400 hover:text-slate-700'}`}
+                    className={`absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded-md cursor-pointer ${isDark ? 'text-slate-400 hover:text-white' : 'text-slate-400 hover:text-slate-700'}`}
+                    title="Clear search"
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
@@ -611,7 +617,7 @@ export default function DataTable({
           </div>
 
           {/* Right Action Tools: Branch Filter, Header Filters, Date Filter, Export & Custom Actions */}
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 w-full xl:w-auto justify-start xl:justify-end shrink-0">
             {/* Branch Filter: Positioned professionally before All Dates */}
             {branchFilterSlot ? (
               branchFilterSlot
@@ -718,7 +724,7 @@ export default function DataTable({
 
         {/* Optional Custom Filters Slot (Status Chips, Corridor Tabs, etc.) */}
         {filtersSlot && (
-          <div className="pt-1 border-t border-slate-800/40">
+          <div className={`pt-2 border-t ${isDark ? 'border-slate-800/60' : 'border-slate-200/60'}`}>
             {filtersSlot}
           </div>
         )}
@@ -807,12 +813,15 @@ export default function DataTable({
           <tbody className={`divide-y ${isDark ? 'divide-slate-800/40' : 'divide-slate-200'}`}>
             {effectiveLoading ? (
               <tr>
-                <td colSpan={columns.length} className="py-12 p-0 text-center">
+                <td colSpan={columns.length || 1} className="py-12 p-0 text-center border-none">
                   <div
-                    className="sticky left-0 flex flex-col items-center justify-center mx-auto"
+                    className="sticky left-0 m-0 flex flex-col items-center justify-center px-4"
                     style={{
                       width: containerWidth ? `${containerWidth}px` : '100cqw',
-                      maxWidth: '100%',
+                      minWidth: containerWidth ? `${containerWidth}px` : '100cqw',
+                      maxWidth: containerWidth ? `${containerWidth}px` : '100cqw',
+                      marginLeft: 0,
+                      marginRight: 0,
                     }}
                   >
                     <LoadingState
@@ -825,15 +834,18 @@ export default function DataTable({
               </tr>
             ) : displayData.length === 0 ? (
               <tr>
-                <td colSpan={columns.length} className="py-20 p-0 text-center">
+                <td colSpan={columns.length || 1} className="py-16 sm:py-20 p-0 text-center border-none">
                   <div
-                    className="sticky left-0 flex flex-col items-center justify-center mx-auto px-4"
+                    className="sticky left-0 m-0 flex flex-col items-center justify-center px-4"
                     style={{
                       width: containerWidth ? `${containerWidth}px` : '100cqw',
-                      maxWidth: '100%',
+                      minWidth: containerWidth ? `${containerWidth}px` : '100cqw',
+                      maxWidth: containerWidth ? `${containerWidth}px` : '100cqw',
+                      marginLeft: 0,
+                      marginRight: 0,
                     }}
                   >
-                    <div className="max-w-md mx-auto space-y-3">
+                    <div className="max-w-md w-full mx-auto space-y-3">
                       <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mx-auto border ${
                         emptyIcon
                           ? (isDark ? 'bg-amber-500/10 border-amber-500/30 text-amber-500' : 'bg-amber-50 border-amber-200 text-amber-600')

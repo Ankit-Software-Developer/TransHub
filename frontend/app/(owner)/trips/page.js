@@ -45,6 +45,7 @@ import {
   Eye,
 } from 'lucide-react';
 import Link from 'next/link';
+import BranchFilterDropdown from '../../../components/ui/BranchFilterDropdown';
 import { useStore } from '../../../store/useStore';
 
 export default function TripsPage() {
@@ -1301,22 +1302,37 @@ export default function TripsPage() {
       <div className="flex-1 flex flex-col min-w-0">
         <Navbar />
 
-        <main className="flex-1 p-6 max-w-7xl mx-auto w-full space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
-                <Truck className="w-6 h-6 text-blue-500" />
+        <main className="flex-1 p-3.5 sm:p-5 lg:p-6 xl:p-8 space-y-4 sm:space-y-6 w-full max-w-full">
+          <div className="flex items-start sm:items-center justify-between gap-3 sm:gap-4">
+            <div className="min-w-0 flex-1">
+              <h1 className="text-base sm:text-lg lg:text-xl xl:text-2xl font-black tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
+                <Truck className="w-4 h-4 sm:w-5 sm:h-5 text-blue-500 shrink-0" />
                 Trip and Movement
               </h1>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              <p className="text-xs lg:text-[13px] xl:text-sm text-slate-500 dark:text-slate-400 mt-0.5 sm:mt-1 truncate sm:whitespace-normal">
                 Monitor fleet journeys, assign commercial vehicles, and reconcile trip settlements.
               </p>
             </div>
 
-            <div className="flex items-center space-x-2.5">
+            <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+              {isAdmin && (
+                <BranchFilterDropdown
+                  selectedBranchId={selectedBranchId}
+                  onChange={(newBranchId) => {
+                    setSelectedBranchId(newBranchId);
+                    setPage(1);
+                  }}
+                  branches={branchesList}
+                  allLabel="All Branches"
+                  allSubtitle="All Operating Hubs"
+                  label="Branch:"
+                  showLabel={true}
+                  align="right"
+                />
+              )}
               <Link
                 href="/load-planning"
-                className="flex items-center space-x-2 bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white px-3.5 py-2 rounded-xl text-xs font-bold shadow-md shadow-cyan-500/20 transition-all active:scale-95 cursor-pointer"
+                className="flex items-center space-x-2 bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white px-3.5 py-2 rounded-xl text-xs font-bold shadow-md shadow-cyan-500/20 transition-all active:scale-95 cursor-pointer shrink-0"
               >
                 <Layers className="w-4 h-4" />
                 <span>Load Planning Dock</span>
@@ -1383,15 +1399,7 @@ export default function TripsPage() {
                 </div>
               </div>
             }
-            branchFilterable={isAdmin}
-            branches={branchesList}
-            selectedBranchId={selectedBranchId}
-            onBranchChange={(newBranchId) => {
-              setSelectedBranchId(newBranchId);
-              setPage(1);
-            }}
-            branchFilterLabel="Branch:"
-            branchFilterAllLabel="All Branches (Network-wide)"
+            branchFilterable={false}
             headerFiltersSlot={
               <div className="flex items-center gap-2 flex-wrap">
                 <div className="relative">

@@ -100,7 +100,7 @@ function ConsignmentDetailContent() {
   ];
 
   return (
-    <main className="flex-1 p-6 max-w-6xl mx-auto w-full">
+    <main className="flex-1 p-3.5 sm:p-5 lg:p-6 xl:p-8 space-y-4 sm:space-y-6 w-full max-w-full">
       {/* Top Bar */}
       <div className="flex items-center justify-between mb-4">
         <button

@@ -254,7 +254,7 @@ const seed = async () => {
       document_type: 'BILTY',
       financial_year: fy,
       prefix: '',
-      current_number: 100,
+      current_number: 0,
       sequence_length: 6,
       template: '{BRANCH}/{FY}/{SEQ}',
     });

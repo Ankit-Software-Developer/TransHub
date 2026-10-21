@@ -451,7 +451,7 @@ export default function RolePermissionMatrix() {
                   <p className={`text-xs mt-1.5 line-clamp-2 leading-relaxed ${
                     isDark ? 'text-slate-400' : 'text-slate-600'
                   }`}>
-                    {role.description || (role.name === 'ADMIN' ? 'Tenant administrator with full access to tenant features' : 'Configurable permissions role for transport operations')}
+                    {role.description || (role.name === 'ADMIN' ? 'Transport administrator with full access to transport features' : 'Configurable permissions role for transport operations')}
                   </p>
 
                   {/* Bottom: Pill tag, Level, Perms count */}
@@ -554,7 +554,7 @@ export default function RolePermissionMatrix() {
                     </div>
 
                     <p className={`text-xs mt-1 truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                      {selectedRole.description || 'Tenant administrator with full access to tenant features'}
+                      {selectedRole.description || 'Transport administrator with full access to transport features'}
                     </p>
                   </div>
 

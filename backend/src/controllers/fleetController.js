@@ -105,6 +105,11 @@ const createVehicle = async (req, res) => {
     }
 
     const normalizedPlate = vehicle_number.toUpperCase().trim();
+    const effectiveOwnership = ownership || 'OWN';
+
+    if (effectiveOwnership === 'OWN' && (!rc_number || !rc_number.trim())) {
+      return errorResponse(res, 'RC (Registration Certificate) number is mandatory for company-owned vehicles', null, 400);
+    }
 
     // Check for duplicate vehicle number
     const existing = await Vehicle.findOne({
@@ -124,14 +129,14 @@ const createVehicle = async (req, res) => {
       vehicle_number: normalizedPlate,
       vehicle_code: `VEH-${normalizedPlate.replace(/[^A-Za-z0-9]/g, '').slice(-4)}`,
       vehicle_type: vehicle_type || 'TRUCK',
-      ownership: ownership || 'OWN',
+      ownership: effectiveOwnership,
       capacity_ton: parseFloat(capacity_ton) || 10,
       length_ft: parseFloat(length_ft) || null,
       gps_device_id: (gps_device_id && gps_device_id.trim()) ? gps_device_id.trim() : null,
       fastag_id: fastag_id || null,
       branch_id: branch_id || null,
       assigned_driver_id: assigned_driver_id || null,
-      rc_number: rc_number || `RC-${normalizedPlate}`,
+      rc_number: rc_number?.trim() || `RC-${normalizedPlate}`,
       rc_expiry: rc_expiry || null,
       insurance_expiry: insurance_expiry || null,
       fitness_expiry: fitness_expiry || null,
@@ -221,6 +226,11 @@ const updateVehicle = async (req, res) => {
         return errorResponse(res, `Vehicle number "${normalizedPlate}" is already assigned to another vehicle.`, null, 400);
       }
       vehicle.vehicle_number = normalizedPlate;
+    }
+
+    const effectiveOwnership = ownership !== undefined ? ownership : vehicle.ownership;
+    if (effectiveOwnership === 'OWN' && rc_number !== undefined && !rc_number?.trim()) {
+      return errorResponse(res, 'RC (Registration Certificate) number is mandatory for company-owned vehicles', null, 400);
     }
 
     if (vehicle_type !== undefined) vehicle.vehicle_type = vehicle_type;

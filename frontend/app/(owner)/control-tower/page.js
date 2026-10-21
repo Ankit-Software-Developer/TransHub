@@ -501,26 +501,44 @@ export default function ControlTowerPage() {
       <div className="flex-1 flex flex-col min-w-0">
         <Navbar />
 
-        <main className="flex-1 p-5 sm:p-6 lg:p-8 space-y-6 max-w-[1720px] mx-auto w-full">
+        <main className="flex-1 p-3.5 sm:p-5 lg:p-6 xl:p-8 space-y-4 sm:space-y-6 w-full max-w-full">
           
           {/* 24x7 Operations Command Strip Header */}
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-            <div className="min-w-0">
-              <div className="flex items-center space-x-2.5">
-                <div className="w-3 h-3 rounded-full bg-cyan-400 animate-ping" />
-                <h1 className={`text-2xl sm:text-3xl font-black tracking-tight ${
-                  isDark ? 'text-white' : 'text-slate-900'
-                }`}>
-                  24x7 Real-Time Control Tower
-                </h1>
+          <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3.5 sm:gap-4">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-gradient-to-tr from-cyan-500 to-blue-600 text-white shadow-md shadow-cyan-500/20 flex items-center justify-center shrink-0">
+                  <Radio className="w-5 h-5 sm:w-6 sm:h-6 animate-pulse" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                    <h1 className={`text-base sm:text-lg lg:text-xl xl:text-2xl font-black tracking-tight text-balance sm:whitespace-nowrap ${
+                      isDark ? 'text-white' : 'text-slate-900'
+                    }`}>
+                      24x7 Real-Time Control Tower
+                    </h1>
+                    <button
+                      onClick={fetchControlTowerData}
+                      disabled={loading}
+                      className={`p-1.5 sm:p-2 rounded-xl border transition-all cursor-pointer shrink-0 ${
+                        isDark
+                          ? 'bg-slate-900/80 border-slate-800 text-cyan-400 hover:text-white hover:border-slate-700'
+                          : 'bg-white border-slate-200 text-blue-600 hover:text-blue-900 shadow-xs'
+                      }`}
+                      title="Refresh Live Fleet Telemetry"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${isDark ? 'text-cyan-400' : 'text-blue-600'} ${loading ? 'animate-spin' : ''}`} />
+                    </button>
+                  </div>
+                  <p className={`text-xs sm:text-[13px] xl:text-sm text-slate-500 dark:text-slate-400 mt-0.5 sm:mt-1 truncate sm:whitespace-normal`}>
+                    Live highway corridor GPS tracking, active trip telemetry & exception command center.
+                  </p>
+                </div>
               </div>
-              <p className={`text-xs sm:text-sm mt-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                Live highway corridor GPS tracking, active trip telemetry & exception command center (Live from Database).
-              </p>
             </div>
 
-            {/* Action Toolbar: Single-Row Layout when space is present, smoothly responsive */}
-            <div className="flex items-center gap-2 overflow-x-auto sm:overflow-visible pb-1 sm:pb-0 shrink-0">
+            {/* Action Toolbar */}
+            <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 flex-wrap sm:flex-nowrap">
               {/* Branch / Transporter Scope Selector: only for multi-branch admins */}
               {!isRestrictedBranchUser && (
                 <BranchFilterDropdown
@@ -536,27 +554,13 @@ export default function ControlTowerPage() {
               )}
 
               {/* Live IST Radar Time */}
-              <div className={`flex items-center space-x-1.5 px-3 py-2 rounded-xl border text-xs font-mono font-bold shrink-0 whitespace-nowrap ${
+              <div className={`flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl border text-xs font-mono font-bold shrink-0 whitespace-nowrap ${
                 isDark ? 'bg-slate-900/90 border-slate-800 text-cyan-300' : 'bg-white border-slate-200 text-blue-700 shadow-xs'
               }`}>
-                <Radio className="w-3.5 h-3.5 text-cyan-400 animate-pulse shrink-0" />
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
                 <span>IST: {currentTime || '07:24:32 PM'}</span>
-                <span className="hidden sm:inline text-[10px] text-emerald-400 font-sans">• LIVE RADAR</span>
+                <span className="hidden xl:inline text-[10px] text-emerald-400 font-sans">• LIVE RADAR</span>
               </div>
-
-              {/* Refresh Button */}
-              <button
-                onClick={fetchControlTowerData}
-                disabled={loading}
-                className={`p-2 rounded-xl border transition-all shrink-0 ${
-                  isDark
-                    ? 'bg-slate-900/80 border-slate-800 text-slate-300 hover:text-white'
-                    : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-xs'
-                }`}
-                title="Refresh Live Fleet Telemetry"
-              >
-                <RefreshCw className={`w-4 h-4 ${isDark ? 'text-cyan-400' : 'text-blue-600'} ${loading ? 'animate-spin' : ''}`} />
-              </button>
 
               {/* New Trip Button */}
               <Link
@@ -570,62 +574,62 @@ export default function ControlTowerPage() {
           </div>
 
           {/* Top 6 Control Command Counters (Live from DB) */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
-            <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
+          <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2.5 sm:gap-3.5">
+            <div className={`p-3 sm:p-4 rounded-xl sm:rounded-2xl border ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
               <div className="text-[11px] font-semibold text-slate-400 mb-1">Active Trips In Motion</div>
-              <div className="text-2xl font-black text-cyan-400 font-mono">{activeCount}</div>
+              <div className="text-xl sm:text-2xl font-black text-cyan-400 font-mono">{activeCount}</div>
               <div className="text-[10px] text-slate-500 mt-1">Live trip sheets on road</div>
             </div>
 
-            <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
+            <div className={`p-3 sm:p-4 rounded-xl sm:rounded-2xl border ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
               <div className="text-[11px] font-semibold text-slate-400 mb-1">On Schedule</div>
-              <div className="text-2xl font-black text-emerald-400 font-mono">{onScheduleCount}</div>
+              <div className="text-xl sm:text-2xl font-black text-emerald-400 font-mono">{onScheduleCount}</div>
               <div className="text-[10px] text-emerald-400/80 mt-1">
                 {activeCount > 0 ? `${Math.round((onScheduleCount / activeCount) * 100)}% on time` : 'Normal transit'}
               </div>
             </div>
 
-            <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
+            <div className={`p-3 sm:p-4 rounded-xl sm:rounded-2xl border ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
               <div className="text-[11px] font-semibold text-slate-400 mb-1">Delayed / Critical</div>
-              <div className="text-2xl font-black text-rose-400 font-mono">{delayedCount}</div>
+              <div className="text-xl sm:text-2xl font-black text-rose-400 font-mono">{delayedCount}</div>
               <div className="text-[10px] text-rose-400/80 mt-1">Toll queues or halt</div>
             </div>
 
-            <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
+            <div className={`p-3 sm:p-4 rounded-xl sm:rounded-2xl border ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
               <div className="text-[11px] font-semibold text-slate-400 mb-1">In-Flight Payload</div>
-              <div className="text-2xl font-black text-amber-400 font-mono">
+              <div className="text-xl sm:text-2xl font-black text-amber-400 font-mono">
                 {totalWeightInMotion > 0 ? `${(totalWeightInMotion / 1000).toFixed(1)} T` : '0 T'}
               </div>
               <div className="text-[10px] text-amber-400/80 mt-1">{totalPackagesInMotion} Packages</div>
             </div>
 
-            <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
+            <div className={`p-3 sm:p-4 rounded-xl sm:rounded-2xl border ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
               <div className="text-[11px] font-semibold text-slate-400 mb-1">Total Trips MTD</div>
-              <div className={`text-2xl font-black font-mono ${isDark ? 'text-white' : 'text-slate-900'}`}>
+              <div className={`text-xl sm:text-2xl font-black font-mono ${isDark ? 'text-white' : 'text-slate-900'}`}>
                 {tripsData.length}
               </div>
               <div className="text-[10px] text-slate-500 mt-1">Logged in database</div>
             </div>
 
-            <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
+            <div className={`p-3 sm:p-4 rounded-xl sm:rounded-2xl border ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
               <div className="text-[11px] font-semibold text-slate-400 mb-1">Consignments Handled</div>
-              <div className="text-2xl font-black text-purple-400 font-mono">{totalBookingsCount}</div>
+              <div className="text-xl sm:text-2xl font-black text-purple-400 font-mono">{totalBookingsCount}</div>
               <div className="text-[10px] text-slate-500 mt-1">Total commercial dockets</div>
             </div>
           </div>
 
-          {/* Main Cockpit: Real Leaflet Map & Queue (8 Cols) + Telemetry & Exceptions (4 Cols) */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+          {/* Main Cockpit: Real Leaflet Map & Queue (8 Cols on xl+) + Telemetry & Exceptions (4 Cols on xl+) */}
+          <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-stretch">
             
-            {/* Left Column: Full GPS Leaflet Map & Active Dispatch Queue (8 Columns) */}
-            <div className="lg:col-span-8 flex flex-col h-full space-y-5">
+            {/* Left Column: Full GPS Leaflet Map & Active Dispatch Queue (8 Columns on xl+, 100% on 1024px laptop & tablets) */}
+            <div className="xl:col-span-8 flex flex-col h-full space-y-5">
               
               {/* Real Interactive Leaflet India Map (Same as Dashboard, Showing only Running Trips) */}
-              <div className={`p-5 rounded-3xl border shadow-xl relative overflow-hidden flex flex-col justify-between flex-1 h-full ${
+              <div className={`isolate relative z-0 p-4 sm:p-5 rounded-3xl border shadow-xl overflow-hidden flex flex-col justify-between flex-1 h-full ${
                 isDark ? 'bg-[#070B14] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
               }`}>
                 {/* Map Toolbar */}
-                <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 z-10 pb-3 border-b min-w-0 ${
+                <div className={`flex flex-col md:flex-row md:items-center justify-between gap-3 z-10 pb-3 border-b min-w-0 ${
                   isDark ? 'border-slate-800/80' : 'border-slate-200'
                 }`}>
                   <div className="flex items-center space-x-2.5 min-w-0 shrink">
@@ -649,9 +653,9 @@ export default function ControlTowerPage() {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 flex-nowrap shrink-0 overflow-x-auto scrollbar-none">
+                  <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap shrink-0 overflow-x-auto scrollbar-none">
                     {/* Top Vehicle Quick-Selector */}
-                    <div className="relative w-44 sm:w-52 md:w-56 shrink-0">
+                    <div className="relative w-full sm:w-48 lg:w-52 shrink-0">
                       <select
                         id="control-tower-vehicle-picker"
                         value={selectedTrip ? (selectedTrip.vehicleNumber || selectedTrip.id) : 'ALL'}
@@ -841,11 +845,11 @@ export default function ControlTowerPage() {
 
             </div>
 
-            {/* Right Column: Live Telemetry HUD & Exception Center (4 Columns) */}
-            <div className="lg:col-span-4 flex flex-col justify-between space-y-5 h-full">
+            {/* Right Column: Live Telemetry HUD & Exception Center (4 Columns on xl+, 2 Columns side-by-side on 1024px laptop & tablets) */}
+            <div className="xl:col-span-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-1 gap-5">
               
               {/* Selected Vehicle Telemetry HUD (Live from DB & WheelsEye) */}
-              <div className={`p-5 rounded-3xl border shadow-xl flex-1 flex flex-col justify-between ${
+              <div className={`p-4 sm:p-5 rounded-3xl border shadow-xl flex-1 flex flex-col justify-between ${
                 isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200'
               }`}>
                 <div className={`flex items-center justify-between pb-3 border-b mb-3.5 ${
@@ -1121,7 +1125,7 @@ export default function ControlTowerPage() {
               </div>
 
               {/* Exception & Incident Center */}
-              <div className={`p-5 rounded-3xl border shadow-xl ${
+              <div className={`p-4 sm:p-5 rounded-3xl border shadow-xl flex flex-col justify-between ${
                 isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200'
               }`}>
                 <div className={`flex items-center justify-between pb-3 border-b mb-3.5 ${

@@ -123,7 +123,7 @@ const createBranch = async (req, res) => {
     }
 
     if (!branch_code || !branch_code.trim()) {
-      return errorResponse(res, 'Branch Code is mandatory (e.g. BOKH for Balaji Logistic - Okhla)', null, 400);
+      return errorResponse(res, 'Branch Code is mandatory (e.g. BOKH for Branch - Okhla)', null, 400);
     }
 
     const finalCode = branch_code.trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '');

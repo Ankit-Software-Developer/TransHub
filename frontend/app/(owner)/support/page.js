@@ -337,38 +337,38 @@ export default function SupportPage() {
       <div className="flex-1 flex flex-col min-w-0">
         <Navbar />
 
-        <main className="flex-1 p-4 md:p-6 max-w-7xl mx-auto w-full space-y-6">
+        <main className="flex-1 p-3.5 sm:p-5 lg:p-6 xl:p-8 space-y-4 sm:space-y-6 w-full max-w-full">
           {/* Header */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
+          <div className="flex items-start sm:items-center justify-between gap-3 sm:gap-4">
+            <div className="min-w-0 flex-1">
               <div className="flex items-center space-x-2.5">
-                <div className="w-9 h-9 rounded-xl bg-blue-600/10 text-blue-600 border border-blue-200/50 flex items-center justify-center font-bold">
+                <div className="w-9 h-9 rounded-xl bg-blue-600/10 text-blue-600 border border-blue-200/50 flex items-center justify-center font-bold shrink-0">
                   <LifeBuoy className="w-5 h-5" />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <div className="flex items-center gap-2.5 flex-wrap">
-                    <h1 className={`text-2xl font-extrabold tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                    <h1 className={`text-base sm:text-lg lg:text-xl xl:text-2xl font-extrabold tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
                       Support &amp; Operations Helpdesk
                     </h1>
                     {!isAdmin && userBranchId && (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30">
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30 shrink-0">
                         <Building2 className="w-3.5 h-3.5" />
                         <span>{activeLoginBranch?.branch_name || activeLoginBranch?.name || userBranchName}: {activeLoginBranch?.branch_code || activeLoginBranch?.code || userBranchCode || 'HUB'}</span>
                         <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"></span>
                       </span>
                     )}
                   </div>
-                  <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                    Multi-tier hierarchical ticket flow: Branch Staff → Transporter Admin → Platform Super Admin
+                  <p className={`text-xs truncate sm:whitespace-normal ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                    Manage operational tickets, resolve consignment queries, and track helpdesk support requests.
                   </p>
                 </div>
               </div>
             </div>
 
-            <div className="flex items-center space-x-2.5">
+            <div className="flex items-center space-x-2.5 shrink-0">
               <button
                 onClick={() => setIsNewTicketOpen(true)}
-                className="inline-flex items-center space-x-1.5 bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-2 rounded-xl text-xs font-bold shadow-md shadow-blue-500/20 transition-all hover:scale-[1.02]"
+                className="inline-flex items-center space-x-1.5 bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-2 rounded-xl text-xs font-bold shadow-md shadow-blue-500/20 transition-all hover:scale-[1.02] shrink-0 whitespace-nowrap"
               >
                 <PlusCircle className="w-4 h-4" />
                 <span>Create Support Ticket</span>
@@ -468,13 +468,13 @@ export default function SupportPage() {
                   Search Filter
                 </label>
                 <div className="relative">
-                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                   <input
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Search Ticket #, Subject, Docket / Reference..."
-                    className={`w-full text-xs font-semibold rounded-xl border pl-8 pr-10 py-2 outline-none ${
+                    className={`w-full text-xs font-semibold rounded-xl border pl-9 pr-10 py-2 outline-none ${
                       isDark ? 'bg-slate-900 border-slate-800 text-slate-200' : 'bg-slate-50 border-slate-200 text-slate-800'
                     }`}
                   />
@@ -493,7 +493,7 @@ export default function SupportPage() {
 
           {/* Tickets List Table */}
           <div className={`rounded-2xl border overflow-hidden ${isDark ? 'bg-[#0B1020] border-slate-800/80' : 'bg-white border-slate-200/80 shadow-card'}`}>
-            <div className="overflow-x-auto overflow-y-auto max-h-[480px] sm:max-h-[540px] lg:max-h-[calc(100vh-290px)] min-h-[280px] scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700">
+            <div className="overflow-x-auto overflow-y-auto max-h-[480px] sm:max-h-[540px] lg:max-h-[calc(100vh-290px)] min-h-[280px] scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700 relative [container-type:inline-size]">
               <table className="w-full text-left border-collapse">
                 <thead className="sticky top-0 z-20 shadow-xs">
                   <tr className={`border-b text-[11px] font-bold uppercase tracking-wider ${
@@ -513,8 +513,8 @@ export default function SupportPage() {
                 <tbody className={`divide-y text-xs ${isDark ? 'divide-slate-800/80 text-slate-300' : 'divide-slate-100 text-slate-700'}`}>
                   {loading ? (
                     <tr>
-                      <td colSpan={8} className="py-12 text-center">
-                        <div className="flex flex-col items-center justify-center space-y-2">
+                      <td colSpan={8} className="py-12 p-0 text-center border-none">
+                        <div className="sticky left-0 m-0 flex flex-col items-center justify-center px-4 w-[100cqw] max-w-full space-y-2">
                           <RefreshCw className="w-6 h-6 animate-spin text-blue-500" />
                           <p className="text-xs font-semibold text-slate-400">Loading support tickets...</p>
                         </div>
@@ -522,8 +522,8 @@ export default function SupportPage() {
                     </tr>
                   ) : tickets.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="py-12 text-center text-slate-400">
-                        <div className="flex flex-col items-center justify-center space-y-1">
+                      <td colSpan={8} className="py-16 p-0 text-center text-slate-400 border-none">
+                        <div className="sticky left-0 m-0 flex flex-col items-center justify-center px-4 w-[100cqw] max-w-full space-y-1">
                           <LifeBuoy className="w-8 h-8 opacity-30 mb-1" />
                           <p className="text-sm font-bold text-slate-500">No support tickets found</p>
                           <p className="text-xs text-slate-400">All operating hubs and issues are clear.</p>

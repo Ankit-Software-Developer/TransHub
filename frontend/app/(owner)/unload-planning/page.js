@@ -485,7 +485,7 @@ function UnloadPlanningContent() {
       <div className="flex-1 flex flex-col min-w-0">
         <Navbar />
 
-        <main className="flex-1 p-6 max-w-7xl mx-auto w-full space-y-6">
+        <main className="flex-1 p-3.5 sm:p-5 lg:p-6 xl:p-8 space-y-4 sm:space-y-6 w-full max-w-full">
           {isOnlyFTL && (
             <div className="p-4 rounded-2xl border border-purple-500/30 bg-purple-500/10 text-purple-700 dark:text-purple-300 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in">
               <div className="flex items-center gap-3">
@@ -508,13 +508,13 @@ function UnloadPlanningContent() {
             </div>
           )}
           {/* Header */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
             <div>
               <div className="flex items-center gap-2">
                 <span className="p-2 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 text-white shadow-lg shadow-emerald-500/20">
                   <PackageCheck className="w-5 h-5" />
                 </span>
-                <h1 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white">
+                <h1 className="text-lg sm:text-xl lg:text-2xl xl:text-3xl font-black tracking-tight text-slate-900 dark:text-white">
                   Unload Planning & Inbound Dock
                 </h1>
               </div>
@@ -1149,7 +1149,7 @@ function UnloadPlanningContent() {
 
                     {/* Search inside manifest */}
                     <div className="relative">
-                      <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                      <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                       <input
                         type="text"
                         value={searchFilter}

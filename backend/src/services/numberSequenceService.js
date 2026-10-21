@@ -1,5 +1,5 @@
 // src/services/numberSequenceService.js
-const { NumberSequence, Branch, Organization, Trip, Invoice } = require('../models');
+const { NumberSequence, Branch, Organization, Trip, Invoice, Consignment } = require('../models');
 
 /**
  * Calculates current Indian Financial Year (e.g., April 2026 -> "26-27")
@@ -21,7 +21,7 @@ const getFinancialYear = (date = new Date()) => {
 
 /**
  * Derives default 3-letter uppercase prefix from business name
- * (e.g. "balajilogistic" -> "BAL", "DWB Logistics" -> "DWB")
+ * (e.g. "transportlogistic" -> "TRP", "DWB Logistics" -> "DWB")
  */
 const derivePrefixFromBusinessName = (businessName) => {
   if (!businessName) return 'DWB';
@@ -48,6 +48,7 @@ const generateNextNumber = async ({
   const OrganizationModel = models?.Organization || Organization;
   const TripModel = models?.Trip || Trip;
   const InvoiceModel = models?.Invoice || Invoice;
+  const ConsignmentModel = models?.Consignment || Consignment;
   const fy = getFinancialYear();
   const currentYear = String(new Date().getFullYear());
 
@@ -69,7 +70,7 @@ const generateNextNumber = async ({
   const customTemplate = org?.settings?.docketSeries?.template || '{PREFIX}{SEQ}';
 
   // Trip configuration (transporter specific)
-  // Format shown in image: TRP-2026-001, TRP-2026-002, TRP-2026-003
+  // Format: TRP-2026-001, TRP-2026-002, TRP-2026-003
   const customTripPrefix = (org?.settings?.tripSeries?.prefix || 'TRP').replace(/[^a-zA-Z0-9]/g, '').toUpperCase() || 'TRP';
   const customTripSeqLength = Math.max(3, parseInt(org?.settings?.tripSeries?.sequenceLength, 10) || 3);
   const customTripTemplate = org?.settings?.tripSeries?.template || '{PREFIX}-{YEAR}-{SEQ}';
@@ -140,7 +141,23 @@ const generateNextNumber = async ({
       }, { transaction });
     } else {
       let startingNum = 0;
-      if (isInvoice && InvoiceModel && organizationId) {
+      if (isBilty && ConsignmentModel && organizationId) {
+        try {
+          const existingConsignments = await ConsignmentModel.findAll({
+            where: { organization_id: organizationId },
+            attributes: ['docket_number', 'lr_number'],
+            transaction,
+          });
+          existingConsignments.forEach((c) => {
+            const docketStr = c.docket_number || c.lr_number || '';
+            const match = docketStr.match(/(\d+)$/);
+            if (match) {
+              const num = parseInt(match[1], 10);
+              if (!isNaN(num) && num > startingNum) startingNum = num;
+            }
+          });
+        } catch (_) {}
+      } else if (isInvoice && InvoiceModel && organizationId) {
         try {
           const existingInvoices = await InvoiceModel.findAll({
             where: { organization_id: organizationId },
@@ -179,11 +196,13 @@ const generateNextNumber = async ({
     if (TripModel && organizationId) {
       try {
         let maxExisting = 0;
+        let totalCount = 0;
         const existingTrips = await TripModel.findAll({
           where: { organization_id: organizationId },
           attributes: ['trip_number'],
           transaction,
         });
+        totalCount = existingTrips.length;
         existingTrips.forEach((t) => {
           const match = (t.trip_number || '').match(/-(\d+)$/);
           if (match) {
@@ -191,8 +210,17 @@ const generateNextNumber = async ({
             if (!isNaN(num) && num > maxExisting) maxExisting = num;
           }
         });
-        if (sequence.current_number < maxExisting) {
-          updates.current_number = maxExisting;
+        if (totalCount === 0) {
+          // Fresh tenant with 0 trips: start at 0 so first trip is 001
+          if (sequence.current_number !== 0) {
+            updates.current_number = 0;
+          }
+        } else {
+          if (sequence.current_number < maxExisting) {
+            updates.current_number = maxExisting;
+          } else if (sequence.current_number === 100 && maxExisting < 100) {
+            updates.current_number = maxExisting;
+          }
         }
       } catch (_) {}
     }
@@ -201,12 +229,48 @@ const generateNextNumber = async ({
       await sequence.update(updates, { transaction });
     }
   } else if (sequence && isBilty) {
-    if (sequence.template === '{BRANCH}/{FY}/{SEQ}' || sequence.prefix !== customPrefix) {
-      await sequence.update({
-        prefix: customPrefix,
-        template: customTemplate,
-        sequence_length: customSeqLength,
-      }, { transaction });
+    const updates = {};
+    if (sequence.template === '{BRANCH}/{FY}/{SEQ}' || sequence.template !== customTemplate) updates.template = customTemplate;
+    if (sequence.prefix !== customPrefix) updates.prefix = customPrefix;
+    if (sequence.sequence_length !== customSeqLength) updates.sequence_length = customSeqLength;
+
+    if (ConsignmentModel && organizationId) {
+      try {
+        let maxExisting = 0;
+        let totalCount = 0;
+        const existingConsignments = await ConsignmentModel.findAll({
+          where: { organization_id: organizationId },
+          attributes: ['docket_number', 'lr_number'],
+          transaction,
+        });
+        totalCount = existingConsignments.length;
+        existingConsignments.forEach((c) => {
+          const docketStr = c.docket_number || c.lr_number || '';
+          const match = docketStr.match(/(\d+)$/);
+          if (match) {
+            const num = parseInt(match[1], 10);
+            if (!isNaN(num) && num > maxExisting) maxExisting = num;
+          }
+        });
+        if (totalCount === 0) {
+          // Fresh tenant / transport with 0 dockets: start at 0 so first docket is 000001
+          const configuredStart = parseInt(org?.settings?.docketSeries?.startingNumber, 10);
+          const initialNum = (!isNaN(configuredStart) && configuredStart >= 1) ? configuredStart - 1 : 0;
+          if (sequence.current_number !== initialNum) {
+            updates.current_number = initialNum;
+          }
+        } else {
+          if (sequence.current_number < maxExisting) {
+            updates.current_number = maxExisting;
+          } else if (sequence.current_number === 100 && maxExisting < 100) {
+            updates.current_number = maxExisting;
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (Object.keys(updates).length > 0) {
+      await sequence.update(updates, { transaction });
     }
   }
 
@@ -295,6 +359,43 @@ const generateNextNumber = async ({
     } catch (_) {}
   }
 
+  // Absolute uniqueness guarantee for BILTY (Docket): loop until no conflicting docket exists
+  if (isBilty && ConsignmentModel && organizationId) {
+    try {
+      const Op = models?.Sequelize?.Op || require('sequelize').Op;
+      let collision = await ConsignmentModel.findOne({
+        where: {
+          organization_id: organizationId,
+          [Op.or]: [
+            { docket_number: generated },
+            { lr_number: generated },
+          ],
+        },
+        transaction,
+      });
+      while (collision) {
+        nextNum += 1;
+        paddedSeq = String(nextNum).padStart(seqLength, '0');
+        generated = sequence.template
+          .replace('{BRANCH}', branchCode)
+          .replace('{FY}', fy)
+          .replace('{YEAR}', currentYear)
+          .replace('{SEQ}', paddedSeq)
+          .replace('{PREFIX}', sequence.prefix || '');
+        collision = await ConsignmentModel.findOne({
+          where: {
+            organization_id: organizationId,
+            [Op.or]: [
+              { docket_number: generated },
+              { lr_number: generated },
+            ],
+          },
+          transaction,
+        });
+      }
+    } catch (_) {}
+  }
+
   await sequence.update({ current_number: nextNum }, { transaction });
 
   return {
@@ -317,6 +418,7 @@ const getNextNumberPreview = async ({
   const NumberSequenceModel = models?.NumberSequence || NumberSequence;
   const OrganizationModel = models?.Organization || Organization;
   const TripModel = models?.Trip || Trip;
+  const ConsignmentModel = models?.Consignment || Consignment;
   const fy = getFinancialYear();
   const currentYear = String(new Date().getFullYear());
 
@@ -342,20 +444,53 @@ const getNextNumberPreview = async ({
     }) : null;
 
     let currentNumber = sequence ? sequence.current_number : 0;
+    let maxExisting = 0;
+    let totalCount = 0;
     if (TripModel && organizationId) {
       try {
         const existingTrips = await TripModel.findAll({
           where: { organization_id: organizationId },
           attributes: ['trip_number'],
         });
+        totalCount = existingTrips.length;
         existingTrips.forEach((t) => {
           const match = (t.trip_number || '').match(/-(\d+)$/);
           if (match) {
             const num = parseInt(match[1], 10);
-            if (!isNaN(num) && num > currentNumber) currentNumber = num;
+            if (!isNaN(num) && num > maxExisting) maxExisting = num;
           }
         });
       } catch (_) {}
+    }
+
+    if (totalCount === 0) {
+      currentNumber = 0;
+      if (sequence && (sequence.current_number !== 0 || sequence.prefix !== customTripPrefix || sequence.template !== customTripTemplate)) {
+        try {
+          await sequence.update({
+            current_number: 0,
+            prefix: customTripPrefix,
+            template: customTripTemplate,
+            sequence_length: customTripSeqLength,
+          });
+        } catch (_) {}
+      }
+    } else {
+      if (currentNumber < maxExisting) {
+        currentNumber = maxExisting;
+      } else if (currentNumber === 100 && maxExisting < 100) {
+        currentNumber = maxExisting;
+      }
+      if (sequence && (sequence.current_number !== currentNumber || sequence.prefix !== customTripPrefix || sequence.template !== customTripTemplate)) {
+        try {
+          await sequence.update({
+            current_number: currentNumber,
+            prefix: customTripPrefix,
+            template: customTripTemplate,
+            sequence_length: customTripSeqLength,
+          });
+        } catch (_) {}
+      }
     }
 
     const nextNum = currentNumber + 1;
@@ -389,7 +524,59 @@ const getNextNumberPreview = async ({
     order: [['created_at', 'DESC']],
   }) : null;
 
-  const currentNumber = sequence ? sequence.current_number : 0;
+  let currentNumber = sequence ? sequence.current_number : 0;
+  let maxExistingDocket = 0;
+  let totalConsignments = 0;
+  if (ConsignmentModel && organizationId) {
+    try {
+      const existingConsignments = await ConsignmentModel.findAll({
+        where: { organization_id: organizationId },
+        attributes: ['docket_number', 'lr_number'],
+      });
+      totalConsignments = existingConsignments.length;
+      existingConsignments.forEach((c) => {
+        const docketStr = c.docket_number || c.lr_number || '';
+        const match = docketStr.match(/(\d+)$/);
+        if (match) {
+          const num = parseInt(match[1], 10);
+          if (!isNaN(num) && num > maxExistingDocket) maxExistingDocket = num;
+        }
+      });
+    } catch (_) {}
+  }
+
+  if (totalConsignments === 0) {
+    const configuredStart = parseInt(org?.settings?.docketSeries?.startingNumber, 10);
+    const initialNum = (!isNaN(configuredStart) && configuredStart >= 1) ? configuredStart - 1 : 0;
+    currentNumber = initialNum;
+    if (sequence && (sequence.current_number !== initialNum || sequence.prefix !== customPrefix || sequence.template !== customTemplate)) {
+      try {
+        await sequence.update({
+          current_number: initialNum,
+          prefix: customPrefix,
+          template: customTemplate,
+          sequence_length: customSeqLength,
+        });
+      } catch (_) {}
+    }
+  } else {
+    if (currentNumber < maxExistingDocket) {
+      currentNumber = maxExistingDocket;
+    } else if (currentNumber === 100 && maxExistingDocket < 100) {
+      currentNumber = maxExistingDocket;
+    }
+    if (sequence && (sequence.current_number !== currentNumber || sequence.prefix !== customPrefix || sequence.template !== customTemplate)) {
+      try {
+        await sequence.update({
+          current_number: currentNumber,
+          prefix: customPrefix,
+          template: customTemplate,
+          sequence_length: customSeqLength,
+        });
+      } catch (_) {}
+    }
+  }
+
   const nextNum = currentNumber + 1;
   const paddedSeq = String(nextNum).padStart(customSeqLength, '0');
   const preview = customTemplate

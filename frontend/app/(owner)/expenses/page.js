@@ -118,7 +118,7 @@ function CustomFilterDropdown({
           setIsOpen(!isOpen);
           setSearchQuery('');
         }}
-        className={`flex items-center space-x-2 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all active:scale-95 cursor-pointer ${
+        className={`flex items-center space-x-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-bold transition-all active:scale-95 cursor-pointer whitespace-nowrap shrink-0 ${
           isFiltered
             ? isDark
               ? 'bg-blue-600/20 border-blue-500/60 text-blue-300 shadow-xs'
@@ -135,7 +135,7 @@ function CustomFilterDropdown({
               : 'text-slate-400'
           }`} />
         )}
-        <span className="truncate max-w-[130px] sm:max-w-[170px]">
+        <span className="truncate max-w-[105px] sm:max-w-[125px]">
           {selectedOption ? selectedOption.label : allLabel}
         </span>
         <ChevronDown className={`w-3.5 h-3.5 shrink-0 text-slate-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
@@ -1744,26 +1744,26 @@ export default function ExpensesPage() {
       <div className="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto">
         <Navbar />
 
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-[1720px] mx-auto w-full space-y-6">
+        <main className="flex-1 p-3.5 sm:p-5 lg:p-6 xl:p-8 space-y-4 sm:space-y-5 lg:space-y-6 w-full max-w-full">
           
           {/* Top Header & Single-Row Fast Action Toolbar */}
-          <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3.5 relative z-10">
-            <div className="min-w-0">
+          <div className="flex items-start sm:items-center justify-between gap-3 sm:gap-4 relative z-10">
+            <div className="min-w-0 flex-1">
               <div className="flex items-center space-x-2.5">
                 <div className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse ring-4 ring-amber-500/20 shrink-0" />
-                <h1 className={`text-xl sm:text-2xl font-black tracking-tight ${
+                <h1 className={`text-base sm:text-lg lg:text-xl xl:text-2xl font-black tracking-tight ${
                   isDark ? 'text-white' : 'text-slate-900'
                 }`}>
                   Operating Expenses & Fuel Logs
                 </h1>
               </div>
-              <p className={`text-xs mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+              <p className={`text-xs lg:text-[13px] xl:text-sm mt-0.5 sm:mt-1 truncate sm:whitespace-normal ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                 Operational cash outflows: highway running costs, diesel logs, driver bhatta, and branch godown overheads.
               </p>
             </div>
 
-            {/* Quick Action Toolbar in ONE single row */}
-            <div className="flex items-center gap-2 shrink-0">
+            {/* Quick Action Toolbar - Column-wise on small screens, row on sm+ */}
+            <div className="flex flex-col sm:flex-row items-end sm:items-center gap-1.5 sm:gap-2 shrink-0">
               {/* Professional Branch Filter Dropdown for Admins / Locked Badge for Branch Staff */}
               {isAdmin ? (
                 <BranchFilterDropdown
@@ -1777,7 +1777,7 @@ export default function ExpensesPage() {
                   allSubtitle="Consolidated Network View"
                   showLabel={false}
                   size="sm"
-                  align="left"
+                  align="right"
                   searchable={true}
                   className="shrink-0"
                 />
@@ -1816,12 +1816,12 @@ export default function ExpensesPage() {
           </div>
 
 
-          {/* Executive Summary KPI Ribbon (5 Cards - Click to Switch Tab) */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3.5">
+          {/* Executive Summary KPI Ribbon (5 Cards - Single Row on lg+) */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 sm:gap-3">
             {/* Card 1: Total Outflows -> Trip-Wise Operational */}
             <div
               onClick={() => handleTabChange(TAB_OPERATIONAL)}
-              className={`p-4 rounded-2xl border transition-all cursor-pointer active:scale-[0.99] select-none ${
+              className={`p-3 sm:p-3.5 rounded-2xl border transition-all cursor-pointer active:scale-[0.99] select-none ${
                 activeTab === TAB_OPERATIONAL
                   ? isDark
                     ? 'bg-[#0B1020] border-amber-500/50 shadow-lg shadow-amber-500/10 ring-2 ring-amber-500/20'
@@ -1834,17 +1834,17 @@ export default function ExpensesPage() {
             >
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-600 dark:text-slate-400">Total Outflows</span>
-                <div className="p-2 rounded-xl bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-500/20">
-                  <Receipt className="w-4 h-4" />
+                <div className="p-1.5 rounded-xl bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-500/20">
+                  <Receipt className="w-3.5 h-3.5" />
                 </div>
               </div>
-              <div className="mt-3">
-                <span className="font-mono text-xl sm:text-2xl font-black text-amber-700 dark:text-amber-400">
+              <div className="mt-1.5 sm:mt-2">
+                <span className="font-mono text-base sm:text-lg lg:text-xl font-black text-amber-700 dark:text-amber-400">
                   ₹{Number(summaryData.totalOutflows || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                 </span>
-                <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 mt-1 font-medium">
+                <div className="flex items-center justify-between text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 sm:mt-1 font-medium truncate">
                   <span>Trip: ₹{Number(summaryData.tripDirectExpenses || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
-                  <span>Overhead: ₹{Number(summaryData.branchOverheads || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                  <span>Ovh: ₹{Number(summaryData.branchOverheads || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
                 </div>
               </div>
             </div>
@@ -1852,7 +1852,7 @@ export default function ExpensesPage() {
             {/* Card 2: Diesel Spend -> Trip-Wise Operational */}
             <div
               onClick={() => handleTabChange(TAB_OPERATIONAL)}
-              className={`p-4 rounded-2xl border transition-all cursor-pointer active:scale-[0.99] select-none ${
+              className={`p-3 sm:p-3.5 rounded-2xl border transition-all cursor-pointer active:scale-[0.99] select-none ${
                 activeTab === TAB_OPERATIONAL
                   ? isDark
                     ? 'bg-[#0B1020] border-cyan-500/50 shadow-lg shadow-cyan-500/10 ring-2 ring-cyan-500/20'
@@ -1865,15 +1865,15 @@ export default function ExpensesPage() {
             >
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-600 dark:text-slate-400">Diesel & Fuel Cost</span>
-                <div className="p-2 rounded-xl bg-sky-50 dark:bg-cyan-500/10 text-sky-700 dark:text-cyan-400 border border-sky-200 dark:border-cyan-500/20">
-                  <Fuel className="w-4 h-4" />
+                <div className="p-1.5 rounded-xl bg-sky-50 dark:bg-cyan-500/10 text-sky-700 dark:text-cyan-400 border border-sky-200 dark:border-cyan-500/20">
+                  <Fuel className="w-3.5 h-3.5" />
                 </div>
               </div>
-              <div className="mt-3">
-                <span className="font-mono text-xl sm:text-2xl font-black text-sky-700 dark:text-cyan-400">
+              <div className="mt-1.5 sm:mt-2">
+                <span className="font-mono text-base sm:text-lg lg:text-xl font-black text-sky-700 dark:text-cyan-400">
                   ₹{Number(summaryData.totalFuelAmount || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                 </span>
-                <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 mt-1 font-medium">
+                <div className="flex items-center justify-between text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 sm:mt-1 font-medium truncate">
                   <span>{Number(summaryData.totalFuelLitres || 0).toFixed(0)} L filled</span>
                   <span>Avg ₹{summaryData.avgFuelRate}/L</span>
                 </div>
@@ -1883,7 +1883,7 @@ export default function ExpensesPage() {
             {/* Card 3: Fleet KMPL */}
             <div
               onClick={() => handleTabChange(TAB_OPERATIONAL)}
-              className={`p-4 rounded-2xl border transition-all cursor-pointer active:scale-[0.99] select-none ${
+              className={`p-3 sm:p-3.5 rounded-2xl border transition-all cursor-pointer active:scale-[0.99] select-none ${
                 activeTab === TAB_OPERATIONAL
                   ? isDark
                     ? 'bg-[#0B1020] border-emerald-500/50 shadow-lg shadow-emerald-500/10 ring-2 ring-emerald-500/20'
@@ -1896,20 +1896,20 @@ export default function ExpensesPage() {
             >
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-600 dark:text-slate-400">Fleet Fuel Economy</span>
-                <div className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20">
-                  <Gauge className="w-4 h-4" />
+                <div className="p-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20">
+                  <Gauge className="w-3.5 h-3.5" />
                 </div>
               </div>
-              <div className="mt-3">
+              <div className="mt-1.5 sm:mt-2">
                 <div className="flex items-baseline space-x-1.5">
-                  <span className="font-mono text-xl sm:text-2xl font-black text-emerald-700 dark:text-emerald-400">
+                  <span className="font-mono text-base sm:text-lg lg:text-xl font-black text-emerald-700 dark:text-emerald-400">
                     {fleetAvgKmpl}
                   </span>
-                  {fleetAvgKmpl !== '—' && <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400">KMPL</span>}
+                  {fleetAvgKmpl !== '—' && <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400">KMPL</span>}
                 </div>
-                <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 mt-1 font-medium">
-                  <span>Dynamic odo delta</span>
-                  <span className="text-emerald-700 dark:text-emerald-400 font-semibold">{summaryData.fuelEntriesCount || 0} fill logs</span>
+                <div className="flex items-center justify-between text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 sm:mt-1 font-medium truncate">
+                  <span>Dynamic odo</span>
+                  <span className="text-emerald-700 dark:text-emerald-400 font-semibold">{summaryData.fuelEntriesCount || 0} logs</span>
                 </div>
               </div>
             </div>
@@ -1917,7 +1917,7 @@ export default function ExpensesPage() {
             {/* Card 4: Driver Bhatta -> Trip-Wise Operational */}
             <div
               onClick={() => handleTabChange(TAB_OPERATIONAL)}
-              className={`p-4 rounded-2xl border transition-all cursor-pointer active:scale-[0.99] select-none ${
+              className={`p-3 sm:p-3.5 rounded-2xl border transition-all cursor-pointer active:scale-[0.99] select-none ${
                 activeTab === TAB_OPERATIONAL
                   ? isDark
                     ? 'bg-[#0B1020] border-blue-500/50 shadow-lg shadow-blue-500/10 ring-2 ring-blue-500/20'
@@ -1929,18 +1929,18 @@ export default function ExpensesPage() {
               title="Click to view Driver Bhatta in Trip Ledger"
             >
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-600 dark:text-slate-400">Driver Bhatta & Advance</span>
-                <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-500/20">
-                  <UserCheck className="w-4 h-4" />
+                <span className="text-xs font-bold text-slate-600 dark:text-slate-400">Driver Bhatta</span>
+                <div className="p-1.5 rounded-xl bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-500/20">
+                  <UserCheck className="w-3.5 h-3.5" />
                 </div>
               </div>
-              <div className="mt-3">
-                <span className="font-mono text-xl sm:text-2xl font-black text-blue-700 dark:text-blue-400">
+              <div className="mt-1.5 sm:mt-2">
+                <span className="font-mono text-base sm:text-lg lg:text-xl font-black text-blue-700 dark:text-blue-400">
                   ₹{Number(summaryData.totalDriverAdvances || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                 </span>
-                <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 mt-1 font-medium">
+                <div className="flex items-center justify-between text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 sm:mt-1 font-medium truncate">
                   <span>Trip cash disbursals</span>
-                  <span className="text-blue-700 dark:text-blue-400 font-semibold">Included trip-wise</span>
+                  <span className="text-blue-700 dark:text-blue-400 font-semibold">Trip-wise</span>
                 </div>
               </div>
             </div>
@@ -1948,7 +1948,7 @@ export default function ExpensesPage() {
             {/* Card 5: Branch Overheads -> Tab 2 */}
             <div
               onClick={() => handleTabChange(TAB_BRANCH_OVERHEADS)}
-              className={`p-4 rounded-2xl border transition-all cursor-pointer active:scale-[0.99] select-none ${
+              className={`p-3 sm:p-3.5 rounded-2xl border transition-all cursor-pointer active:scale-[0.99] select-none ${
                 activeTab === TAB_BRANCH_OVERHEADS
                   ? isDark
                     ? 'bg-[#0B1020] border-purple-500/50 shadow-lg shadow-purple-500/10 ring-2 ring-purple-500/20'
@@ -1961,16 +1961,16 @@ export default function ExpensesPage() {
             >
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-600 dark:text-slate-400">Station Overheads</span>
-                <div className="p-2 rounded-xl bg-purple-50 dark:bg-purple-500/10 text-purple-700 dark:text-purple-400 border border-purple-200 dark:border-purple-500/20">
-                  <Building2 className="w-4 h-4" />
+                <div className="p-1.5 rounded-xl bg-purple-50 dark:bg-purple-500/10 text-purple-700 dark:text-purple-400 border border-purple-200 dark:border-purple-500/20">
+                  <Building2 className="w-3.5 h-3.5" />
                 </div>
               </div>
-              <div className="mt-3">
-                <span className="font-mono text-xl sm:text-2xl font-black text-purple-700 dark:text-purple-400">
+              <div className="mt-1.5 sm:mt-2">
+                <span className="font-mono text-base sm:text-lg lg:text-xl font-black text-purple-700 dark:text-purple-400">
                   ₹{Number(summaryData.branchOverheads || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                 </span>
-                <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 mt-1 font-medium">
-                  <span>Rent, Stationery & Van</span>
+                <div className="flex items-center justify-between text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 sm:mt-1 font-medium truncate">
+                  <span>Rent & Stationery</span>
                   <span>Petty Ledger</span>
                 </div>
               </div>
@@ -1978,22 +1978,22 @@ export default function ExpensesPage() {
           </div>
 
           {/* 2 Primary Modern Transport Accounting Pillars */}
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-3">
+          <div className="flex flex-col gap-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2.5 border-b border-slate-200 dark:border-slate-800 pb-2.5">
               {/* Level 1: 2 Main Expense Types */}
-              <div className="flex items-center gap-1.5 p-1 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+              <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => handleTabChange(TAB_OPERATIONAL)}
-                  className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                  className={`flex items-center space-x-2 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                     activeTab === TAB_OPERATIONAL
                       ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30 ring-2 ring-blue-500/20'
                       : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                   }`}
                 >
-                  <Truck className="w-4 h-4" />
+                  <Truck className="w-3.5 h-3.5" />
                   <span>1. Operational & Fleet Expenses (Trip-Wise)</span>
-                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                  <span className={`hidden sm:inline-block text-[10px] px-2 py-0.5 rounded-full font-bold ${
                     activeTab === TAB_OPERATIONAL
                       ? 'bg-white/20 text-white'
                       : isDark ? 'bg-slate-800 text-slate-300' : 'bg-slate-200 text-slate-700'
@@ -2005,15 +2005,15 @@ export default function ExpensesPage() {
                 <button
                   type="button"
                   onClick={() => handleTabChange(TAB_BRANCH_OVERHEADS)}
-                  className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                  className={`flex items-center space-x-2 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                     activeTab === TAB_BRANCH_OVERHEADS
                       ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30 ring-2 ring-purple-500/20'
                       : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                   }`}
                 >
-                  <Building2 className="w-4 h-4" />
+                  <Building2 className="w-3.5 h-3.5" />
                   <span>2. Staff & Company Overheads</span>
-                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                  <span className={`hidden sm:inline-block text-[10px] px-2 py-0.5 rounded-full font-bold ${
                     activeTab === TAB_BRANCH_OVERHEADS
                       ? 'bg-white/20 text-white'
                       : isDark ? 'bg-slate-800 text-slate-300' : 'bg-slate-200 text-slate-700'

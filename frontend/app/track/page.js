@@ -539,7 +539,7 @@ export default function PublicTrackingPage() {
       <footer className={`relative z-10 py-5 text-center text-xs border-t transition-colors ${
         isDark ? 'border-slate-800/60 text-slate-500' : 'border-slate-200 text-slate-500 bg-white/60'
       }`}>
-        © 2026 TransHub Technologies Inc. • Commercial Multi-Tenant Logistics Operating Platform
+        © 2026 TransHub Technologies Inc. • Commercial Transport Logistics Operating Platform
       </footer>
 
     </div>

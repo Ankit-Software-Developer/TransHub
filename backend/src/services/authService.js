@@ -14,7 +14,7 @@ const {
   SaaSSubscription,
 } = require('../models');
 const { ROLES, PERMISSIONS } = require('../config/constants');
-const { getFinancialYear } = require('./numberSequenceService');
+const { getFinancialYear, derivePrefixFromBusinessName } = require('./numberSequenceService');
 const { createTenantDatabase, getTenantConnection } = require('./tenantDbManager');
 
 /**
@@ -302,6 +302,7 @@ const register = async ({
       ? String(transporterType).toUpperCase().trim()
       : 'BOTH';
 
+    const defaultPrefix = derivePrefixFromBusinessName(businessName);
     const organization = await Organization.create({
       tenant_id: tenant.id,
       business_name: businessName,
@@ -313,6 +314,18 @@ const register = async ({
         trial_duration_days: 30,
         trial_end_date: trialEnd.toISOString(),
         transporterType: validTransporterType,
+        docketSeries: {
+          prefix: defaultPrefix,
+          sequenceLength: 6,
+          startingNumber: 1,
+          template: '{PREFIX}{SEQ}',
+        },
+        tripSeries: {
+          prefix: 'TRP',
+          sequenceLength: 3,
+          startingNumber: 1,
+          template: '{PREFIX}-{YEAR}-{SEQ}',
+        },
       },
     }, { transaction: t });
 
@@ -407,16 +420,18 @@ const register = async ({
 
       if (tenantDb.models.NumberSequence) {
         for (const docType of docTypes) {
+          const isDocBilty = docType === 'BILTY';
+          const isDocTrip = docType === 'TRIP';
           await tenantDb.models.NumberSequence.create({
             tenant_id: tenant.id,
             organization_id: organization.id,
-            branch_id: branchId,
+            branch_id: (isDocBilty || isDocTrip) ? null : branchId,
             document_type: docType,
-            financial_year: fy,
-            prefix: docType === 'BILTY' ? '' : `${docType.slice(0, 3)}-`,
-            current_number: 100,
-            sequence_length: 6,
-            template: docType === 'BILTY' ? '{BRANCH}/{FY}/{SEQ}' : '{PREFIX}{FY}/{SEQ}',
+            financial_year: isDocTrip ? String(new Date().getFullYear()) : fy,
+            prefix: isDocBilty ? defaultPrefix : (isDocTrip ? 'TRP' : `${docType.slice(0, 3)}-`),
+            current_number: 0,
+            sequence_length: isDocTrip ? 3 : 6,
+            template: isDocBilty ? '{PREFIX}{SEQ}' : (isDocTrip ? '{PREFIX}-{YEAR}-{SEQ}' : '{PREFIX}{FY}/{SEQ}'),
           });
         }
       }

@@ -156,7 +156,7 @@ const SummaryKpiCard = ({
 
   return (
     <div
-      className={`relative overflow-hidden p-4 rounded-2xl border transition-all duration-200 before:absolute before:top-0 before:left-0 before:right-0 before:h-1 ${accentBorderClass} ${
+      className={`relative overflow-hidden p-3 sm:p-3.5 rounded-2xl border transition-all duration-200 before:absolute before:top-0 before:left-0 before:right-0 before:h-1 ${accentBorderClass} ${
         isAlert
           ? 'bg-rose-500/10 border-rose-500/30'
           : isDark
@@ -167,7 +167,7 @@ const SummaryKpiCard = ({
       <div className="flex items-center justify-between gap-1.5">
         <div className="flex items-center gap-1.5 min-w-0">
           {Icon && <Icon className={`w-3.5 h-3.5 shrink-0 ${iconColorClass}`} />}
-          <span className="text-[10px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300 leading-tight">
+          <span className="text-[10px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300 leading-tight truncate">
             {label}
           </span>
         </div>
@@ -182,20 +182,20 @@ const SummaryKpiCard = ({
         ) : null}
       </div>
 
-      <div className="mt-2">
-        <p className={`text-2xl font-black tracking-tight font-mono tabular-nums truncate ${valueColorClass}`}>
+      <div className="mt-1.5 sm:mt-2">
+        <p className={`text-lg sm:text-xl lg:text-2xl font-black tracking-tight font-mono tabular-nums truncate ${valueColorClass}`}>
           {value}
         </p>
       </div>
 
       {children && (
-        <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800/70">
+        <div className="mt-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-800/70">
           {children}
         </div>
       )}
 
       {(fullSubtitle || subLeft || subRight) && !children && (
-        <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-1.5 pt-2 border-t border-slate-100 dark:border-slate-800/70 truncate flex items-center justify-between gap-2">
+        <div className="text-[10px] sm:text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-1 pt-1.5 border-t border-slate-100 dark:border-slate-800/70 truncate flex items-center justify-between gap-2">
           {fullSubtitle ? (
             <span className="truncate">{fullSubtitle}</span>
           ) : (
@@ -945,7 +945,7 @@ export default function ReportsPage() {
               setPaymentTypeFilter(e.target.value);
               setPage(1);
             }}
-            className={`text-xs font-bold rounded-xl border px-3 py-2 outline-none transition-all cursor-pointer ${
+            className={`text-xs font-bold rounded-xl border px-2.5 py-1.5 outline-none transition-all cursor-pointer shrink-0 max-w-[135px] ${
               isDark
                 ? 'bg-slate-900/90 border-slate-800 text-slate-200 focus:border-cyan-400'
                 : 'bg-white border-slate-200 text-slate-700 focus:border-blue-500 shadow-xs'
@@ -963,7 +963,7 @@ export default function ReportsPage() {
               setPaymentClearanceFilter(e.target.value);
               setPage(1);
             }}
-            className={`text-xs font-bold rounded-xl border px-3 py-2 outline-none transition-all cursor-pointer shadow-xs ${
+            className={`text-xs font-bold rounded-xl border px-2.5 py-1.5 outline-none transition-all cursor-pointer shrink-0 max-w-[145px] shadow-xs ${
               isDark
                 ? 'bg-slate-900/90 border-slate-800 text-slate-200 focus:border-cyan-400'
                 : 'bg-white border-slate-200 text-slate-700 focus:border-blue-500'
@@ -982,14 +982,14 @@ export default function ReportsPage() {
           <button
             type="button"
             onClick={() => setIsAgeingMenuOpen((prev) => !prev)}
-            className={`h-9 px-3.5 rounded-xl border text-xs font-semibold flex items-center gap-2.5 transition-all cursor-pointer shadow-xs select-none active:scale-[0.98] ${
+            className={`h-8 px-2.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs select-none active:scale-[0.98] ${
               isDark
                 ? 'bg-slate-900/90 border-slate-800 hover:border-slate-700 text-slate-100 hover:bg-slate-800/60'
                 : 'bg-white border-slate-200 hover:border-slate-300 text-slate-800 hover:bg-slate-50/80'
             }`}
           >
             <span className={`w-2 h-2 rounded-full shrink-0 ${activeAgeingOption.dotColor} ring-2 ${activeAgeingOption.ringColor || 'ring-slate-400/25'}`} />
-            <span className="font-semibold tracking-tight">{activeAgeingOption.label}</span>
+            <span className="font-semibold tracking-tight truncate max-w-[130px]">{activeAgeingOption.label}</span>
             <ChevronDown className={`w-3.5 h-3.5 text-slate-400 dark:text-slate-500 transition-transform duration-200 ${isAgeingMenuOpen ? 'rotate-180 text-blue-500' : ''}`} />
           </button>
 
@@ -1058,14 +1058,14 @@ export default function ReportsPage() {
           <button
             type="button"
             onClick={() => setIsPodMenuOpen((prev) => !prev)}
-            className={`h-9 px-3.5 rounded-xl border text-xs font-semibold flex items-center gap-2.5 transition-all cursor-pointer shadow-xs select-none active:scale-[0.98] ${
+            className={`h-8 px-2.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs select-none active:scale-[0.98] ${
               isDark
                 ? 'bg-slate-900/90 border-slate-800 hover:border-slate-700 text-slate-100 hover:bg-slate-800/60'
                 : 'bg-white border-slate-200 hover:border-slate-300 text-slate-800 hover:bg-slate-50/80'
             }`}
           >
             <span className={`w-2 h-2 rounded-full shrink-0 ${activePodOption.dotColor} ring-2 ${activePodOption.ringColor || 'ring-slate-400/25'}`} />
-            <span className="font-semibold tracking-tight">{activePodOption.label}</span>
+            <span className="font-semibold tracking-tight truncate max-w-[130px]">{activePodOption.label}</span>
             <ChevronDown className={`w-3.5 h-3.5 text-slate-400 dark:text-slate-500 transition-transform duration-200 ${isPodMenuOpen ? 'rotate-180 text-blue-500' : ''}`} />
           </button>
 
@@ -1137,17 +1137,17 @@ export default function ReportsPage() {
             setCollectionSubView(e.target.value);
             setPage(1);
           }}
-          className={`text-xs font-bold rounded-xl border px-3 py-2 outline-none transition-all cursor-pointer ${
+          className={`text-xs font-bold rounded-xl border px-2.5 py-1.5 outline-none transition-all cursor-pointer shrink-0 max-w-[155px] ${
             isDark
               ? 'bg-slate-900/90 border-slate-800 text-slate-200 focus:border-amber-400'
               : 'bg-white border-slate-200 text-slate-700 focus:border-amber-500 shadow-xs'
           }`}
         >
           <option value="DEPOSITS">
-            Bank Deposits Register ({summary?.totalDepositsCount ?? summary?.depositTransactions?.length ?? 0})
+            Bank Deposits ({summary?.totalDepositsCount ?? summary?.depositTransactions?.length ?? 0})
           </option>
           <option value="DAILY_COLLECTIONS">
-            Daily Collection Register ({summary?.dailyCollections?.length ?? 0})
+            Daily Collections ({summary?.dailyCollections?.length ?? 0})
           </option>
         </select>
       )}
@@ -1160,7 +1160,7 @@ export default function ReportsPage() {
             setGstFilter(e.target.value);
             setPage(1);
           }}
-          className={`text-xs font-bold rounded-xl border px-3 py-2 outline-none transition-all cursor-pointer shadow-xs ${
+          className={`text-xs font-bold rounded-xl border px-2.5 py-1.5 outline-none transition-all cursor-pointer shrink-0 max-w-[145px] shadow-xs ${
             isDark
               ? 'bg-slate-900/90 border-slate-800 text-slate-200 focus:border-indigo-400'
               : 'bg-white border-slate-200 text-slate-700 focus:border-indigo-500'
@@ -2867,28 +2867,28 @@ export default function ReportsPage() {
           <Navbar />
         </div>
 
-        <main className="flex-1 p-4 md:p-6 max-w-7xl mx-auto w-full space-y-6">
+        <main className="flex-1 p-3.5 sm:p-5 lg:p-6 xl:p-8 space-y-4 sm:space-y-5 lg:space-y-6 w-full max-w-full">
           {/* Header & Main Actions */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
+          <div className="flex items-start sm:items-center justify-between gap-3 sm:gap-4">
+            <div className="min-w-0 flex-1">
               <div className="flex items-center space-x-2.5">
-                <div className="w-9 h-9 rounded-xl bg-blue-600/10 text-blue-600 border border-blue-200/50 flex items-center justify-center font-bold">
-                  <BarChart3 className="w-5 h-5" />
+                <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-blue-600/10 text-blue-600 border border-blue-200/50 flex items-center justify-center font-bold shrink-0">
+                  <BarChart3 className="w-4 h-4 sm:w-5 sm:h-5" />
                 </div>
-                <div>
-                  <div className="flex items-center gap-2.5 flex-wrap">
-                    <h1 className={`text-2xl font-extrabold tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h1 className={`text-base sm:text-lg lg:text-xl xl:text-2xl font-extrabold tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
                       Reports &amp; Operational Analytics
                     </h1>
                     {!isAdmin && (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30 shrink-0">
                         <Building2 className="w-3.5 h-3.5" />
                         <span>{currentBranchName}: {currentBranchCode || 'Active'}</span>
                         <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"></span>
                       </span>
                     )}
                   </div>
-                  <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                  <p className={`text-xs truncate sm:whitespace-normal ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                     {canViewAuditCompliance
                       ? 'Audited commercial registers, receivables ageing, vehicle profitability, cash ledgers, and tax statements.'
                       : isBranchManager
@@ -2900,7 +2900,7 @@ export default function ReportsPage() {
             </div>
 
             {/* Quick Export & Branch Actions */}
-            <div className="flex items-center space-x-2.5 print:hidden">
+            <div className="flex items-center gap-1.5 sm:gap-2 print:hidden shrink-0">
               {isAdmin && (
                 <BranchFilterDropdown
                   selectedBranchId={selectedBranch}
@@ -2909,10 +2909,10 @@ export default function ReportsPage() {
                     setPage(1);
                   }}
                   branches={branches}
-                  allLabel="All Branches (Network-wide)"
+                  allLabel="All Branches"
                   allSubtitle="Consolidated Analytics & Audit"
-                  label="Branch:"
-                  showLabel={true}
+                  showLabel={false}
+                  size="sm"
                   align="right"
                 />
               )}
@@ -2920,7 +2920,7 @@ export default function ReportsPage() {
               {canExportCurrentTab ? (
                 <button
                   onClick={handleExportCsv}
-                  className="inline-flex items-center space-x-1.5 bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold shadow-md shadow-blue-500/20 transition-all hover:scale-[1.02] shrink-0"
+                  className="inline-flex items-center space-x-1.5 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow-md shadow-blue-500/20 transition-all hover:scale-[1.02] shrink-0 whitespace-nowrap cursor-pointer"
                 >
                   <Download className="w-3.5 h-3.5" />
                   <span>Download CSV</span>
@@ -2940,7 +2940,7 @@ export default function ReportsPage() {
                 <button
                   key={reg.id}
                   onClick={() => handleTabChange(reg.id)}
-                  className={`flex items-center space-x-2 px-3.5 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all border ${
+                  className={`flex items-center space-x-2 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap shrink-0 transition-all border cursor-pointer ${
                     isActive
                       ? isDark
                         ? 'bg-blue-600/15 border-blue-500/40 text-blue-400 shadow-sm'
@@ -2950,7 +2950,7 @@ export default function ReportsPage() {
                       : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                   }`}
                 >
-                  <Icon className={`w-4 h-4 ${isActive ? 'text-blue-500' : 'text-slate-400'}`} />
+                  <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-blue-500' : 'text-slate-400'}`} />
                   <span>{reg.label}</span>
                 </button>
               );
@@ -2960,7 +2960,7 @@ export default function ReportsPage() {
 
           {/* Summary Metric Ribbon - Executive Responsive Cards */}
           {summary && (
-            <div className={`grid grid-cols-1 sm:grid-cols-2 ${activeTab === 'DOCKETS' ? 'lg:grid-cols-3 xl:grid-cols-5' : 'lg:grid-cols-4 xl:grid-cols-4'} gap-3.5 w-full`}>
+            <div className={`grid grid-cols-2 sm:grid-cols-3 ${activeTab === 'DOCKETS' ? 'lg:grid-cols-5' : 'lg:grid-cols-4'} gap-2.5 sm:gap-3 w-full`}>
               {activeTab === 'DOCKETS' && (
                 <>
                   <SummaryKpiCard
@@ -3397,23 +3397,23 @@ export default function ReportsPage() {
 
           {/* Statutory Transporter GST Registration & SAC 9965 Control Banner */}
           {activeTab === 'GST' && (
-            <div className={`p-4 sm:p-5 rounded-2xl border transition-all duration-200 ${
+            <div className={`p-3.5 sm:p-4 rounded-2xl border transition-all duration-200 ${
               isDark
                 ? 'bg-gradient-to-br from-[#0D1424] to-[#080D1A] border-slate-800 shadow-sm'
                 : 'bg-gradient-to-br from-white to-slate-50/80 border-slate-200 shadow-xs'
             }`}>
-              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3.5">
                 {/* Left: Transporter Identity, Station & GSTIN */}
-                <div className="flex items-start sm:items-center gap-3.5">
-                  <div className="w-11 h-11 rounded-2xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-200/60 dark:border-indigo-800/60 flex items-center justify-center shrink-0 shadow-2xs">
-                    <Receipt className="w-5 h-5" />
+                <div className="flex items-start sm:items-center gap-3 min-w-0">
+                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-200/60 dark:border-indigo-800/60 flex items-center justify-center shrink-0 shadow-2xs">
+                    <Receipt className="w-4 h-4 sm:w-5 sm:h-5" />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="text-base font-black tracking-tight text-slate-900 dark:text-white">
+                      <h3 className="text-sm sm:text-base font-black tracking-tight text-slate-900 dark:text-white truncate">
                         {summary?.transporterLegalName || 'TransHub Logistics Ltd'}
                       </h3>
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black font-mono bg-indigo-100 text-indigo-800 dark:bg-indigo-950/70 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black font-mono bg-indigo-100 text-indigo-800 dark:bg-indigo-950/70 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60 shrink-0">
                         <span>GSTIN: {summary?.transporterGstin || '27AABCT9845P1Z2'}</span>
                         <button
                           type="button"
@@ -3428,27 +3428,27 @@ export default function ReportsPage() {
                           {gstCopied ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
                         </button>
                       </span>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 shrink-0">
                         POS State: {summary?.transporterState || '27-Maharashtra'}
                       </span>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-100/70 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200/50 dark:border-blue-800/50 flex items-center gap-1">
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-100/70 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200/50 dark:border-blue-800/50 flex items-center gap-1 shrink-0">
                         <MapPin className="w-3 h-3" />
                         <span>Station: {currentBranchName}</span>
                       </span>
                     </div>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 truncate sm:whitespace-normal">
                       Statutory Goods Transport Agency (GTA) Freight Register • SAC Code <span className="font-semibold text-slate-700 dark:text-slate-200">9965 / 996511</span> (CBIC Notif. 11/2017-CT)
                     </p>
                   </div>
                 </div>
 
                 {/* Right: Quick Action Controls */}
-                <div className="flex flex-wrap items-center gap-2 self-start lg:self-auto shrink-0">
+                <div className="flex items-center gap-2 self-start xl:self-auto shrink-0 flex-nowrap">
                   {canExportCurrentTab && (
                     <button
                       type="button"
                       onClick={handleExportCsv}
-                      className="inline-flex items-center space-x-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold shadow-md shadow-indigo-500/20 transition-all hover:scale-[1.02] cursor-pointer"
+                      className="inline-flex items-center space-x-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow-md shadow-indigo-500/20 transition-all hover:scale-[1.02] cursor-pointer shrink-0 whitespace-nowrap"
                       title="Download complete GSTR-1 compliant CSV report"
                     >
                       <Download className="w-3.5 h-3.5" />
@@ -3458,7 +3458,7 @@ export default function ReportsPage() {
                   <button
                     type="button"
                     onClick={() => setShowHsnDocSummary((prev) => !prev)}
-                    className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                    className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border shrink-0 whitespace-nowrap ${
                       showHsnDocSummary
                         ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
                         : isDark
@@ -3572,7 +3572,7 @@ export default function ReportsPage() {
                         setGstFilter(pill.id);
                         setPage(1);
                       }}
-                      className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer shrink-0 select-none border ${
+                      className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer shrink-0 select-none border ${
                         isSelected
                           ? 'bg-indigo-600 border-indigo-600 text-white shadow-xs scale-[1.02]'
                           : isDark
@@ -3581,7 +3581,7 @@ export default function ReportsPage() {
                       }`}
                     >
                       <span>{pill.label}</span>
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ${
+                      <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-mono font-bold ${
                         isSelected
                           ? 'bg-white/25 text-white'
                           : isDark

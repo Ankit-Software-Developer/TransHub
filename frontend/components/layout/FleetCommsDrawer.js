@@ -460,13 +460,13 @@ export default function FleetCommsDrawer() {
           {/* Quick Vehicle Search if in active tab */}
           {activeTab === 'active' && (
             <div className="relative">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="text"
                 value={searchFilter}
                 onChange={(e) => setSearchFilter(e.target.value)}
                 placeholder="Search driver, vehicle number, corridor..."
-                className={`w-full pl-8 pr-3 py-1.5 rounded-xl border text-xs focus:outline-none transition-all ${
+                className={`w-full pl-9 pr-3 py-1.5 rounded-xl border text-xs focus:outline-none transition-all ${
                   isDark
                     ? 'bg-slate-900/80 border-slate-800 text-white placeholder-slate-500 focus:border-cyan-400'
                     : 'bg-white border-slate-200 text-slate-900 placeholder-slate-400 focus:border-blue-500'

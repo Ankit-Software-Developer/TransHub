@@ -53,6 +53,8 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import DataTable from '../../../components/ui/DataTable';
 import { usePermissions } from '../../../hooks/usePermissions';
+import VehicleTypeSelect from '../../../components/ui/VehicleTypeSelect';
+import VehicleStatusSelect from '../../../components/ui/VehicleStatusSelect';
 
 
 
@@ -407,6 +409,12 @@ export default function FleetManagementPage() {
       return;
     }
 
+    if (vehicleForm.ownership === 'OWN' && !vehicleForm.rc_number?.trim()) {
+      setFormError('RC (Registration Certificate) is mandatory');
+      setAddModalTab('compliance');
+      return;
+    }
+
     try {
       setIsSubmitting(true);
       const res = await api.post('/fleet/vehicles', {
@@ -489,6 +497,12 @@ export default function FleetManagementPage() {
     if (!editingVehicle?.vehicle_number?.trim()) {
       setFormError('Please enter a valid vehicle registration number');
       setEditModalTab('basic');
+      return;
+    }
+
+    if (editingVehicle?.ownership === 'OWN' && !editingVehicle.rc_number?.trim()) {
+      setFormError('RC (Registration Certificate) is mandatory');
+      setEditModalTab('compliance');
       return;
     }
 
@@ -1124,21 +1138,21 @@ export default function FleetManagementPage() {
       <div className="flex-1 flex flex-col min-w-0">
         <Navbar />
 
-        <main className="flex-1 p-5 sm:p-6 lg:p-8 space-y-6 max-w-[1720px] mx-auto w-full">
+        <main className="flex-1 p-3.5 sm:p-5 lg:p-6 xl:p-8 space-y-4 sm:space-y-6 w-full max-w-full">
 
           {/* TAB 1: COMMERCIAL VEHICLES */}
           {activeFleetTab === 'vehicles' && (
             <div className="space-y-6">
               {/* Header Action Bar */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
+              <div className="flex items-start sm:items-center justify-between gap-3 sm:gap-4">
+                <div className="min-w-0 flex-1">
                   <div className="flex items-center space-x-2.5">
-                    <Truck className="w-6 h-6 text-cyan-400" />
-                    <h1 className={`text-2xl sm:text-3xl font-black tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                    <Truck className="w-6 h-6 text-cyan-400 shrink-0" />
+                    <h1 className={`text-lg sm:text-xl lg:text-2xl xl:text-3xl font-black tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
                       Fleet & Vehicle Asset Management
                     </h1>
                   </div>
-                  <p className={`text-xs sm:text-sm mt-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                  <p className={`text-xs lg:text-[13px] xl:text-sm mt-0.5 sm:mt-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                     {vehicles.length} heavy commercial vehicles registered with AIS-140 live GPS telematics.
                   </p>
                 </div>
@@ -1147,10 +1161,10 @@ export default function FleetManagementPage() {
                   <button
                     type="button"
                     onClick={() => setIsAddModalOpen(true)}
-                    className="flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 transition-all active:scale-95 cursor-pointer shrink-0"
+                    className="flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 transition-all active:scale-95 cursor-pointer shrink-0 whitespace-nowrap"
                   >
-                    <Plus className="w-4 h-4" />
-                    <span>Add Vehicle</span>
+                    <Plus className="w-4 h-4 shrink-0" />
+                    <span className="whitespace-nowrap">Add Vehicle</span>
                   </button>
                 )}
               </div>
@@ -1231,62 +1245,63 @@ export default function FleetManagementPage() {
                 emptyTitle="No Vehicles Found"
                 emptySubtitle="No commercial vehicles match your filter criteria."
                 filtersSlot={
-                  <div className="flex flex-wrap items-center gap-1.5 text-xs font-bold">
-                    <button
-                      type="button"
-                      onClick={() => { setFilterType('ALL'); setPage(1); }}
-                      className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${filterType === 'ALL'
-                          ? 'bg-blue-600 text-white shadow-sm'
-                          : isDark ? 'bg-slate-900 text-slate-400 hover:text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                        }`}
-                    >
-                      All Vehicles ({vehicles.length})
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setFilterType('ON_ROAD'); setPage(1); }}
-                      className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${filterType === 'ON_ROAD'
-                          ? 'bg-emerald-600 text-white shadow-sm'
-                          : isDark ? 'bg-slate-900 text-slate-400 hover:text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                        }`}
-                    >
-                      On Road ({vehicles.filter((v) => v.status === 'ON_ROAD').length})
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setFilterType('YARD'); setPage(1); }}
-                      className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${filterType === 'YARD'
-                          ? 'bg-blue-600 text-white shadow-sm'
-                          : isDark ? 'bg-slate-900 text-slate-400 hover:text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                        }`}
-                    >
-                      In Yard ({vehicles.filter((v) => v.status === 'YARD').length})
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setFilterType('MAINTENANCE'); setPage(1); }}
-                      className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${filterType === 'MAINTENANCE'
-                          ? 'bg-amber-600 text-white shadow-sm'
-                          : isDark ? 'bg-slate-900 text-slate-400 hover:text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                        }`}
-                    >
-                      Maintenance ({vehicles.filter((v) => v.status === 'MAINTENANCE').length})
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setFilterType('INACTIVE'); setPage(1); }}
-                      className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${filterType === 'INACTIVE'
-                          ? 'bg-rose-600 text-white shadow-sm'
-                          : isDark ? 'bg-slate-900 text-slate-400 hover:text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                        }`}
-                    >
-                      Inactive ({vehicles.filter((v) => v.status === 'INACTIVE').length})
-                    </button>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs font-bold w-full">
+                    {/* Status Filter Pills (Scrollable horizontally if needed) */}
+                    <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5 shrink min-w-0">
+                      <button
+                        type="button"
+                        onClick={() => { setFilterType('ALL'); setPage(1); }}
+                        className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer whitespace-nowrap shrink-0 ${filterType === 'ALL'
+                            ? 'bg-blue-600 text-white shadow-sm'
+                            : isDark ? 'bg-slate-900 text-slate-400 hover:text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                          }`}
+                      >
+                        All Vehicles ({vehicles.length})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setFilterType('ON_ROAD'); setPage(1); }}
+                        className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer whitespace-nowrap shrink-0 ${filterType === 'ON_ROAD'
+                            ? 'bg-emerald-600 text-white shadow-sm'
+                            : isDark ? 'bg-slate-900 text-slate-400 hover:text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                          }`}
+                      >
+                        On Road ({vehicles.filter((v) => v.status === 'ON_ROAD').length})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setFilterType('YARD'); setPage(1); }}
+                        className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer whitespace-nowrap shrink-0 ${filterType === 'YARD'
+                            ? 'bg-blue-600 text-white shadow-sm'
+                            : isDark ? 'bg-slate-900 text-slate-400 hover:text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                          }`}
+                      >
+                        In Yard ({vehicles.filter((v) => v.status === 'YARD').length})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setFilterType('MAINTENANCE'); setPage(1); }}
+                        className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer whitespace-nowrap shrink-0 ${filterType === 'MAINTENANCE'
+                            ? 'bg-amber-600 text-white shadow-sm'
+                            : isDark ? 'bg-slate-900 text-slate-400 hover:text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                          }`}
+                      >
+                        Maintenance ({vehicles.filter((v) => v.status === 'MAINTENANCE').length})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setFilterType('INACTIVE'); setPage(1); }}
+                        className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer whitespace-nowrap shrink-0 ${filterType === 'INACTIVE'
+                            ? 'bg-rose-600 text-white shadow-sm'
+                            : isDark ? 'bg-slate-900 text-slate-400 hover:text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                          }`}
+                      >
+                        Inactive ({vehicles.filter((v) => v.status === 'INACTIVE').length})
+                      </button>
+                    </div>
 
-                    <div className="h-4 w-px bg-slate-200 dark:bg-slate-800 mx-1 hidden sm:block" />
-
-                    {/* Ownership Filter Dropdown */}
-                    <div className="flex items-center gap-1.5">
+                    {/* Ownership Filter Dropdown (Moved to Corner!) */}
+                    <div className="flex items-center gap-1.5 shrink-0 sm:ml-auto">
                       <select
                         id="fleet-ownership-filter"
                         value={ownershipFilter}
@@ -1294,7 +1309,7 @@ export default function FleetManagementPage() {
                           setOwnershipFilter(e.target.value);
                           setPage(1);
                         }}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer outline-none ${
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer outline-none shrink-0 ${
                           ownershipFilter !== 'ALL'
                             ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
                             : isDark
@@ -1326,15 +1341,15 @@ export default function FleetManagementPage() {
           {activeFleetTab === 'drivers' && (
             <div className="space-y-6">
               {/* Drivers Header info */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
+              <div className="flex items-center justify-between gap-3 sm:gap-4">
+                <div className="min-w-0">
                   <div className="flex items-center space-x-2.5">
                     <Users className="w-6 h-6 text-cyan-400" />
-                    <h1 className={`text-2xl sm:text-3xl font-black tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                    <h1 className={`text-lg sm:text-xl lg:text-2xl xl:text-3xl font-black tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
                       Commercial Fleet Drivers Directory
                     </h1>
                   </div>
-                  <p className={`text-xs sm:text-sm mt-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                  <p className={`text-xs lg:text-[13px] xl:text-sm mt-0.5 sm:mt-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                     Register and configure commercial drivers, track license compliance, and assign to hubs or long-haul routes.
                   </p>
                 </div>
@@ -1729,7 +1744,15 @@ export default function FleetManagementPage() {
                     <button
                       key={tab.id}
                       type="button"
-                      onClick={() => setAddModalTab(tab.id)}
+                      onClick={() => {
+                        if (tab.id === 'telematics' && vehicleForm.ownership === 'OWN' && !vehicleForm.rc_number?.trim()) {
+                          setFormError('RC (Registration Certificate) is mandatory');
+                          setAddModalTab('compliance');
+                          return;
+                        }
+                        setFormError('');
+                        setAddModalTab(tab.id);
+                      }}
                       className={`py-3 px-3 border-b-2 flex items-center gap-1.5 whitespace-nowrap transition-all cursor-pointer ${isActive
                           ? isDark ? 'border-cyan-400 text-cyan-400' : 'border-blue-600 text-blue-600'
                           : isDark ? 'border-transparent text-slate-400 hover:text-slate-200' : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -1862,22 +1885,16 @@ export default function FleetManagementPage() {
                             <label className={`block text-xs font-semibold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
                               Vehicle Body Type
                             </label>
-                            <select
+                            <VehicleTypeSelect
                               value={vehicleForm.vehicle_type}
-                              onChange={(e) => setVehicleForm({ ...vehicleForm, vehicle_type: e.target.value })}
-                              className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors font-medium ${isDark
-                                  ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
-                                  : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
-                                }`}
-                            >
-                              <option value="TRUCK">Heavy Truck (16T - 25T Taurus)</option>
-                              <option value="CONTAINER">Container (28T - 40T Closed Body)</option>
-                              <option value="TRAILER">Multi-Axle Trailer (32T+ Flatbed)</option>
-                              <option value="MINI_TRUCK">Mini Truck (Eicher / 7T - 14T)</option>
-                              <option value="PICKUP">Pickup (Bolero / 2.5T)</option>
-                              <option value="TEMPO">Tempo / Local Delivery Carrier</option>
-                              <option value="OTHER">Tanker / Bulk Carrier</option>
-                            </select>
+                              onChange={(val) => setVehicleForm({ ...vehicleForm, vehicle_type: val })}
+                              onSelectPreset={(preset) => {
+                                if (!vehicleForm.capacity_ton || vehicleForm.capacity_ton === '10' || vehicleForm.capacity_ton === 10) {
+                                  setVehicleForm((prev) => ({ ...prev, vehicle_type: preset.value, capacity_ton: preset.defaultCapacity }));
+                                }
+                              }}
+                              isDark={isDark}
+                            />
                           </div>
 
                           <div>
@@ -1904,10 +1921,10 @@ export default function FleetManagementPage() {
                           <div>
                             <div className="flex items-center justify-between mb-1">
                               <label className={`block text-xs font-semibold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                                Default Assigned Driver
+                                Assigned Driver
                               </label>
                               <Link href="/users" target="_blank" className="text-[11px] text-cyan-400 hover:underline font-semibold">
-                                + Add / Manage Drivers
+                                + Add / Manage
                               </Link>
                             </div>
                             <select
@@ -2038,22 +2055,16 @@ export default function FleetManagementPage() {
                         <label className={`block text-xs font-semibold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
                           Vehicle Type / Classification
                         </label>
-                        <select
+                        <VehicleTypeSelect
                           value={vehicleForm.vehicle_type}
-                          onChange={(e) => setVehicleForm({ ...vehicleForm, vehicle_type: e.target.value })}
-                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors font-medium ${isDark
-                              ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
-                              : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
-                            }`}
-                        >
-                          <option value="TRUCK">Heavy Truck (16T - 25T Taurus)</option>
-                          <option value="CONTAINER">Container (28T - 40T Closed Body)</option>
-                          <option value="TRAILER">Multi-Axle Trailer (32T+ Flatbed)</option>
-                          <option value="MINI_TRUCK">Mini Truck (Eicher / 7T - 14T)</option>
-                          <option value="PICKUP">Pickup (Bolero / 2.5T)</option>
-                          <option value="TEMPO">Tempo / Local Delivery Carrier</option>
-                          <option value="OTHER">Tanker / Bulk Carrier</option>
-                        </select>
+                          onChange={(val) => setVehicleForm({ ...vehicleForm, vehicle_type: val })}
+                          onSelectPreset={(preset) => {
+                            if (!vehicleForm.capacity_ton || vehicleForm.capacity_ton === '10' || vehicleForm.capacity_ton === 10) {
+                              setVehicleForm((prev) => ({ ...prev, vehicle_type: preset.value, capacity_ton: preset.defaultCapacity }));
+                            }
+                          }}
+                          isDark={isDark}
+                        />
                       </div>
 
                       <div>
@@ -2141,14 +2152,22 @@ export default function FleetManagementPage() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
                         <label className={`block text-xs font-semibold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                          RC (Registration Certificate) #
+                          RC (Registration Certificate) <span className="text-rose-500">*</span>
                         </label>
                         <input
                           type="text"
+                          required
                           placeholder="e.g. RC-RJ14GB9921"
                           value={vehicleForm.rc_number}
-                          onChange={(e) => setVehicleForm({ ...vehicleForm, rc_number: e.target.value.toUpperCase() })}
-                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono uppercase focus:outline-none transition-colors ${isDark
+                          onChange={(e) => {
+                            setVehicleForm({ ...vehicleForm, rc_number: e.target.value.toUpperCase() });
+                            if (formError) setFormError('');
+                          }}
+                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono uppercase focus:outline-none transition-colors ${
+                            formError && !vehicleForm.rc_number?.trim()
+                              ? 'border-rose-500 ring-1 ring-rose-500/30'
+                              : ''
+                          } ${isDark
                               ? 'bg-slate-900 border-slate-700 text-white placeholder-slate-500 focus:border-cyan-400'
                               : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400 focus:border-blue-500'
                             }`}
@@ -2268,12 +2287,12 @@ export default function FleetManagementPage() {
                           <label className={`block text-xs font-semibold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
                             AIS-140 GPS Device Tracker ID
                           </label>
-                          <span className="text-[10px] text-slate-400 font-medium">Optional (Leave blank if no GPS)</span>
+                          <span className="text-[10px] text-slate-400 font-medium">Optional</span>
                         </div>
                         <div className="relative">
                           <input
                             type="text"
-                            placeholder="e.g. GPS-TRK-9921 (leave blank if no GPS fitted)"
+                            placeholder="e.g. GPS-TRK-9921"
                             value={vehicleForm.gps_device_id}
                             onChange={(e) => setVehicleForm({ ...vehicleForm, gps_device_id: e.target.value })}
                             className={`w-full pl-3.5 pr-28 py-2.5 rounded-xl border text-xs font-mono focus:outline-none transition-colors ${isDark
@@ -2289,7 +2308,7 @@ export default function FleetManagementPage() {
                           </div>
                         </div>
                         <p className="text-[10px] text-slate-400 mt-1">
-                          Only enter if this vehicle has a GPS tracker installed. If left blank, no GPS is assigned.
+                          Only enter if this vehicle has a GPS tracker installed.
                         </p>
                       </div>
                     </div>
@@ -2338,10 +2357,10 @@ export default function FleetManagementPage() {
                       <div>
                         <div className="flex items-center justify-between mb-1">
                           <label className={`block text-xs font-semibold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                            Default Assigned Driver
+                            Assigned Driver
                           </label>
                           <Link href="/users" target="_blank" className="text-[11px] text-cyan-400 hover:underline font-semibold">
-                            + Add / Manage Drivers
+                            + Add / Manage
                           </Link>
                         </div>
                         <select
@@ -2366,19 +2385,11 @@ export default function FleetManagementPage() {
                       <label className={`block text-xs font-semibold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
                         Initial Vehicle Status
                       </label>
-                      <select
+                      <VehicleStatusSelect
                         value={vehicleForm.status}
-                        onChange={(e) => setVehicleForm({ ...vehicleForm, status: e.target.value })}
-                        className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-bold focus:outline-none transition-colors ${isDark
-                            ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
-                            : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
-                          }`}
-                      >
-                        <option value="AVAILABLE">At Yard (Available for Line-Haul Dispatch)</option>
-                        <option value="ON_ROAD">In Transit (Active On Road)</option>
-                        <option value="MAINTENANCE">In Workshop (Under Maintenance)</option>
-                        <option value="INACTIVE">Inactive / Retired (Deactivated)</option>
-                      </select>
+                        onChange={(val) => setVehicleForm({ ...vehicleForm, status: val })}
+                        isDark={isDark}
+                      />
                     </div>
                   </div>
                 )}
@@ -2440,6 +2451,11 @@ export default function FleetManagementPage() {
                         } else if (addModalTab === 'specs') {
                           setAddModalTab('compliance');
                         } else if (addModalTab === 'compliance') {
+                          if (!vehicleForm.rc_number?.trim()) {
+                            setFormError('RC (Registration Certificate) is mandatory');
+                            return;
+                          }
+                          setFormError('');
                           setAddModalTab('telematics');
                         }
                       }}
@@ -2649,22 +2665,16 @@ export default function FleetManagementPage() {
                             <label className={`block text-xs font-semibold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
                               Vehicle Body Type
                             </label>
-                            <select
+                            <VehicleTypeSelect
                               value={editingVehicle.vehicle_type}
-                              onChange={(e) => setEditingVehicle({ ...editingVehicle, vehicle_type: e.target.value })}
-                              className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors font-medium ${isDark
-                                  ? 'bg-slate-900 border-slate-700 text-white focus:border-amber-400'
-                                  : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-amber-500'
-                                }`}
-                            >
-                              <option value="TRUCK">Heavy Truck (16T - 25T Taurus)</option>
-                              <option value="CONTAINER">Container (28T - 40T Closed Body)</option>
-                              <option value="TRAILER">Multi-Axle Trailer (32T+ Flatbed)</option>
-                              <option value="MINI_TRUCK">Mini Truck (Eicher / 7T - 14T)</option>
-                              <option value="PICKUP">Pickup (Bolero / 2.5T)</option>
-                              <option value="TEMPO">Tempo / Local Delivery Carrier</option>
-                              <option value="OTHER">Tanker / Bulk Carrier</option>
-                            </select>
+                              onChange={(val) => setEditingVehicle({ ...editingVehicle, vehicle_type: val })}
+                              onSelectPreset={(preset) => {
+                                if (!editingVehicle.capacity_ton) {
+                                  setEditingVehicle((prev) => ({ ...prev, vehicle_type: preset.value, capacity_ton: preset.defaultCapacity }));
+                                }
+                              }}
+                              isDark={isDark}
+                            />
                           </div>
 
                           <div>
@@ -2689,10 +2699,10 @@ export default function FleetManagementPage() {
                           <div>
                             <div className="flex items-center justify-between mb-1">
                               <label className={`block text-xs font-semibold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                                Default Assigned Driver
+                                Assigned Driver
                               </label>
                               <Link href="/users" target="_blank" className="text-[11px] text-amber-400 hover:underline font-semibold">
-                                + Add / Manage Drivers
+                                + Add / Manage
                               </Link>
                             </div>
                             <select
@@ -2738,18 +2748,11 @@ export default function FleetManagementPage() {
                           <label className={`block text-xs font-semibold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
                             Operational Status
                           </label>
-                          <select
+                          <VehicleStatusSelect
                             value={editingVehicle.status}
-                            onChange={(e) => setEditingVehicle({ ...editingVehicle, status: e.target.value })}
-                            className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-bold focus:outline-none transition-colors ${isDark
-                                ? 'bg-slate-900 border-slate-700 text-white focus:border-amber-400'
-                                : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-amber-500'
-                              }`}
-                          >
-                            <option value="AVAILABLE">At Yard (Ready for Dispatch)</option>
-                            <option value="ON_ROAD">In Transit (Active On Road)</option>
-                            <option value="INACTIVE">Inactive (Deactivated)</option>
-                          </select>
+                            onChange={(val) => setEditingVehicle({ ...editingVehicle, status: val })}
+                            isDark={isDark}
+                          />
                         </div>
                       </>
                     ) : (
@@ -2818,22 +2821,16 @@ export default function FleetManagementPage() {
                         <label className={`block text-xs font-semibold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
                           Vehicle Type / Classification
                         </label>
-                        <select
+                        <VehicleTypeSelect
                           value={editingVehicle.vehicle_type}
-                          onChange={(e) => setEditingVehicle({ ...editingVehicle, vehicle_type: e.target.value })}
-                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors font-medium ${isDark
-                              ? 'bg-slate-900 border-slate-700 text-white focus:border-amber-400'
-                              : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-amber-500'
-                            }`}
-                        >
-                          <option value="TRUCK">Heavy Truck (16T - 25T Taurus)</option>
-                          <option value="CONTAINER">Container (28T - 40T Closed Body)</option>
-                          <option value="TRAILER">Multi-Axle Trailer (32T+ Flatbed)</option>
-                          <option value="MINI_TRUCK">Mini Truck (Eicher / 7T - 14T)</option>
-                          <option value="PICKUP">Pickup (Bolero / 2.5T)</option>
-                          <option value="TEMPO">Tempo / City Carrier</option>
-                          <option value="OTHER">Tanker / Bulk Carrier</option>
-                        </select>
+                          onChange={(val) => setEditingVehicle({ ...editingVehicle, vehicle_type: val })}
+                          onSelectPreset={(preset) => {
+                            if (!editingVehicle.capacity_ton) {
+                              setEditingVehicle((prev) => ({ ...prev, vehicle_type: preset.value, capacity_ton: preset.defaultCapacity }));
+                            }
+                          }}
+                          isDark={isDark}
+                        />
                       </div>
 
                       <div>
@@ -2910,13 +2907,22 @@ export default function FleetManagementPage() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
                         <label className={`block text-xs font-semibold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                          RC Number
+                          RC (Registration Certificate) <span className="text-rose-500">*</span>
                         </label>
                         <input
                           type="text"
+                          required
+                          placeholder="e.g. RC-RJ14GB9921"
                           value={editingVehicle.rc_number}
-                          onChange={(e) => setEditingVehicle({ ...editingVehicle, rc_number: e.target.value.toUpperCase() })}
-                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono uppercase focus:outline-none transition-colors ${isDark
+                          onChange={(e) => {
+                            setEditingVehicle({ ...editingVehicle, rc_number: e.target.value.toUpperCase() });
+                            if (formError) setFormError('');
+                          }}
+                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono uppercase focus:outline-none transition-colors ${
+                            formError && !editingVehicle.rc_number?.trim()
+                              ? 'border-rose-500 ring-1 ring-rose-500/30'
+                              : ''
+                          } ${isDark
                               ? 'bg-slate-900 border-slate-700 text-white focus:border-amber-400'
                               : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-amber-500'
                             }`}
@@ -3034,7 +3040,7 @@ export default function FleetManagementPage() {
                         <div className="relative">
                           <input
                             type="text"
-                            placeholder="e.g. GPS-TRK-9921 (leave blank if no GPS fitted)"
+                            placeholder="e.g. GPS-TRK-9921"
                             value={editingVehicle.gps_device_id}
                             onChange={(e) => setEditingVehicle({ ...editingVehicle, gps_device_id: e.target.value })}
                             className={`w-full pl-3.5 pr-28 py-2.5 rounded-xl border text-xs font-mono focus:outline-none transition-colors ${isDark
@@ -3095,7 +3101,7 @@ export default function FleetManagementPage() {
                             Assigned Driver
                           </label>
                           <Link href="/users" target="_blank" className="text-[11px] text-amber-400 hover:underline font-semibold">
-                            + Add / Manage Drivers
+                            + Add / Manage
                           </Link>
                         </div>
                         <select
@@ -3120,19 +3126,11 @@ export default function FleetManagementPage() {
                       <label className={`block text-xs font-semibold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
                         Operational Status
                       </label>
-                      <select
-                        value={editingVehicle.status}
-                        onChange={(e) => setEditingVehicle({ ...editingVehicle, status: e.target.value })}
-                        className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors font-bold ${isDark
-                            ? 'bg-slate-900 border-slate-700 text-white focus:border-amber-400'
-                            : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-amber-500'
-                          }`}
-                      >
-                        <option value="AVAILABLE">At Yard (Ready for Dispatch)</option>
-                        <option value="ON_TRIP">In Transit (On Highway)</option>
-                        <option value="MAINTENANCE">In Workshop (Maintenance)</option>
-                        <option value="INACTIVE">Inactive (Deactivated)</option>
-                      </select>
+                      <VehicleStatusSelect
+                        value={editingVehicle.status === 'ON_TRIP' ? 'ON_ROAD' : editingVehicle.status}
+                        onChange={(val) => setEditingVehicle({ ...editingVehicle, status: val })}
+                        isDark={isDark}
+                      />
                     </div>
                   </div>
                 )}

@@ -209,14 +209,14 @@ export default function PodManagementPage() {
       <div className="flex-1 flex flex-col min-w-0">
         <Navbar />
 
-        <main className="flex-1 p-6 max-w-7xl mx-auto w-full space-y-6">
+        <main className="flex-1 p-3.5 sm:p-5 lg:p-6 xl:p-8 space-y-4 sm:space-y-6 w-full max-w-full">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
-                <FileCheck className="w-6 h-6 text-blue-500" />
+              <h1 className="text-base sm:text-lg lg:text-xl xl:text-2xl font-black tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
+                <FileCheck className="w-5 h-5 sm:w-6 sm:h-6 text-blue-500 shrink-0" />
                 Proof of Delivery (POD) Management
               </h1>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              <p className="text-xs lg:text-[13px] xl:text-sm text-slate-500 dark:text-slate-400 mt-0.5 sm:mt-1 truncate sm:whitespace-normal">
                 Manage physical signed consignment receipts, digital customer signatures, and audit verifications
               </p>
             </div>

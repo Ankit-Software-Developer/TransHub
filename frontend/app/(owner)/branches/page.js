@@ -436,28 +436,28 @@ export default function BranchesPage() {
       <div className="flex-1 flex flex-col min-w-0">
         <Navbar />
 
-        <main className="flex-1 p-5 sm:p-6 lg:p-8 space-y-6 max-w-[1720px] mx-auto w-full">
+        <main className="flex-1 p-3.5 sm:p-5 lg:p-6 xl:p-8 space-y-4 sm:space-y-6 w-full max-w-full">
           
           {/* Header Action Bar */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
+          <div className="flex items-start sm:items-center justify-between gap-3 sm:gap-4">
+            <div className="min-w-0 flex-1">
               <div className="flex items-center space-x-2.5">
-                <Warehouse className="w-6 h-6 text-blue-600 dark:text-cyan-400" />
-                <h1 className={`text-2xl sm:text-3xl font-black tracking-tight ${
+                <Warehouse className="w-6 h-6 text-blue-600 dark:text-cyan-400 shrink-0" />
+                <h1 className={`text-lg sm:text-xl lg:text-2xl xl:text-3xl font-black tracking-tight ${
                   isDark ? 'text-white' : 'text-slate-900'
                 }`}>
                   Branches & Logistics Hubs
                 </h1>
               </div>
-              <p className={`text-xs sm:text-sm mt-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+              <p className={`text-xs lg:text-[13px] xl:text-sm mt-0.5 sm:mt-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                 Configure booking stations, transshipment hubs, and delivery pin-code coverage for consignments.
               </p>
             </div>
 
-            <div className="flex items-center space-x-3">
+            <div className="flex flex-col sm:flex-row items-end sm:items-center gap-1.5 sm:gap-2.5 shrink-0">
               <button
                 onClick={fetchBranches}
-                className={`p-2.5 rounded-xl border text-xs font-semibold transition-all ${
+                className={`p-2.5 rounded-xl border text-xs font-semibold transition-all shrink-0 ${
                   isDark 
                     ? 'border-slate-800 bg-slate-900 text-slate-300 hover:text-white' 
                     : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-xs'
@@ -470,10 +470,10 @@ export default function BranchesPage() {
               {canCreateBranch && (
                 <button
                   onClick={openCreateModal}
-                  className="flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 transition-all active:scale-95 cursor-pointer"
+                  className="flex items-center space-x-2 px-3.5 sm:px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 transition-all active:scale-95 cursor-pointer shrink-0 whitespace-nowrap"
                 >
-                  <Plus className="w-4 h-4" />
-                  <span>Add Branch / Hub</span>
+                  <Plus className="w-4 h-4 shrink-0" />
+                  <span className="whitespace-nowrap">Add Branch / Hub</span>
                 </button>
               )}
             </div>

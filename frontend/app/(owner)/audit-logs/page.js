@@ -632,41 +632,41 @@ export default function AuditLogsPage() {
       <div className="flex-1 flex flex-col h-screen overflow-y-auto min-w-0">
         <Navbar />
 
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 space-y-5 max-w-[1720px] mx-auto w-full">
+        <main className="flex-1 p-3.5 sm:p-5 lg:p-6 xl:p-8 space-y-4 sm:space-y-5 w-full max-w-full">
           
           {/* 1. Header Bar */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-3">
-                <div className="p-3 rounded-2xl bg-gradient-to-tr from-amber-500 via-orange-500 to-rose-500 text-white shadow-lg shadow-orange-500/20">
-                  <History className="w-6 h-6" />
+          <div className="flex items-start sm:items-center justify-between gap-3 sm:gap-4">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2.5 sm:gap-3">
+                <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-tr from-amber-500 via-orange-500 to-rose-500 text-white shadow-md shadow-orange-500/20 flex items-center justify-center shrink-0">
+                  <History className="w-4 h-4 sm:w-5 sm:h-5" />
                 </div>
-                <div>
-                  <h1 className="text-xl sm:text-2xl font-black tracking-tight flex flex-wrap items-center gap-2.5">
-                    <span>Activity &amp; Audit Governance</span>
-                    <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
+                <div className="min-w-0">
+                  <h1 className="text-base sm:text-lg lg:text-xl xl:text-2xl font-black tracking-tight flex items-center gap-2">
+                    <span className="truncate">Activity &amp; Audit Governance</span>
+                    <span className="hidden sm:inline-flex text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 shrink-0">
                       Admin Confidential
                     </span>
                   </h1>
-                  <p className={`text-xs sm:text-sm mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                  <p className={`text-xs mt-0.5 truncate sm:whitespace-normal ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                     Real-time immutable audit trail: track who created, updated, or deleted records with exact timestamps.
                   </p>
                 </div>
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3 shrink-0">
+            <div className="flex flex-col sm:flex-row items-end sm:items-center gap-1.5 sm:gap-2 shrink-0">
               {canExportAudit && (
                 <button
                   onClick={handleExportCSV}
-                  className={`px-4 py-2.5 rounded-xl border text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                  className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
                     isDark
                       ? 'bg-slate-900 border-slate-800 text-slate-300 hover:text-white hover:bg-slate-800 hover:border-slate-700'
                       : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-xs'
                   }`}
                   title="Export currently filtered audit entries as CSV report"
                 >
-                  <Download className="w-4 h-4 text-emerald-500" />
+                  <Download className="w-3.5 h-3.5 text-emerald-500" />
                   <span>Export CSV</span>
                 </button>
               )}
@@ -674,22 +674,22 @@ export default function AuditLogsPage() {
               <button
                 onClick={fetchAuditData}
                 disabled={refreshing}
-                className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-lg shadow-blue-600/30 flex items-center gap-2 transition-transform active:scale-95 cursor-pointer disabled:opacity-50"
+                className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-md shadow-blue-600/20 flex items-center gap-1.5 transition-transform active:scale-95 cursor-pointer disabled:opacity-50 whitespace-nowrap"
               >
-                <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
                 <span>Refresh Logs</span>
               </button>
             </div>
           </div>
 
           {/* 2. Interactive KPI Summary Cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3.5">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 sm:gap-3">
             {/* Card 1: All Events */}
             <div
               role="button"
               tabIndex={0}
               onClick={() => handleCardClick('ALL')}
-              className={`p-3.5 sm:p-4 rounded-2xl border cursor-pointer select-none transition-all duration-200 active:scale-95 ${
+              className={`p-2.5 sm:p-3 xl:p-3.5 rounded-xl sm:rounded-2xl border cursor-pointer select-none transition-all duration-200 active:scale-95 ${
                 activeTabCard === 'ALL'
                   ? isDark
                     ? 'bg-gradient-to-br from-cyan-950/40 via-slate-900 to-cyan-900/20 border-cyan-500/80 ring-2 ring-cyan-500/40 shadow-lg shadow-cyan-500/10'
@@ -700,19 +700,19 @@ export default function AuditLogsPage() {
               }`}
             >
               <div className="flex items-center justify-between mb-1">
-                <span className={`text-[11px] font-bold uppercase tracking-wider ${isDark ? 'text-cyan-400' : 'text-cyan-700'}`}>
+                <span className={`text-[10px] xl:text-[11px] font-bold uppercase tracking-wider truncate pr-1 ${isDark ? 'text-cyan-400' : 'text-cyan-700'}`}>
                   Total Events
                 </span>
-                <div className="w-7 h-7 rounded-lg bg-cyan-500/20 text-cyan-500 flex items-center justify-center">
-                  <Layers className="w-4 h-4" />
+                <div className="w-6 h-6 rounded-lg bg-cyan-500/20 text-cyan-500 flex items-center justify-center shrink-0">
+                  <Layers className="w-3.5 h-3.5" />
                 </div>
               </div>
-              <div className={`text-xl sm:text-2xl font-black font-mono mt-1 ${isDark ? 'text-white' : 'text-slate-900'}`}>
+              <div className={`text-lg sm:text-xl font-black font-mono mt-0.5 ${isDark ? 'text-white' : 'text-slate-900'}`}>
                 {stats.total?.toLocaleString() || 0}
               </div>
               <div className="text-[10px] text-cyan-600 dark:text-cyan-400 mt-1 font-semibold flex items-center gap-1 truncate">
                 <CheckCircle2 className="w-3 h-3 shrink-0" />
-                <span>All captured ledger logs</span>
+                <span className="truncate">All captured logs</span>
               </div>
             </div>
 
@@ -721,7 +721,7 @@ export default function AuditLogsPage() {
               role="button"
               tabIndex={0}
               onClick={() => handleCardClick('TODAY')}
-              className={`p-3.5 sm:p-4 rounded-2xl border cursor-pointer select-none transition-all duration-200 active:scale-95 ${
+              className={`p-2.5 sm:p-3 xl:p-3.5 rounded-xl sm:rounded-2xl border cursor-pointer select-none transition-all duration-200 active:scale-95 ${
                 activeTabCard === 'TODAY'
                   ? isDark
                     ? 'bg-gradient-to-br from-blue-950/40 via-slate-900 to-blue-900/20 border-blue-500/80 ring-2 ring-blue-500/40 shadow-lg shadow-blue-500/10'
@@ -732,18 +732,18 @@ export default function AuditLogsPage() {
               }`}
             >
               <div className="flex items-center justify-between mb-1">
-                <span className={`text-[11px] font-bold uppercase tracking-wider ${isDark ? 'text-blue-400' : 'text-blue-700'}`}>
+                <span className={`text-[10px] xl:text-[11px] font-bold uppercase tracking-wider truncate pr-1 ${isDark ? 'text-blue-400' : 'text-blue-700'}`}>
                   Today's Ops
                 </span>
-                <div className="w-7 h-7 rounded-lg bg-blue-500/20 text-blue-500 flex items-center justify-center">
-                  <Clock className="w-4 h-4" />
+                <div className="w-6 h-6 rounded-lg bg-blue-500/20 text-blue-500 flex items-center justify-center shrink-0">
+                  <Clock className="w-3.5 h-3.5" />
                 </div>
               </div>
-              <div className="text-xl sm:text-2xl font-black text-blue-600 dark:text-blue-400 font-mono mt-1">
+              <div className="text-lg sm:text-xl font-black text-blue-600 dark:text-blue-400 font-mono mt-0.5">
                 {stats.today?.toLocaleString() || 0}
               </div>
               <div className={`text-[10px] mt-1 font-medium ${isDark ? 'text-slate-400' : 'text-slate-500'} truncate`}>
-                Actions logged today
+                Logged today
               </div>
             </div>
 
@@ -752,7 +752,7 @@ export default function AuditLogsPage() {
               role="button"
               tabIndex={0}
               onClick={() => handleCardClick('DELETE')}
-              className={`p-3.5 sm:p-4 rounded-2xl border cursor-pointer select-none transition-all duration-200 active:scale-95 ${
+              className={`p-2.5 sm:p-3 xl:p-3.5 rounded-xl sm:rounded-2xl border cursor-pointer select-none transition-all duration-200 active:scale-95 ${
                 activeTabCard === 'DELETE'
                   ? isDark
                     ? 'bg-gradient-to-br from-rose-950/40 via-slate-900 to-rose-900/20 border-rose-500/80 ring-2 ring-rose-500/40 shadow-lg shadow-rose-500/10'
@@ -763,19 +763,19 @@ export default function AuditLogsPage() {
               }`}
             >
               <div className="flex items-center justify-between mb-1">
-                <span className={`text-[11px] font-bold uppercase tracking-wider ${isDark ? 'text-rose-400' : 'text-rose-700'}`}>
+                <span className={`text-[10px] xl:text-[11px] font-bold uppercase tracking-wider truncate pr-1 ${isDark ? 'text-rose-400' : 'text-rose-700'}`}>
                   Deletions
                 </span>
-                <div className="w-7 h-7 rounded-lg bg-rose-500/20 text-rose-500 flex items-center justify-center">
-                  <Trash2 className="w-4 h-4" />
+                <div className="w-6 h-6 rounded-lg bg-rose-500/20 text-rose-500 flex items-center justify-center shrink-0">
+                  <Trash2 className="w-3.5 h-3.5" />
                 </div>
               </div>
-              <div className="text-xl sm:text-2xl font-black font-mono text-rose-600 dark:text-rose-400 mt-1">
+              <div className="text-lg sm:text-xl font-black font-mono text-rose-600 dark:text-rose-400 mt-0.5">
                 {stats.deletions?.toLocaleString() || 0}
               </div>
               <div className="text-[10px] text-rose-600 dark:text-rose-400 mt-1 font-semibold flex items-center gap-1 truncate">
-                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
-                <span>Critical record purges</span>
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse shrink-0" />
+                <span className="truncate">Record purges</span>
               </div>
             </div>
 
@@ -784,7 +784,7 @@ export default function AuditLogsPage() {
               role="button"
               tabIndex={0}
               onClick={() => handleCardClick('UPDATE')}
-              className={`p-3.5 sm:p-4 rounded-2xl border cursor-pointer select-none transition-all duration-200 active:scale-95 ${
+              className={`p-2.5 sm:p-3 xl:p-3.5 rounded-xl sm:rounded-2xl border cursor-pointer select-none transition-all duration-200 active:scale-95 ${
                 activeTabCard === 'UPDATE'
                   ? isDark
                     ? 'bg-gradient-to-br from-amber-950/40 via-slate-900 to-amber-900/20 border-amber-500/80 ring-2 ring-amber-500/40 shadow-lg shadow-amber-500/10'
@@ -795,18 +795,18 @@ export default function AuditLogsPage() {
               }`}
             >
               <div className="flex items-center justify-between mb-1">
-                <span className={`text-[11px] font-bold uppercase tracking-wider ${isDark ? 'text-amber-400' : 'text-amber-700'}`}>
+                <span className={`text-[10px] xl:text-[11px] font-bold uppercase tracking-wider truncate pr-1 ${isDark ? 'text-amber-400' : 'text-amber-700'}`}>
                   Modifications
                 </span>
-                <div className="w-7 h-7 rounded-lg bg-amber-500/20 text-amber-500 flex items-center justify-center">
-                  <Edit3 className="w-4 h-4" />
+                <div className="w-6 h-6 rounded-lg bg-amber-500/20 text-amber-500 flex items-center justify-center shrink-0">
+                  <Edit3 className="w-3.5 h-3.5" />
                 </div>
               </div>
-              <div className="text-xl sm:text-2xl font-black text-amber-600 dark:text-amber-400 font-mono mt-1">
+              <div className="text-lg sm:text-xl font-black text-amber-600 dark:text-amber-400 font-mono mt-0.5">
                 {stats.updates?.toLocaleString() || 0}
               </div>
               <div className={`text-[10px] mt-1 font-medium ${isDark ? 'text-slate-400' : 'text-slate-500'} truncate`}>
-                Edited rates &amp; field changes
+                Field changes
               </div>
             </div>
 
@@ -815,7 +815,7 @@ export default function AuditLogsPage() {
               role="button"
               tabIndex={0}
               onClick={() => handleCardClick('CREATE')}
-              className={`p-3.5 sm:p-4 rounded-2xl border cursor-pointer select-none transition-all duration-200 active:scale-95 col-span-2 lg:col-span-1 ${
+              className={`p-2.5 sm:p-3 xl:p-3.5 rounded-xl sm:rounded-2xl border cursor-pointer select-none transition-all duration-200 active:scale-95 col-span-2 sm:col-span-1 lg:col-span-1 ${
                 activeTabCard === 'CREATE'
                   ? isDark
                     ? 'bg-gradient-to-br from-emerald-950/40 via-slate-900 to-emerald-900/20 border-emerald-500/80 ring-2 ring-emerald-500/40 shadow-lg shadow-emerald-500/10'
@@ -826,37 +826,37 @@ export default function AuditLogsPage() {
               }`}
             >
               <div className="flex items-center justify-between mb-1">
-                <span className={`text-[11px] font-bold uppercase tracking-wider ${isDark ? 'text-emerald-400' : 'text-emerald-700'}`}>
+                <span className={`text-[10px] xl:text-[11px] font-bold uppercase tracking-wider truncate pr-1 ${isDark ? 'text-emerald-400' : 'text-emerald-700'}`}>
                   New Registrations
                 </span>
-                <div className="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-500 flex items-center justify-center">
-                  <PlusCircle className="w-4 h-4" />
+                <div className="w-6 h-6 rounded-lg bg-emerald-500/20 text-emerald-500 flex items-center justify-center shrink-0">
+                  <PlusCircle className="w-3.5 h-3.5" />
                 </div>
               </div>
-              <div className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-emerald-400 font-mono mt-1">
+              <div className="text-lg sm:text-xl font-black text-emerald-600 dark:text-emerald-400 font-mono mt-0.5">
                 {stats.creates?.toLocaleString() || 0}
               </div>
               <div className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-1 font-semibold truncate">
-                New bilties, trips &amp; entries
+                New creations
               </div>
             </div>
           </div>
 
-          {/* 3. Modern Filter Toolbar (With Image 3 Date Dropdown) */}
-          <div className={`p-3.5 rounded-2xl border shadow-sm ${
+          {/* 3. Modern Filter Toolbar */}
+          <div className={`p-2.5 sm:p-3 rounded-xl sm:rounded-2xl border shadow-sm ${
             isDark ? 'bg-[#0B1020] border-slate-800/80' : 'bg-white border-slate-200'
           }`}>
-            <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3">
+            <div className="flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-2.5">
               
               {/* Search Box with Clear Button */}
-              <div className="relative flex-1 min-w-[240px]">
-                <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+              <div className="relative flex-1 min-w-[200px] w-full">
+                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search by Docket #, Customer, User, Action, or IP..."
-                  className={`w-full pl-10 pr-9 py-2 rounded-xl text-xs border transition-all ${
+                  placeholder="Search docket, user, action, remarks, IP..."
+                  className={`w-full pl-9 pr-8 py-2 rounded-xl text-xs border transition-all ${
                     isDark
                       ? 'bg-slate-900 border-slate-800 text-white placeholder-slate-500 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/50'
                       : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400 focus:border-blue-600 focus:ring-1 focus:ring-blue-600/30'
@@ -865,7 +865,7 @@ export default function AuditLogsPage() {
                 {searchQuery && (
                   <button
                     onClick={() => { setSearchQuery(''); setDebouncedSearch(''); setPage(1); }}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 p-1"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 p-0.5 cursor-pointer"
                     title="Clear search"
                   >
                     <X className="w-3.5 h-3.5" />
@@ -873,237 +873,240 @@ export default function AuditLogsPage() {
                 )}
               </div>
 
-              {/* Action Filter Dropdown */}
-              <div className="relative shrink-0">
-                <select
-                  value={selectedAction}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setSelectedAction(val);
-                    if (['ALL', 'DELETE', 'UPDATE', 'CREATE'].includes(val)) {
-                      setActiveTabCard(val);
-                    } else {
-                      setActiveTabCard('CUSTOM');
-                    }
-                    setPage(1);
-                  }}
-                  className={`pl-3 pr-8 py-2 rounded-xl text-xs border font-semibold appearance-none cursor-pointer transition-all ${
-                    selectedAction !== 'ALL'
-                      ? isDark
-                        ? 'bg-cyan-500/20 border-cyan-500/60 text-cyan-300'
-                        : 'bg-cyan-50 border-cyan-300 text-cyan-800'
-                      : isDark
-                      ? 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700'
-                      : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-white'
-                  } focus:outline-none`}
-                >
-                  <option value="ALL">⚡ All Actions</option>
-                  <option value="CREATE">➕ New Creates Only</option>
-                  <option value="UPDATE">✏️ Modifications Only</option>
-                  <option value="DELETE">🗑️ Deletions Only</option>
-                  <option value="RETURN">↩️ Returned Only</option>
-                  <option value="APPROVE">✅ Approved Only</option>
-                  <option value="REJECT">❌ Rejected Only</option>
-                  <option value="DISPATCH">🚛 Dispatches Only</option>
-                  <option value="SETTLE">💰 Settlements Only</option>
-                  <option value="LOGIN">🛡️ Logins &amp; Sessions</option>
-                </select>
-                <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-              </div>
+              {/* Right Filter Controls: Action, Module, Date, Reset */}
+              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 shrink-0">
+                {/* Action Filter Dropdown */}
+                <div className="relative">
+                  <select
+                    value={selectedAction}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setSelectedAction(val);
+                      if (['ALL', 'DELETE', 'UPDATE', 'CREATE'].includes(val)) {
+                        setActiveTabCard(val);
+                      } else {
+                        setActiveTabCard('CUSTOM');
+                      }
+                      setPage(1);
+                    }}
+                    className={`pl-2.5 pr-7 py-1.5 rounded-xl text-xs border font-semibold appearance-none cursor-pointer transition-all max-w-[135px] sm:max-w-none ${
+                      selectedAction !== 'ALL'
+                        ? isDark
+                          ? 'bg-cyan-500/20 border-cyan-500/60 text-cyan-300'
+                          : 'bg-cyan-50 border-cyan-300 text-cyan-800'
+                        : isDark
+                        ? 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700'
+                        : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-white'
+                    } focus:outline-none`}
+                  >
+                    <option value="ALL">⚡ All Actions</option>
+                    <option value="CREATE">➕ New Creates Only</option>
+                    <option value="UPDATE">✏️ Modifications Only</option>
+                    <option value="DELETE">🗑️ Deletions Only</option>
+                    <option value="RETURN">↩️ Returned Only</option>
+                    <option value="APPROVE">✅ Approved Only</option>
+                    <option value="REJECT">❌ Rejected Only</option>
+                    <option value="DISPATCH">🚛 Dispatches Only</option>
+                    <option value="SETTLE">💰 Settlements Only</option>
+                    <option value="LOGIN">🛡️ Logins &amp; Sessions</option>
+                  </select>
+                  <ChevronDown className="w-3.5 h-3.5 absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                </div>
 
-              {/* Module Filter Dropdown */}
-              <div className="relative shrink-0">
-                <select
-                  value={selectedEntity}
-                  onChange={(e) => {
-                    setSelectedEntity(e.target.value);
-                    setPage(1);
-                  }}
-                  className={`pl-3 pr-8 py-2 rounded-xl text-xs border font-semibold appearance-none cursor-pointer transition-all ${
-                    selectedEntity !== 'ALL'
-                      ? isDark
-                        ? 'bg-blue-500/20 border-blue-500/60 text-blue-300'
-                        : 'bg-blue-50 border-blue-300 text-blue-800'
-                      : isDark
-                      ? 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700'
-                      : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-white'
-                  } focus:outline-none`}
-                >
-                  <option value="ALL">📦 All Modules</option>
-                  <option value="CONSIGNMENT">📦 Bilties / Consignments</option>
-                  <option value="APPROVAL_REQUEST">🛡️ Approvals &amp; Requests</option>
-                  <option value="DISPATCH">🚛 Trips &amp; Loading</option>
-                  <option value="DELIVERY">🏁 Delivery &amp; POD</option>
-                  <option value="EXPENSE">💳 Expenses &amp; Claims</option>
-                  <option value="BILLING">🧾 Billing &amp; Invoices</option>
-                  <option value="SETTLEMENT">💰 Trip Settlements</option>
-                  <option value="BRANCH">🏢 Branches &amp; Hubs</option>
-                  <option value="USER">👥 Users &amp; Staff</option>
-                  <option value="ROLE">🛡️ Roles &amp; Permissions</option>
-                </select>
-                <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-              </div>
+                {/* Module Filter Dropdown */}
+                <div className="relative">
+                  <select
+                    value={selectedEntity}
+                    onChange={(e) => {
+                      setSelectedEntity(e.target.value);
+                      setPage(1);
+                    }}
+                    className={`pl-2.5 pr-7 py-1.5 rounded-xl text-xs border font-semibold appearance-none cursor-pointer transition-all max-w-[135px] sm:max-w-none ${
+                      selectedEntity !== 'ALL'
+                        ? isDark
+                          ? 'bg-blue-500/20 border-blue-500/60 text-blue-300'
+                          : 'bg-blue-50 border-blue-300 text-blue-800'
+                        : isDark
+                        ? 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700'
+                        : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-white'
+                    } focus:outline-none`}
+                  >
+                    <option value="ALL">📦 All Modules</option>
+                    <option value="CONSIGNMENT">📦 Bilties / Consignments</option>
+                    <option value="APPROVAL_REQUEST">🛡️ Approvals &amp; Requests</option>
+                    <option value="DISPATCH">🚛 Trips &amp; Loading</option>
+                    <option value="DELIVERY">🏁 Delivery &amp; POD</option>
+                    <option value="EXPENSE">💳 Expenses &amp; Claims</option>
+                    <option value="BILLING">🧾 Billing &amp; Invoices</option>
+                    <option value="SETTLEMENT">💰 Trip Settlements</option>
+                    <option value="BRANCH">🏢 Branches &amp; Hubs</option>
+                    <option value="USER">👥 Users &amp; Staff</option>
+                    <option value="ROLE">🛡️ Roles &amp; Permissions</option>
+                  </select>
+                  <ChevronDown className="w-3.5 h-3.5 absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                </div>
 
-              {/* Date Filter Dropdown (Matches Image 3) */}
-              <div className="relative shrink-0" ref={dateDropdownRef}>
-                <button
-                  type="button"
-                  onClick={() => setIsDateDropdownOpen(!isDateDropdownOpen)}
-                  className={`px-4 py-2 rounded-full border text-xs font-semibold flex items-center gap-2.5 transition-all cursor-pointer ${
-                    datePreset !== 'ALL' || fromDate || toDate
-                      ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300 dark:border-blue-500/50 shadow-xs'
-                      : isDark
-                      ? 'border-slate-800 bg-slate-900 text-slate-300 hover:border-slate-700'
-                      : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 shadow-xs'
-                  }`}
-                >
-                  <Calendar className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
-                  <span className="truncate max-w-[150px]">{dateDisplayLabel}</span>
-                  <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${isDateDropdownOpen ? 'rotate-180' : ''}`} />
-                </button>
+                {/* Date Filter Dropdown */}
+                <div className="relative" ref={dateDropdownRef}>
+                  <button
+                    type="button"
+                    onClick={() => setIsDateDropdownOpen(!isDateDropdownOpen)}
+                    className={`px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer ${
+                      datePreset !== 'ALL' || fromDate || toDate
+                        ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300 dark:border-blue-500/50 shadow-xs'
+                        : isDark
+                        ? 'border-slate-800 bg-slate-900 text-slate-300 hover:border-slate-700'
+                        : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 shadow-xs'
+                    }`}
+                  >
+                    <Calendar className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+                    <span className="truncate max-w-[120px]">{dateDisplayLabel}</span>
+                    <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${isDateDropdownOpen ? 'rotate-180' : ''}`} />
+                  </button>
 
-                {/* Dropdown Menu */}
-                {isDateDropdownOpen && (
-                  <div className={`absolute right-0 mt-2 w-72 rounded-2xl border shadow-xl p-3 z-50 animate-fadeIn ${
-                    isDark ? 'bg-[#0E1526] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
-                  }`}>
-                    <div className="space-y-1 text-xs font-semibold mb-3">
-                      <button
-                        onClick={() => applyDatePreset('ALL')}
-                        className={`w-full text-left px-3 py-2 rounded-xl transition-colors flex items-center justify-between ${
-                          datePreset === 'ALL' && !fromDate
-                            ? 'bg-blue-600 text-white'
-                            : isDark ? 'hover:bg-slate-800/80 text-slate-300' : 'hover:bg-slate-100 text-slate-700'
-                        }`}
-                      >
-                        <span>⚡ All Dates</span>
-                        {datePreset === 'ALL' && !fromDate && <Check className="w-3.5 h-3.5" />}
-                      </button>
-                      <button
-                        onClick={() => applyDatePreset('TODAY')}
-                        className={`w-full text-left px-3 py-2 rounded-xl transition-colors flex items-center justify-between ${
-                          datePreset === 'TODAY'
-                            ? 'bg-blue-600 text-white'
-                            : isDark ? 'hover:bg-slate-800/80 text-slate-300' : 'hover:bg-slate-100 text-slate-700'
-                        }`}
-                      >
-                        <span>📅 Today</span>
-                        {datePreset === 'TODAY' && <Check className="w-3.5 h-3.5" />}
-                      </button>
-                      <button
-                        onClick={() => applyDatePreset('YESTERDAY')}
-                        className={`w-full text-left px-3 py-2 rounded-xl transition-colors flex items-center justify-between ${
-                          datePreset === 'YESTERDAY'
-                            ? 'bg-blue-600 text-white'
-                            : isDark ? 'hover:bg-slate-800/80 text-slate-300' : 'hover:bg-slate-100 text-slate-700'
-                        }`}
-                      >
-                        <span>⏱️ Yesterday</span>
-                        {datePreset === 'YESTERDAY' && <Check className="w-3.5 h-3.5" />}
-                      </button>
-                      <button
-                        onClick={() => applyDatePreset('WEEK')}
-                        className={`w-full text-left px-3 py-2 rounded-xl transition-colors flex items-center justify-between ${
-                          datePreset === 'WEEK'
-                            ? 'bg-blue-600 text-white'
-                            : isDark ? 'hover:bg-slate-800/80 text-slate-300' : 'hover:bg-slate-100 text-slate-700'
-                        }`}
-                      >
-                        <span>🗓️ Last 7 Days</span>
-                        {datePreset === 'WEEK' && <Check className="w-3.5 h-3.5" />}
-                      </button>
-                      <button
-                        onClick={() => applyDatePreset('MONTH')}
-                        className={`w-full text-left px-3 py-2 rounded-xl transition-colors flex items-center justify-between ${
-                          datePreset === 'MONTH'
-                            ? 'bg-blue-600 text-white'
-                            : isDark ? 'hover:bg-slate-800/80 text-slate-300' : 'hover:bg-slate-100 text-slate-700'
-                        }`}
-                      >
-                        <span>📆 This Month</span>
-                        {datePreset === 'MONTH' && <Check className="w-3.5 h-3.5" />}
-                      </button>
-                    </div>
-
-                    {/* Custom Date Range Inputs */}
-                    <div className="pt-2.5 border-t border-slate-800/40 dark:border-slate-800 space-y-2">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
-                        Custom Date Range
-                      </span>
-                      <div className="space-y-1.5">
-                        <div>
-                          <label className="text-[10px] text-slate-400 block mb-0.5">From Date</label>
-                          <input
-                            type="date"
-                            value={fromDate}
-                            onChange={(e) => {
-                              setFromDate(e.target.value);
-                              setDatePreset('CUSTOM');
-                              setActiveTabCard('CUSTOM');
-                            }}
-                            className={`w-full px-2.5 py-1.5 rounded-lg border text-xs ${
-                              isDark ? 'bg-slate-900 border-slate-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
-                            }`}
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] text-slate-400 block mb-0.5">To Date</label>
-                          <input
-                            type="date"
-                            value={toDate}
-                            onChange={(e) => {
-                              setToDate(e.target.value);
-                              setDatePreset('CUSTOM');
-                              setActiveTabCard('CUSTOM');
-                            }}
-                            className={`w-full px-2.5 py-1.5 rounded-lg border text-xs ${
-                              isDark ? 'bg-slate-900 border-slate-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
-                            }`}
-                          />
-                        </div>
-                      </div>
-                      <div className="flex items-center justify-between pt-1">
+                  {/* Dropdown Menu */}
+                  {isDateDropdownOpen && (
+                    <div className={`absolute right-0 mt-2 w-72 rounded-2xl border shadow-xl p-3 z-50 animate-fadeIn ${
+                      isDark ? 'bg-[#0E1526] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
+                    }`}>
+                      <div className="space-y-1 text-xs font-semibold mb-3">
                         <button
-                          type="button"
-                          onClick={() => {
-                            setFromDate('');
-                            setToDate('');
-                            setDatePreset('ALL');
-                            setIsDateDropdownOpen(false);
-                            setPage(1);
-                          }}
-                          className="text-[11px] font-bold text-slate-400 hover:text-rose-500"
+                          onClick={() => applyDatePreset('ALL')}
+                          className={`w-full text-left px-3 py-2 rounded-xl transition-colors flex items-center justify-between ${
+                            datePreset === 'ALL' && !fromDate
+                              ? 'bg-blue-600 text-white'
+                              : isDark ? 'hover:bg-slate-800/80 text-slate-300' : 'hover:bg-slate-100 text-slate-700'
+                          }`}
                         >
-                          Clear
+                          <span>⚡ All Dates</span>
+                          {datePreset === 'ALL' && !fromDate && <Check className="w-3.5 h-3.5" />}
                         </button>
                         <button
-                          type="button"
-                          onClick={() => {
-                            setIsDateDropdownOpen(false);
-                            setPage(1);
-                          }}
-                          className="px-3 py-1 rounded-lg bg-blue-600 text-white text-xs font-bold hover:bg-blue-500"
+                          onClick={() => applyDatePreset('TODAY')}
+                          className={`w-full text-left px-3 py-2 rounded-xl transition-colors flex items-center justify-between ${
+                            datePreset === 'TODAY'
+                              ? 'bg-blue-600 text-white'
+                              : isDark ? 'hover:bg-slate-800/80 text-slate-300' : 'hover:bg-slate-100 text-slate-700'
+                          }`}
                         >
-                          Apply Range
+                          <span>📅 Today</span>
+                          {datePreset === 'TODAY' && <Check className="w-3.5 h-3.5" />}
+                        </button>
+                        <button
+                          onClick={() => applyDatePreset('YESTERDAY')}
+                          className={`w-full text-left px-3 py-2 rounded-xl transition-colors flex items-center justify-between ${
+                            datePreset === 'YESTERDAY'
+                              ? 'bg-blue-600 text-white'
+                              : isDark ? 'hover:bg-slate-800/80 text-slate-300' : 'hover:bg-slate-100 text-slate-700'
+                          }`}
+                        >
+                          <span>⏱️ Yesterday</span>
+                          {datePreset === 'YESTERDAY' && <Check className="w-3.5 h-3.5" />}
+                        </button>
+                        <button
+                          onClick={() => applyDatePreset('WEEK')}
+                          className={`w-full text-left px-3 py-2 rounded-xl transition-colors flex items-center justify-between ${
+                            datePreset === 'WEEK'
+                              ? 'bg-blue-600 text-white'
+                              : isDark ? 'hover:bg-slate-800/80 text-slate-300' : 'hover:bg-slate-100 text-slate-700'
+                          }`}
+                        >
+                          <span>🗓️ Last 7 Days</span>
+                          {datePreset === 'WEEK' && <Check className="w-3.5 h-3.5" />}
+                        </button>
+                        <button
+                          onClick={() => applyDatePreset('MONTH')}
+                          className={`w-full text-left px-3 py-2 rounded-xl transition-colors flex items-center justify-between ${
+                            datePreset === 'MONTH'
+                              ? 'bg-blue-600 text-white'
+                              : isDark ? 'hover:bg-slate-800/80 text-slate-300' : 'hover:bg-slate-100 text-slate-700'
+                          }`}
+                        >
+                          <span>📆 This Month</span>
+                          {datePreset === 'MONTH' && <Check className="w-3.5 h-3.5" />}
                         </button>
                       </div>
+
+                      {/* Custom Date Range Inputs */}
+                      <div className="pt-2.5 border-t border-slate-800/40 dark:border-slate-800 space-y-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                          Custom Date Range
+                        </span>
+                        <div className="space-y-1.5">
+                          <div>
+                            <label className="text-[10px] text-slate-400 block mb-0.5">From Date</label>
+                            <input
+                              type="date"
+                              value={fromDate}
+                              onChange={(e) => {
+                                setFromDate(e.target.value);
+                                setDatePreset('CUSTOM');
+                                setActiveTabCard('CUSTOM');
+                              }}
+                              className={`w-full px-2.5 py-1.5 rounded-lg border text-xs ${
+                                isDark ? 'bg-slate-900 border-slate-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                              }`}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] text-slate-400 block mb-0.5">To Date</label>
+                            <input
+                              type="date"
+                              value={toDate}
+                              onChange={(e) => {
+                                setToDate(e.target.value);
+                                setDatePreset('CUSTOM');
+                                setActiveTabCard('CUSTOM');
+                              }}
+                              className={`w-full px-2.5 py-1.5 rounded-lg border text-xs ${
+                                isDark ? 'bg-slate-900 border-slate-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                              }`}
+                            />
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between pt-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFromDate('');
+                              setToDate('');
+                              setDatePreset('ALL');
+                              setIsDateDropdownOpen(false);
+                              setPage(1);
+                            }}
+                            className="text-[11px] font-bold text-slate-400 hover:text-rose-500 cursor-pointer"
+                          >
+                            Clear
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsDateDropdownOpen(false);
+                              setPage(1);
+                            }}
+                            className="px-3 py-1 rounded-lg bg-blue-600 text-white text-xs font-bold hover:bg-blue-500 cursor-pointer"
+                          >
+                            Apply Range
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  )}
+                </div>
+
+                {/* Reset Filters Icon Button if active */}
+                {hasActiveFilters && (
+                  <button
+                    onClick={handleResetFilters}
+                    className="px-2.5 py-1.5 rounded-xl text-xs font-bold bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 border border-rose-500/20 flex items-center gap-1 shrink-0 transition-all cursor-pointer"
+                    title="Reset all filters"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Reset</span>
+                  </button>
                 )}
+
               </div>
-
-              {/* Reset Filters Icon Button if active */}
-              {hasActiveFilters && (
-                <button
-                  onClick={handleResetFilters}
-                  className="p-2 rounded-xl text-xs font-bold bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 border border-rose-500/20 flex items-center gap-1 shrink-0 transition-all cursor-pointer"
-                  title="Reset all filters"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Reset</span>
-                </button>
-              )}
-
             </div>
           </div>
 
@@ -1112,8 +1115,8 @@ export default function AuditLogsPage() {
           <div className={`rounded-2xl border shadow-md overflow-hidden ${
             isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200'
           }`}>
-            <div className="overflow-x-auto overflow-y-auto max-h-[520px] sm:max-h-[580px] lg:max-h-[calc(100vh-320px)] min-h-[300px] scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700">
-              <table className="w-full text-left border-collapse text-xs">
+            <div className="overflow-x-auto overflow-y-auto max-h-[520px] sm:max-h-[580px] lg:max-h-[calc(100vh-320px)] min-h-[300px] scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700 relative [container-type:inline-size]">
+              <table className="w-full text-left border-collapse text-xs min-w-[850px]">
                 <thead className="sticky top-0 z-20 shadow-xs">
                   <tr className={`border-b text-[11px] font-bold uppercase tracking-wider ${
                     isDark ? 'bg-[#0B1020] border-slate-800 text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-600'
@@ -1130,29 +1133,33 @@ export default function AuditLogsPage() {
                 <tbody className={`divide-y ${isDark ? 'divide-slate-800/60' : 'divide-slate-100'}`}>
                   {loading ? (
                     <tr>
-                      <td colSpan={7} className="py-16 text-center text-slate-400">
-                        <RefreshCw className="w-6 h-6 text-cyan-400 animate-spin mx-auto mb-2" />
-                        <span className="font-semibold text-xs">Querying audit logs ledger...</span>
+                      <td colSpan={7} className="py-16 p-0 text-center text-slate-400 border-none">
+                        <div className="sticky left-0 m-0 flex flex-col items-center justify-center px-4 w-[100cqw] max-w-full">
+                          <RefreshCw className="w-6 h-6 text-cyan-400 animate-spin mx-auto mb-2" />
+                          <span className="font-semibold text-xs">Querying audit logs ledger...</span>
+                        </div>
                       </td>
                     </tr>
                   ) : logs.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="py-16 text-center space-y-2">
-                        <div className="w-10 h-10 rounded-xl bg-slate-800/30 flex items-center justify-center mx-auto text-slate-400">
-                          <History className="w-5 h-5" />
+                      <td colSpan={7} className="py-16 p-0 text-center border-none">
+                        <div className="sticky left-0 m-0 flex flex-col items-center justify-center px-4 w-[100cqw] max-w-full space-y-2">
+                          <div className="w-10 h-10 rounded-xl bg-slate-800/30 flex items-center justify-center mx-auto text-slate-400">
+                            <History className="w-5 h-5" />
+                          </div>
+                          <p className="text-sm font-bold">No Audit Activity Found</p>
+                          <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                            No matching logs found for the applied search criteria or date range.
+                          </p>
+                          {hasActiveFilters && (
+                            <button
+                              onClick={handleResetFilters}
+                              className="px-3 py-1 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-500 shadow-sm"
+                            >
+                              Clear Filters &amp; Reload
+                            </button>
+                          )}
                         </div>
-                        <p className="text-sm font-bold">No Audit Activity Found</p>
-                        <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                          No matching logs found for the applied search criteria or date range.
-                        </p>
-                        {hasActiveFilters && (
-                          <button
-                            onClick={handleResetFilters}
-                            className="px-3 py-1 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-500 shadow-sm"
-                          >
-                            Clear Filters &amp; Reload
-                          </button>
-                        )}
                       </td>
                     </tr>
                   ) : (
@@ -1260,37 +1267,39 @@ export default function AuditLogsPage() {
             </div>
 
             {/* Compact Pagination Bar */}
-            <div className={`py-2.5 px-4 border-t flex items-center justify-between text-xs ${
+            <div className={`py-2.5 px-3.5 sm:px-4 border-t flex flex-wrap items-center justify-between gap-2 text-xs ${
               isDark ? 'border-slate-800 bg-slate-900/40 text-slate-400' : 'border-slate-200 bg-slate-50 text-slate-600'
             }`}>
-              <div>
-                Showing page <span className="font-bold">{pagination.page || 1}</span> of <span className="font-bold">{pagination.pages || 1}</span> ({pagination.total || 0} records)
+              <div className="text-[11px] sm:text-xs">
+                Showing page <span className={`font-bold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>{pagination.page || 1}</span> of <span className={`font-bold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>{pagination.pages || 1}</span> <span className="text-slate-400">({pagination.total || 0} records)</span>
               </div>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1.5">
                 <button
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={page <= 1}
-                  className={`p-1 rounded-lg border ${
+                  className={`px-2.5 py-1 rounded-lg border text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer ${
                     page <= 1
                       ? 'opacity-40 cursor-not-allowed border-transparent'
                       : isDark
-                      ? 'hover:bg-slate-800 border-slate-700'
-                      : 'hover:bg-white border-slate-200'
+                      ? 'hover:bg-slate-800 border-slate-700 text-slate-200'
+                      : 'hover:bg-white border-slate-200 text-slate-700 shadow-2xs'
                   }`}
                 >
                   <ChevronLeft className="w-3.5 h-3.5" />
+                  <span>Prev</span>
                 </button>
                 <button
                   onClick={() => setPage((p) => Math.min(pagination.pages || 1, p + 1))}
                   disabled={page >= (pagination.pages || 1)}
-                  className={`p-1 rounded-lg border ${
+                  className={`px-2.5 py-1 rounded-lg border text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer ${
                     page >= (pagination.pages || 1)
                       ? 'opacity-40 cursor-not-allowed border-transparent'
                       : isDark
-                      ? 'hover:bg-slate-800 border-slate-700'
-                      : 'hover:bg-white border-slate-200'
+                      ? 'hover:bg-slate-800 border-slate-700 text-slate-200'
+                      : 'hover:bg-white border-slate-200 text-slate-700 shadow-2xs'
                   }`}
                 >
+                  <span>Next</span>
                   <ChevronRight className="w-3.5 h-3.5" />
                 </button>
               </div>

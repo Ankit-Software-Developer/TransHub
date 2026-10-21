@@ -16,6 +16,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import paymentService from '../../services/paymentService';
+import { useStore } from '../../store/useStore';
 
 export default function UpiPaymentModal({
   isOpen,
@@ -91,8 +92,12 @@ export default function UpiPaymentModal({
     }
   };
 
+  const { user } = useStore();
+  const tenantHandle = (user?.organizationName || user?.businessName || 'company').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 15) || 'company';
+  const fallbackVpa = `${tenantHandle}@upi`;
+
   const handleCopyVpa = () => {
-    const vpa = qrData?.vpa || 'balajilogistics@hdfcbank';
+    const vpa = qrData?.vpa || fallbackVpa;
     navigator.clipboard.writeText(vpa);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -293,7 +298,7 @@ export default function UpiPaymentModal({
                 <div className="mt-2.5 flex items-center space-x-1.5 bg-white dark:bg-slate-800 px-2.5 py-1 rounded-full border border-slate-200 dark:border-slate-700 shadow-sm text-xs">
                   <Building2 className="w-3 h-3 text-slate-400" />
                   <span className="text-[11px] font-mono font-semibold text-slate-700 dark:text-slate-300">
-                    {qrData?.vpa || 'balajilogistics@hdfcbank'}
+                    {qrData?.vpa || fallbackVpa}
                   </span>
                   <button
                     type="button"

@@ -5,8 +5,8 @@ const { Op } = require('sequelize');
 class PaymentGatewayService {
   constructor() {
     this.provider = (process.env.PAYMENT_GATEWAY_PROVIDER || 'DEMO').toUpperCase();
-    this.defaultVpa = process.env.COMPANY_UPI_VPA || 'balajilogistics@hdfcbank';
-    this.companyName = process.env.COMPANY_NAME || 'Balaji Logistics';
+    this.defaultVpa = process.env.COMPANY_UPI_VPA || 'payments@upi';
+    this.companyName = process.env.COMPANY_NAME || 'TransHub Logistics';
   }
 
   /**
@@ -21,8 +21,8 @@ class PaymentGatewayService {
     payeeName = null,
   }) {
     const numAmount = parseFloat(amount || 0);
-    const payeeVpa = (vpa || this.defaultVpa || 'balajilogistics@hdfcbank').trim();
-    const payee = (payeeName || this.companyName || 'Balaji Logistics').trim();
+    const payeeVpa = (vpa || this.defaultVpa || 'payments@upi').trim();
+    const payee = (payeeName || this.companyName || 'TransHub Logistics').trim();
     const cleanRef = referenceId || `TXN${Date.now()}`;
     const cleanNote = (remarks || `Freight ${cleanRef}`).replace(/[^a-zA-Z0-9 -]/g, '').slice(0, 35);
 

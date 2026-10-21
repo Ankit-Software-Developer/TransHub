@@ -1301,11 +1301,11 @@ export default function BookingsMasterPage() {
   const renderBiltySlipSheet = (c, copyType = 'CONSIGNOR') => {
     if (!c) return null;
 
-    const companyBrand = user?.businessName || user?.organizationName || (typeof window !== 'undefined' ? localStorage.getItem('transporter_brand_name') : null) || 'Balaji Logistics';
+    const companyBrand = user?.businessName || user?.organizationName || (typeof window !== 'undefined' ? localStorage.getItem('transporter_brand_name') : null) || 'TransHub Logistics';
     const companyLogo = user?.logoUrl || (typeof window !== 'undefined' ? localStorage.getItem('transporter_logo') : null);
-    const companyAddress = user?.address || 'Plot 42, Transport Nagar, Phase-II, New Delhi - 110042';
-    const companyPhone = user?.phone || user?.mobile || '+91 98765 43210';
-    const companyEmail = user?.email || 'operations@balajilogistics.in';
+    const companyAddress = user?.address || 'Main Transport Hub, Operations Center';
+    const companyPhone = user?.phone || user?.mobile || '';
+    const companyEmail = user?.email || (user?.organizationName ? `operations@${user.organizationName.toLowerCase().replace(/[^a-z0-9]/g, '')}.com` : '');
     const companyGstin = user?.gstin || '07AABCB1234F1Z8';
     const companyPan = user?.pan || 'AABCB1234F';
 
@@ -3275,30 +3275,34 @@ export default function BookingsMasterPage() {
       <div className="flex-1 flex flex-col h-screen overflow-y-auto min-w-0">
         <Navbar />
 
-        <main className="flex-1 p-5 sm:p-6 lg:p-8 space-y-6 max-w-[1720px] mx-auto w-full">
+        <main className="flex-1 p-3.5 sm:p-5 lg:p-6 xl:p-8 space-y-4 sm:space-y-6 w-full max-w-full">
 
           {/* Header Action Bar */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <div className="flex items-center space-x-2.5">
-                <div className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
-                <h1 className={`text-2xl sm:text-3xl font-black tracking-tight ${isDark ? 'text-white' : 'text-slate-900'
-                  }`}>
-                  Bookings & Consignments
-                </h1>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-gradient-to-tr from-cyan-600 to-blue-500 text-white shadow-md shadow-cyan-500/20 flex items-center justify-center shrink-0">
+                  <FileText className="w-5 h-5 sm:w-6 sm:h-6" />
+                </div>
+                <div className="min-w-0">
+                  <h1 className={`text-base sm:text-lg lg:text-xl xl:text-2xl font-black tracking-tight text-balance sm:whitespace-nowrap ${isDark ? 'text-white' : 'text-slate-900'
+                    }`}>
+                    Bookings & Consignments
+                  </h1>
+                  <p className={`text-xs sm:text-[13px] xl:text-sm mt-0.5 sm:mt-1 truncate sm:whitespace-normal ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                    {totalBookingsCount} total consignments registered in transport.
+                  </p>
+                </div>
               </div>
-              <p className={`text-xs sm:text-sm mt-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                {totalBookingsCount} total consignments registered in tenant database.
-              </p>
             </div>
 
-            <div className="flex items-center space-x-3">
+            <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 flex-wrap sm:flex-nowrap">
               {isAdmin && (
                 <BranchFilterDropdown
                   selectedBranchId={selectedBranchId}
                   onChange={handleBranchChange}
                   branches={branchesList}
-                  allLabel="All Branches (Network-wide)"
+                  allLabel="All Branches"
                   allSubtitle="Consolidated Consignments & Dockets"
                   label="Branch:"
                   showLabel={true}
@@ -3321,10 +3325,10 @@ export default function BookingsMasterPage() {
                     fetchDocketSeriesPreview();
                     setIsDrawerOpen(true);
                   }}
-                  className="flex items-center space-x-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 transition-all active:scale-95 shrink-0"
+                  className="flex items-center space-x-2 px-3.5 sm:px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 transition-all active:scale-95 shrink-0 whitespace-nowrap"
                 >
-                  <Plus className="w-4 h-4" />
-                  <span>Create New Booking</span>
+                  <Plus className="w-4 h-4 shrink-0" />
+                  <span className="whitespace-nowrap">Create New Booking</span>
                 </button>
               )}
             </div>
@@ -3409,7 +3413,7 @@ export default function BookingsMasterPage() {
             onRowClick={(row) => handleOpenDetails(row)}
             exportFilename="Consignment_Register"
             emptyTitle="No Dockets (LR / Bilty) Found"
-            emptySubtitle="Your database is clean or no consignments match the active filters. Register your first consignment note to issue an official digital bilty."
+            emptySubtitle="No consignments match the active filters or branch selection. Register your first consignment note to issue an official digital bilty."
             emptyActionSlot={
               canCreateBooking ? (
                 <button
@@ -7346,7 +7350,7 @@ export default function BookingsMasterPage() {
                 Are you sure you want to delete Docket <span className={`font-mono underline ${isDark ? 'text-white' : 'text-slate-900 font-bold'}`}>{deletingDocket.lr_number}</span>?
               </p>
               <p className={`text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-                This action will delete the consignment, parcel items, tracking milestones, and associated booking from your tenant database permanently.
+                This action will delete the consignment, parcel items, tracking milestones, and associated booking from transport permanently.
               </p>
             </div>
 

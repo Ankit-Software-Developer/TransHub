@@ -21,7 +21,7 @@ export default function RootLayout({ children }) {
     <html lang="en" suppressHydrationWarning>
       <head>
         <title>TransHub - All-in-One Logistics Operating Platform</title>
-        <meta name="description" content="Move More. Deliver What's Next. Commercial Multi-Tenant Transport Management & Logistics Operating Platform" />
+        <meta name="description" content="Move More. Deliver What's Next. Commercial Transport Management & Logistics Operating Platform" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <script
           dangerouslySetInnerHTML={{

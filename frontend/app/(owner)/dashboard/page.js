@@ -425,6 +425,12 @@ export default function OwnerDashboard() {
       return;
     }
 
+    if (vehicleForm.ownership === 'OWN' && !vehicleForm.rc_number?.trim()) {
+      setVehicleFormError('RC (Registration Certificate) is mandatory');
+      setAddVehicleTab('compliance');
+      return;
+    }
+
     try {
       setIsRegisteringVehicle(true);
       const res = await api.post('/fleet/vehicles', {
@@ -483,31 +489,31 @@ export default function OwnerDashboard() {
       <div className="flex-1 flex flex-col h-screen overflow-y-auto min-w-0">
         <Navbar />
 
-        <main className="flex-1 p-5 sm:p-6 lg:p-8 space-y-6 max-w-[1720px] mx-auto w-full">
+        <main className="flex-1 p-3.5 sm:p-5 lg:p-6 xl:p-8 space-y-4 sm:space-y-6 w-full max-w-full">
           
           {/* Personalized Executive Greeting & Branch Scope Controls */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2 border-b border-slate-200/50 dark:border-slate-800/50">
-            <div>
+          <div className="flex items-start sm:items-center justify-between gap-3 sm:gap-4 pb-2 border-b border-slate-200/50 dark:border-slate-800/50">
+            <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2.5 flex-wrap">
-                <h1 className={`text-2xl sm:text-3xl font-black tracking-tight ${
+                <h1 className={`text-lg sm:text-xl lg:text-2xl xl:text-3xl font-black tracking-tight ${
                   isDark ? 'text-white' : 'text-slate-900'
                 }`}>
                   {greeting}, {ownerName}! 👋
                 </h1>
                 {/* Branch Scope Badge for non-admin or selected branch */}
                 {!isAdmin ? (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/30">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 shrink-0">
                     <Building2 className="w-3.5 h-3.5" />
                     <span>{currentBranch?.branch_name || currentBranch?.branchName || 'Branch'}: {currentBranch?.branch_code || currentBranch?.branchCode || 'Active'}</span>
                     <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"></span>
                   </span>
                 ) : selectedBranchId !== 'ALL' ? (
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20 shrink-0">
                     <Building2 className="w-3 h-3" />
                     Filtered: {branches.find(b => String(b.id) === String(selectedBranchId))?.branch_name || 'Selected Branch'}
                   </span>
                 ) : (
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">
                     <Building2 className="w-3 h-3" />
                     Consolidated All Branches
                   </span>
@@ -525,17 +531,19 @@ export default function OwnerDashboard() {
               </p>
             </div>
 
-            {/* Scope Selector (for Admin) & Refresh Action */}
-            <div className="flex items-center gap-2.5 self-start md:self-auto flex-wrap">
+            {/* Scope Selector (for Admin) & Refresh Action: Column-wise on small screens, single row on wider screens */}
+            <div className="flex flex-col sm:flex-row items-end sm:items-center gap-1.5 sm:gap-2.5 shrink-0">
               {isAdmin && (
                 <BranchFilterDropdown
                   selectedBranchId={selectedBranchId}
                   onChange={(newBranchId) => setSelectedBranchId(newBranchId)}
                   branches={branches}
-                  allLabel="All Branches (Consolidated View)"
+                  allLabel="All Branches"
                   allSubtitle="Network-wide Telemetry & Financials"
                   showLabel={false}
                   align="right"
+                  size="sm"
+                  className="shrink-0"
                 />
               )}
 
@@ -543,7 +551,7 @@ export default function OwnerDashboard() {
                 onClick={() => fetchDashboardData(selectedBranchId)}
                 disabled={loading}
                 title="Refresh Live Metrics"
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all shadow-sm ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all shadow-sm shrink-0 whitespace-nowrap ${
                   isDark
                     ? 'bg-slate-900/80 border-slate-700/80 text-slate-300 hover:text-white hover:border-cyan-500/50'
                     : 'bg-white border-slate-200 text-slate-700 hover:text-slate-900 hover:border-blue-400'
@@ -556,7 +564,7 @@ export default function OwnerDashboard() {
           </div>
 
           {/* Top 6 KPI Cards with Real Data */}
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3 sm:gap-4">
             {kpis.map((kpi, idx) => {
               const Icon = kpi.icon;
               return (
@@ -568,8 +576,8 @@ export default function OwnerDashboard() {
                       : 'bg-white border-slate-200 hover:border-blue-400'
                   }`}
                 >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className={`text-[11px] font-semibold truncate ${
+                  <div className="flex items-center justify-between mb-2 gap-1.5">
+                    <span className={`text-[11px] sm:text-xs font-semibold leading-tight line-clamp-1 ${
                       isDark ? 'text-slate-400' : 'text-slate-500'
                     }`}>
                       {kpi.title}
@@ -640,7 +648,7 @@ export default function OwnerDashboard() {
               <span className="text-[10px] text-slate-400 font-mono">Quick Launch</span>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2.5 sm:gap-3.5">
               {/* Step 1: Add Customer */}
               <Link
                 href="/customers"
@@ -752,7 +760,7 @@ export default function OwnerDashboard() {
           </div>
 
           {/* Fleet Telemetry & Highway Radar (Complete Width) */}
-          <div className={`p-5 rounded-3xl border shadow-xl ${
+          <div className={`relative z-0 isolate p-5 rounded-3xl border shadow-xl ${
             isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200'
           }`}>
               
@@ -964,10 +972,10 @@ export default function OwnerDashboard() {
           </div>
 
           {/* Analytical & Operational Cockpit: Booking Trend (70%) + Column-wise Fleet Status & Pending Actions (30%) */}
-          <div className="grid grid-cols-1 lg:grid-cols-10 gap-5 items-stretch">
+          <div className="grid grid-cols-1 xl:grid-cols-10 gap-5 items-stretch">
             
-            {/* Left: Booking Trend Chart with Line & Bar Switcher (70% Width) */}
-            <div className="lg:col-span-7 flex flex-col">
+            {/* Left: Booking Trend Chart with Line & Bar Switcher (70% Width on XL+) */}
+            <div className="xl:col-span-7 flex flex-col">
               <BookingTrendChart
                 trends={bookingTrendBars}
                 totalBookings={totalBookingsCount}
@@ -976,8 +984,8 @@ export default function OwnerDashboard() {
               />
             </div>
 
-            {/* Right: Fleet Status & Pending Actions stacked Column-Wise (30% Width) */}
-            <div className="lg:col-span-3 flex flex-col gap-5 justify-between">
+            {/* Right: Fleet Status & Pending Actions stacked Column-Wise (30% Width on XL+) */}
+            <div className="xl:col-span-3 flex flex-col gap-5 justify-between">
               
               {/* Fleet Status Card */}
               <div className={`p-5 rounded-3xl border shadow-xl flex flex-col justify-between flex-1 ${
@@ -1514,10 +1522,10 @@ export default function OwnerDashboard() {
                           <div>
                             <div className="flex items-center justify-between mb-1">
                               <label className={`block text-xs font-semibold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                                Default Assigned Driver
+                                Assigned Driver
                               </label>
                               <Link href="/users" target="_blank" className="text-[11px] text-cyan-400 hover:underline font-semibold">
-                                + Add / Manage Drivers
+                                + Add / Manage
                               </Link>
                             </div>
                             <select
@@ -1763,14 +1771,22 @@ export default function OwnerDashboard() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
                         <label className={`block text-xs font-semibold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                          RC (Registration Certificate) #
+                          RC (Registration Certificate) <span className="text-rose-500">*</span>
                         </label>
                         <input
                           type="text"
+                          required
                           placeholder="e.g. RC-RJ14GB9921"
                           value={vehicleForm.rc_number}
-                          onChange={(e) => setVehicleForm({ ...vehicleForm, rc_number: e.target.value.toUpperCase() })}
+                          onChange={(e) => {
+                            setVehicleForm({ ...vehicleForm, rc_number: e.target.value.toUpperCase() });
+                            if (vehicleFormError) setVehicleFormError('');
+                          }}
                           className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono uppercase focus:outline-none transition-colors ${
+                            vehicleFormError && !vehicleForm.rc_number?.trim()
+                              ? 'border-rose-500 ring-1 ring-rose-500/30'
+                              : ''
+                          } ${
                             isDark
                               ? 'bg-slate-900 border-slate-700 text-white placeholder-slate-500 focus:border-cyan-400'
                               : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400 focus:border-blue-500'
@@ -1897,12 +1913,12 @@ export default function OwnerDashboard() {
                           <label className={`block text-xs font-semibold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
                             AIS-140 GPS Device Tracker ID
                           </label>
-                          <span className="text-[10px] text-slate-400 font-medium">Optional (Leave blank if no GPS)</span>
+                          <span className="text-[10px] text-slate-400 font-medium">Optional</span>
                         </div>
                         <div className="relative">
                           <input
                             type="text"
-                            placeholder="e.g. GPS-TRK-9921 (leave blank if no GPS fitted)"
+                            placeholder="e.g. GPS-TRK-9921"
                             value={vehicleForm.gps_device_id}
                             onChange={(e) => setVehicleForm({ ...vehicleForm, gps_device_id: e.target.value })}
                             className={`w-full pl-3.5 pr-28 py-2.5 rounded-xl border text-xs font-mono focus:outline-none transition-colors ${
@@ -1921,7 +1937,7 @@ export default function OwnerDashboard() {
                           </div>
                         </div>
                         <p className="text-[10px] text-slate-400 mt-1">
-                          Only enter if this vehicle has a GPS tracker installed. If left blank, no GPS is assigned.
+                          Only enter if this vehicle has a GPS tracker installed.
                         </p>
                       </div>
                     </div>
@@ -1972,10 +1988,10 @@ export default function OwnerDashboard() {
                       <div>
                         <div className="flex items-center justify-between mb-1">
                           <label className={`block text-xs font-semibold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                            Default Assigned Driver
+                            Assigned Driver
                           </label>
                           <Link href="/users" target="_blank" className="text-[11px] text-cyan-400 hover:underline font-semibold">
-                            + Add / Manage Drivers
+                            + Add / Manage
                           </Link>
                         </div>
                         <select
@@ -2079,6 +2095,11 @@ export default function OwnerDashboard() {
                         } else if (addVehicleTab === 'specs') {
                           setAddVehicleTab('compliance');
                         } else if (addVehicleTab === 'compliance') {
+                          if (!vehicleForm.rc_number?.trim()) {
+                            setVehicleFormError('RC (Registration Certificate) is mandatory');
+                            return;
+                          }
+                          setVehicleFormError('');
                           setAddVehicleTab('telematics');
                         }
                       }}

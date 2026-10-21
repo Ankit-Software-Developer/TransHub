@@ -57,15 +57,15 @@ const TERMINOLOGY_CONFIGS = {
 };
 
 export function useTerminology() {
-  const terminology = useStore((state) => state.terminology) || 'Docket';
+  const terminology = useStore((state) => state.terminology) || 'Bilty';
 
-  // Find matching config or fallback to Docket
+  // Find matching config or fallback to Bilty
   const cleanTerm = (terminology || '').trim();
   const matchedKey = Object.keys(TERMINOLOGY_CONFIGS).find(
     (k) => k.toLowerCase() === cleanTerm.toLowerCase() || cleanTerm.toLowerCase().startsWith(k.toLowerCase())
   );
 
-  const config = TERMINOLOGY_CONFIGS[matchedKey] || TERMINOLOGY_CONFIGS.Docket;
+  const config = TERMINOLOGY_CONFIGS[matchedKey] || TERMINOLOGY_CONFIGS.Bilty;
 
   return {
     ...config,

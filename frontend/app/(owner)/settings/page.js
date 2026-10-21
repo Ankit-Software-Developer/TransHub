@@ -1,7 +1,7 @@
 // frontend/app/(owner)/settings/page.js - Updated tab navigation
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import api from '../../../services/api';
 import { useStore } from '../../../store/useStore';
 import { useTerminology } from '../../../hooks/useTerminology';
@@ -69,6 +69,8 @@ import {
   Boxes,
   Route,
   PackageCheck,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import Link from 'next/link';
 import RolePermissionMatrix from '../../../components/roles/RolePermissionMatrix';
@@ -103,7 +105,7 @@ const GPS_PROVIDER_TEMPLATES = [
     name: 'WheelsEye Fleet GPS',
     description: 'Premier telematics provider for Indian commercial transport fleets. Live vehicle tracking, speed, ignition, and fuel monitoring.',
     defaultBaseUrl: 'https://api.wheelseye.com/currentLoc',
-    keyPlaceholder: 'Paste WheelsEye Access Token (e.g. c349b6fc-b5e0-...)',
+    keyPlaceholder: 'Enter WheelsEye Access Token / API Key',
     popular: true,
     badge: 'Popular for Indian Transporters',
     color: 'from-amber-500 to-orange-600',
@@ -115,7 +117,7 @@ const GPS_PROVIDER_TEMPLATES = [
     name: 'LocoNav Telematics',
     description: 'AI-driven IoT platform for fleet management, video telematics, and vehicle tracking across India & SEA.',
     defaultBaseUrl: 'https://api.loconav.com/v1',
-    keyPlaceholder: 'loconav_access_token_xxxx',
+    keyPlaceholder: 'Enter LocoNav Access Token',
     popular: false,
     color: 'from-blue-600 to-indigo-700',
     accentText: 'text-blue-500',
@@ -126,7 +128,7 @@ const GPS_PROVIDER_TEMPLATES = [
     name: 'Intangles Digital Twin',
     description: 'Edge-to-cloud vehicle health, AI predictive maintenance, and precise fuel pilferage tracking.',
     defaultBaseUrl: 'https://api.intangles.com/v2',
-    keyPlaceholder: 'intangles_auth_key_xxxx',
+    keyPlaceholder: 'Enter Intangles Auth Key',
     popular: false,
     color: 'from-emerald-500 to-teal-700',
     accentText: 'text-emerald-500',
@@ -137,7 +139,7 @@ const GPS_PROVIDER_TEMPLATES = [
     name: 'Fleetx IoT & GPS',
     description: 'Enterprise fleet & asset management, cold storage sensor tracking, and line-haul trip automation.',
     defaultBaseUrl: 'https://api.fleetx.io/api/v1',
-    keyPlaceholder: 'fleetx_token_xxxx',
+    keyPlaceholder: 'Enter Fleetx API Token',
     popular: false,
     color: 'from-purple-600 to-violet-800',
     accentText: 'text-purple-400',
@@ -148,7 +150,7 @@ const GPS_PROVIDER_TEMPLATES = [
     name: 'MapmyIndia / Mappls GPS',
     description: 'Indigenous Indian GIS map platform offering high-accuracy vehicle tracking & geofencing APIs.',
     defaultBaseUrl: 'https://apis.mapmyindia.com/advancedmaps/v1',
-    keyPlaceholder: 'mmi_rest_key_xxxx',
+    keyPlaceholder: 'Enter MapmyIndia REST Key',
     popular: false,
     color: 'from-rose-500 to-red-700',
     accentText: 'text-rose-500',
@@ -159,13 +161,33 @@ const GPS_PROVIDER_TEMPLATES = [
     name: 'Custom REST GPS Endpoint',
     description: 'Connect any proprietary GPS server, broker integration, or third-party vehicle tracking API.',
     defaultBaseUrl: 'https://api.your-gps-provider.com/v1',
-    keyPlaceholder: 'Custom Bearer or API Key',
+    keyPlaceholder: 'Enter Custom Bearer or API Key',
     popular: false,
     color: 'from-slate-600 to-slate-800',
     accentText: 'text-slate-400',
     borderActive: 'border-slate-500/40 bg-slate-500/5',
   },
 ];
+
+/**
+ * Masks an API Key or Access Token for display security, keeping only the last 4-6 characters visible
+ * and masking preceding characters with 'X' (e.g. XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXa28d81 or XXXXXXXXXXXX182312).
+ */
+export const maskApiKey = (key) => {
+  if (!key) return '';
+  const str = String(key).trim();
+  if (str.length <= 6) return 'XXXX' + str.slice(-2);
+  
+  // If standard UUID format (8-4-4-4-12)
+  if (/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(str)) {
+    return `XXXXXXXX-XXXX-XXXX-XXXX-XXXXXX${str.slice(-6)}`;
+  }
+  
+  // Generic format: mask with X and keep last 6 characters
+  const visibleChars = Math.min(6, Math.max(4, str.length > 10 ? 6 : 4));
+  const maskedLength = Math.max(12, str.length - visibleChars);
+  return 'X'.repeat(maskedLength) + str.slice(-visibleChars);
+};
 
 /**
  * Reactive cell that displays the exact real-time address of a vehicle using free reverse geocoding API.
@@ -239,6 +261,49 @@ export default function SettingsPage() {
   // Operations Mode State (FTL, PTL, BOTH)
   const [selectedTransporterType, setSelectedTransporterType] = useState('BOTH');
   const [isSavingTransporterType, setIsSavingTransporterType] = useState(false);
+
+  // Tabs scroll & navigation management
+  const tabsContainerRef = useRef(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const checkScroll = useCallback(() => {
+    if (tabsContainerRef.current) {
+      const { scrollLeft, scrollWidth, clientWidth } = tabsContainerRef.current;
+      setCanScrollLeft(scrollLeft > 6);
+      setCanScrollRight(scrollLeft + clientWidth < scrollWidth - 6);
+    }
+  }, []);
+
+  useEffect(() => {
+    checkScroll();
+    const el = tabsContainerRef.current;
+    if (el) {
+      el.addEventListener('scroll', checkScroll, { passive: true });
+    }
+    window.addEventListener('resize', checkScroll);
+    return () => {
+      if (el) el.removeEventListener('scroll', checkScroll);
+      window.removeEventListener('resize', checkScroll);
+    };
+  }, [checkScroll]);
+
+  const handleScrollTabs = (direction) => {
+    if (tabsContainerRef.current) {
+      tabsContainerRef.current.scrollBy({
+        left: direction === 'left' ? -240 : 240,
+        behavior: 'smooth',
+      });
+      setTimeout(checkScroll, 320);
+    }
+  };
+
+  const handleTabClick = (tabId, e) => {
+    setActiveTab(tabId);
+    if (e?.currentTarget) {
+      e.currentTarget.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+    }
+  };
 
   useEffect(() => {
     if (user?.transporterType) {
@@ -342,6 +407,12 @@ export default function SettingsPage() {
   const [isSavingUpi, setIsSavingUpi] = useState(false);
   const [isSavingGst, setIsSavingGst] = useState(false);
 
+  // Dynamic Registered Tenant Identifiers for generic placeholders and fallbacks
+  const tenantOrgName = brandingForm.businessName || user?.organizationName || user?.businessName || '';
+  const tenantHandle = (tenantOrgName || 'transport').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 15) || 'transporter';
+  const tenantSuggestedPrefix = (tenantOrgName ? tenantOrgName.replace(/[^a-zA-Z]/g, '').slice(0, 3).toUpperCase() : 'TRP') || 'TRP';
+  const tenantSuggestedInitial = (tenantOrgName ? tenantOrgName.replace(/[^a-zA-Z]/g, '').charAt(0).toUpperCase() : 'T') || 'T';
+
   // UPI QR Scanner Preview & Standee State
   const [upiQrPreview, setUpiQrPreview] = useState(null);
   const [upiPreviewAmount, setUpiPreviewAmount] = useState('');
@@ -391,6 +462,8 @@ export default function SettingsPage() {
   const [showApiKey, setShowApiKey] = useState(false);
   const [gpsSearchTerm, setGpsSearchTerm] = useState('');
   const [gpsFilterStatus, setGpsFilterStatus] = useState('ALL'); // 'ALL' | 'ACTIVE' | 'OFFLINE'
+  const [gpsTelemetryPage, setGpsTelemetryPage] = useState(1);
+  const [gpsTelemetryPageSize, setGpsTelemetryPageSize] = useState(10);
 
   const [gpsForm, setGpsForm] = useState({
     provider_code: 'WHEELSEYE',
@@ -401,9 +474,10 @@ export default function SettingsPage() {
     base_url: 'https://api.wheelseye.com/currentLoc',
     sync_interval_mins: 5,
     is_active: true,
+    saved_key_preview: '',
   });
 
-  const [quickWheelsEyeToken, setQuickWheelsEyeToken] = useState('c349b6fc-b5e0-40c3-b1e9-75d62ca28d81');
+  const [quickWheelsEyeToken, setQuickWheelsEyeToken] = useState('');
 
   // Load initial data from user store & organizations profile API
   useEffect(() => {
@@ -942,8 +1016,10 @@ export default function SettingsPage() {
 
   // 4c. Generate & Refresh UPI QR Scanner for Bank Settings
   const refreshUpiPreviewQr = useCallback(async (vpaVal, nameVal, amtVal) => {
-    const vpa = (vpaVal !== undefined ? vpaVal : bankGstForm.upiId) || 'balajilogistics@hdfcbank';
-    const payee = (nameVal !== undefined ? nameVal : (bankGstForm.accountHolderName || brandingForm.businessName)) || 'Balaji Logistics';
+    const currentTenant = brandingForm.businessName || user?.organizationName || user?.businessName || 'Transport Co.';
+    const currentHandle = currentTenant.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 15) || 'company';
+    const vpa = (vpaVal !== undefined ? vpaVal : bankGstForm.upiId) || `${currentHandle}@upi`;
+    const payee = (nameVal !== undefined ? nameVal : (bankGstForm.accountHolderName || currentTenant)) || currentTenant;
     const amt = amtVal !== undefined ? amtVal : (parseFloat(upiPreviewAmount) || 0);
 
     const numAmount = amt > 0 ? amt : 0;
@@ -997,7 +1073,7 @@ export default function SettingsPage() {
   }, [activeTab, bankGstForm.upiId, bankGstForm.accountHolderName, upiPreviewAmount, refreshUpiPreviewQr]);
 
   const handleCopyUpiVpa = () => {
-    const vpa = upiQrPreview?.vpa || bankGstForm.upiId || 'balajilogistics@hdfcbank';
+    const vpa = upiQrPreview?.vpa || bankGstForm.upiId || `${tenantHandle}@upi`;
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
       navigator.clipboard.writeText(vpa);
       setCopiedUpiVpa(true);
@@ -1016,14 +1092,16 @@ export default function SettingsPage() {
 
   const getLiveUpiQrSrc = useCallback(() => {
     if (upiQrPreview?.qr_data_url) return upiQrPreview.qr_data_url;
-    const vpa = (bankGstForm.upiId || 'balajilogistics@hdfcbank').trim();
-    const payee = (bankGstForm.accountHolderName || brandingForm.businessName || 'Balaji Logistics').trim();
+    const currentTenant = brandingForm.businessName || user?.organizationName || user?.businessName || 'Transport Co.';
+    const currentHandle = currentTenant.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 15) || 'company';
+    const vpa = (bankGstForm.upiId || `${currentHandle}@upi`).trim();
+    const payee = (bankGstForm.accountHolderName || currentTenant).trim();
     const amt = parseFloat(upiPreviewAmount) || 0;
     let intent = `upi://pay?pa=${encodeURIComponent(vpa)}&pn=${encodeURIComponent(payee)}`;
     if (amt > 0) intent += `&am=${amt.toFixed(2)}`;
     intent += `&cu=INR&tn=${encodeURIComponent('Freight Payment')}`;
     return `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(intent)}&margin=8`;
-  }, [upiQrPreview?.qr_data_url, bankGstForm.upiId, bankGstForm.accountHolderName, brandingForm.businessName, upiPreviewAmount]);
+  }, [upiQrPreview?.qr_data_url, bankGstForm.upiId, bankGstForm.accountHolderName, brandingForm.businessName, user?.organizationName, user?.businessName, upiPreviewAmount]);
 
   const handleDownloadUpiQr = () => {
     const qrUrl = getLiveUpiQrSrc();
@@ -1079,6 +1157,14 @@ export default function SettingsPage() {
       const res = await api.patch('/organizations/terminology', { terminology: opt });
       if (res.data?.success) {
         setTerminology(opt);
+        if (user) {
+          const updatedUser = { ...user, documentTerminology: opt, document_terminology: opt };
+          setUser(updatedUser);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('transporter_user', JSON.stringify(updatedUser));
+            localStorage.setItem('transporter_terminology', opt);
+          }
+        }
         triggerSuccess(`Document terminology set to ${opt}!`);
       }
     } catch (err) {
@@ -1205,8 +1291,9 @@ export default function SettingsPage() {
         is_active: true,
       });
       if (res.data?.success) {
-        const syncedCount = res.data.data?.syncResult?.syncedCount ?? 16;
+        const syncedCount = res.data.data?.syncResult?.syncedCount ?? (gpsStats.totalFleetVehicles || 0);
         triggerSuccess(`WheelsEye Connected! Successfully synced ${syncedCount} active GPS vehicles.`);
+        setQuickWheelsEyeToken(''); // Clear input after successful save
         await fetchGpsData();
       }
     } catch (err) {
@@ -1225,12 +1312,13 @@ export default function SettingsPage() {
       setGpsForm({
         provider_code: existingCfg.provider_code,
         provider_name: existingCfg.provider_name,
-        api_key: existingCfg.api_key,
+        api_key: '', // Keep blank so user can choose to leave it unchanged or enter a new key
         api_secret: existingCfg.api_secret || '',
         client_id: existingCfg.client_id || '',
         base_url: existingCfg.base_url || '',
         sync_interval_mins: existingCfg.sync_interval_mins || 5,
         is_active: existingCfg.is_active ?? true,
+        saved_key_preview: existingCfg.api_key || '',
       });
     } else {
       setEditingGpsId(null);
@@ -1244,6 +1332,7 @@ export default function SettingsPage() {
         base_url: template.defaultBaseUrl,
         sync_interval_mins: 5,
         is_active: true,
+        saved_key_preview: '',
       });
     }
     setIsGpsModalOpen(true);
@@ -1256,12 +1345,13 @@ export default function SettingsPage() {
       setGpsForm({
         provider_code: existingCfg.provider_code,
         provider_name: existingCfg.provider_name,
-        api_key: existingCfg.api_key,
+        api_key: '',
         api_secret: existingCfg.api_secret || '',
         client_id: existingCfg.client_id || '',
         base_url: existingCfg.base_url || '',
         sync_interval_mins: existingCfg.sync_interval_mins || 5,
         is_active: existingCfg.is_active ?? true,
+        saved_key_preview: existingCfg.api_key || '',
       });
     } else {
       setEditingGpsId(null);
@@ -1277,13 +1367,15 @@ export default function SettingsPage() {
           base_url: template.defaultBaseUrl,
           sync_interval_mins: 5,
           is_active: true,
+          saved_key_preview: '',
         }));
       }
     }
   };
 
   const handleTestGpsConnection = async () => {
-    if (!gpsForm.api_key?.trim()) {
+    const keyToTest = gpsForm.api_key?.trim() || gpsForm.saved_key_preview;
+    if (!keyToTest) {
       setGpsTestResult({ success: false, message: 'Please enter an API Key / Access Token to test connection.' });
       return;
     }
@@ -1292,7 +1384,7 @@ export default function SettingsPage() {
     try {
       const res = await api.post('/gps/test-connection', {
         provider_code: gpsForm.provider_code,
-        api_key: gpsForm.api_key.trim(),
+        api_key: keyToTest,
         api_secret: gpsForm.api_secret?.trim() || null,
         base_url: gpsForm.base_url?.trim() || null,
       });
@@ -1320,22 +1412,30 @@ export default function SettingsPage() {
 
   const handleSaveGpsConfig = async (e) => {
     e.preventDefault();
-    if (!gpsForm.api_key?.trim()) {
+    const isNew = !editingGpsId && !gpsConfigs.find((c) => c.provider_code === gpsForm.provider_code)?.id;
+    if (isNew && !gpsForm.api_key?.trim()) {
       triggerError('API Key / Access Token is required');
       return;
     }
     setIsSaving(true);
     try {
       const targetId = editingGpsId || gpsConfigs.find((c) => c.provider_code === gpsForm.provider_code)?.id;
+      const payload = { ...gpsForm };
+      // If editing and key was left blank or is masked, don't overwrite existing secret key
+      if (targetId && (!payload.api_key?.trim() || payload.api_key.includes('XXXX') || payload.api_key.includes('••••'))) {
+        delete payload.api_key;
+      }
+      delete payload.saved_key_preview;
+
       if (targetId) {
-        const res = await api.put(`/gps/configs/${targetId}`, gpsForm);
+        const res = await api.put(`/gps/configs/${targetId}`, payload);
         if (res.data?.success) {
           triggerSuccess('GPS Provider integration updated successfully (no duplicates)!');
           setIsGpsModalOpen(false);
           fetchGpsData();
         }
       } else {
-        const res = await api.post('/gps/configs', gpsForm);
+        const res = await api.post('/gps/configs', payload);
         if (res.data?.success) {
           triggerSuccess('GPS Provider connected and synced successfully!');
           setIsGpsModalOpen(false);
@@ -1400,6 +1500,39 @@ export default function SettingsPage() {
   };
 
   const terminologyOptions = ['Bilty', 'LR', 'GR', 'Docket', 'Consignment Note'];
+  
+  // Memoized client-side filtered and paginated telemetry stream
+  const filteredGpsTelemetryList = useMemo(() => {
+    return (gpsTelemetryList || []).filter((v) => {
+      if (v.last_latitude === null || v.last_latitude === undefined) return false;
+
+      const q = (gpsSearchTerm || '').toLowerCase().trim();
+      const matchesSearch =
+        !q ||
+        v.vehicle_number?.toLowerCase().includes(q) ||
+        v.driver?.name?.toLowerCase().includes(q) ||
+        v.assignedDriver?.name?.toLowerCase().includes(q) ||
+        v.gps_device_id?.toLowerCase().includes(q) ||
+        v.gps_provider_name?.toLowerCase().includes(q) ||
+        v.branch?.branch_name?.toLowerCase().includes(q) ||
+        v.branch?.city?.toLowerCase().includes(q);
+
+      if (!matchesSearch) return false;
+      if (gpsFilterStatus === 'ACTIVE') return parseFloat(v.last_speed || 0) > 0;
+      if (gpsFilterStatus === 'OFFLINE') return parseFloat(v.last_speed || 0) === 0;
+      return true;
+    });
+  }, [gpsTelemetryList, gpsSearchTerm, gpsFilterStatus]);
+
+  const totalGpsTelemetryCount = filteredGpsTelemetryList.length;
+  const totalGpsTelemetryPages = Math.max(1, Math.ceil(totalGpsTelemetryCount / gpsTelemetryPageSize));
+  const startTelemetryItem = totalGpsTelemetryCount === 0 ? 0 : (gpsTelemetryPage - 1) * gpsTelemetryPageSize + 1;
+  const endTelemetryItem = Math.min(totalGpsTelemetryCount, gpsTelemetryPage * gpsTelemetryPageSize);
+
+  const pagedGpsTelemetryList = useMemo(() => {
+    const start = (gpsTelemetryPage - 1) * gpsTelemetryPageSize;
+    return filteredGpsTelemetryList.slice(start, start + gpsTelemetryPageSize);
+  }, [filteredGpsTelemetryList, gpsTelemetryPage, gpsTelemetryPageSize]);
 
   if (!isAdmin) {
     return (
@@ -1440,20 +1573,20 @@ export default function SettingsPage() {
       <div className="flex-1 flex flex-col min-w-0">
         <Navbar />
 
-        <main className="flex-1 p-5 sm:p-6 lg:p-8 space-y-6 max-w-[1400px] mx-auto w-full">
+        <main className="flex-1 p-3.5 sm:p-5 lg:p-6 xl:p-8 space-y-4 sm:space-y-6 w-full max-w-full">
           
           {/* Header */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <div className="flex items-center space-x-2.5">
                 <SettingsIcon className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-                <h1 className={`text-2xl sm:text-3xl font-black tracking-tight ${
+                <h1 className={`text-lg sm:text-xl lg:text-2xl xl:text-3xl font-black tracking-tight ${
                   isDark ? 'text-white' : 'text-slate-900'
                 }`}>
                   Company Settings & Branding
                 </h1>
               </div>
-              <p className={`text-xs sm:text-sm mt-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+              <p className={`text-xs lg:text-[13px] xl:text-sm mt-0.5 sm:mt-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                 Configure transport company branding, fleet themes, docket settings, number series, and staff permissions.
               </p>
             </div>
@@ -1477,15 +1610,32 @@ export default function SettingsPage() {
           {/* Settings Tabs & Content Layout */}
           <div className="space-y-6">
             
-            {/* Upperside Horizontal Navigation Tabs */}
-            <div className={`p-2 rounded-2xl border flex items-center justify-between gap-3 overflow-x-auto ${
-              isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'
-            }`}>
-              <div className="flex items-center gap-1.5 sm:gap-2 min-w-max flex-1">
+            {/* Upperside Horizontal Navigation Tabs with Responsive Scroll Controls */}
+            <div className="relative flex items-center group">
+              {/* Left Scroll Indicator Button */}
+              {canScrollLeft && (
                 <button
                   type="button"
-                  onClick={() => setActiveTab('branding')}
-                  className={`flex items-center space-x-2.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                  onClick={() => handleScrollTabs('left')}
+                  className="absolute left-1.5 z-20 p-1.5 rounded-xl bg-white/95 dark:bg-slate-900/95 border border-slate-200 dark:border-slate-700 shadow-lg text-slate-700 dark:text-slate-200 hover:scale-105 active:scale-95 transition-all backdrop-blur-md cursor-pointer"
+                  title="Scroll tabs left"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+              )}
+
+              {/* Scrollable Tabs Track */}
+              <div
+                ref={tabsContainerRef}
+                className={`p-1.5 sm:p-2 rounded-2xl border flex items-center gap-1.5 sm:gap-2 overflow-x-auto w-full transition-colors ${
+                  isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'
+                }`}
+                style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+              >
+                <button
+                  type="button"
+                  onClick={(e) => handleTabClick('branding', e)}
+                  className={`flex items-center space-x-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 whitespace-nowrap cursor-pointer ${
                     activeTab === 'branding'
                       ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
                       : isDark ? 'text-slate-400 hover:text-white hover:bg-slate-900' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
@@ -1497,15 +1647,15 @@ export default function SettingsPage() {
 
                 <button
                   type="button"
-                  onClick={() => setActiveTab('operations')}
-                  className={`flex items-center space-x-2.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                  onClick={(e) => handleTabClick('operations', e)}
+                  className={`flex items-center space-x-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 whitespace-nowrap cursor-pointer ${
                     activeTab === 'operations'
                       ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
                       : isDark ? 'text-slate-400 hover:text-white hover:bg-slate-900' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                   }`}
                 >
                   <Route className="w-4 h-4 shrink-0 text-cyan-400" />
-                  <span>Operations Mode (FTL/PTL)</span>
+                  <span>Operations Mode</span>
                   <span className={`px-1.5 py-0.2 rounded text-[8.5px] font-black uppercase ${
                     selectedTransporterType === 'FTL'
                       ? 'bg-purple-500/20 text-purple-300'
@@ -1519,8 +1669,8 @@ export default function SettingsPage() {
 
                 <button
                   type="button"
-                  onClick={() => setActiveTab('bank_gst')}
-                  className={`flex items-center space-x-2.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                  onClick={(e) => handleTabClick('bank_gst', e)}
+                  className={`flex items-center space-x-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 whitespace-nowrap cursor-pointer ${
                     activeTab === 'bank_gst'
                       ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
                       : isDark ? 'text-slate-400 hover:text-white hover:bg-slate-900' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
@@ -1532,8 +1682,8 @@ export default function SettingsPage() {
 
                 <button
                   type="button"
-                  onClick={() => setActiveTab('theme')}
-                  className={`flex items-center space-x-2.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                  onClick={(e) => handleTabClick('theme', e)}
+                  className={`flex items-center space-x-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 whitespace-nowrap cursor-pointer ${
                     activeTab === 'theme'
                       ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
                       : isDark ? 'text-slate-400 hover:text-white hover:bg-slate-900' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
@@ -1546,8 +1696,8 @@ export default function SettingsPage() {
                 {canManageRoles && (
                   <button
                     type="button"
-                    onClick={() => setActiveTab('roles')}
-                    className={`flex items-center space-x-2.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                    onClick={(e) => handleTabClick('roles', e)}
+                    className={`flex items-center space-x-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 whitespace-nowrap cursor-pointer ${
                       activeTab === 'roles'
                         ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
                         : isDark ? 'text-slate-400 hover:text-white hover:bg-slate-900' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
@@ -1560,8 +1710,8 @@ export default function SettingsPage() {
 
                 <button
                   type="button"
-                  onClick={() => setActiveTab('terminology')}
-                  className={`flex items-center space-x-2.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                  onClick={(e) => handleTabClick('terminology', e)}
+                  className={`flex items-center space-x-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 whitespace-nowrap cursor-pointer ${
                     activeTab === 'terminology'
                       ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
                       : isDark ? 'text-slate-400 hover:text-white hover:bg-slate-900' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
@@ -1573,8 +1723,8 @@ export default function SettingsPage() {
 
                 <button
                   type="button"
-                  onClick={() => setActiveTab('gps')}
-                  className={`flex items-center space-x-2.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                  onClick={(e) => handleTabClick('gps', e)}
+                  className={`flex items-center space-x-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 whitespace-nowrap cursor-pointer ${
                     activeTab === 'gps'
                       ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
                       : isDark ? 'text-slate-400 hover:text-white hover:bg-slate-900' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
@@ -1588,8 +1738,19 @@ export default function SettingsPage() {
                     </span>
                   )}
                 </button>
-
               </div>
+
+              {/* Right Scroll Indicator Button */}
+              {canScrollRight && (
+                <button
+                  type="button"
+                  onClick={() => handleScrollTabs('right')}
+                  className="absolute right-1.5 z-20 p-1.5 rounded-xl bg-white/95 dark:bg-slate-900/95 border border-slate-200 dark:border-slate-700 shadow-lg text-slate-700 dark:text-slate-200 hover:scale-105 active:scale-95 transition-all backdrop-blur-md cursor-pointer"
+                  title="Scroll tabs right"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              )}
             </div>
 
             {/* Active Tab Panel Content */}
@@ -2017,7 +2178,7 @@ export default function SettingsPage() {
                         <input
                           type="text"
                           required
-                          placeholder="e.g. Balaji Logistics & Transport Co."
+                          placeholder={tenantOrgName ? `e.g. ${tenantOrgName}` : 'e.g. Registered Transport & Logistics Co.'}
                           value={brandingForm.businessName}
                           onChange={(e) => setBrandingForm({ ...brandingForm, businessName: e.target.value })}
                           className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
@@ -2146,10 +2307,10 @@ export default function SettingsPage() {
                   </div>
 
                   {/* 2-Column Grid: Left is Form, Right is Real-time Invoice Print Preview */}
-                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+                  <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start">
                     
-                    {/* Left Column: Form Cards (7 cols) */}
-                    <div className="lg:col-span-7 space-y-4">
+                    {/* Left Column: Form Cards */}
+                    <div className="w-full xl:col-span-7 space-y-4">
 
                         {/* Card 1: Bank Remittance Details */}
                         <div className={`rounded-2xl border shadow-md transition-all duration-300 relative overflow-hidden ${
@@ -2167,11 +2328,14 @@ export default function SettingsPage() {
                                   <CreditCard className="w-4 h-4 stroke-[2.2]" />
                                 </div>
                                 <div className="min-w-0">
-                                  <div className="flex items-center gap-2 min-w-0">
-                                    <h3 className="text-sm font-bold tracking-tight text-slate-900 dark:text-white truncate">
-                                      Bank Details for Remittance (NEFT / RTGS)
+                                  <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 min-w-0">
+                                    <h3 className="text-xs sm:text-sm font-bold tracking-tight text-slate-900 dark:text-white">
+                                      Bank Details for Remittance
                                     </h3>
-                                    <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-bold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 whitespace-nowrap shrink-0">
+                                    <span className="hidden sm:inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-mono font-bold bg-slate-500/10 text-slate-600 dark:text-slate-400 border border-slate-500/20 whitespace-nowrap shrink-0">
+                                      NEFT / RTGS
+                                    </span>
+                                    <span className="hidden md:inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-bold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 whitespace-nowrap shrink-0">
                                       Bilty Payment Box
                                     </span>
                                   </div>
@@ -2272,7 +2436,7 @@ export default function SettingsPage() {
                                 </label>
                                 <input
                                   type="text"
-                                  placeholder="e.g. Balaji Logistics Pvt Ltd"
+                                  placeholder={tenantOrgName ? `e.g. ${tenantOrgName} Pvt Ltd` : 'e.g. Registered Legal Entity Name'}
                                   value={bankGstForm.accountHolderName}
                                   onChange={(e) => setBankGstForm({ ...bankGstForm, accountHolderName: e.target.value })}
                                   className={`w-full px-3 py-2 rounded-xl border text-xs font-medium focus:outline-none transition-colors ${
@@ -2383,7 +2547,7 @@ export default function SettingsPage() {
                                   <div className="relative">
                                     <input
                                       type="text"
-                                      placeholder="e.g. balajilogistics@hdfcbank, 991004278544@paytm"
+                                      placeholder={`e.g. ${tenantHandle}@hdfcbank, 98XXXXXXXX@paytm`}
                                       value={bankGstForm.upiId}
                                       onChange={(e) => {
                                         setBankGstForm({ ...bankGstForm, upiId: e.target.value });
@@ -2420,7 +2584,7 @@ export default function SettingsPage() {
                                           key={handle}
                                           type="button"
                                           onClick={() => {
-                                            const cleanBase = (bankGstForm.upiId || '').split('@')[0] || 'transporter';
+                                            const cleanBase = (bankGstForm.upiId || '').split('@')[0] || tenantHandle;
                                             const nextVpa = `${cleanBase}${handle}`;
                                             setBankGstForm({ ...bankGstForm, upiId: nextVpa });
                                             refreshUpiPreviewQr(nextVpa);
@@ -2448,7 +2612,7 @@ export default function SettingsPage() {
                                   </label>
                                   <input
                                     type="text"
-                                    placeholder="e.g. Balaji Logistics Private Limited"
+                                    placeholder={tenantOrgName ? `e.g. ${tenantOrgName} Private Limited` : 'e.g. Registered Payee Entity'}
                                     value={bankGstForm.accountHolderName}
                                     onChange={(e) => {
                                       setBankGstForm({ ...bankGstForm, accountHolderName: e.target.value });
@@ -2620,15 +2784,15 @@ export default function SettingsPage() {
 
                                   {/* Merchant Name & UPI ID Display */}
                                   <div className="space-y-0.5 mb-2 w-full">
-                                    <div className="text-[10px] font-bold text-slate-900 truncate" title={bankGstForm.accountHolderName || brandingForm.businessName}>
-                                      {bankGstForm.accountHolderName || brandingForm.businessName || 'Balaji Logistics'}
+                                    <div className="text-[10px] font-bold text-slate-900 truncate" title={bankGstForm.accountHolderName || tenantOrgName}>
+                                      {bankGstForm.accountHolderName || tenantOrgName || 'Registered Transport Entity'}
                                     </div>
                                     <div
                                       onClick={handleCopyUpiVpa}
                                       className="inline-flex items-center gap-1 font-mono text-[9px] font-bold text-teal-700 bg-teal-50 px-1.5 py-0.5 rounded border border-teal-200/70 hover:bg-teal-100 transition-colors cursor-pointer max-w-full truncate"
                                       title="Click to copy UPI ID"
                                     >
-                                      <span className="truncate">{bankGstForm.upiId || 'balajilogistics@hdfcbank'}</span>
+                                      <span className="truncate">{bankGstForm.upiId || `${tenantHandle}@upi`}</span>
                                       <Copy className="w-2 h-2 shrink-0 opacity-70" />
                                     </div>
                                   </div>
@@ -2776,7 +2940,7 @@ export default function SettingsPage() {
                                 </label>
                                 <input
                                   type="text"
-                                  placeholder="e.g. Balaji Logistics & Transport Co."
+                                  placeholder={tenantOrgName ? `e.g. ${tenantOrgName} Transport Pvt Ltd` : 'e.g. Registered Transport Co.'}
                                   value={bankGstForm.legalName}
                                   onChange={(e) => setBankGstForm({ ...bankGstForm, legalName: e.target.value })}
                                   className={`w-full px-3 py-2 rounded-xl border text-xs font-medium focus:outline-none transition-colors ${
@@ -2874,7 +3038,7 @@ export default function SettingsPage() {
                                 <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Official Billing Email</label>
                                 <input
                                   type="email"
-                                  placeholder="e.g. accounts@balajilogistic.com"
+                                  placeholder={`e.g. accounts@${tenantHandle || 'transporter'}.com`}
                                   value={bankGstForm.email}
                                   onChange={(e) => setBankGstForm({ ...bankGstForm, email: e.target.value })}
                                   className={`w-full px-3 py-2 rounded-xl border text-xs font-medium focus:outline-none transition-colors ${
@@ -2918,8 +3082,8 @@ export default function SettingsPage() {
                         </div>
                       </div>
 
-                    {/* Right Column: Live Customer Tax Invoice Preview (5 cols) */}
-                    <div className="lg:col-span-5 space-y-3 lg:sticky lg:top-4">
+                    {/* Right Column: Live Customer Tax Invoice Preview */}
+                    <div className="w-full xl:col-span-5 space-y-3 xl:sticky xl:top-4">
                       <div className="flex items-center justify-between px-1">
                         <div className="flex items-center space-x-2">
                           <Eye className="w-3.5 h-3.5 text-blue-500" />
@@ -2932,13 +3096,13 @@ export default function SettingsPage() {
                         </span>
                       </div>
 
-                      {/* Mock Invoice Sheet matching the user's screenshot */}
-                      <div className="bg-white rounded-2xl border border-slate-300 shadow-2xl p-5 text-slate-900 font-sans text-[11px] leading-tight space-y-4 select-none">
+                      {/* Mock Invoice Sheet */}
+                      <div className="bg-white rounded-2xl border border-slate-300 shadow-2xl p-4 sm:p-5 text-slate-900 font-sans text-[11px] leading-tight space-y-4 select-none">
                         
                         {/* Invoice Header */}
-                        <div className="flex items-start justify-between border-b pb-3 border-slate-200">
+                        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 border-b pb-3 border-slate-200">
                           <div>
-                            <div className="text-lg font-black tracking-tight text-slate-950 uppercase">
+                            <div className="text-base sm:text-lg font-black tracking-tight text-slate-950 uppercase">
                               {brandingForm.businessName || user?.businessName || user?.organizationName || 'Transport Agency'}
                             </div>
                             <div className="text-[10px] font-medium text-slate-600">
@@ -2954,7 +3118,7 @@ export default function SettingsPage() {
                             </div>
                           </div>
 
-                          <div className="text-right shrink-0">
+                          <div className="sm:text-right shrink-0">
                             <span className="inline-block px-2.5 py-0.5 rounded bg-blue-50 text-blue-700 font-black text-[9px] border border-blue-200 tracking-wider">
                               GST TAX INVOICE
                             </span>
@@ -2968,7 +3132,7 @@ export default function SettingsPage() {
                         </div>
 
                         {/* Invoice Info Grid */}
-                        <div className="grid grid-cols-2 gap-2 text-[10px]">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[10px]">
                           <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
                             <div className="text-[9px] font-bold uppercase tracking-wider text-slate-500">
                               Billed To (Consignor / Party):
@@ -2994,33 +3158,35 @@ export default function SettingsPage() {
                           </div>
                         </div>
 
-                        {/* Sample Docket Row */}
-                        <div className="border border-slate-200 rounded-lg overflow-hidden text-[9px]">
-                          <div className="grid grid-cols-12 bg-slate-100 font-bold text-slate-700 p-1.5 border-b border-slate-200">
-                            <div className="col-span-1">#</div>
-                            <div className="col-span-3">{term || 'Docket'} Number</div>
-                            <div className="col-span-4">Origin → Delivery</div>
-                            <div className="col-span-2 text-right">Weight</div>
-                            <div className="col-span-2 text-right">Total (₹)</div>
-                          </div>
-                          <div className="grid grid-cols-12 p-1.5 text-slate-800 font-medium">
-                            <div className="col-span-1">1</div>
-                            <div className="col-span-3 font-mono font-bold text-blue-600">
-                              {docketSeries.nextNumber || `${docketSeries.prefix || 'DOC'}000001`}
+                        {/* Sample Docket Row with horizontal scroll on tiny screens */}
+                        <div className="border border-slate-200 rounded-lg overflow-x-auto text-[9px]">
+                          <div className="min-w-[320px]">
+                            <div className="grid grid-cols-12 bg-slate-100 font-bold text-slate-700 p-1.5 border-b border-slate-200">
+                              <div className="col-span-1">#</div>
+                              <div className="col-span-3">{term || 'Docket'} Number</div>
+                              <div className="col-span-4">Origin → Delivery</div>
+                              <div className="col-span-2 text-right">Weight</div>
+                              <div className="col-span-2 text-right">Total (₹)</div>
                             </div>
-                            <div className="col-span-4 text-slate-600">Origin Hub → Destination Hub</div>
-                            <div className="col-span-2 text-right">2500 Kg</div>
-                            <div className="col-span-2 text-right font-bold">₹ 47,880</div>
+                            <div className="grid grid-cols-12 p-1.5 text-slate-800 font-medium">
+                              <div className="col-span-1">1</div>
+                              <div className="col-span-3 font-mono font-bold text-blue-600">
+                                {docketSeries.nextNumber || `${docketSeries.prefix || 'DOC'}000001`}
+                              </div>
+                              <div className="col-span-4 text-slate-600 truncate">Origin Hub → Destination Hub</div>
+                              <div className="col-span-2 text-right">2500 Kg</div>
+                              <div className="col-span-2 text-right font-bold">₹ 47,880</div>
+                            </div>
                           </div>
                         </div>
 
                         {/* HIGHLIGHTED: The exact Bank Details Box from the Screenshot! */}
-                        <div className="grid grid-cols-12 gap-3 pt-1">
+                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 pt-1">
                           
                           {/* The Bank Details for Remittance Box */}
-                          <div className="col-span-7 p-3 rounded-xl bg-blue-50/50 border border-blue-200 shadow-xs relative">
+                          <div className="sm:col-span-7 p-3 rounded-xl bg-blue-50/50 border border-blue-200 shadow-xs relative">
                             <div className="text-[10px] font-bold text-slate-900 mb-1.5 flex items-center justify-between">
-                              <span>Bank Details for Remittance (NEFT / RTGS):</span>
+                              <span>Bank Details for Remittance:</span>
                               <CheckCircle2 className="w-3 h-3 text-emerald-600" />
                             </div>
                             <div className="space-y-0.5 text-[9.5px]">
@@ -3049,14 +3215,14 @@ export default function SettingsPage() {
                               {bankGstForm.upiId && (
                                 <div>
                                   <span className="text-slate-500 font-medium">UPI VPA: </span>
-                                  <span className="font-mono text-blue-700">{bankGstForm.upiId}</span>
+                                  <span className="font-mono text-blue-700 break-all">{bankGstForm.upiId}</span>
                                 </div>
                               )}
                             </div>
                           </div>
 
                           {/* Invoice Totals Preview */}
-                          <div className="col-span-5 text-right space-y-1 text-[9.5px]">
+                          <div className="sm:col-span-5 text-right space-y-1 text-[9.5px]">
                             <div className="flex justify-between">
                               <span className="text-slate-500">Taxable Freight:</span>
                               <span className="font-mono font-semibold text-slate-900">₹ 45,600</span>
@@ -3295,7 +3461,7 @@ export default function SettingsPage() {
                                 : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
                             }`}
                           />
-                          <span className="text-[10px] text-slate-400">3-character code (e.g. BAL for Balaji Logistics or DWB)</span>
+                          <span className="text-[10px] text-slate-400">3-character code (e.g. {tenantSuggestedPrefix} for {tenantOrgName || 'Your Fleet'})</span>
                         </div>
 
                         {/* Starting / Next Number */}
@@ -3500,7 +3666,7 @@ export default function SettingsPage() {
                     <form onSubmit={handleSaveBranchPrefix} className="space-y-4">
                       <div className="space-y-2">
                         <label className={`text-xs font-bold block ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                          Select Company Brand Initial / Prefix (e.g. <strong>B</strong> for Balaji Logistic) *
+                          Select Company Brand Initial / Prefix (e.g. <strong>{tenantSuggestedInitial}</strong> for {tenantOrgName || 'Your Transport'}) *
                         </label>
 
                         {/* Quick Alphabet Buttons */}
@@ -3797,7 +3963,7 @@ export default function SettingsPage() {
                               </span>
                             </div>
                             <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                              Paste your WheelsEye Access Token to instantly link all 16 vehicles and stream live coordinates.
+                              Paste your WheelsEye Access Token to link your fleet vehicles and stream live coordinates.
                             </p>
                           </div>
                         </div>
@@ -3805,7 +3971,7 @@ export default function SettingsPage() {
                         <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
                           <input
                             type="text"
-                            placeholder="Paste WheelsEye Access Token (e.g. c349b6fc-...)"
+                            placeholder="Enter WheelsEye Access Token / API Key"
                             value={quickWheelsEyeToken}
                             onChange={(e) => setQuickWheelsEyeToken(e.target.value)}
                             className={`px-3 py-2 rounded-xl text-xs font-mono border w-full sm:w-80 focus:outline-none focus:border-amber-400 ${
@@ -3819,7 +3985,7 @@ export default function SettingsPage() {
                             className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shrink-0 shadow-md transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
                           >
                             <Zap className="w-3.5 h-3.5 fill-current" />
-                            <span>{isSaving ? 'Connecting...' : 'Connect & Fetch 16 Vehicles'}</span>
+                            <span>{isSaving ? 'Connecting...' : `Connect & Fetch ${gpsStats.totalFleetVehicles > 0 ? `${gpsStats.totalFleetVehicles} ` : ''}Vehicles`}</span>
                           </button>
                         </div>
                       </div>
@@ -3850,11 +4016,15 @@ export default function SettingsPage() {
                               </span>
                             </div>
                             <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-[11px] text-slate-600 dark:text-slate-400 mt-1">
-                              <span className="font-mono">
-                                Token: {cfg.api_key ? `${cfg.api_key.slice(0, 8)}••••••••${cfg.api_key.slice(-5)}` : 'Active'}
+                              <span className="font-mono flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800/80 px-2.5 py-0.5 rounded-lg text-[10.5px] border border-slate-200 dark:border-slate-700/60">
+                                <Key className="w-3 h-3 text-amber-500" />
+                                <span className="text-slate-500 dark:text-slate-400">Token:</span>
+                                <span className="font-semibold text-slate-900 dark:text-slate-100 font-mono">
+                                  {maskApiKey(cfg.api_key)}
+                                </span>
                               </span>
                               <span>•</span>
-                              <span>{gpsTelemetryList.length || cfg.vehicles_count || 16} fleet units linked</span>
+                              <span>{gpsTelemetryList.length || cfg.vehicles_count || gpsStats.totalFleetVehicles || 0} fleet units linked</span>
                               {cfg.last_sync_at && (
                                 <>
                                   <span>•</span>
@@ -3947,13 +4117,28 @@ export default function SettingsPage() {
                             type="text"
                             placeholder="Search vehicle no, IMEI, driver..."
                             value={gpsSearchTerm}
-                            onChange={(e) => setGpsSearchTerm(e.target.value)}
-                            className={`pl-8 pr-3 py-1.5 rounded-xl border text-xs focus:outline-none w-48 sm:w-60 transition-all ${
+                            onChange={(e) => {
+                              setGpsSearchTerm(e.target.value);
+                              setGpsTelemetryPage(1);
+                            }}
+                            className={`pl-8 pr-7 py-1.5 rounded-xl border text-xs focus:outline-none w-48 sm:w-60 transition-all ${
                               isDark
                                 ? 'bg-slate-900 border-slate-700 text-white placeholder-slate-500 focus:border-cyan-400'
                                 : 'bg-white border-slate-300 text-slate-900 placeholder-slate-400 focus:border-blue-500 shadow-xs'
                             }`}
                           />
+                          {gpsSearchTerm && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setGpsSearchTerm('');
+                                setGpsTelemetryPage(1);
+                              }}
+                              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-white p-0.5"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          )}
                         </div>
 
                         {/* Filter Status Pills */}
@@ -3968,7 +4153,10 @@ export default function SettingsPage() {
                             <button
                               key={st.key}
                               type="button"
-                              onClick={() => setGpsFilterStatus(st.key)}
+                              onClick={() => {
+                                setGpsFilterStatus(st.key);
+                                setGpsTelemetryPage(1);
+                              }}
                               className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
                                 gpsFilterStatus === st.key
                                   ? st.color === 'rose'
@@ -3991,8 +4179,8 @@ export default function SettingsPage() {
                     </div>
 
                     {/* Fixed Height Responsive Scroll Container with Sticky Header */}
-                    <div className="relative overflow-x-auto overflow-y-auto max-h-[calc(100vh-340px)] min-h-[380px] rounded-xl border border-slate-200 dark:border-slate-800/80 shadow-xs">
-                      <table className="w-full text-left text-xs border-collapse">
+                    <div className="relative overflow-x-auto overflow-y-auto max-h-[calc(100vh-340px)] min-h-[340px] rounded-xl border border-slate-200 dark:border-slate-800/80 shadow-xs">
+                      <table className="w-full text-left text-xs border-collapse min-w-[850px]">
                         <thead className={`sticky top-0 z-10 backdrop-blur-md border-b text-[10px] uppercase font-bold tracking-wider ${
                           isDark
                             ? 'bg-slate-950/95 border-slate-800 text-slate-300'
@@ -4010,7 +4198,7 @@ export default function SettingsPage() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 font-sans">
-                          {gpsTelemetryList.filter(v => v.last_latitude !== null && v.last_latitude !== undefined).length === 0 ? (
+                          {totalGpsTelemetryCount === 0 ? (
                             <tr>
                               <td colSpan={8} className="py-12 text-center text-slate-400">
                                 <Truck className="w-8 h-8 mx-auto mb-2 opacity-30 text-amber-500" />
@@ -4021,29 +4209,8 @@ export default function SettingsPage() {
                               </td>
                             </tr>
                           ) : (
-                            gpsTelemetryList
-                              .filter((v) => {
-                                // Exclude vehicles without valid live coordinates
-                                if (v.last_latitude === null || v.last_latitude === undefined) return false;
-
-                                const q = gpsSearchTerm.toLowerCase();
-                                const matchesSearch =
-                                  !q ||
-                                  v.vehicle_number?.toLowerCase().includes(q) ||
-                                  v.driver?.name?.toLowerCase().includes(q) ||
-                                  v.assignedDriver?.name?.toLowerCase().includes(q) ||
-                                  v.gps_device_id?.toLowerCase().includes(q) ||
-                                  v.gps_provider_name?.toLowerCase().includes(q) ||
-                                  v.branch?.branch_name?.toLowerCase().includes(q) ||
-                                  v.branch?.city?.toLowerCase().includes(q);
-
-                                if (!matchesSearch) return false;
-                                if (gpsFilterStatus === 'ACTIVE') return parseFloat(v.last_speed || 0) > 0;
-                                if (gpsFilterStatus === 'OFFLINE') return parseFloat(v.last_speed || 0) === 0;
-                                return true;
-                              })
-                              .map((v) => {
-                                const hasSignal = v.last_latitude !== null && v.last_latitude !== undefined;
+                            pagedGpsTelemetryList.map((v) => {
+                              const hasSignal = v.last_latitude !== null && v.last_latitude !== undefined;
                                 const isMoving = parseFloat(v.last_speed || 0) > 0;
                                 const driverName = v.driver?.name || v.assignedDriver?.name || 'Driver In-charge';
                                 const branchCity = v.branch?.city || v.branch?.branch_name || 'Fleet Hub';
@@ -4194,6 +4361,81 @@ export default function SettingsPage() {
                         </tbody>
                       </table>
                     </div>
+
+                    {/* Telemetry Stream Pagination Footer */}
+                    <div className={`p-3 sm:px-4 sm:py-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs ${
+                      isDark ? 'border-slate-800 bg-slate-900/40 text-slate-400' : 'border-slate-200 bg-slate-50 text-slate-600'
+                    }`}>
+                      {/* Left: Total Entries Info */}
+                      <div className="flex items-center gap-2">
+                        <span>
+                          Showing <strong className={isDark ? 'text-white' : 'text-slate-900'}>{startTelemetryItem}</strong> to{' '}
+                          <strong className={isDark ? 'text-white' : 'text-slate-900'}>{endTelemetryItem}</strong> of{' '}
+                          <strong className={isDark ? 'text-white' : 'text-slate-900'}>{totalGpsTelemetryCount}</strong> live vehicles
+                        </span>
+                      </div>
+
+                      {/* Right: Rows per page and Page navigation */}
+                      <div className="flex flex-wrap items-center gap-3">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[11px] text-slate-400 font-medium">Rows:</span>
+                          <select
+                            value={gpsTelemetryPageSize}
+                            onChange={(e) => {
+                              setGpsTelemetryPageSize(Number(e.target.value));
+                              setGpsTelemetryPage(1);
+                            }}
+                            className={`px-2 py-1 rounded-lg text-xs font-semibold border ${
+                              isDark ? 'bg-slate-900 border-slate-700 text-slate-200' : 'bg-white border-slate-200 text-slate-700 shadow-2xs'
+                            }`}
+                          >
+                            <option value={5}>5</option>
+                            <option value={10}>10</option>
+                            <option value={25}>25</option>
+                            <option value={50}>50</option>
+                          </select>
+                        </div>
+
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setGpsTelemetryPage((p) => Math.max(1, p - 1))}
+                            disabled={gpsTelemetryPage <= 1}
+                            className={`p-1.5 rounded-lg border text-xs font-bold transition-all ${
+                              gpsTelemetryPage <= 1
+                                ? 'opacity-40 cursor-not-allowed border-transparent'
+                                : isDark
+                                ? 'hover:bg-slate-800 border-slate-700 text-slate-200 cursor-pointer'
+                                : 'hover:bg-white border-slate-200 text-slate-700 shadow-2xs cursor-pointer'
+                            }`}
+                            title="Previous page"
+                          >
+                            <ChevronLeft className="w-3.5 h-3.5" />
+                          </button>
+
+                          <span className="px-2 text-xs font-semibold">
+                            Page <strong className={isDark ? 'text-white' : 'text-slate-900'}>{gpsTelemetryPage}</strong> of{' '}
+                            <strong className={isDark ? 'text-white' : 'text-slate-900'}>{totalGpsTelemetryPages}</strong>
+                          </span>
+
+                          <button
+                            type="button"
+                            onClick={() => setGpsTelemetryPage((p) => Math.min(totalGpsTelemetryPages, p + 1))}
+                            disabled={gpsTelemetryPage >= totalGpsTelemetryPages}
+                            className={`p-1.5 rounded-lg border text-xs font-bold transition-all ${
+                              gpsTelemetryPage >= totalGpsTelemetryPages
+                                ? 'opacity-40 cursor-not-allowed border-transparent'
+                                : isDark
+                                ? 'hover:bg-slate-800 border-slate-700 text-slate-200 cursor-pointer'
+                                : 'hover:bg-white border-slate-200 text-slate-700 shadow-2xs cursor-pointer'
+                            }`}
+                            title="Next page"
+                          >
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
@@ -4335,22 +4577,44 @@ export default function SettingsPage() {
                   {/* API Key / Token */}
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
-                      <label className="text-xs font-bold">API Key / Access Token *</label>
-                      <button
-                        type="button"
-                        onClick={() => setShowApiKey(!showApiKey)}
-                        className="text-[11px] text-cyan-400 hover:underline flex items-center gap-1 cursor-pointer"
-                      >
-                        {showApiKey ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                        <span>{showApiKey ? 'Hide Key' : 'Show Key'}</span>
-                      </button>
+                      <label className="text-xs font-bold">API Key / Access Token {editingGpsId ? '' : '*'}</label>
+                      {editingGpsId && (
+                        <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3" />
+                          Saved & Protected
+                        </span>
+                      )}
+                      {!editingGpsId && (
+                        <button
+                          type="button"
+                          onClick={() => setShowApiKey(!showApiKey)}
+                          className="text-[11px] text-cyan-400 hover:underline flex items-center gap-1 cursor-pointer"
+                        >
+                          {showApiKey ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                          <span>{showApiKey ? 'Hide Key' : 'Show Key'}</span>
+                        </button>
+                      )}
                     </div>
+
+                    {editingGpsId && (gpsForm.saved_key_preview || gpsForm.api_key) && (
+                      <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-100 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 text-xs font-mono">
+                        <div className="flex items-center gap-2 text-slate-600 dark:text-slate-300 min-w-0">
+                          <Lock className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                          <span className="text-slate-500 dark:text-slate-400 shrink-0">Saved Token:</span>
+                          <span className="font-bold text-slate-900 dark:text-slate-100 truncate">
+                            {maskApiKey(gpsForm.saved_key_preview || gpsForm.api_key)}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
                     <input
                       type={showApiKey ? 'text' : 'password'}
-                      required
+                      required={!editingGpsId}
                       placeholder={
-                        GPS_PROVIDER_TEMPLATES.find((t) => t.code === gpsForm.provider_code)?.keyPlaceholder ||
-                        'Paste your WheelsEye or provider API Key here'
+                        editingGpsId
+                          ? 'Leave blank to keep existing key, or enter new key to replace'
+                          : (GPS_PROVIDER_TEMPLATES.find((t) => t.code === gpsForm.provider_code)?.keyPlaceholder || 'Enter API Key or Access Token')
                       }
                       value={gpsForm.api_key}
                       onChange={(e) => setGpsForm({ ...gpsForm, api_key: e.target.value })}
@@ -4358,8 +4622,10 @@ export default function SettingsPage() {
                         isDark ? 'bg-slate-900 border-slate-800 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
                       }`}
                     />
-                    <span className="text-[10px] text-slate-400">
-                      Obtained from your GPS provider's developer console or account manager.
+                    <span className="text-[10px] text-slate-400 block">
+                      {editingGpsId
+                        ? 'Token is encrypted and safely stored. Only type here if you wish to replace your credentials.'
+                        : "Obtained from your GPS provider's developer console or account manager."}
                     </span>
                   </div>
 
@@ -4517,7 +4783,7 @@ export default function SettingsPage() {
                       <span>BHIM UPI OFFICIAL MERCHANT</span>
                     </div>
                     <h2 className="text-sm font-black uppercase text-slate-950 dark:text-white print:text-slate-950 mt-0.5 leading-tight truncate">
-                      {brandingForm.businessName || 'Balaji Logistics'}
+                      {brandingForm.businessName || tenantOrgName || 'Official Transport Merchant'}
                     </h2>
                     <p className="text-[9px] text-slate-500 dark:text-slate-400 print:text-slate-500 font-semibold uppercase tracking-wider truncate">
                       {brandingForm.tagline || 'Logistics & Cargo Transport Services'}
@@ -4544,11 +4810,11 @@ export default function SettingsPage() {
                       className="inline-flex items-center justify-center gap-1 font-mono text-[11px] font-bold px-2 py-0.5 rounded-md border cursor-pointer max-w-full truncate bg-teal-500/10 text-teal-700 dark:text-teal-300 border-teal-500/30 print:bg-slate-100 print:text-slate-900 print:border-slate-300"
                       title="Click to copy UPI ID"
                     >
-                      <span className="truncate">{bankGstForm.upiId || 'balajilogistics@hdfcbank'}</span>
+                      <span className="truncate">{bankGstForm.upiId || `${tenantHandle}@upi`}</span>
                       <Copy className="w-3 h-3 shrink-0 opacity-70" />
                     </div>
                     <div className="text-[10px] font-bold text-slate-700 dark:text-slate-300 print:text-slate-700 truncate">
-                      Payee: {bankGstForm.accountHolderName || brandingForm.businessName || 'Balaji Logistics'}
+                      Payee: {bankGstForm.accountHolderName || tenantOrgName || 'Official Payee Entity'}
                     </div>
                     {upiPreviewAmount ? (
                       <div className="text-xs font-black text-emerald-600 dark:text-emerald-400 print:text-emerald-700 pt-0.5">

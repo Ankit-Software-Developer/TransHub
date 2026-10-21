@@ -463,24 +463,43 @@ export default function IndiaFleetMap({
     };
   }, [isDark, isModal]);
 
-  // Recalculate dimensions on modal resize or mount
+  // Recalculate dimensions on window/container resize or modal toggle
   useEffect(() => {
-    if (mapInstanceRef.current && mapReady) {
-      const timer = setTimeout(() => {
+    if (!mapInstanceRef.current || !mapReady) return;
+
+    const handleResize = () => {
+      mapInstanceRef.current?.invalidateSize();
+    };
+
+    window.addEventListener('resize', handleResize);
+
+    let resizeObserver = null;
+    if (typeof ResizeObserver !== 'undefined' && mapContainerRef.current) {
+      resizeObserver = new ResizeObserver(() => {
         mapInstanceRef.current?.invalidateSize();
-        if (!selectedTrip && !hasFittedInitialBoundsRef.current && !userHasInteractedRef.current) {
-          const bounds = geoJsonLayerRef.current?.getBounds()?.isValid()
-            ? geoJsonLayerRef.current.getBounds()
-            : INDIA_BOUNDS;
-          mapInstanceRef.current?.fitBounds(bounds, {
-            padding: isModal ? [30, 30] : [20, 20],
-            animate: false
-          });
-          hasFittedInitialBoundsRef.current = true;
-        }
-      }, 150);
-      return () => clearTimeout(timer);
+      });
+      resizeObserver.observe(mapContainerRef.current);
     }
+
+    const timer = setTimeout(() => {
+      mapInstanceRef.current?.invalidateSize();
+      if (!selectedTrip && !hasFittedInitialBoundsRef.current && !userHasInteractedRef.current) {
+        const bounds = geoJsonLayerRef.current?.getBounds()?.isValid()
+          ? geoJsonLayerRef.current.getBounds()
+          : INDIA_BOUNDS;
+        mapInstanceRef.current?.fitBounds(bounds, {
+          padding: isModal ? [30, 30] : [20, 20],
+          animate: false
+        });
+        hasFittedInitialBoundsRef.current = true;
+      }
+    }, 150);
+
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('resize', handleResize);
+      if (resizeObserver) resizeObserver.disconnect();
+    };
   }, [mapReady, isModal]);
 
   // Dynamic ResizeObserver to auto-adapt map canvas when flex parent expands/shrinks
@@ -967,7 +986,7 @@ export default function IndiaFleetMap({
   const hudSpeedText = activeHudTrip?.speed || (activeHudTrip ? '60 km/h' : '0 km/h');
 
   return (
-    <div className={`relative rounded-2xl ${isDark ? 'bg-[#070B14] border-slate-800' : 'bg-slate-50 border-slate-200'} border overflow-hidden flex flex-col justify-between ${isModal ? 'h-full min-h-[550px]' : 'h-full min-h-[460px]'} ${className}`}>
+    <div className={`isolate relative z-0 rounded-2xl ${isDark ? 'bg-[#070B14] border-slate-800' : 'bg-slate-50 border-slate-200'} border overflow-hidden flex flex-col justify-between ${isModal ? 'h-full min-h-[550px]' : 'h-full min-h-[460px]'} ${className}`}>
       
       {/* Top Header Status Badges & Action Buttons */}
       <div className="absolute top-3.5 left-3.5 right-3.5 flex items-center justify-between gap-2 z-[400] pointer-events-none">

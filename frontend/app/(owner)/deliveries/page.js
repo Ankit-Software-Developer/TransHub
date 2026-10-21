@@ -154,7 +154,7 @@ export default function DeliveriesPage() {
       user?.businessName ||
       user?.organization?.name ||
       (typeof window !== 'undefined' ? localStorage.getItem('transporter_brand_name') : null) ||
-      'Balaji Logistics';
+      'Transporter';
 
     const tagline =
       orgProfile?.settings?.tagline ||
@@ -1450,24 +1450,41 @@ export default function DeliveriesPage() {
       <div className="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto">
         <Navbar />
 
-        <main className="flex-1 p-5 sm:p-6 lg:p-8 max-w-[1720px] mx-auto w-full space-y-6">
+        <main className="flex-1 p-3.5 sm:p-5 lg:p-6 xl:p-8 space-y-4 sm:space-y-6 w-full max-w-full">
           {/* Header Section */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <div className="flex items-center space-x-2.5">
-                <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
-                <h1 className={`text-2xl sm:text-3xl font-black tracking-tight ${isDark ? 'text-white' : 'text-slate-900'
-                  }`}>
-                  Last-Mile Delivery & POD Operations
-                </h1>
+          <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3.5 sm:gap-4">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 text-white shadow-md shadow-emerald-500/20 shrink-0 flex items-center justify-center">
+                  <PackageCheck className="w-5 h-5 sm:w-6 sm:h-6" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                    <h1 className={`text-base sm:text-lg lg:text-xl xl:text-2xl font-black tracking-tight text-balance sm:whitespace-nowrap ${isDark ? 'text-white' : 'text-slate-900'
+                      }`}>
+                      Last-Mile Delivery & POD Operations
+                    </h1>
+                    <button
+                      onClick={fetchDeliveries}
+                      disabled={loading}
+                      className={`p-1.5 sm:p-2 rounded-xl border transition-all cursor-pointer shrink-0 ${isDark
+                          ? 'bg-slate-900/80 hover:bg-slate-800 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
+                          : 'bg-white hover:bg-slate-100 border-slate-200 text-slate-600 hover:text-slate-900 shadow-xs'
+                        }`}
+                      title="Refresh Deliveries"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${loading ? 'animate-spin text-emerald-500' : ''}`} />
+                    </button>
+                  </div>
+                  <p className={`text-xs sm:text-[13px] xl:text-sm mt-0.5 sm:mt-1 truncate sm:whitespace-normal ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                    Process Godown Counter Handovers, dispatch Delivery Run Sheets (DRS), verify TO-PAY collections, and generate Gate Passes.
+                  </p>
+                </div>
               </div>
-              <p className={`text-xs sm:text-sm mt-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                Process Godown Counter Handovers, dispatch Delivery Run Sheets (DRS), verify TO-PAY collections, and generate Gate Passes.
-              </p>
             </div>
 
-            {/* Top Action Controls: Branch Switcher & Quick DRS in a single non-wrapping row */}
-            <div className="flex items-center gap-2 shrink-0 flex-nowrap">
+            {/* Top Action Controls: Branch Switcher & Quick DRS */}
+            <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 flex-wrap sm:flex-nowrap">
               {isAdmin && (
                 <BranchFilterDropdown
                   selectedBranchId={selectedBranchId}
@@ -1499,17 +1516,6 @@ export default function DeliveriesPage() {
                     : '+ Out for Delivery'}
                 </button>
               )}
-
-              <button
-                onClick={fetchDeliveries}
-                className={`p-2 rounded-xl border transition-colors shadow-xs cursor-pointer shrink-0 ${isDark
-                    ? 'bg-slate-900/80 hover:bg-slate-800 border-slate-800 text-slate-400 hover:text-white'
-                    : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-600 hover:text-slate-900'
-                  }`}
-                title="Refresh Deliveries"
-              >
-                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-blue-500' : ''}`} />
-              </button>
             </div>
           </div>
 
@@ -2679,7 +2685,7 @@ export default function DeliveriesPage() {
                 <div className="flex justify-between items-start border-b-2 border-slate-900 pb-4 mb-4">
                   <div>
                     <h2 className="text-2xl font-black uppercase tracking-tight text-slate-900">
-                      {user?.companyName || user?.tenantName || 'Balaji Logistics'}
+                      {user?.organizationName || user?.businessName || user?.companyName || user?.tenantName || 'Transporter'}
                     </h2>
                     <p className="text-xs text-slate-600">
                       Fleet Delivery Run Sheet • Doorstep Dispatched Run

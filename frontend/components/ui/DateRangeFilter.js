@@ -203,7 +203,7 @@ export default function DateRangeFilter({
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className={`w-full flex items-center justify-between space-x-2 px-3.5 py-2 rounded-2xl border text-xs font-bold transition-all select-none cursor-pointer ${
+        className={`w-full flex items-center justify-between space-x-1.5 sm:space-x-2 px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-bold transition-all select-none cursor-pointer ${
           isFiltered
             ? 'bg-blue-600 text-white border-blue-500 shadow-md shadow-blue-600/20'
             : isDark
@@ -212,8 +212,8 @@ export default function DateRangeFilter({
         }`}
         title="Filter by date range"
       >
-        <div className="flex items-center space-x-2 truncate min-w-0">
-          <Calendar className={`w-4 h-4 shrink-0 ${isFiltered ? 'text-white' : 'text-blue-500'}`} />
+        <div className="flex items-center space-x-1.5 sm:space-x-2 truncate min-w-0">
+          <Calendar className={`w-3.5 h-3.5 shrink-0 ${isFiltered ? 'text-white' : 'text-blue-500'}`} />
           <span className="truncate">{getDisplayLabel()}</span>
         </div>
 
