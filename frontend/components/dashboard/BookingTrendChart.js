@@ -33,15 +33,17 @@ export default function BookingTrendChart({
   const chartData = trends.length > 0 ? trends.map((item, idx) => ({
     name: item.day || `Day ${idx + 1}`,
     bookings: typeof item.value === 'number' ? item.value : (parseInt(item.value, 10) || 0),
+    dockets: typeof item.dockets === 'number' ? item.dockets : (parseInt(item.dockets, 10) || 0),
+    placements: typeof item.placements === 'number' ? item.placements : (parseInt(item.placements, 10) || 0),
     isPeak: item.highlight || false
   })) : [
-    { name: 'Mon', bookings: 0 },
-    { name: 'Tue', bookings: 0 },
-    { name: 'Wed', bookings: 0 },
-    { name: 'Thu', bookings: 0 },
-    { name: 'Fri', bookings: 0 },
-    { name: 'Sat', bookings: 0 },
-    { name: 'Sun', bookings: 0 }
+    { name: 'Mon', bookings: 0, dockets: 0, placements: 0 },
+    { name: 'Tue', bookings: 0, dockets: 0, placements: 0 },
+    { name: 'Wed', bookings: 0, dockets: 0, placements: 0 },
+    { name: 'Thu', bookings: 0, dockets: 0, placements: 0 },
+    { name: 'Fri', bookings: 0, dockets: 0, placements: 0 },
+    { name: 'Sat', bookings: 0, dockets: 0, placements: 0 },
+    { name: 'Sun', bookings: 0, dockets: 0, placements: 0 }
   ];
 
   const peakItem = [...chartData].sort((a, b) => b.bookings - a.bookings)[0];
@@ -49,20 +51,43 @@ export default function BookingTrendChart({
 
   const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
+      const dataItem = payload[0]?.payload || {};
+      const total = payload[0]?.value || 0;
+      const dockets = dataItem.dockets || 0;
+      const placements = dataItem.placements || 0;
+
       return (
-        <div className={`p-2.5 rounded-xl border shadow-xl text-xs backdrop-blur-md ${
+        <div className={`p-3 rounded-2xl border shadow-2xl text-xs backdrop-blur-md min-w-[190px] ${
           isDark ? 'bg-slate-950/95 border-slate-700 text-white' : 'bg-white/95 border-slate-200 text-slate-900'
         }`}>
-          <div className="flex items-center gap-1.5 font-bold mb-1 text-[11px] text-slate-400">
-            <Calendar className="w-3 h-3 text-cyan-400" />
+          <div className="flex items-center gap-1.5 font-bold mb-2 text-[11px] text-slate-400 border-b pb-1.5 border-slate-800/80">
+            <Calendar className="w-3.5 h-3.5 text-cyan-400" />
             <span>{label}</span>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-            <span className="font-semibold">Bookings:</span>
-            <span className="font-mono font-bold text-cyan-400 text-sm">
-              {payload[0].value} {payload[0].value === 1 ? 'docket' : 'dockets'}
-            </span>
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between gap-4">
+              <span className="font-semibold text-slate-300">Total Bookings:</span>
+              <span className="font-mono font-black text-cyan-400 text-sm">
+                {total}
+              </span>
+            </div>
+            {placements > 0 && (
+              <div className="flex items-center justify-between gap-4 text-[11px] text-emerald-400 font-medium bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                <span className="flex items-center gap-1">🚛 Placements (FTL):</span>
+                <span className="font-mono font-bold">{placements}</span>
+              </div>
+            )}
+            {dockets > 0 && (
+              <div className="flex items-center justify-between gap-4 text-[11px] text-blue-400 font-medium bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20">
+                <span className="flex items-center gap-1">📦 Dockets (PTL):</span>
+                <span className="font-mono font-bold">{dockets}</span>
+              </div>
+            )}
+            {placements === 0 && dockets === 0 && total > 0 && (
+              <div className="text-[10px] text-slate-400 italic">
+                Active Bookings
+              </div>
+            )}
           </div>
         </div>
       );
@@ -86,14 +111,14 @@ export default function BookingTrendChart({
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <h3 className={`text-sm sm:text-base font-bold tracking-tight whitespace-nowrap ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                  Booking Trend & Docket Velocity
+                  Booking Trend & Order Velocity
                 </h3>
                 <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-500 dark:text-cyan-400 border border-blue-500/20 font-bold shrink-0">
                   Last 7 Days
                 </span>
               </div>
               <p className={`text-[11px] truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                Daily LR / Bilty creation patterns and consignment throughput
+                Daily LR / Bilty dockets and dedicated vehicle placement throughput
               </p>
             </div>
           </div>
@@ -247,17 +272,27 @@ export default function BookingTrendChart({
       </div>
 
       {/* Footer Link */}
-      <div className="pt-3 border-t mt-2 border-slate-200 dark:border-slate-800/80 flex items-center justify-between text-[11px] font-semibold">
+      <div className="pt-3 border-t mt-2 border-slate-200 dark:border-slate-800/80 flex items-center justify-between text-[11px] font-semibold flex-wrap gap-2">
         <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>
-          {totalBookings === 0 ? 'No dockets created this week' : `${totalBookings} total registered`}
+          {totalBookings === 0 ? 'No orders registered this week' : `${totalBookings} total registered (dockets & placements)`}
         </span>
-        <Link
-          href="/bookings"
-          className="flex items-center gap-1 text-blue-600 dark:text-cyan-400 hover:underline"
-        >
-          <span>Issue Docket</span>
-          <ArrowRight className="w-3 h-3" />
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link
+            href="/load-planning"
+            className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 hover:underline"
+          >
+            <span>Place Vehicle</span>
+            <ArrowRight className="w-3 h-3" />
+          </Link>
+          <span className="text-slate-300 dark:text-slate-700">|</span>
+          <Link
+            href="/bookings"
+            className="flex items-center gap-1 text-blue-600 dark:text-cyan-400 hover:underline"
+          >
+            <span>Issue Docket</span>
+            <ArrowRight className="w-3 h-3" />
+          </Link>
+        </div>
       </div>
     </div>
   );

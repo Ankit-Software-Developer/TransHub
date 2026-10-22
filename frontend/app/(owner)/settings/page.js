@@ -76,6 +76,7 @@ import Link from 'next/link';
 import RolePermissionMatrix from '../../../components/roles/RolePermissionMatrix';
 import paymentService from '../../../services/paymentService';
 import { useLiveLocation } from '../../../hooks/useLiveLocation';
+import { useToast } from '../../../components/ui/AlertModalProvider';
 
 const MODULE_ICONS = {
   'Bookings & Dockets': FileText,
@@ -253,9 +254,7 @@ export default function SettingsPage() {
 
   const [activeTab, setActiveTab] = useState('branding'); // 'branding' | 'operations' | 'theme' | 'terminology' | 'roles' | 'profile' | 'security'
   
-  // Feedback alerts
-  const [successMsg, setSuccessMsg] = useState('');
-  const [errorMsg, setErrorMsg] = useState('');
+  const { showToast } = useToast();
   const [isSaving, setIsSaving] = useState(false);
 
   // Operations Mode State (FTL, PTL, BOTH)
@@ -333,15 +332,12 @@ export default function SettingsPage() {
         } catch (e) {}
 
         const label = targetType === 'FTL' ? 'Full Truckload (FTL)' : targetType === 'PTL' ? 'Part Truckload (PTL)' : 'Hybrid (FTL + PTL)';
-        setSuccessMsg(`Operations Mode updated to ${label}! Navigation and workflows have updated automatically.`);
-        setTimeout(() => setSuccessMsg(''), 5000);
+        triggerSuccess(`Operations Mode updated to ${label}! Navigation and workflows have updated automatically.`);
       } else {
-        setErrorMsg(res.data?.message || 'Failed to update operations mode.');
-        setTimeout(() => setErrorMsg(''), 5000);
+        triggerError(res.data?.message || 'Failed to update operations mode.');
       }
     } catch (err) {
-      setErrorMsg(err.response?.data?.message || 'Failed to update operations mode.');
-      setTimeout(() => setErrorMsg(''), 5000);
+      triggerError(err.response?.data?.message || 'Failed to update operations mode.');
     } finally {
       setIsSavingTransporterType(false);
     }
@@ -687,15 +683,13 @@ export default function SettingsPage() {
       const targetRole = rolesList.find((r) => r.id === roleId);
       const res = await api.put(`/roles/${roleId}/permissions`, { permissions: permsToSave });
       
-      setSuccessMsg(res.data?.message || `Permissions for ${targetRole?.display_name || 'role'} saved successfully!`);
+      triggerSuccess(res.data?.message || `Permissions for ${targetRole?.display_name || 'role'} saved successfully!`);
       setRolesList((prev) =>
         prev.map((r) => (r.id === roleId ? { ...r, permissionCodes: permsToSave } : r))
       );
-      setTimeout(() => setSuccessMsg(''), 4000);
     } catch (err) {
       console.error('Failed to save permissions:', err);
-      setErrorMsg(err.response?.data?.message || 'Failed to save role permissions.');
-      setTimeout(() => setErrorMsg(''), 5000);
+      triggerError(err.response?.data?.message || 'Failed to save role permissions.');
     } finally {
       setIsSavingRolePerms(false);
     }
@@ -714,16 +708,14 @@ export default function SettingsPage() {
       });
       setIsNewRoleModalOpen(false);
       setNewRoleForm({ display_name: '', name: '', description: '' });
-      setSuccessMsg(`Custom role "${res.data?.data?.display_name}" created successfully!`);
+      triggerSuccess(`Custom role "${res.data?.data?.display_name}" created successfully!`);
       await fetchRolesAndPermissions();
       if (res.data?.data?.id) {
         setSelectedRoleId(res.data.data.id);
       }
-      setTimeout(() => setSuccessMsg(''), 4000);
     } catch (err) {
       console.error('Failed to create role:', err);
-      setErrorMsg(err.response?.data?.message || 'Failed to create role.');
-      setTimeout(() => setErrorMsg(''), 5000);
+      triggerError(err.response?.data?.message || 'Failed to create role.');
     } finally {
       setIsSavingRolePerms(false);
     }
@@ -731,16 +723,21 @@ export default function SettingsPage() {
 
   const selectedRole = rolesList.find((r) => r.id === selectedRoleId) || rolesList[0] || null;
 
-  // Flash message helper
-  const triggerSuccess = (msg) => {
-    setSuccessMsg(msg);
-    setErrorMsg('');
-    setTimeout(() => setSuccessMsg(''), 4000);
+  // Flash message helper using top-corner floating toasts with progress bar & pause-on-hover
+  const triggerSuccess = (msg, title = 'Operation Successful') => {
+    showToast({
+      type: 'success',
+      title,
+      message: msg,
+    });
   };
 
-  const triggerError = (msg) => {
-    setErrorMsg(msg);
-    setTimeout(() => setErrorMsg(''), 5000);
+  const triggerError = (msg, title = 'Action Required') => {
+    showToast({
+      type: 'error',
+      title,
+      message: msg,
+    });
   };
 
   // 1. Handle Logo File Selection (Does NOT change active logo until user clicks Save)
@@ -1591,21 +1588,6 @@ export default function SettingsPage() {
               </p>
             </div>
           </div>
-
-          {/* Feedback Toasts */}
-          {successMsg && (
-            <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs font-semibold flex items-center space-x-2 animate-in fade-in">
-              <CheckCircle2 className="w-4 h-4 shrink-0" />
-              <span>{successMsg}</span>
-            </div>
-          )}
-
-          {errorMsg && (
-            <div className="p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs font-semibold flex items-center space-x-2 animate-in fade-in">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{errorMsg}</span>
-            </div>
-          )}
 
           {/* Settings Tabs & Content Layout */}
           <div className="space-y-6">

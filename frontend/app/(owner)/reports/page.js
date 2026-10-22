@@ -85,6 +85,25 @@ const AGEING_FREIGHT_OPTIONS = [
   { value: 'PAID', label: 'PAID (Booking Dockets)', desc: 'Advance bookings cleared at origin', dotColor: 'bg-emerald-500', ringColor: 'ring-emerald-500/25' },
 ];
 
+const DOCKET_ORDER_TYPE_OPTIONS = [
+  { value: 'ALL', label: 'All Operations (All Records)', desc: 'Consolidated dockets & direct vehicle placements', dotColor: 'bg-blue-500', ringColor: 'ring-blue-500/25' },
+  { value: 'DOCKET', label: 'Dockets Only (LR / Bilty)', desc: 'Consignment bilties & parcel manifests', dotColor: 'bg-sky-500', ringColor: 'ring-sky-500/25' },
+  { value: 'PLACEMENT', label: 'Vehicle Placements (FTL Hire)', desc: 'Direct dedicated truck placements', dotColor: 'bg-emerald-500', ringColor: 'ring-emerald-500/25' },
+];
+
+const DOCKET_PAYMENT_MODE_OPTIONS = [
+  { value: 'ALL', label: 'All Payment Modes', desc: 'PAID, TO-PAY & TBB corporate credit', dotColor: 'bg-slate-400', ringColor: 'ring-slate-400/25' },
+  { value: 'PAID', label: 'PAID (Origin Cleared)', desc: 'Advance bookings cleared at origin', dotColor: 'bg-emerald-500', ringColor: 'ring-emerald-500/25' },
+  { value: 'TO_PAY', label: 'TO-PAY (Destination Cash)', desc: 'Cash / UPI due upon delivery at branch', dotColor: 'bg-blue-500', ringColor: 'ring-blue-500/25' },
+  { value: 'TBB', label: 'TBB (Corporate Credit)', desc: 'Billed invoices & party ledger', dotColor: 'bg-purple-500', ringColor: 'ring-purple-500/25' },
+];
+
+const DOCKET_CLEARANCE_OPTIONS = [
+  { value: 'ALL', label: 'All Payment Status', desc: 'Complete payment register', dotColor: 'bg-slate-400', ringColor: 'ring-slate-400/25' },
+  { value: 'PENDING', label: 'Pending (Action Due)', desc: 'Uncollected freight & pending bills', dotColor: 'bg-amber-500', ringColor: 'ring-amber-500/25' },
+  { value: 'CLEARED', label: 'Cleared (Settled)', desc: 'Delivered & fully collected', dotColor: 'bg-emerald-500', ringColor: 'ring-emerald-500/25' },
+];
+
 /**
  * Executive Responsive KPI Summary Card
  */
@@ -344,17 +363,39 @@ export default function ReportsPage() {
   const [dateTo, setDateTo] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [orderTypeFilter, setOrderTypeFilter] = useState('ALL');
+  const [isOrderTypeMenuOpen, setIsOrderTypeMenuOpen] = useState(false);
+  const orderTypeDropdownRef = useRef(null);
+
   const [paymentTypeFilter, setPaymentTypeFilter] = useState('ALL');
+  const [isDocketPaymentMenuOpen, setIsDocketPaymentMenuOpen] = useState(false);
+  const docketPaymentDropdownRef = useRef(null);
+
+  const [paymentClearanceFilter, setPaymentClearanceFilter] = useState('ALL');
+  const [isDocketClearanceMenuOpen, setIsDocketClearanceMenuOpen] = useState(false);
+  const docketClearanceDropdownRef = useRef(null);
+
   const [ageingPaymentTypeFilter, setAgeingPaymentTypeFilter] = useState('ALL');
   const [selectedPartyDetails, setSelectedPartyDetails] = useState(null);
   const [isPartyModalOpen, setIsPartyModalOpen] = useState(false);
-  const [paymentClearanceFilter, setPaymentClearanceFilter] = useState('PENDING');
   const [podStatusFilter, setPodStatusFilter] = useState('PENDING');
   const [copied, setCopied] = useState(false);
   const [isPodMenuOpen, setIsPodMenuOpen] = useState(false);
   const podDropdownRef = useRef(null);
   const [isAgeingMenuOpen, setIsAgeingMenuOpen] = useState(false);
   const ageingDropdownRef = useRef(null);
+
+  const activeOrderTypeOption = useMemo(() => {
+    return DOCKET_ORDER_TYPE_OPTIONS.find((opt) => opt.value === orderTypeFilter) || DOCKET_ORDER_TYPE_OPTIONS[0];
+  }, [orderTypeFilter]);
+
+  const activeDocketPaymentOption = useMemo(() => {
+    return DOCKET_PAYMENT_MODE_OPTIONS.find((opt) => opt.value === paymentTypeFilter) || DOCKET_PAYMENT_MODE_OPTIONS[0];
+  }, [paymentTypeFilter]);
+
+  const activeDocketClearanceOption = useMemo(() => {
+    return DOCKET_CLEARANCE_OPTIONS.find((opt) => opt.value === paymentClearanceFilter) || DOCKET_CLEARANCE_OPTIONS[0];
+  }, [paymentClearanceFilter]);
 
   const activeAgeingOption = useMemo(() => {
     return AGEING_FREIGHT_OPTIONS.find((opt) => opt.value === ageingPaymentTypeFilter) || AGEING_FREIGHT_OPTIONS[0];
@@ -363,6 +404,15 @@ export default function ReportsPage() {
   // Close dropdowns on outside click
   useEffect(() => {
     const handleClickOutside = (e) => {
+      if (orderTypeDropdownRef.current && !orderTypeDropdownRef.current.contains(e.target)) {
+        setIsOrderTypeMenuOpen(false);
+      }
+      if (docketPaymentDropdownRef.current && !docketPaymentDropdownRef.current.contains(e.target)) {
+        setIsDocketPaymentMenuOpen(false);
+      }
+      if (docketClearanceDropdownRef.current && !docketClearanceDropdownRef.current.contains(e.target)) {
+        setIsDocketClearanceMenuOpen(false);
+      }
       if (podDropdownRef.current && !podDropdownRef.current.contains(e.target)) {
         setIsPodMenuOpen(false);
       }
@@ -559,6 +609,7 @@ export default function ReportsPage() {
 
       let res;
       if (activeTab === 'DOCKETS') {
+        params.order_type = orderTypeFilter;
         if (paymentTypeFilter !== 'ALL') params.payment_type = paymentTypeFilter;
         if (paymentClearanceFilter !== 'ALL') params.payment_clearance = paymentClearanceFilter;
         res = await reportService.getDocketFreightReport(params);
@@ -597,7 +648,7 @@ export default function ReportsPage() {
     } finally {
       setLoading(false);
     }
-  }, [activeTab, page, limit, selectedBranch, dateFrom, dateTo, debouncedSearch, paymentTypeFilter, paymentClearanceFilter, podStatusFilter, collectionSubView, ageingPaymentTypeFilter, gstFilter, isAdmin, userBranchId]);
+  }, [activeTab, page, limit, selectedBranch, dateFrom, dateTo, debouncedSearch, orderTypeFilter, paymentTypeFilter, paymentClearanceFilter, podStatusFilter, collectionSubView, ageingPaymentTypeFilter, gstFilter, isAdmin, userBranchId]);
 
   useEffect(() => {
     loadReportData();
@@ -616,7 +667,12 @@ export default function ReportsPage() {
     setDebouncedSearch('');
     setIsPodMenuOpen(false);
     if (tabId === 'DOCKETS') {
-      setPaymentClearanceFilter('PENDING');
+      setOrderTypeFilter('ALL');
+      setPaymentTypeFilter('ALL');
+      setPaymentClearanceFilter('ALL');
+      setIsOrderTypeMenuOpen(false);
+      setIsDocketPaymentMenuOpen(false);
+      setIsDocketClearanceMenuOpen(false);
     }
     if (tabId === 'POD') {
       setPodStatusFilter('PENDING');
@@ -653,41 +709,55 @@ export default function ReportsPage() {
 
     if (activeTab === 'DOCKETS') {
       headers = [
-        'LR Number',
+        'Type',
+        'LR / Order Number',
         'Docket Number',
-        'Booking Date',
-        'Origin Branch',
-        'Destination',
-        'Consignor',
-        'Consignee',
-        'Packages',
+        'Booking / Trip Date',
+        'Origin Branch / City',
+        'Destination Branch / City',
+        'Consignor / Hiring Party',
+        'Consignee / Site',
+        'Vehicle Number',
+        'Packages / Units',
         'Actual Wt (kg)',
         'Charged Wt (kg)',
         'Base Freight (INR)',
-        'Other Charges (INR)',
-        'Tax (INR)',
         'Total Amount (INR)',
+        'Party Advance Received (INR)',
+        'Party Balance Due (INR)',
+        'Driver Advance Given (INR)',
+        'Total Expenses Incurred (INR)',
+        'Vehicle Hire Charge (INR)',
+        'Expense Breakdown / Where Spent',
+        'Net Operating Margin (INR)',
         'Payment Mode',
         'Payment Status',
         'Delivery Status',
       ];
       rowsFormatted = dataRows.map((r) => [
+        `"${r.is_placement ? 'FTL Placement' : 'LR Docket'}"`,
         `"${r.lr_number || ''}"`,
         `"${r.docket_number || r.lr_number || ''}"`,
         `"${r.booking_date || ''}"`,
-        `"${r.originBranch?.name || r.origin_city || ''}"`,
-        `"${r.destBranch?.name || r.destination_city || ''}"`,
+        `"${(typeof r.originBranch === 'object' ? r.originBranch?.name : r.originBranch) || r.origin_city || ''}"`,
+        `"${(typeof r.destBranch === 'object' ? r.destBranch?.name : r.destBranch) || r.destination_city || ''}"`,
         `"${(r.consignor?.name || '').replace(/"/g, '""')}"`,
         `"${(r.consignee?.name || '').replace(/"/g, '""')}"`,
-        r.packages_count || 1,
+        `"${r.vehicle?.vehicle_number || ''}"`,
+        r.is_placement ? '"1 Truck"' : (r.packages_count || 1),
         r.actual_weight || 0,
         r.charged_weight || 0,
         r.freight_amount || 0,
-        Number(r.loading_charges || 0) + Number(r.door_delivery_charges || 0) + Number(r.handling_charges || 0),
-        r.tax_amount || 0,
         r.total_amount || 0,
+        r.advance_received || 0,
+        r.balance_due || 0,
+        r.driver_advance || 0,
+        r.total_expenses || 0,
+        r.vehicle_charge || 0,
+        `"${(r.expense_breakdown || 'None').replace(/"/g, '""')}"`,
+        r.net_profit !== undefined ? r.net_profit : (Number(r.total_amount || 0) - Number(r.total_expenses || 0)),
         `"${r.payment_type || ''}"`,
-        `"${r.payment_cleared || r.clearance_status === 'CLEARED' || r.payment_type === 'PAID' ? 'Cleared' : 'Pending'}"`,
+        `"${r.payment_cleared || r.clearance_status === 'CLEARED' || r.payment_type === 'PAID' ? 'Cleared' : (r.advance_received > 0 ? `Adv Paid (${r.advance_received})` : 'Pending')}"`,
         `"${r.status || ''}"`,
       ]);
     } else if (activeTab === 'AGEING') {
@@ -795,6 +865,8 @@ export default function ReportsPage() {
           'Payment Source & Customer',
           'Covered Dockets',
           'Deposited Amount (INR)',
+          'Trip Expenses Spent (INR)',
+          'Branch Drawer / Bank Due (INR)',
           'Remittance Status',
           'Remarks',
         ];
@@ -805,6 +877,7 @@ export default function ReportsPage() {
             : (r.linkedDocket ? [r.linkedDocket] : (r.docketNumber ? [{ docketNumber: r.docketNumber }] : []));
           const coveredDocketsStr = dockets.map((d) => d.docketNumber).join('; ');
           const sourcePartyStr = `${r.sourceType || 'DEPOSIT'} - ${r.customerName || r.linkedDocket?.consigneeName || ''}`;
+          const fin = r.placementFinancials;
 
           return [
             `"${r.date || ''}"`,
@@ -816,6 +889,8 @@ export default function ReportsPage() {
             `"${sourcePartyStr.replace(/"/g, '""')}"`,
             `"${coveredDocketsStr.replace(/"/g, '""')}"`,
             r.remittedAmount || 0,
+            fin ? (fin.totalBranchExpenses || 0) : 0,
+            fin ? (fin.netDrawerCash || 0) : 0,
             `"${r.status || 'REMITTED'}"`,
             `"${(r.remarks || '').replace(/"/g, '""')}"`,
           ];
@@ -936,43 +1011,242 @@ export default function ReportsPage() {
   // Contextual Header Filters for active registers
   const headerFilters = useMemo(() => (
     <>
-      {/* Contextual Filter: Payment Type & Clearance for Dockets */}
+      {/* Contextual Filters: Order Type, Payment Type & Clearance for Dockets (Executive Custom Dropdowns) */}
       {activeTab === 'DOCKETS' && (
         <>
-          <select
-            value={paymentTypeFilter}
-            onChange={(e) => {
-              setPaymentTypeFilter(e.target.value);
-              setPage(1);
-            }}
-            className={`text-xs font-bold rounded-xl border px-2.5 py-1.5 outline-none transition-all cursor-pointer shrink-0 max-w-[135px] ${
-              isDark
-                ? 'bg-slate-900/90 border-slate-800 text-slate-200 focus:border-cyan-400'
-                : 'bg-white border-slate-200 text-slate-700 focus:border-blue-500 shadow-xs'
-            }`}
-          >
-            <option value="ALL">All Payment Modes</option>
-            <option value="PAID">PAID</option>
-            <option value="TO_PAY">TO-PAY</option>
-            <option value="TBB">TBB</option>
-          </select>
+          {/* 1. Operation / Order Type (All Operations / Dockets / Vehicle Placements) */}
+          <div className="relative inline-block text-left" ref={orderTypeDropdownRef}>
+            <button
+              type="button"
+              onClick={() => {
+                setIsOrderTypeMenuOpen((prev) => !prev);
+                setIsDocketPaymentMenuOpen(false);
+                setIsDocketClearanceMenuOpen(false);
+              }}
+              className={`h-8 px-2.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs select-none active:scale-[0.98] ${
+                isDark
+                  ? 'bg-slate-900/90 border-slate-800 hover:border-slate-700 text-slate-100 hover:bg-slate-800/60'
+                  : 'bg-white border-slate-200 hover:border-slate-300 text-slate-800 hover:bg-slate-50/80'
+              }`}
+            >
+              <span className={`w-2 h-2 rounded-full shrink-0 ${activeOrderTypeOption.dotColor} ring-2 ${activeOrderTypeOption.ringColor || 'ring-blue-500/25'}`} />
+              <span className="font-semibold tracking-tight whitespace-nowrap">{activeOrderTypeOption.label}</span>
+              <ChevronDown className={`w-3.5 h-3.5 text-slate-400 dark:text-slate-500 transition-transform duration-200 shrink-0 ${isOrderTypeMenuOpen ? 'rotate-180 text-blue-500' : ''}`} />
+            </button>
 
-          <select
-            value={paymentClearanceFilter}
-            onChange={(e) => {
-              setPaymentClearanceFilter(e.target.value);
-              setPage(1);
-            }}
-            className={`text-xs font-bold rounded-xl border px-2.5 py-1.5 outline-none transition-all cursor-pointer shrink-0 max-w-[145px] shadow-xs ${
-              isDark
-                ? 'bg-slate-900/90 border-slate-800 text-slate-200 focus:border-cyan-400'
-                : 'bg-white border-slate-200 text-slate-700 focus:border-blue-500'
-            }`}
-          >
-            <option value="PENDING">Pending (Action Due)</option>
-            <option value="CLEARED">Cleared</option>
-            <option value="ALL">All Payment Status</option>
-          </select>
+            {isOrderTypeMenuOpen && (
+              <div className={`absolute left-0 sm:left-auto sm:right-0 top-full mt-1.5 w-76 rounded-2xl border shadow-2xl p-1.5 z-50 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150 ${
+                isDark ? 'bg-slate-900/95 border-slate-800 text-white shadow-black/40' : 'bg-white border-slate-200 text-slate-900 shadow-slate-900/10'
+              }`}>
+                <div className="px-3 py-2 text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center justify-between border-b border-slate-100 dark:border-slate-800/60 mb-1">
+                  <span>Filter Order / Job Type</span>
+                  <span className="font-mono text-[9px] text-slate-400">Sales Register</span>
+                </div>
+
+                <div className="space-y-0.5">
+                  {DOCKET_ORDER_TYPE_OPTIONS.map((opt) => {
+                    const isSelected = orderTypeFilter === opt.value;
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => {
+                          setOrderTypeFilter(opt.value);
+                          setPage(1);
+                          setIsOrderTypeMenuOpen(false);
+                        }}
+                        className={`w-full text-left px-3 py-2 rounded-xl flex items-center justify-between text-xs transition-colors cursor-pointer ${
+                          isSelected
+                            ? isDark
+                              ? 'bg-blue-950/60 text-cyan-300 font-bold'
+                              : 'bg-blue-50/90 text-blue-900 font-bold'
+                            : isDark
+                            ? 'hover:bg-slate-800/70 text-slate-200 font-medium'
+                            : 'hover:bg-slate-100/80 text-slate-700 font-medium'
+                        }`}
+                      >
+                        <div className="flex items-center space-x-2.5 min-w-0 pr-2">
+                          <span className={`w-2 h-2 rounded-full shrink-0 ${opt.dotColor}`} />
+                          <div className="truncate">
+                            <div className="truncate leading-snug">{opt.label}</div>
+                            {opt.desc && (
+                              <div className={`text-[10px] truncate leading-tight font-normal ${
+                                isSelected
+                                  ? isDark ? 'text-cyan-400/80' : 'text-blue-700/80'
+                                  : 'text-slate-400 dark:text-slate-500'
+                              }`}>
+                                {opt.desc}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {isSelected && (
+                          <Check className="w-4 h-4 text-blue-600 dark:text-cyan-400 shrink-0" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 2. Payment Terms / Mode */}
+          <div className="relative inline-block text-left" ref={docketPaymentDropdownRef}>
+            <button
+              type="button"
+              onClick={() => {
+                setIsDocketPaymentMenuOpen((prev) => !prev);
+                setIsOrderTypeMenuOpen(false);
+                setIsDocketClearanceMenuOpen(false);
+              }}
+              className={`h-8 px-2.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs select-none active:scale-[0.98] ${
+                isDark
+                  ? 'bg-slate-900/90 border-slate-800 hover:border-slate-700 text-slate-100 hover:bg-slate-800/60'
+                  : 'bg-white border-slate-200 hover:border-slate-300 text-slate-800 hover:bg-slate-50/80'
+              }`}
+            >
+              <span className={`w-2 h-2 rounded-full shrink-0 ${activeDocketPaymentOption.dotColor} ring-2 ${activeDocketPaymentOption.ringColor || 'ring-slate-400/25'}`} />
+              <span className="font-semibold tracking-tight whitespace-nowrap">{activeDocketPaymentOption.label}</span>
+              <ChevronDown className={`w-3.5 h-3.5 text-slate-400 dark:text-slate-500 transition-transform duration-200 shrink-0 ${isDocketPaymentMenuOpen ? 'rotate-180 text-blue-500' : ''}`} />
+            </button>
+
+            {isDocketPaymentMenuOpen && (
+              <div className={`absolute left-0 sm:left-auto sm:right-0 top-full mt-1.5 w-72 rounded-2xl border shadow-2xl p-1.5 z-50 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150 ${
+                isDark ? 'bg-slate-900/95 border-slate-800 text-white shadow-black/40' : 'bg-white border-slate-200 text-slate-900 shadow-slate-900/10'
+              }`}>
+                <div className="px-3 py-2 text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center justify-between border-b border-slate-100 dark:border-slate-800/60 mb-1">
+                  <span>Filter Payment Mode</span>
+                  <span className="font-mono text-[9px] text-slate-400">Payment Terms</span>
+                </div>
+
+                <div className="space-y-0.5">
+                  {DOCKET_PAYMENT_MODE_OPTIONS.map((opt) => {
+                    const isSelected = paymentTypeFilter === opt.value;
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => {
+                          setPaymentTypeFilter(opt.value);
+                          setPage(1);
+                          setIsDocketPaymentMenuOpen(false);
+                        }}
+                        className={`w-full text-left px-3 py-2 rounded-xl flex items-center justify-between text-xs transition-colors cursor-pointer ${
+                          isSelected
+                            ? isDark
+                              ? 'bg-blue-950/60 text-cyan-300 font-bold'
+                              : 'bg-blue-50/90 text-blue-900 font-bold'
+                            : isDark
+                            ? 'hover:bg-slate-800/70 text-slate-200 font-medium'
+                            : 'hover:bg-slate-100/80 text-slate-700 font-medium'
+                        }`}
+                      >
+                        <div className="flex items-center space-x-2.5 min-w-0 pr-2">
+                          <span className={`w-2 h-2 rounded-full shrink-0 ${opt.dotColor}`} />
+                          <div className="truncate">
+                            <div className="truncate leading-snug">{opt.label}</div>
+                            {opt.desc && (
+                              <div className={`text-[10px] truncate leading-tight font-normal ${
+                                isSelected
+                                  ? isDark ? 'text-cyan-400/80' : 'text-blue-700/80'
+                                  : 'text-slate-400 dark:text-slate-500'
+                              }`}>
+                                {opt.desc}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {isSelected && (
+                          <Check className="w-4 h-4 text-blue-600 dark:text-cyan-400 shrink-0" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 3. Clearance Status */}
+          <div className="relative inline-block text-left" ref={docketClearanceDropdownRef}>
+            <button
+              type="button"
+              onClick={() => {
+                setIsDocketClearanceMenuOpen((prev) => !prev);
+                setIsOrderTypeMenuOpen(false);
+                setIsDocketPaymentMenuOpen(false);
+              }}
+              className={`h-8 px-2.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs select-none active:scale-[0.98] ${
+                isDark
+                  ? 'bg-slate-900/90 border-slate-800 hover:border-slate-700 text-slate-100 hover:bg-slate-800/60'
+                  : 'bg-white border-slate-200 hover:border-slate-300 text-slate-800 hover:bg-slate-50/80'
+              }`}
+            >
+              <span className={`w-2 h-2 rounded-full shrink-0 ${activeDocketClearanceOption.dotColor} ring-2 ${activeDocketClearanceOption.ringColor || 'ring-slate-400/25'}`} />
+              <span className="font-semibold tracking-tight whitespace-nowrap">{activeDocketClearanceOption.label}</span>
+              <ChevronDown className={`w-3.5 h-3.5 text-slate-400 dark:text-slate-500 transition-transform duration-200 shrink-0 ${isDocketClearanceMenuOpen ? 'rotate-180 text-blue-500' : ''}`} />
+            </button>
+
+            {isDocketClearanceMenuOpen && (
+              <div className={`absolute left-0 sm:left-auto sm:right-0 top-full mt-1.5 w-72 rounded-2xl border shadow-2xl p-1.5 z-50 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150 ${
+                isDark ? 'bg-slate-900/95 border-slate-800 text-white shadow-black/40' : 'bg-white border-slate-200 text-slate-900 shadow-slate-900/10'
+              }`}>
+                <div className="px-3 py-2 text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center justify-between border-b border-slate-100 dark:border-slate-800/60 mb-1">
+                  <span>Filter Clearance Status</span>
+                  <span className="font-mono text-[9px] text-slate-400">Settlement</span>
+                </div>
+
+                <div className="space-y-0.5">
+                  {DOCKET_CLEARANCE_OPTIONS.map((opt) => {
+                    const isSelected = paymentClearanceFilter === opt.value;
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => {
+                          setPaymentClearanceFilter(opt.value);
+                          setPage(1);
+                          setIsDocketClearanceMenuOpen(false);
+                        }}
+                        className={`w-full text-left px-3 py-2 rounded-xl flex items-center justify-between text-xs transition-colors cursor-pointer ${
+                          isSelected
+                            ? isDark
+                              ? 'bg-blue-950/60 text-cyan-300 font-bold'
+                              : 'bg-blue-50/90 text-blue-900 font-bold'
+                            : isDark
+                            ? 'hover:bg-slate-800/70 text-slate-200 font-medium'
+                            : 'hover:bg-slate-100/80 text-slate-700 font-medium'
+                        }`}
+                      >
+                        <div className="flex items-center space-x-2.5 min-w-0 pr-2">
+                          <span className={`w-2 h-2 rounded-full shrink-0 ${opt.dotColor}`} />
+                          <div className="truncate">
+                            <div className="truncate leading-snug">{opt.label}</div>
+                            {opt.desc && (
+                              <div className={`text-[10px] truncate leading-tight font-normal ${
+                                isSelected
+                                  ? isDark ? 'text-cyan-400/80' : 'text-blue-700/80'
+                                  : 'text-slate-400 dark:text-slate-500'
+                              }`}>
+                                {opt.desc}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {isSelected && (
+                          <Check className="w-4 h-4 text-blue-600 dark:text-cyan-400 shrink-0" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
         </>
       )}
 
@@ -1174,7 +1448,7 @@ export default function ReportsPage() {
         </select>
       )}
     </>
-  ), [activeTab, paymentTypeFilter, paymentClearanceFilter, podStatusFilter, isAdmin, selectedBranch, branches, currentBranchName, isDark, isPodMenuOpen, activePodOption, availablePodOptions, collectionSubView, summary, isAgeingMenuOpen, activeAgeingOption, ageingPaymentTypeFilter, gstFilter]);
+  ), [activeTab, orderTypeFilter, isOrderTypeMenuOpen, activeOrderTypeOption, paymentTypeFilter, isDocketPaymentMenuOpen, activeDocketPaymentOption, paymentClearanceFilter, isDocketClearanceMenuOpen, activeDocketClearanceOption, podStatusFilter, isAdmin, selectedBranch, branches, currentBranchName, isDark, isPodMenuOpen, activePodOption, availablePodOptions, collectionSubView, summary, isAgeingMenuOpen, activeAgeingOption, ageingPaymentTypeFilter, gstFilter]);
 
   // Enterprise DataTable Column Specifications for all 6 Registers
   const columns = useMemo(() => {
@@ -1182,24 +1456,41 @@ export default function ReportsPage() {
       return [
         {
           key: 'lr_number',
-          header: 'LR #',
-          width: 195,
+          header: 'LR / Order #',
+          width: 200,
           minWidth: 180,
           sortable: true,
           exportValue: (row) => row.lr_number || row.docket_number,
           render: (val, row) => (
             <div>
               <div className="flex items-center gap-1.5 whitespace-nowrap">
-                <span className="font-mono font-bold text-xs text-blue-600 dark:text-cyan-400 bg-blue-50/80 dark:bg-blue-950/60 border border-blue-200/70 dark:border-blue-800/60 px-2 py-0.5 rounded-md shadow-2xs whitespace-nowrap">
+                <span className={`font-mono font-bold text-xs px-2 py-0.5 rounded-md shadow-2xs whitespace-nowrap border ${
+                  row.is_placement
+                    ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-50/90 dark:bg-emerald-950/70 border-emerald-300/80 dark:border-emerald-800/70'
+                    : 'text-blue-600 dark:text-cyan-400 bg-blue-50/80 dark:bg-blue-950/60 border border-blue-200/70 dark:border-blue-800/60'
+                }`}>
                   {row.lr_number || row.docket_number}
                 </span>
-                <BuiltyTypeBadge docket={row} />
+                {row.is_placement ? (
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-300/60 shrink-0">
+                    <Truck className="w-2.5 h-2.5 text-emerald-600 dark:text-emerald-400" />
+                    <span>Placement</span>
+                  </span>
+                ) : (
+                  <BuiltyTypeBadge docket={row} />
+                )}
               </div>
-              {row.docket_number && row.docket_number !== row.lr_number && (
+              {row.is_placement ? (
+                <div className="text-[10px] text-slate-500 dark:text-slate-400 font-mono mt-0.5 whitespace-nowrap flex items-center gap-1">
+                  <span className="font-bold text-slate-700 dark:text-slate-300">{row.vehicle?.vehicle_number || 'Truck'}</span>
+                  <span>•</span>
+                  <span>{row.load_type || 'FTL'} Hire</span>
+                </div>
+              ) : row.docket_number && row.docket_number !== row.lr_number ? (
                 <div className="text-[10px] text-slate-400 font-mono mt-0.5 whitespace-nowrap">
                   DOC: {row.docket_number}
                 </div>
-              )}
+              ) : null}
             </div>
           ),
         },
@@ -1254,7 +1545,7 @@ export default function ReportsPage() {
                 {row.consignor?.name || 'Cash Booking'}
               </div>
               <div className="text-[10px] text-slate-400 font-mono truncate">
-                {row.consignor?.gstin || row.consignor?.phone || 'Direct Counter'}
+                {row.consignor?.gstin || row.consignor?.phone || (row.is_placement ? 'Direct Hiring Client' : 'Direct Counter')}
               </div>
             </div>
           ),
@@ -1271,7 +1562,7 @@ export default function ReportsPage() {
                 {row.consignee?.name || 'Direct Delivery'}
               </div>
               <div className="text-[10px] text-slate-400 font-mono truncate">
-                {row.consignee?.phone || row.consignee?.gstin || 'Door / Hub'}
+                {row.consignee?.phone || row.consignee?.gstin || (row.is_placement ? 'Unloading Site' : 'Door / Hub')}
               </div>
             </div>
           ),
@@ -1280,14 +1571,20 @@ export default function ReportsPage() {
           key: 'packages_count',
           header: 'Pkgs',
           align: 'center',
-          width: 80,
+          width: 85,
           minWidth: 70,
           sortable: true,
           exportValue: (row) => row.packages_count || 1,
           render: (val, row) => (
-            <span className="font-mono font-bold text-xs px-2.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800/80 text-slate-800 dark:text-slate-200 border border-slate-200/60 dark:border-slate-700/60">
-              {row.packages_count || 1}
-            </span>
+            row.is_placement ? (
+              <span className="font-mono font-bold text-xs text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-300/60 dark:border-emerald-800/60 whitespace-nowrap">
+                1 Truck
+              </span>
+            ) : (
+              <span className="font-mono font-bold text-xs px-2.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800/80 text-slate-800 dark:text-slate-200 border border-slate-200/60 dark:border-slate-700/60">
+                {row.packages_count || 1}
+              </span>
+            )
           ),
         },
         {
@@ -1303,7 +1600,7 @@ export default function ReportsPage() {
               <span className="font-mono font-bold text-xs text-slate-800 dark:text-slate-200">
                 {row.charged_weight || 0}
               </span>
-              <span className="text-[10px] text-slate-400 ml-1 font-medium">kg</span>
+              <span className="text-[10px] text-slate-400 ml-1 font-medium">{row.is_placement && row.charged_weight < 100 ? 'ton' : 'kg'}</span>
             </div>
           ),
         },
@@ -1336,6 +1633,128 @@ export default function ReportsPage() {
           ),
         },
         {
+          key: 'advances',
+          header: 'Advance & Balance',
+          width: 165,
+          minWidth: 145,
+          exportValue: (row) => {
+            const advRec = Number(row.advance_received || 0);
+            const balDue = Number(row.balance_due || 0);
+            const drvAdv = Number(row.driver_advance || 0);
+            return `Adv: ${advRec} | Due: ${balDue}${drvAdv > 0 ? ` | DrvAdv: ${drvAdv}` : ''}`;
+          },
+          render: (val, row) => {
+            const advRec = Number(row.advance_received || 0);
+            const balDue = Number(row.balance_due || 0);
+            const drvAdv = Number(row.driver_advance || 0);
+
+            return (
+              <div className="text-xs space-y-0.5 min-w-[135px]">
+                <div className="flex items-center justify-between gap-1 text-[11px]">
+                  <span className="text-slate-400 font-medium">Party Adv:</span>
+                  <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                    {formatINR(advRec)}
+                  </span>
+                </div>
+                {balDue > 0 && (
+                  <div className="flex items-center justify-between gap-1 text-[10px]">
+                    <span className="text-slate-400 font-medium">Due Bal:</span>
+                    <span className="font-mono font-bold text-amber-600 dark:text-amber-400">
+                      {formatINR(balDue)}
+                    </span>
+                  </div>
+                )}
+                {drvAdv > 0 && (
+                  <div className="flex items-center justify-between gap-1 text-[10px] text-blue-500 font-mono">
+                    <span>Driver Adv:</span>
+                    <span className="font-bold">{formatINR(drvAdv)}</span>
+                  </div>
+                )}
+              </div>
+            );
+          },
+        },
+        {
+          key: 'total_expenses',
+          header: 'Trip Expenses',
+          align: 'right',
+          width: 130,
+          minWidth: 115,
+          sortable: true,
+          exportValue: (row) => Number(row.total_expenses || 0),
+          render: (val, row) => {
+            const exp = Number(row.total_expenses || 0);
+            const hire = Number(row.vehicle_charge || 0);
+            return (
+              <div className="text-right">
+                <span className={`font-mono font-bold text-xs ${exp > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-500 dark:text-slate-400'}`}>
+                  {formatINR(exp)}
+                </span>
+                {hire > 0 && (
+                  <div className="text-[10px] font-mono text-slate-400" title="Vehicle Hire Charge">
+                    Hire: {formatINR(hire)}
+                  </div>
+                )}
+              </div>
+            );
+          },
+        },
+        {
+          key: 'expense_breakdown',
+          header: 'Where Spent / Breakdown',
+          width: 230,
+          minWidth: 190,
+          exportValue: (row) => row.expense_breakdown || 'None',
+          render: (val, row) => {
+            const breakdown = row.expense_breakdown || 'None';
+            const hasExp = (row.total_expenses || 0) > 0 || (row.expense_items && row.expense_items.length > 0);
+            return (
+              <div className="max-w-[220px]">
+                <div
+                  className={`text-xs truncate font-mono ${
+                    hasExp
+                      ? 'text-slate-800 dark:text-slate-200'
+                      : 'text-slate-400 dark:text-slate-500 italic'
+                  }`}
+                  title={breakdown}
+                >
+                  {breakdown}
+                </div>
+                {row.vehicle?.vehicle_number && (
+                  <div className="text-[10px] text-slate-400">
+                    Vehicle: {row.vehicle.vehicle_number}
+                  </div>
+                )}
+              </div>
+            );
+          },
+        },
+        {
+          key: 'net_profit',
+          header: 'Net Margin',
+          align: 'right',
+          width: 135,
+          minWidth: 120,
+          sortable: true,
+          exportValue: (row) => {
+            const net = row.net_profit !== undefined ? row.net_profit : (Number(row.total_amount || 0) - Number(row.total_expenses || 0));
+            return net;
+          },
+          render: (val, row) => {
+            const net = row.net_profit !== undefined ? row.net_profit : (Number(row.total_amount || 0) - Number(row.total_expenses || 0));
+            const isPos = net >= 0;
+            return (
+              <span className={`font-mono font-black text-xs px-2 py-0.5 rounded border whitespace-nowrap inline-block ${
+                isPos
+                  ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-300/60'
+                  : 'bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border-rose-300/60'
+              }`}>
+                {formatINR(net)}
+              </span>
+            );
+          },
+        },
+        {
           key: 'payment_type',
           header: 'Payment Mode',
           align: 'center',
@@ -1345,12 +1764,15 @@ export default function ReportsPage() {
           exportValue: (row) => row.payment_type || 'TO_PAY',
           render: (val, row) => {
             const mode = row.payment_type || 'TO_PAY';
-            // Non-breaking hyphen (\u2011) strictly prevents word breaks across all browsers
-            const displayLabel = mode === 'TO_PAY' ? 'TO\u2011PAY' : mode === 'TBB' ? 'TBB' : mode;
+            const displayLabel = row.is_placement
+              ? (row.advance_received > 0 && row.advance_received < row.total_amount ? 'ADV + DUE' : mode === 'PAID' ? 'PAID' : 'FTL HIRE')
+              : (mode === 'TO_PAY' ? 'TO\u2011PAY' : mode === 'TBB' ? 'TBB' : mode);
             return (
               <span
                 className={`inline-flex items-center justify-center px-3 py-1 rounded-md text-[10px] font-black font-mono border tracking-wider select-none whitespace-nowrap shadow-xs ${
-                  mode === 'PAID'
+                  row.is_placement
+                    ? 'bg-teal-50 text-teal-700 dark:bg-teal-950/60 dark:text-teal-300 border-teal-300/60'
+                    : mode === 'PAID'
                     ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-300/60'
                     : mode === 'TO_PAY'
                     ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border-blue-300/60'
@@ -1366,7 +1788,7 @@ export default function ReportsPage() {
           key: 'payment_status',
           header: 'Payment Status',
           align: 'center',
-          width: 140,
+          width: 145,
           minWidth: 125,
           nowrap: true,
           exportValue: (row) => {
@@ -1375,7 +1797,7 @@ export default function ReportsPage() {
               row.clearance_status === 'CLEARED' ||
               row.payment_type === 'PAID' ||
               (row.payment_type === 'TO_PAY' && ['DELIVERED', 'POD_UPLOADED', 'COMPLETED', 'POD_PENDING', 'POD_VERIFIED'].includes(row.status));
-            return isCleared ? 'Cleared' : 'Pending';
+            return isCleared ? 'Cleared' : (row.advance_received > 0 ? 'Advance Paid' : 'Pending');
           },
           render: (val, row) => {
             const isCleared =
@@ -1384,12 +1806,25 @@ export default function ReportsPage() {
               row.payment_type === 'PAID' ||
               (row.payment_type === 'TO_PAY' && ['DELIVERED', 'POD_UPLOADED', 'COMPLETED', 'POD_PENDING', 'POD_VERIFIED'].includes(row.status));
 
-            return isCleared ? (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wide bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300/60 shadow-xs whitespace-nowrap select-none">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 ring-2 ring-emerald-500/20" />
-                Cleared
-              </span>
-            ) : (
+            if (isCleared) {
+              return (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wide bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300/60 shadow-xs whitespace-nowrap select-none">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 ring-2 ring-emerald-500/20" />
+                  Cleared
+                </span>
+              );
+            }
+
+            if (row.is_placement && row.advance_received > 0) {
+              return (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-extrabold tracking-wide bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300/60 shadow-xs whitespace-nowrap select-none" title={`Advance: ${formatINR(row.advance_received)} | Due: ${formatINR(row.balance_due)}`}>
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 ring-2 ring-amber-500/20" />
+                  <span>Adv Paid ({formatINR(row.advance_received)})</span>
+                </span>
+              );
+            }
+
+            return (
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wide bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300/60 shadow-xs whitespace-nowrap select-none">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse ring-2 ring-amber-500/20" />
                 Pending
@@ -2338,17 +2773,73 @@ export default function ReportsPage() {
             key: 'remittedAmount',
             header: 'Deposited Amount',
             align: 'right',
-            width: 160,
-            minWidth: 140,
+            width: 155,
+            minWidth: 135,
             sortable: true,
             render: (val, row) => (
               <div className="text-right">
                 <span className="font-mono font-black text-sm text-emerald-600 dark:text-emerald-400 block">
                   {formatINR(row.remittedAmount)}
                 </span>
-                <span className="text-[10px] text-slate-400 font-medium">Bank Deposited</span>
+                <span className="text-[10px] text-slate-400 font-medium block">Bank Deposited</span>
               </div>
             ),
+          },
+          {
+            key: 'tripExpenses',
+            header: 'Trip Expenses Spent',
+            align: 'right',
+            width: 155,
+            minWidth: 135,
+            render: (val, row) => {
+              const fin = row.placementFinancials;
+              if (!fin || (!fin.totalBranchExpenses && !fin.advanceReceived)) {
+                return (
+                  <div className="text-right text-slate-400 font-mono text-xs">
+                    <span>—</span>
+                  </div>
+                );
+              }
+              return (
+                <div className="text-right">
+                  <span className={`font-mono font-bold text-xs block ${
+                    fin.totalBranchExpenses > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-500'
+                  }`}>
+                    {fin.totalBranchExpenses > 0 ? `− ${formatINR(fin.totalBranchExpenses)}` : '₹ 0.00'}
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-medium block">
+                    {fin.driverAdvanceCash > 0 ? 'Driver Adv & Exp' : 'Branch Exp'}
+                  </span>
+                </div>
+              );
+            },
+          },
+          {
+            key: 'drawerCash',
+            header: 'In Drawer / Bank Due',
+            align: 'right',
+            width: 175,
+            minWidth: 150,
+            render: (val, row) => {
+              const fin = row.placementFinancials;
+              if (fin && fin.advanceReceived > 0) {
+                return (
+                  <div className="text-right space-y-0.5">
+                    <span className="font-mono font-black text-xs text-amber-600 dark:text-amber-400 block">
+                      +{formatINR(fin.netDrawerCash)} in Drawer
+                    </span>
+                    <span className="inline-block text-[9.5px] px-1.5 py-0.2 rounded font-bold font-mono bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-300/60">
+                      Bank Due: {formatINR(fin.payableToMainBank)}
+                    </span>
+                  </div>
+                );
+              }
+              return (
+                <div className="text-right text-slate-400 font-mono text-xs">
+                  <span>—</span>
+                </div>
+              );
+            },
           },
           {
             key: 'action',
@@ -2965,16 +3456,22 @@ export default function ReportsPage() {
                 <>
                   <SummaryKpiCard
                     icon={FileText}
-                    label="Total Dockets"
+                    label="Total Dockets & Placements"
                     value={summary.totalBookings || 0}
-                    badgeText="Bookings"
+                    badgeText={
+                      summary.placementsCount > 0 && summary.docketsCount > 0
+                        ? `${summary.docketsCount} Dkts • ${summary.placementsCount} FTL`
+                        : summary.placementsCount > 0
+                        ? `${summary.placementsCount} Placements`
+                        : "Bookings"
+                    }
                     accentColor="blue"
                     subLeft={
                       summary.isFiltered && summary.filteredBookings !== undefined && summary.filteredBookings !== summary.totalBookings
                         ? `${summary.filteredBookings} of ${summary.totalBookings} Selected`
-                        : `${summary.totalPackages || 0} Packages`
+                        : `${summary.docketsCount || 0} Dockets • ${summary.placementsCount || 0} Placements`
                     }
-                    subRight={`${summary.totalPackages || 0} Pkgs`}
+                    subRight={`${summary.totalPackages || 0} Units`}
                     isDark={isDark}
                   />
                   <SummaryKpiCard
@@ -2991,14 +3488,14 @@ export default function ReportsPage() {
                     icon={IndianRupee}
                     label="Total Revenue"
                     value={formatINR(summary.totalRevenue)}
-                    badgeText="Gross Freight"
+                    badgeText={summary.placementsCount > 0 && summary.docketsCount === 0 ? "Placement Freight" : "Gross Freight"}
                     accentColor="indigo"
                     subLeft={
                       summary.isFiltered && summary.filteredRevenue !== undefined && summary.filteredRevenue !== summary.totalRevenue
                         ? `Selected: ${formatINR(summary.filteredRevenue)}`
-                        : `GST: ${formatINR(summary.totalTaxAmount)}`
+                        : (summary.totalTaxAmount > 0 ? `GST: ${formatINR(summary.totalTaxAmount)}` : `Dockets & Placements`)
                     }
-                    subRight={`GST: ${formatINR(summary.totalTaxAmount)}`}
+                    subRight={summary.totalTaxAmount > 0 ? `GST: ${formatINR(summary.totalTaxAmount)}` : "Consolidated"}
                     isDark={isDark}
                   />
                   <SummaryKpiCard
@@ -3007,7 +3504,7 @@ export default function ReportsPage() {
                     value={formatINR(summary.totalClearedRevenue !== undefined ? summary.totalClearedRevenue : (summary.breakdown?.clearedRevenue ?? summary.totalRevenue ?? 0))}
                     badgeText="Collected"
                     accentColor="emerald"
-                    subLeft={`${summary.breakdown?.cleared || 0} Dockets Cleared`}
+                    subLeft={`${summary.breakdown?.cleared || 0} Cleared`}
                     subRight="Settled"
                     isDark={isDark}
                   />
@@ -3017,8 +3514,8 @@ export default function ReportsPage() {
                     value={formatINR(summary.totalPendingRevenue !== undefined ? summary.totalPendingRevenue : (summary.breakdown?.pendingRevenue || 0))}
                     badgeText="To-Collect"
                     accentColor="amber"
-                    subLeft={`${summary.breakdown?.pending || 0} Dockets Pending`}
-                    subRight="Uncollected"
+                    subLeft={`${summary.breakdown?.pending || 0} Pending`}
+                    subRight={summary.totalAdvanceReceived > 0 ? `Adv: ${formatINR(summary.totalAdvanceReceived)}` : "Uncollected"}
                     isAlert={(summary.totalPendingRevenue || summary.breakdown?.pendingRevenue || 0) > 0}
                     alertBadgeText={(summary.totalPendingRevenue || summary.breakdown?.pendingRevenue || 0) > 0 ? "Pending" : null}
                     isDark={isDark}
@@ -3253,7 +3750,7 @@ export default function ReportsPage() {
                     isDark={isDark}
                   >
                     <div className="flex flex-col gap-1 text-[11px]">
-                      <div className="flex items-center justify-between" title={`Booked PAID: ${formatINR(summary?.totalBookedPaidCash ?? 21205)} | Delivered TO-PAY: ${formatINR(summary?.totalDeliveredToPayCash ?? 96180)}`}>
+                      <div className="flex items-center justify-between" title={`Booked PAID: ${formatINR(summary?.totalBookedPaidCash ?? 0)} | Delivered TO-PAY: ${formatINR(summary?.totalDeliveredToPayCash ?? 0)}`}>
                         <span className="text-slate-600 dark:text-slate-300 font-semibold flex items-center gap-1.5">
                           <Coins className="w-3.5 h-3.5 shrink-0 text-amber-500" />
                           Physical Cash (Drawer):
@@ -3262,15 +3759,27 @@ export default function ReportsPage() {
                           {formatINR(summary?.totalPhysicalCash ?? ((summary?.totalBookedPaidCash || 0) + (summary?.totalDeliveredToPayCash || 0)))}
                         </span>
                       </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-slate-600 dark:text-slate-300 font-semibold flex items-center gap-1.5">
-                          <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-emerald-500" />
-                          Delivered TBB (Booking):
-                        </span>
-                        <span className="font-extrabold font-mono text-slate-800 dark:text-slate-200">
-                          {formatINR(summary?.totalDeliveredTbb ?? 43155)}
-                        </span>
-                      </div>
+                      {summary?.totalTripAdvanceCash > 0 ? (
+                        <div className="flex items-center justify-between" title={`Advance: ₹${summary.totalTripAdvanceCash} | Expenses: -₹${summary.totalTripExpensesCash || 0}`}>
+                          <span className="text-slate-600 dark:text-slate-300 font-semibold flex items-center gap-1.5">
+                            <Truck className="w-3.5 h-3.5 shrink-0 text-blue-500" />
+                            FTL Adv − Trip Exp:
+                          </span>
+                          <span className="font-extrabold font-mono text-amber-600 dark:text-amber-400">
+                            +{formatINR(summary.totalTripNetDrawerCash || 0)}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-600 dark:text-slate-300 font-semibold flex items-center gap-1.5">
+                            <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-emerald-500" />
+                            Delivered TBB (Booking):
+                          </span>
+                          <span className="font-extrabold font-mono text-slate-800 dark:text-slate-200">
+                            {formatINR(summary?.totalDeliveredTbb ?? 0)}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </SummaryKpiCard>
 
@@ -3331,9 +3840,20 @@ export default function ReportsPage() {
                           Due To-Pay & TBB:
                         </span>
                         <span className="font-extrabold font-mono text-slate-800 dark:text-slate-200">
-                          {formatINR(summary?.totalDueOutsideDrawer !== undefined ? summary.totalDueOutsideDrawer : Math.max(0, (summary?.totalPendingRevenue || 0) - (summary?.totalBranchDrawerCash || 0)))}
+                          {formatINR(summary?.totalDueOutsideDrawer !== undefined ? summary.totalDueOutsideDrawer : 0)}
                         </span>
                       </div>
+                      {summary?.totalPayableToMainBank > 0 && (
+                        <div className="flex items-center justify-between pt-0.5 border-t border-slate-100 dark:border-slate-800/80">
+                          <span className="text-amber-700 dark:text-amber-400 font-bold flex items-center gap-1.5">
+                            <Landmark className="w-3.5 h-3.5 shrink-0 text-amber-500" />
+                            Pay to Main Bank:
+                          </span>
+                          <span className="font-extrabold font-mono text-amber-600 dark:text-amber-400">
+                            {formatINR(summary.totalPayableToMainBank)}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </SummaryKpiCard>
                 </>
@@ -3800,9 +4320,7 @@ export default function ReportsPage() {
                 }}
               />
             }
-            exportable={canExport}
-            exportFilename={`${activeTab}_${activeTab === 'COLLECTIONS' ? collectionSubView : ''}_Register_${new Date().toISOString().slice(0, 10)}`}
-            onExportAll={handleExportCsv}
+            exportable={false}
             actionsSlot={
               activeTab === 'COLLECTIONS' ? (
                 <button
@@ -4391,6 +4909,65 @@ export default function ReportsPage() {
                   <p className="text-[11px] text-amber-700/90 dark:text-amber-300/90 leading-relaxed">
                     This transaction has the exact same UTR (<strong className="font-mono">{selectedDepositDetails.utrNumber}</strong>) and amount (<strong className="font-mono">₹{selectedDepositDetails.remittedAmount?.toLocaleString('en-IN')}</strong>) recorded twice within 2 minutes for the same delivery docket. This typically happens when the user clicks the delivery confirmation button twice. Both entries point to Docket <strong className="font-mono">{selectedDepositDetails.docketNumber || 'BAL000018'}</strong>.
                   </p>
+                </div>
+              )}
+
+              {/* FTL Placement Vehicle Cash & Expense Breakdown Card */}
+              {selectedDepositDetails.placementFinancials && (
+                <div className="p-4 rounded-2xl bg-gradient-to-r from-purple-500/10 via-indigo-500/5 to-slate-900/30 border border-purple-500/30 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs font-black text-purple-700 dark:text-purple-300 uppercase tracking-wider flex items-center gap-1.5">
+                      <Truck className="w-4 h-4 text-purple-500" />
+                      <span>FTL Placement Vehicle Settlement &amp; Bank Due</span>
+                    </div>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-500/30">
+                      Dedicated FTL Placement
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-xs">
+                    <div className="p-2 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800">
+                      <span className="text-[10px] text-slate-400 block font-semibold">Agreed Freight</span>
+                      <strong className="font-mono text-xs text-slate-900 dark:text-white">
+                        ₹ {formatINR(selectedDepositDetails.placementFinancials.contractAmount)}
+                      </strong>
+                    </div>
+                    <div className="p-2 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800">
+                      <span className="text-[10px] text-slate-400 block font-semibold">Bank Deposited (NEFT)</span>
+                      <strong className="font-mono text-xs text-emerald-600 dark:text-emerald-400">
+                        ₹ {formatINR(selectedDepositDetails.placementFinancials.bankDepositedAmount || selectedDepositDetails.remittedAmount)}
+                      </strong>
+                    </div>
+                    <div className="p-2 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800">
+                      <span className="text-[10px] text-slate-400 block font-semibold">Customer Cash Advance</span>
+                      <strong className="font-mono text-xs text-blue-600 dark:text-cyan-400">
+                        ₹ {formatINR(selectedDepositDetails.placementFinancials.advanceReceived)}
+                      </strong>
+                    </div>
+                    <div className="p-2 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800">
+                      <span className="text-[10px] text-slate-400 block font-semibold">Branch Trip Expenses</span>
+                      <strong className="font-mono text-xs text-rose-500">
+                        − ₹ {formatINR(selectedDepositDetails.placementFinancials.totalBranchExpenses)}
+                      </strong>
+                    </div>
+                    <div className="p-2 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800">
+                      <span className="text-[10px] text-slate-400 block font-semibold">Net Cash in Drawer</span>
+                      <strong className="font-mono text-xs text-amber-600 dark:text-amber-400">
+                        ₹ {formatINR(selectedDepositDetails.placementFinancials.netDrawerCash)}
+                      </strong>
+                    </div>
+                    <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/30">
+                      <span className="text-[10px] text-amber-700 dark:text-amber-300 block font-bold">To Pay to Main Bank</span>
+                      <strong className="font-mono text-xs text-amber-600 dark:text-amber-400">
+                        ₹ {formatINR(selectedDepositDetails.placementFinancials.payableToMainBank)}
+                      </strong>
+                    </div>
+                  </div>
+
+                  <div className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-900/60 text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed border border-slate-200 dark:border-slate-800">
+                    💡 <strong>Accounting Summary:</strong> Customer has cleared the ₹{formatINR(selectedDepositDetails.placementFinancials.contractAmount)} contract freight in full (₹{formatINR(selectedDepositDetails.placementFinancials.bankDepositedAmount || selectedDepositDetails.remittedAmount)} via direct NEFT to Main Bank + ₹{formatINR(selectedDepositDetails.placementFinancials.advanceReceived)} cash advance to Branch).
+                    After cutting ₹{formatINR(selectedDepositDetails.placementFinancials.totalBranchExpenses)} branch trip expenses, <strong className="text-amber-600 dark:text-amber-400 font-mono">₹{formatINR(selectedDepositDetails.placementFinancials.payableToMainBank)}</strong> remains in the Branch Cash Drawer and is ready to be deposited into the Main Transporter Bank Account.
+                  </div>
                 </div>
               )}
 

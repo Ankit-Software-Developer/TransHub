@@ -10,6 +10,7 @@ import { useTheme } from '../../../components/ThemeProvider';
 import { usePermissions } from '../../../hooks/usePermissions';
 import Sidebar from '../../../components/layout/Sidebar';
 import Navbar from '../../../components/layout/Navbar';
+import { useToast } from '../../../components/ui/AlertModalProvider';
 import {
   User,
   Lock,
@@ -42,10 +43,7 @@ export default function ProfilePage() {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
   const { isAdmin } = usePermissions();
-
-  // Feedback states
-  const [successMsg, setSuccessMsg] = useState('');
-  const [errorMsg, setErrorMsg] = useState('');
+  const { showToast } = useToast();
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isSavingPassword, setIsSavingPassword] = useState(false);
   const [copiedTenant, setCopiedTenant] = useState(false);
@@ -89,16 +87,21 @@ export default function ProfilePage() {
     }
   }, [user]);
 
-  // Flash feedback helpers
+  // Flash feedback helpers using top-corner floating toasts with progress bar & pause-on-hover
   const triggerSuccess = (msg) => {
-    setSuccessMsg(msg);
-    setErrorMsg('');
-    setTimeout(() => setSuccessMsg(''), 4500);
+    showToast({
+      type: 'success',
+      title: 'Profile Updated',
+      message: msg,
+    });
   };
 
   const triggerError = (msg) => {
-    setErrorMsg(msg);
-    setTimeout(() => setErrorMsg(''), 5500);
+    showToast({
+      type: 'error',
+      title: 'Action Failed',
+      message: msg,
+    });
   };
 
   // Copy Tenant / Account ID to clipboard
@@ -199,27 +202,6 @@ export default function ProfilePage() {
 
         <main className="flex-1 p-3.5 sm:p-5 lg:p-6 xl:p-8 space-y-4 sm:space-y-6 w-full max-w-full">
           
-          {/* Notifications / Alerts */}
-          {successMsg && (
-            <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-500 dark:text-emerald-400 text-xs font-semibold flex items-center justify-between shadow-lg shadow-emerald-500/5 animate-in fade-in">
-              <div className="flex items-center space-x-2.5">
-                <CheckCircle2 className="w-4 h-4 shrink-0" />
-                <span>{successMsg}</span>
-              </div>
-              <button onClick={() => setSuccessMsg('')} className="text-emerald-500 hover:text-emerald-400 text-xs">✕</button>
-            </div>
-          )}
-
-          {errorMsg && (
-            <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs font-semibold flex items-center justify-between shadow-lg shadow-rose-500/5 animate-in fade-in">
-              <div className="flex items-center space-x-2.5">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{errorMsg}</span>
-              </div>
-              <button onClick={() => setErrorMsg('')} className="text-rose-500 hover:text-rose-400 text-xs">✕</button>
-            </div>
-          )}
-
           {/* Hero Profile Banner */}
           <div className={`p-6 sm:p-8 rounded-3xl border relative overflow-hidden shadow-xl ${
             isDark

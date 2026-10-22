@@ -514,8 +514,8 @@ function BranchSelectDropdown({
           setIsOpen((prev) => !prev);
         }}
         className={`w-full px-3 py-2.5 rounded-xl border text-xs font-semibold flex items-center justify-between transition-all cursor-pointer text-left ${isDark
-            ? 'border-slate-800 bg-slate-900/80 text-white hover:border-slate-700'
-            : 'border-slate-200 bg-slate-50 text-slate-900 hover:border-slate-300'
+          ? 'border-slate-800 bg-slate-900/80 text-white hover:border-slate-700'
+          : 'border-slate-200 bg-slate-50 text-slate-900 hover:border-slate-300'
           } ${isOpen ? (isDark ? 'ring-2 ring-cyan-500/40 border-cyan-500' : 'ring-2 ring-blue-500/40 border-blue-500') : ''}`}
       >
         {selectedBranch ? (
@@ -533,11 +533,10 @@ function BranchSelectDropdown({
               </span>
             </div>
             {selectedBranch.branch_code && (
-              <span className={`font-mono text-[10px] font-bold px-1.5 py-0.5 rounded-md shrink-0 border ${
-                isDark
+              <span className={`font-mono text-[10px] font-bold px-1.5 py-0.5 rounded-md shrink-0 border ${isDark
                   ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30'
                   : 'bg-blue-50 text-blue-700 border-blue-200'
-              }`}>
+                }`}>
                 [{selectedBranch.branch_code}]
               </span>
             )}
@@ -563,8 +562,8 @@ function BranchSelectDropdown({
               : { top: `${coords.top}px`, bottom: 'auto' }),
           }}
           className={`flex flex-col rounded-xl border shadow-2xl overflow-hidden transition-all duration-100 ${isDark
-              ? 'bg-slate-900 border-slate-700 text-white shadow-black/80'
-              : 'bg-white border-slate-300 text-slate-900 shadow-slate-900/25'
+            ? 'bg-slate-900 border-slate-700 text-white shadow-black/80'
+            : 'bg-white border-slate-300 text-slate-900 shadow-slate-900/25'
             }`}
         >
           {/* Search box inside dropdown (Sticky header) */}
@@ -601,8 +600,8 @@ function BranchSelectDropdown({
                 setIsOpen(false);
               }}
               className={`p-2.5 px-3.5 cursor-pointer text-xs transition-colors flex items-center justify-between ${!selectedBranchId
-                  ? isDark ? 'bg-cyan-500/20 text-cyan-300 font-bold' : 'bg-blue-50 text-blue-800 font-bold'
-                  : isDark ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-50 text-slate-600'
+                ? isDark ? 'bg-cyan-500/20 text-cyan-300 font-bold' : 'bg-blue-50 text-blue-800 font-bold'
+                : isDark ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-50 text-slate-600'
                 }`}
             >
               <span>{placeholder}</span>
@@ -620,8 +619,8 @@ function BranchSelectDropdown({
                       setIsOpen(false);
                     }}
                     className={`p-2.5 px-3.5 cursor-pointer transition-colors flex items-center justify-between gap-2 ${isSelected
-                        ? isDark ? 'bg-cyan-500/20 text-cyan-300 font-bold' : 'bg-blue-50 text-blue-900 font-bold'
-                        : isDark ? 'hover:bg-slate-800 text-slate-200' : 'hover:bg-slate-50 text-slate-800'
+                      ? isDark ? 'bg-cyan-500/20 text-cyan-300 font-bold' : 'bg-blue-50 text-blue-900 font-bold'
+                      : isDark ? 'hover:bg-slate-800 text-slate-200' : 'hover:bg-slate-50 text-slate-800'
                       }`}
                   >
                     <div className="flex items-center gap-1.5 min-w-0 flex-1 truncate">
@@ -638,11 +637,10 @@ function BranchSelectDropdown({
 
                     <div className="flex items-center gap-2 shrink-0">
                       {b.branch_code && (
-                        <span className={`font-mono text-[10px] font-bold px-1.5 py-0.5 rounded-md shrink-0 border ${
-                          isDark
+                        <span className={`font-mono text-[10px] font-bold px-1.5 py-0.5 rounded-md shrink-0 border ${isDark
                             ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30'
                             : 'bg-blue-50 text-blue-700 border-blue-200'
-                        }`}>
+                          }`}>
                           [{b.branch_code}]
                         </span>
                       )}
@@ -773,11 +771,10 @@ function FtlVehicleSelectDropdown({
           <span className="font-mono font-bold text-xs truncate">{matchedFleet.vehicle_number}</span>
           <span className="text-slate-400 text-xs shrink-0">—</span>
           <span className="text-xs truncate">{matchedFleet.vehicle_type || 'Vehicle'} {matchedFleet.capacity_ton ? `(${matchedFleet.capacity_ton}T)` : ''}</span>
-          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 border ${
-            matchedFleet.ownership_type === 'ATTACHED'
+          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 border ${matchedFleet.ownership_type === 'ATTACHED'
               ? 'bg-amber-500/15 text-amber-500 border-amber-500/30'
               : 'bg-emerald-500/15 text-emerald-500 border-emerald-500/30'
-          }`}>
+            }`}>
             {ownership}
           </span>
         </div>
@@ -820,11 +817,10 @@ function FtlVehicleSelectDropdown({
             setActiveTab('FLEET');
           }
         }}
-        className={`w-full h-11 px-3.5 rounded-xl border text-xs font-semibold flex items-center justify-between transition-all cursor-pointer ${
-          isDark
+        className={`w-full h-11 px-3.5 rounded-xl border text-xs font-semibold flex items-center justify-between transition-all cursor-pointer ${isDark
             ? 'border-purple-500/40 bg-slate-900/90 text-white hover:border-purple-400'
             : 'border-purple-300 bg-white text-slate-800 hover:border-purple-400 shadow-xs'
-        }`}
+          }`}
       >
         <div className="min-w-0 flex-1 text-left truncate mr-2">
           {renderSelectedDisplay()}
@@ -846,29 +842,25 @@ function FtlVehicleSelectDropdown({
               ? { bottom: `${coords.bottom}px`, top: 'auto' }
               : { top: `${coords.top}px`, bottom: 'auto' }),
           }}
-          className={`flex flex-col rounded-2xl border shadow-2xl overflow-hidden transition-all duration-100 ${
-            isDark
+          className={`flex flex-col rounded-2xl border shadow-2xl overflow-hidden transition-all duration-100 ${isDark
               ? 'bg-[#0f172a] border-slate-700/80 text-white shadow-black/80'
               : 'bg-white border-slate-200 text-slate-900 shadow-slate-900/20'
-          }`}
+            }`}
         >
           {/* Filter Tabs (Only 2 options: Company Fleet and Custom) */}
-          <div className={`grid grid-cols-2 p-1.5 gap-1.5 border-b text-xs font-bold shrink-0 ${
-            isDark ? 'bg-slate-950/80 border-slate-800' : 'bg-slate-100/80 border-slate-200'
-          }`}>
+          <div className={`grid grid-cols-2 p-1.5 gap-1.5 border-b text-xs font-bold shrink-0 ${isDark ? 'bg-slate-950/80 border-slate-800' : 'bg-slate-100/80 border-slate-200'
+            }`}>
             <button
               type="button"
               onClick={() => setActiveTab('FLEET')}
-              className={`py-2 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                activeTab === 'FLEET'
+              className={`py-2 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 ${activeTab === 'FLEET'
                   ? 'bg-purple-600 text-white shadow-xs font-black'
                   : isDark ? 'text-slate-400 hover:text-white hover:bg-slate-800/60' : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-              }`}
+                }`}
             >
               <span>🏢 Company Fleet</span>
-              <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
-                activeTab === 'FLEET' ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-500'
-              }`}>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${activeTab === 'FLEET' ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-500'
+                }`}>
                 {vehiclesList.length}
               </span>
             </button>
@@ -880,11 +872,10 @@ function FtlVehicleSelectDropdown({
                   setCustomInput(value);
                 }
               }}
-              className={`py-2 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                activeTab === 'CUSTOM'
+              className={`py-2 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 ${activeTab === 'CUSTOM'
                   ? 'bg-purple-600 text-white shadow-xs font-black'
                   : isDark ? 'text-slate-400 hover:text-white hover:bg-slate-800/60' : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-              }`}
+                }`}
             >
               <span>✍️ Custom Vehicle</span>
             </button>
@@ -894,9 +885,8 @@ function FtlVehicleSelectDropdown({
           {activeTab === 'FLEET' && (
             <div className="flex flex-col flex-1 min-h-0">
               {/* Search Header */}
-              <div className={`p-2.5 px-3 border-b flex items-center gap-2 shrink-0 ${
-                isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-slate-50 border-slate-200'
-              }`}>
+              <div className={`p-2.5 px-3 border-b flex items-center gap-2 shrink-0 ${isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-slate-50 border-slate-200'
+                }`}>
                 <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                 <input
                   type="text"
@@ -904,9 +894,8 @@ function FtlVehicleSelectDropdown({
                   placeholder="Search truck number, body type, capacity..."
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  className={`w-full text-xs bg-transparent focus:outline-none ${
-                    isDark ? 'text-white placeholder-slate-500' : 'text-slate-900 placeholder-slate-400'
-                  }`}
+                  className={`w-full text-xs bg-transparent focus:outline-none ${isDark ? 'text-white placeholder-slate-500' : 'text-slate-900 placeholder-slate-400'
+                    }`}
                 />
                 {query && (
                   <button
@@ -933,11 +922,10 @@ function FtlVehicleSelectDropdown({
                           onChange(itemVal);
                           setIsOpen(false);
                         }}
-                        className={`p-2.5 px-3 rounded-xl cursor-pointer transition-colors flex items-center justify-between gap-2.5 my-0.5 ${
-                          isSelected
+                        className={`p-2.5 px-3 rounded-xl cursor-pointer transition-colors flex items-center justify-between gap-2.5 my-0.5 ${isSelected
                             ? isDark ? 'bg-purple-600/20 text-purple-300 font-bold' : 'bg-purple-50 text-purple-900 font-bold'
                             : isDark ? 'hover:bg-slate-800 text-slate-200' : 'hover:bg-slate-50 text-slate-800'
-                        }`}
+                          }`}
                       >
                         <div className="flex items-center gap-2.5 min-w-0 flex-1 truncate">
                           <Truck className={`w-4 h-4 shrink-0 ${isSelected ? 'text-purple-500' : 'text-emerald-500'}`} />
@@ -946,11 +934,10 @@ function FtlVehicleSelectDropdown({
                           <span className="text-xs truncate">{v.vehicle_type || 'Vehicle'} {v.capacity_ton ? `(${v.capacity_ton} Ton)` : ''}</span>
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0">
-                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${
-                            v.ownership_type === 'ATTACHED'
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${v.ownership_type === 'ATTACHED'
                               ? 'bg-amber-500/10 text-amber-500 border-amber-500/25'
                               : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/25'
-                          }`}>
+                            }`}>
                             {ownership}
                           </span>
                           {isSelected && <Check className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 shrink-0" />}
@@ -994,11 +981,10 @@ function FtlVehicleSelectDropdown({
                         handleApplyCustom();
                       }
                     }}
-                    className={`w-full h-11 px-3.5 rounded-xl border text-xs font-semibold focus:outline-none transition-colors ${
-                      isDark
+                    className={`w-full h-11 px-3.5 rounded-xl border text-xs font-semibold focus:outline-none transition-colors ${isDark
                         ? 'border-purple-500/40 bg-slate-950 text-white placeholder-slate-500 focus:border-purple-400'
                         : 'border-purple-300 bg-slate-50 text-slate-900 placeholder-slate-400 focus:border-purple-500 focus:bg-white'
-                    }`}
+                      }`}
                   />
                 </div>
                 <p className={`text-[11px] mt-1.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
@@ -1010,9 +996,8 @@ function FtlVehicleSelectDropdown({
                 <button
                   type="button"
                   onClick={() => setActiveTab('FLEET')}
-                  className={`px-3 py-2 rounded-xl text-xs font-medium cursor-pointer ${
-                    isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
-                  }`}
+                  className={`px-3 py-2 rounded-xl text-xs font-medium cursor-pointer ${isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+                    }`}
                 >
                   Cancel
                 </button>
@@ -1020,11 +1005,10 @@ function FtlVehicleSelectDropdown({
                   type="button"
                   disabled={!customInput.trim()}
                   onClick={handleApplyCustom}
-                  className={`px-4 py-2 rounded-xl text-xs font-bold text-white transition-all cursor-pointer ${
-                    customInput.trim()
+                  className={`px-4 py-2 rounded-xl text-xs font-bold text-white transition-all cursor-pointer ${customInput.trim()
                       ? 'bg-purple-600 hover:bg-purple-500 shadow-md shadow-purple-600/30 active:scale-95'
                       : 'bg-slate-700 opacity-50 cursor-not-allowed'
-                  }`}
+                    }`}
                 >
                   Apply Custom Vehicle ➔
                 </button>
@@ -1409,20 +1393,18 @@ export default function BookingsMasterPage() {
               LORRY RECEIPT / BILTY
             </div>
             <div className="flex items-center justify-center gap-1.5 mt-0.5 flex-wrap">
-              <div className={`inline-block px-2 py-0.5 border text-[9px] font-black tracking-wide uppercase rounded ${
-                copyType === 'CONSIGNOR'
+              <div className={`inline-block px-2 py-0.5 border text-[9px] font-black tracking-wide uppercase rounded ${copyType === 'CONSIGNOR'
                   ? 'border-rose-600 bg-rose-50 text-rose-800'
                   : copyType === 'CONSIGNEE'
                     ? 'border-emerald-600 bg-emerald-50 text-emerald-800'
                     : 'border-blue-600 bg-blue-50 text-blue-800'
-              }`}>
+                }`}>
                 COPY
               </div>
-              <div className={`inline-block px-1.5 py-0.5 border text-[8.5px] font-black tracking-wide uppercase rounded ${
-                (c.load_type || 'PTL') === 'FTL'
+              <div className={`inline-block px-1.5 py-0.5 border text-[8.5px] font-black tracking-wide uppercase rounded ${(c.load_type || 'PTL') === 'FTL'
                   ? 'bg-purple-100 text-purple-900 border-purple-400'
                   : 'bg-amber-100 text-amber-900 border-amber-400'
-              }`}>
+                }`}>
                 {(c.load_type || 'PTL') === 'FTL' ? '🚛 FTL (FULL TRUCK)' : '📦 PTL (PART LOAD)'}
               </div>
             </div>
@@ -1562,10 +1544,10 @@ export default function BookingsMasterPage() {
               {/* Payment Rubber Stamp */}
               <div className="flex items-center space-x-3">
                 <div className={`inline-block px-3 py-1 border-2 border-dashed font-black text-xs tracking-widest uppercase rounded rotate-[-3deg] shadow-xs ${paymentType === 'TO_PAY'
-                    ? 'border-red-600 text-red-600 bg-red-50/70'
-                    : paymentType === 'PAID'
-                      ? 'border-emerald-600 text-emerald-600 bg-emerald-50/70'
-                      : 'border-blue-600 text-blue-600 bg-blue-50/70'
+                  ? 'border-red-600 text-red-600 bg-red-50/70'
+                  : paymentType === 'PAID'
+                    ? 'border-emerald-600 text-emerald-600 bg-emerald-50/70'
+                    : 'border-blue-600 text-blue-600 bg-blue-50/70'
                   }`}>
                   ★ {paymentType === 'TO_PAY' ? 'TO PAY' : paymentType === 'PAID' ? 'FREIGHT PAID' : 'TO BE BILLED (TBB)'} ★
                 </div>
@@ -2211,19 +2193,19 @@ export default function BookingsMasterPage() {
     bookingStep === 1
       ? isStep1Valid
       : bookingStep === 2
-      ? isStep2Valid
-      : bookingStep === 3
-      ? isStep3Valid
-      : true;
+        ? isStep2Valid
+        : bookingStep === 3
+          ? isStep3Valid
+          : true;
 
   const currentMissingFields =
     bookingStep === 1
       ? step1MissingFields
       : bookingStep === 2
-      ? step2MissingFields
-      : bookingStep === 3
-      ? step3MissingFields
-      : [];
+        ? step2MissingFields
+        : bookingStep === 3
+          ? step3MissingFields
+          : [];
 
   // Fetch real consignments from backend with Server-Side Pagination & Sorting
   const fetchConsignments = async (overrides = {}) => {
@@ -2947,21 +2929,19 @@ export default function BookingsMasterPage() {
           return (
             <div>
               <div className="flex items-center gap-1.5 flex-wrap">
-                <div className={`font-mono font-bold group-hover:underline flex items-center gap-1 ${
-                  isDark ? 'text-cyan-400' : 'text-blue-600'
-                }`}>
+                <div className={`font-mono font-bold group-hover:underline flex items-center gap-1 ${isDark ? 'text-cyan-400' : 'text-blue-600'
+                  }`}>
                   <FileText className="w-3.5 h-3.5 shrink-0" />
                   <span>{row.lr_number}</span>
                 </div>
-                <span className={`px-1.5 py-0.2 rounded text-[9px] font-black uppercase tracking-wider border ${
-                  isFtl
+                <span className={`px-1.5 py-0.2 rounded text-[9px] font-black uppercase tracking-wider border ${isFtl
                     ? isDark
                       ? 'bg-purple-500/15 text-purple-300 border-purple-500/30'
                       : 'bg-purple-50 text-purple-700 border-purple-300'
                     : isDark
                       ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
                       : 'bg-amber-50 text-amber-700 border-amber-300'
-                }`}>
+                  }`}>
                   {isFtl ? '🚛 FTL' : '📦 PTL'}
                 </span>
               </div>
@@ -2995,9 +2975,8 @@ export default function BookingsMasterPage() {
         render: (val, row) => (
           <div>
             <div className="flex items-center gap-1.5 flex-wrap">
-              <span className={`px-2 py-0.5 rounded font-mono font-bold text-[11px] inline-flex items-center gap-1 ${
-                isDark ? 'bg-slate-900 border border-slate-800 text-slate-200' : 'bg-slate-100 border border-slate-200 text-slate-800'
-              }`}>
+              <span className={`px-2 py-0.5 rounded font-mono font-bold text-[11px] inline-flex items-center gap-1 ${isDark ? 'bg-slate-900 border border-slate-800 text-slate-200' : 'bg-slate-100 border border-slate-200 text-slate-800'
+                }`}>
                 <span className="text-cyan-500 dark:text-cyan-400 font-bold">[{row.origin_branch_code || row.origin_city.slice(0, 3).toUpperCase()}]</span>
                 <span className="text-slate-400">➔</span>
                 <span className="text-emerald-600 dark:text-emerald-400 font-bold">[{row.dest_branch_code || row.destination_city.slice(0, 3).toUpperCase()}]</span>
@@ -3134,14 +3113,14 @@ export default function BookingsMasterPage() {
             </div>
             <div className="flex items-center justify-end gap-1 mt-0.5">
               <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded border ${row.payment_mode === 'PAID'
-                  ? isDark ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                  : isDark ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' : 'bg-amber-50 text-amber-700 border-amber-200'
+                ? isDark ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                : isDark ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' : 'bg-amber-50 text-amber-700 border-amber-200'
                 }`}>
                 {row.payment_mode}
               </span>
               <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded border ${row.delivery_type === 'DOOR_DELIVERY'
-                  ? isDark ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                  : isDark ? 'bg-slate-800 text-slate-400 border-slate-700' : 'bg-slate-100 text-slate-600 border-slate-200'
+                ? isDark ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                : isDark ? 'bg-slate-800 text-slate-400 border-slate-700' : 'bg-slate-100 text-slate-600 border-slate-200'
                 }`}
                 title={row.delivery_type === 'DOOR_DELIVERY' ? 'Door Delivery' : 'Godown Delivery'}>
                 {row.delivery_type === 'DOOR_DELIVERY' ? 'Door' : 'Godown'}
@@ -3161,16 +3140,16 @@ export default function BookingsMasterPage() {
         render: (val, row) => (
           <div className="text-center">
             <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${row.status === 'IN_TRANSIT' || row.status === 'DISPATCHED' || row.status === 'ON_TRIP'
-                ? isDark ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30' : 'bg-cyan-50 text-cyan-800 border-cyan-200'
-                : row.status === 'DELIVERED' || row.status === 'COMPLETED'
-                  ? isDark ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' : 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                  : row.status === 'DELAYED' || row.status === 'HOLD' || row.status === 'DAMAGED'
-                    ? isDark ? 'bg-rose-500/15 text-rose-300 border-rose-500/30' : 'bg-rose-50 text-rose-800 border-rose-200'
-                    : row.status === 'REACHED_DESTINATION' || row.status === 'OUT_FOR_DELIVERY'
-                      ? isDark ? 'bg-teal-500/15 text-teal-300 border-teal-500/30' : 'bg-teal-50 text-teal-800 border-teal-200'
-                      : row.status === 'RECEIVED_AT_HUB'
-                        ? isDark ? 'bg-blue-500/15 text-blue-300 border-blue-500/30' : 'bg-blue-50 text-blue-800 border-blue-200'
-                        : isDark ? 'bg-purple-500/15 text-purple-300 border-purple-500/30' : 'bg-purple-50 text-purple-800 border-purple-200'
+              ? isDark ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30' : 'bg-cyan-50 text-cyan-800 border-cyan-200'
+              : row.status === 'DELIVERED' || row.status === 'COMPLETED'
+                ? isDark ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                : row.status === 'DELAYED' || row.status === 'HOLD' || row.status === 'DAMAGED'
+                  ? isDark ? 'bg-rose-500/15 text-rose-300 border-rose-500/30' : 'bg-rose-50 text-rose-800 border-rose-200'
+                  : row.status === 'REACHED_DESTINATION' || row.status === 'OUT_FOR_DELIVERY'
+                    ? isDark ? 'bg-teal-500/15 text-teal-300 border-teal-500/30' : 'bg-teal-50 text-teal-800 border-teal-200'
+                    : row.status === 'RECEIVED_AT_HUB'
+                      ? isDark ? 'bg-blue-500/15 text-blue-300 border-blue-500/30' : 'bg-blue-50 text-blue-800 border-blue-200'
+                      : isDark ? 'bg-purple-500/15 text-purple-300 border-purple-500/30' : 'bg-purple-50 text-purple-800 border-purple-200'
               }`}>
               <span className="w-1.5 h-1.5 rounded-full bg-current mr-1 animate-pulse" />
               {row.status_label}
@@ -3178,15 +3157,14 @@ export default function BookingsMasterPage() {
 
             {/* Current Present Location Badge */}
             <div
-              className={`text-[10px] mt-1 font-semibold truncate flex items-center justify-center gap-1 ${
-                row.present_location_type === 'IN_TRANSIT'
+              className={`text-[10px] mt-1 font-semibold truncate flex items-center justify-center gap-1 ${row.present_location_type === 'IN_TRANSIT'
                   ? isDark ? 'text-cyan-400' : 'text-blue-700'
                   : row.present_location_type === 'DELIVERED'
-                  ? isDark ? 'text-emerald-400' : 'text-emerald-700'
-                  : row.present_location_type === 'DEST_GODOWN'
-                  ? isDark ? 'text-teal-300' : 'text-teal-700'
-                  : isDark ? 'text-amber-300' : 'text-amber-700'
-              }`}
+                    ? isDark ? 'text-emerald-400' : 'text-emerald-700'
+                    : row.present_location_type === 'DEST_GODOWN'
+                      ? isDark ? 'text-teal-300' : 'text-teal-700'
+                      : isDark ? 'text-amber-300' : 'text-amber-700'
+                }`}
               title={`${row.present_location_title} — ${row.present_location_detail}`}
             >
               <MapPin className="w-2.5 h-2.5 shrink-0 opacity-80" />
@@ -3216,8 +3194,8 @@ export default function BookingsMasterPage() {
               <button
                 onClick={() => handleOpenDetails(row)}
                 className={`p-1.5 rounded-lg border transition-all ${isDark
-                    ? 'bg-slate-900 border-slate-800 text-slate-300 hover:text-cyan-400 hover:border-cyan-500/40'
-                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:text-blue-600'
+                  ? 'bg-slate-900 border-slate-800 text-slate-300 hover:text-cyan-400 hover:border-cyan-500/40'
+                  : 'bg-slate-50 border-slate-200 text-slate-600 hover:text-blue-600'
                   }`}
                 title="View Consignment Details"
               >
@@ -3228,8 +3206,8 @@ export default function BookingsMasterPage() {
                 <button
                   onClick={() => handleOpenEdit(row)}
                   className={`p-1.5 rounded-lg border transition-all ${isDark
-                      ? 'bg-slate-900 border-slate-800 text-amber-400 hover:text-amber-300 hover:border-amber-500/40 hover:bg-amber-500/10'
-                      : 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100'
+                    ? 'bg-slate-900 border-slate-800 text-amber-400 hover:text-amber-300 hover:border-amber-500/40 hover:bg-amber-500/10'
+                    : 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100'
                     }`}
                   title="Edit Docket"
                 >
@@ -3241,8 +3219,8 @@ export default function BookingsMasterPage() {
                 <button
                   onClick={() => handleOpenDelete(row)}
                   className={`p-1.5 rounded-lg border transition-all ${isDark
-                      ? 'bg-slate-900 border-slate-800 text-rose-400 hover:text-rose-300 hover:border-rose-500/40 hover:bg-rose-500/10'
-                      : 'bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100'
+                    ? 'bg-slate-900 border-slate-800 text-rose-400 hover:text-rose-300 hover:border-rose-500/40 hover:bg-rose-500/10'
+                    : 'bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100'
                     }`}
                   title="Delete Docket"
                 >
@@ -3253,8 +3231,8 @@ export default function BookingsMasterPage() {
               <button
                 onClick={() => handleOpenPrintPreview(row)}
                 className={`p-1.5 rounded-lg border transition-all ${isDark
-                    ? 'bg-slate-900 border-slate-800 text-slate-300 hover:text-cyan-400 hover:border-cyan-500/40'
-                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:text-blue-600'
+                  ? 'bg-slate-900 border-slate-800 text-slate-300 hover:text-cyan-400 hover:border-cyan-500/40'
+                  : 'bg-slate-50 border-slate-200 text-slate-600 hover:text-blue-600'
                   }`}
                 title="Print 3-Part Lorry Receipt / Bilty"
               >
@@ -3342,8 +3320,8 @@ export default function BookingsMasterPage() {
                 <div
                   key={idx}
                   className={`p-4 rounded-2xl border transition-all duration-200 shadow-sm ${isDark
-                      ? 'bg-[#0B1020]/90 border-slate-800/90'
-                      : 'bg-white border-slate-200'
+                    ? 'bg-[#0B1020]/90 border-slate-800/90'
+                    : 'bg-white border-slate-200'
                     }`}
                 >
                   <div className="flex items-center justify-between mb-2">
@@ -3434,10 +3412,10 @@ export default function BookingsMasterPage() {
                   type="button"
                   onClick={() => { setStatusFilter('PENDING'); setPage(1); }}
                   className={`px-3 py-1.5 rounded-xl transition-all ${statusFilter === 'PENDING'
-                      ? 'bg-purple-600 text-white shadow-sm'
-                      : isDark
-                        ? 'bg-slate-900 text-slate-400 hover:text-white'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    ? 'bg-purple-600 text-white shadow-sm'
+                    : isDark
+                      ? 'bg-slate-900 text-slate-400 hover:text-white'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                     }`}
                 >
                   Pending / Dock ({pendingOrGodownCount})
@@ -3446,10 +3424,10 @@ export default function BookingsMasterPage() {
                   type="button"
                   onClick={() => { setStatusFilter('FOR_DELIVERY'); setPage(1); }}
                   className={`px-3 py-1.5 rounded-xl transition-all ${statusFilter === 'FOR_DELIVERY' || statusFilter === 'REACHED_DESTINATION'
-                      ? 'bg-teal-600 text-white shadow-sm'
-                      : isDark
-                        ? 'bg-slate-900 text-slate-400 hover:text-white'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    ? 'bg-teal-600 text-white shadow-sm'
+                    : isDark
+                      ? 'bg-slate-900 text-slate-400 hover:text-white'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                     }`}
                 >
                   Ready for Delivery ({forDeliveryCount})
@@ -3458,10 +3436,10 @@ export default function BookingsMasterPage() {
                   type="button"
                   onClick={() => { setStatusFilter('DELAYED'); setPage(1); }}
                   className={`px-3 py-1.5 rounded-xl transition-all ${statusFilter === 'DELAYED'
-                      ? 'bg-rose-600 text-white shadow-sm'
-                      : isDark
-                        ? 'bg-slate-900 text-slate-400 hover:text-white'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    ? 'bg-rose-600 text-white shadow-sm'
+                    : isDark
+                      ? 'bg-slate-900 text-slate-400 hover:text-white'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                     }`}
                 >
                   Delayed ({delayedCount})
@@ -3470,10 +3448,10 @@ export default function BookingsMasterPage() {
                   type="button"
                   onClick={() => { setStatusFilter('IN_TRANSIT'); setPage(1); }}
                   className={`px-3 py-1.5 rounded-xl transition-all ${statusFilter === 'IN_TRANSIT'
-                      ? 'bg-cyan-500 text-slate-950 font-black shadow-sm'
-                      : isDark
-                        ? 'bg-slate-900 text-slate-400 hover:text-white'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    ? 'bg-cyan-500 text-slate-950 font-black shadow-sm'
+                    : isDark
+                      ? 'bg-slate-900 text-slate-400 hover:text-white'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                     }`}
                 >
                   In Transit ({inTransitCount})
@@ -3482,10 +3460,10 @@ export default function BookingsMasterPage() {
                   type="button"
                   onClick={() => { setStatusFilter('DELIVERED'); setPage(1); }}
                   className={`px-3 py-1.5 rounded-xl transition-all ${statusFilter === 'DELIVERED'
-                      ? 'bg-emerald-600 text-white shadow-sm'
-                      : isDark
-                        ? 'bg-slate-900 text-slate-400 hover:text-white'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : isDark
+                      ? 'bg-slate-900 text-slate-400 hover:text-white'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                     }`}
                 >
                   Delivered ({deliveredCount})
@@ -3494,10 +3472,10 @@ export default function BookingsMasterPage() {
                   type="button"
                   onClick={() => { setStatusFilter('ALL'); setPage(1); }}
                   className={`px-3 py-1.5 rounded-xl transition-all ${statusFilter === 'ALL'
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : isDark
-                        ? 'bg-slate-900 text-slate-400 hover:text-white'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : isDark
+                      ? 'bg-slate-900 text-slate-400 hover:text-white'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                     }`}
                 >
                   All ({totalBookingsCount})
@@ -3505,28 +3483,25 @@ export default function BookingsMasterPage() {
 
                 {/* Movement / Load Type Filter (PTL vs FTL) - Only shown for hybrid (BOTH) transporters */}
                 {isBoth && (
-                  <div className={`hidden sm:flex items-center ml-2 p-0.5 rounded-xl border ${
-                    isDark ? 'bg-slate-950/80 border-slate-800' : 'bg-slate-200/70 border-slate-300/80'
-                  }`}>
+                  <div className={`hidden sm:flex items-center ml-2 p-0.5 rounded-xl border ${isDark ? 'bg-slate-950/80 border-slate-800' : 'bg-slate-200/70 border-slate-300/80'
+                    }`}>
                     <button
                       type="button"
                       onClick={() => { setLoadTypeFilter('ALL'); setPage(1); }}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                        loadTypeFilter === 'ALL'
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${loadTypeFilter === 'ALL'
                           ? 'bg-blue-600 text-white shadow-xs'
                           : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
-                      }`}
+                        }`}
                     >
                       All Loads
                     </button>
                     <button
                       type="button"
                       onClick={() => { setLoadTypeFilter('PTL'); setPage(1); }}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 transition-all cursor-pointer ${
-                        loadTypeFilter === 'PTL'
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 transition-all cursor-pointer ${loadTypeFilter === 'PTL'
                           ? 'bg-amber-500 text-white shadow-xs'
                           : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
-                      }`}
+                        }`}
                     >
                       <span>📦</span>
                       <span>PTL</span>
@@ -3534,11 +3509,10 @@ export default function BookingsMasterPage() {
                     <button
                       type="button"
                       onClick={() => { setLoadTypeFilter('FTL'); setPage(1); }}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 transition-all cursor-pointer ${
-                        loadTypeFilter === 'FTL'
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 transition-all cursor-pointer ${loadTypeFilter === 'FTL'
                           ? 'bg-purple-600 text-white shadow-xs'
                           : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
-                      }`}
+                        }`}
                     >
                       <span>🚛</span>
                       <span>FTL</span>
@@ -3573,8 +3547,8 @@ export default function BookingsMasterPage() {
               <div>
                 <div className="flex items-center gap-2.5">
                   <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold border ${isDark
-                      ? 'bg-blue-500/20 text-cyan-400 border-blue-500/30'
-                      : 'bg-blue-50 text-blue-700 border-blue-200'
+                    ? 'bg-blue-500/20 text-cyan-400 border-blue-500/30'
+                    : 'bg-blue-50 text-blue-700 border-blue-200'
                     }`}>
                     DOCKET (LR / BILTY)
                   </span>
@@ -3589,8 +3563,8 @@ export default function BookingsMasterPage() {
                 type="button"
                 onClick={() => setIsDrawerOpen(false)}
                 className={`p-2 rounded-xl border transition-colors ${isDark
-                    ? 'border-slate-800 bg-slate-900/60 text-slate-400 hover:text-white'
-                    : 'border-slate-200 bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900'
+                  ? 'border-slate-800 bg-slate-900/60 text-slate-400 hover:text-white'
+                  : 'border-slate-200 bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900'
                   }`}
               >
                 <X className="w-4 h-4" />
@@ -3598,9 +3572,8 @@ export default function BookingsMasterPage() {
             </div>
 
             {/* TOP BAR: UNIFIED DOCKET RIBBON (Number + Auto/Manual Toggle + Series Info) */}
-            <div className={`px-6 py-2.5 border-b flex items-center justify-between gap-3 flex-wrap shrink-0 ${
-              isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-slate-50/90 border-slate-200'
-            }`}>
+            <div className={`px-6 py-2.5 border-b flex items-center justify-between gap-3 flex-wrap shrink-0 ${isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-slate-50/90 border-slate-200'
+              }`}>
               <div className="flex items-center gap-3 flex-wrap">
                 <div className="flex items-center gap-2">
                   <FileText className={`w-4 h-4 ${isDark ? 'text-cyan-400' : 'text-blue-600'}`} />
@@ -3617,11 +3590,10 @@ export default function BookingsMasterPage() {
                         ...prev,
                         customDocketNumber: e.target.value.toUpperCase().replace(/\s+/g, '')
                       }))}
-                      className={`px-2.5 py-1 rounded-lg border text-xs font-mono font-black uppercase tracking-wider focus:outline-none w-44 ${
-                        isDark
+                      className={`px-2.5 py-1 rounded-lg border text-xs font-mono font-black uppercase tracking-wider focus:outline-none w-44 ${isDark
                           ? 'bg-slate-900 border-amber-500/40 text-amber-300 placeholder-slate-600 focus:border-amber-400'
                           : 'bg-white border-amber-300 text-amber-800 placeholder-slate-400 focus:border-amber-500'
-                      }`}
+                        }`}
                     />
                   ) : (
                     <span className="font-mono text-sm font-black text-blue-600 dark:text-cyan-400 tracking-wide">
@@ -3631,17 +3603,15 @@ export default function BookingsMasterPage() {
                 </div>
 
                 {/* Mode Toggle Switch */}
-                <div className={`inline-flex p-0.5 rounded-lg border ${
-                  isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-slate-200/70 border-slate-300/60'
-                }`}>
+                <div className={`inline-flex p-0.5 rounded-lg border ${isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-slate-200/70 border-slate-300/60'
+                  }`}>
                   <button
                     type="button"
                     onClick={() => setFormData(prev => ({ ...prev, docketNumberMode: 'auto', customDocketNumber: '' }))}
-                    className={`px-2.5 py-0.5 rounded-md text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
-                      formData.docketNumberMode === 'auto'
+                    className={`px-2.5 py-0.5 rounded-md text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer ${formData.docketNumberMode === 'auto'
                         ? 'bg-blue-600 text-white shadow-xs'
                         : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
-                    }`}
+                      }`}
                   >
                     <Sparkles className="w-3 h-3" />
                     <span>Auto</span>
@@ -3649,11 +3619,10 @@ export default function BookingsMasterPage() {
                   <button
                     type="button"
                     onClick={() => setFormData(prev => ({ ...prev, docketNumberMode: 'manual' }))}
-                    className={`px-2.5 py-0.5 rounded-md text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
-                      formData.docketNumberMode === 'manual'
+                    className={`px-2.5 py-0.5 rounded-md text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer ${formData.docketNumberMode === 'manual'
                         ? 'bg-amber-500 text-white shadow-xs'
                         : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
-                    }`}
+                      }`}
                   >
                     <Pencil className="w-3 h-3" />
                     <span>Manual</span>
@@ -3664,9 +3633,8 @@ export default function BookingsMasterPage() {
               {/* Right: Series info + Info Tooltip */}
               <div className="flex items-center gap-2.5">
                 {formData.docketNumberMode === 'auto' ? (
-                  <span className={`text-[11px] font-mono px-2 py-0.5 rounded-md border ${
-                    isDark ? 'bg-slate-900 border-slate-800 text-slate-400' : 'bg-white border-slate-200 text-slate-600'
-                  }`}>
+                  <span className={`text-[11px] font-mono px-2 py-0.5 rounded-md border ${isDark ? 'bg-slate-900 border-slate-800 text-slate-400' : 'bg-white border-slate-200 text-slate-600'
+                    }`}>
                     Series: <b className="text-cyan-600 dark:text-cyan-400">{docketSeriesPreview?.prefix || 'BAL'}</b>
                   </span>
                 ) : (
@@ -3680,11 +3648,10 @@ export default function BookingsMasterPage() {
                     href="/settings?tab=terminology"
                     target="_blank"
                     title="Configure Docket Series"
-                    className={`text-[10px] font-semibold flex items-center gap-1 px-1.5 py-0.5 rounded border transition-colors ${
-                      isDark
+                    className={`text-[10px] font-semibold flex items-center gap-1 px-1.5 py-0.5 rounded border transition-colors ${isDark
                         ? 'border-slate-800 text-slate-400 hover:text-cyan-400'
                         : 'border-slate-200 text-slate-600 hover:text-blue-600'
-                    }`}
+                      }`}
                   >
                     <span>Config</span>
                     <ExternalLink className="w-2.5 h-2.5" />
@@ -3695,9 +3662,8 @@ export default function BookingsMasterPage() {
                   <div
                     role="tooltip"
                     tabIndex={0}
-                    className={`w-5 h-5 rounded-full flex items-center justify-center border cursor-help text-[11px] transition-all ${
-                      isDark ? 'border-slate-700 text-slate-400 hover:text-cyan-400' : 'border-slate-300 text-slate-500 hover:text-blue-600'
-                    }`}
+                    className={`w-5 h-5 rounded-full flex items-center justify-center border cursor-help text-[11px] transition-all ${isDark ? 'border-slate-700 text-slate-400 hover:text-cyan-400' : 'border-slate-300 text-slate-500 hover:text-blue-600'
+                      }`}
                   >
                     <Info className="w-3 h-3" />
                   </div>
@@ -3718,16 +3684,16 @@ export default function BookingsMasterPage() {
                 className="flex items-center space-x-2 cursor-pointer focus:outline-none"
               >
                 <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${bookingStep === 1
-                    ? 'bg-blue-600 text-white'
-                    : isDark
-                      ? 'bg-emerald-500/20 text-emerald-400'
-                      : 'bg-emerald-100 text-emerald-700'
+                  ? 'bg-blue-600 text-white'
+                  : isDark
+                    ? 'bg-emerald-500/20 text-emerald-400'
+                    : 'bg-emerald-100 text-emerald-700'
                   }`}>
                   {bookingStep > 1 ? <Check className="w-3.5 h-3.5" /> : '1'}
                 </div>
                 <span className={`text-xs font-bold ${bookingStep === 1
-                    ? isDark ? 'text-cyan-400' : 'text-blue-600'
-                    : isDark ? 'text-slate-400' : 'text-slate-600'
+                  ? isDark ? 'text-cyan-400' : 'text-blue-600'
+                  : isDark ? 'text-slate-400' : 'text-slate-600'
                   }`}>
                   1. Movement & Parties
                 </span>
@@ -3744,16 +3710,16 @@ export default function BookingsMasterPage() {
                 title={!isStep1Valid ? 'Fill mandatory fields in Step 1 to unlock' : 'Route & Transit'}
               >
                 <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${bookingStep === 2
-                    ? 'bg-blue-600 text-white'
-                    : bookingStep > 2
-                      ? isDark ? 'bg-emerald-500/20 text-emerald-400' : 'bg-emerald-100 text-emerald-700'
-                      : isDark ? 'bg-slate-800 text-slate-500' : 'bg-slate-200 text-slate-500'
+                  ? 'bg-blue-600 text-white'
+                  : bookingStep > 2
+                    ? isDark ? 'bg-emerald-500/20 text-emerald-400' : 'bg-emerald-100 text-emerald-700'
+                    : isDark ? 'bg-slate-800 text-slate-500' : 'bg-slate-200 text-slate-500'
                   }`}>
                   {bookingStep > 2 ? <Check className="w-3.5 h-3.5" /> : '2'}
                 </div>
                 <span className={`text-xs font-bold ${bookingStep === 2
-                    ? isDark ? 'text-cyan-400' : 'text-blue-600'
-                    : isDark ? 'text-slate-400' : 'text-slate-600'
+                  ? isDark ? 'text-cyan-400' : 'text-blue-600'
+                  : isDark ? 'text-slate-400' : 'text-slate-600'
                   }`}>
                   2. Route & Transit
                 </span>
@@ -3770,16 +3736,16 @@ export default function BookingsMasterPage() {
                 title={!isStep1Valid || !isStep2Valid ? 'Fill mandatory fields in Steps 1 & 2 to unlock' : 'Cargo & Rates'}
               >
                 <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${bookingStep === 3
-                    ? 'bg-blue-600 text-white'
-                    : bookingStep > 3
-                      ? isDark ? 'bg-emerald-500/20 text-emerald-400' : 'bg-emerald-100 text-emerald-700'
-                      : isDark ? 'bg-slate-800 text-slate-500' : 'bg-slate-200 text-slate-500'
+                  ? 'bg-blue-600 text-white'
+                  : bookingStep > 3
+                    ? isDark ? 'bg-emerald-500/20 text-emerald-400' : 'bg-emerald-100 text-emerald-700'
+                    : isDark ? 'bg-slate-800 text-slate-500' : 'bg-slate-200 text-slate-500'
                   }`}>
                   {bookingStep > 3 ? <Check className="w-3.5 h-3.5" /> : '3'}
                 </div>
                 <span className={`text-xs font-bold ${bookingStep === 3
-                    ? isDark ? 'text-cyan-400' : 'text-blue-600'
-                    : isDark ? 'text-slate-400' : 'text-slate-600'
+                  ? isDark ? 'text-cyan-400' : 'text-blue-600'
+                  : isDark ? 'text-slate-400' : 'text-slate-600'
                   }`}>
                   3. Cargo & Rates
                 </span>
@@ -3796,14 +3762,14 @@ export default function BookingsMasterPage() {
                 title={!isStep1Valid || !isStep2Valid || !isStep3Valid ? 'Fill mandatory fields in Steps 1, 2 & 3 to unlock' : 'Confirm'}
               >
                 <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${bookingStep === 4
-                    ? 'bg-blue-600 text-white'
-                    : isDark ? 'bg-slate-800 text-slate-500' : 'bg-slate-200 text-slate-500'
+                  ? 'bg-blue-600 text-white'
+                  : isDark ? 'bg-slate-800 text-slate-500' : 'bg-slate-200 text-slate-500'
                   }`}>
                   4
                 </div>
                 <span className={`text-xs font-bold ${bookingStep === 4
-                    ? isDark ? 'text-cyan-400' : 'text-blue-600'
-                    : isDark ? 'text-slate-400' : 'text-slate-600'
+                  ? isDark ? 'text-cyan-400' : 'text-blue-600'
+                  : isDark ? 'text-slate-400' : 'text-slate-600'
                   }`}>
                   4. Confirm
                 </span>
@@ -3819,14 +3785,12 @@ export default function BookingsMasterPage() {
                   <div className="space-y-4">
 
                     {/* Consignment Movement Type Selector (PTL vs FTL) */}
-                    <div className={`p-4 rounded-2xl border transition-all ${
-                      isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50/80 border-slate-200'
-                    }`}>
+                    <div className={`p-4 rounded-2xl border transition-all ${isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50/80 border-slate-200'
+                      }`}>
                       <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-200/60 dark:border-slate-800/60">
                         <div className="flex items-center gap-2">
-                          <span className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 ${
-                            isDark ? 'bg-blue-500/20 text-cyan-400' : 'bg-blue-100 text-blue-700'
-                          }`}>
+                          <span className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 ${isDark ? 'bg-blue-500/20 text-cyan-400' : 'bg-blue-100 text-blue-700'
+                            }`}>
                             <Truck className="w-3.5 h-3.5" />
                           </span>
                           <span className={`text-xs font-bold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
@@ -3880,15 +3844,14 @@ export default function BookingsMasterPage() {
                           <button
                             type="button"
                             onClick={() => setFormData(prev => ({ ...prev, loadType: 'PTL' }))}
-                            className={`p-2.5 sm:p-3 rounded-xl border text-left transition-all cursor-pointer ${
-                              (formData.loadType || 'PTL') === 'PTL'
+                            className={`p-2.5 sm:p-3 rounded-xl border text-left transition-all cursor-pointer ${(formData.loadType || 'PTL') === 'PTL'
                                 ? isDark
                                   ? 'bg-amber-500/10 border-amber-500/70 text-white ring-2 ring-amber-500/30 shadow-xs'
                                   : 'bg-amber-50/80 border-amber-400 text-slate-900 ring-2 ring-amber-400/30 shadow-xs'
                                 : isDark
                                   ? 'bg-slate-900/80 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
                                   : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
-                            }`}
+                              }`}
                           >
                             <div className="flex items-center justify-between">
                               <span className="font-bold text-xs flex items-center gap-2">
@@ -3903,11 +3866,10 @@ export default function BookingsMasterPage() {
                                 <span className="w-3.5 h-3.5 rounded-full border border-slate-400" />
                               )}
                             </div>
-                            <p className={`text-[10.5px] mt-1 leading-snug line-clamp-1 sm:line-clamp-none ${
-                              (formData.loadType || 'PTL') === 'PTL'
+                            <p className={`text-[10.5px] mt-1 leading-snug line-clamp-1 sm:line-clamp-none ${(formData.loadType || 'PTL') === 'PTL'
                                 ? isDark ? 'text-amber-300/90' : 'text-amber-900/80 font-medium'
                                 : 'text-slate-400'
-                            }`}>
+                              }`}>
                               Loose parcels, packages &amp; sundry bilties consolidated with other cargo at hubs.
                             </p>
                           </button>
@@ -3922,15 +3884,14 @@ export default function BookingsMasterPage() {
                               deliveryType: 'DOOR_DELIVERY',
                               ftlPricingMode: prev.ftlPricingMode || 'FIXED'
                             }))}
-                            className={`p-2.5 sm:p-3 rounded-xl border text-left transition-all cursor-pointer ${
-                              (formData.loadType || 'PTL') === 'FTL'
+                            className={`p-2.5 sm:p-3 rounded-xl border text-left transition-all cursor-pointer ${(formData.loadType || 'PTL') === 'FTL'
                                 ? isDark
                                   ? 'bg-purple-500/10 border-purple-500/70 text-white ring-2 ring-purple-500/30 shadow-xs'
                                   : 'bg-purple-50/80 border-purple-400 text-slate-900 ring-2 ring-purple-400/30 shadow-xs'
                                 : isDark
                                   ? 'bg-slate-900/80 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
                                   : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
-                            }`}
+                              }`}
                           >
                             <div className="flex items-center justify-between">
                               <span className="font-bold text-xs flex items-center gap-2">
@@ -3950,11 +3911,10 @@ export default function BookingsMasterPage() {
                                 <span className="w-3.5 h-3.5 rounded-full border border-slate-400" />
                               )}
                             </div>
-                            <p className={`text-[10.5px] mt-1 leading-snug line-clamp-1 sm:line-clamp-none ${
-                              (formData.loadType || 'PTL') === 'FTL'
+                            <p className={`text-[10.5px] mt-1 leading-snug line-clamp-1 sm:line-clamp-none ${(formData.loadType || 'PTL') === 'FTL'
                                 ? isDark ? 'text-purple-300/90' : 'text-purple-900/80 font-medium'
                                 : 'text-slate-400'
-                            }`}>
+                              }`}>
                               Entire dedicated truck from shipper direct to consignee with no cross-docking.
                             </p>
                           </button>
@@ -3967,25 +3927,22 @@ export default function BookingsMasterPage() {
 
                       {/* 1. CONSIGNOR (SHIPPER) CARD */}
                       <div
-                        className={`p-4 rounded-2xl border transition-all relative ${
-                          !isManualConsignor && showConsignorDropdown ? 'z-50' : 'z-30'
-                        } ${
-                          formData.consignorId
+                        className={`p-4 rounded-2xl border transition-all relative ${!isManualConsignor && showConsignorDropdown ? 'z-50' : 'z-30'
+                          } ${formData.consignorId
                             ? isDark
                               ? 'bg-cyan-950/20 border-cyan-500/40 shadow-sm'
                               : 'bg-cyan-50/50 border-cyan-300 shadow-xs'
                             : isDark
-                            ? 'bg-slate-900/60 border-slate-800'
-                            : 'bg-slate-50/80 border-slate-200'
-                        }`}
+                              ? 'bg-slate-900/60 border-slate-800'
+                              : 'bg-slate-50/80 border-slate-200'
+                          }`}
                         ref={consignorDropdownRef}
                       >
                         {/* Header */}
                         <div className="flex items-center justify-between mb-3 pb-2.5 border-b border-slate-200/60 dark:border-slate-800/60">
                           <div className="flex items-center gap-2 min-w-0">
-                            <span className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
-                              isDark ? 'bg-cyan-500/20 text-cyan-400' : 'bg-cyan-100 text-cyan-700'
-                            }`}>
+                            <span className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${isDark ? 'bg-cyan-500/20 text-cyan-400' : 'bg-cyan-100 text-cyan-700'
+                              }`}>
                               <Building2 className="w-4 h-4" />
                             </span>
                             <div>
@@ -4027,9 +3984,8 @@ export default function BookingsMasterPage() {
                                   setIsManualConsignor(false);
                                   setShowConsignorDropdown(true);
                                 }}
-                                className={`text-[11px] font-bold transition-colors flex items-center gap-1 cursor-pointer ${
-                                  isDark ? 'text-cyan-400 hover:text-cyan-300' : 'text-blue-600 hover:text-blue-700'
-                                }`}
+                                className={`text-[11px] font-bold transition-colors flex items-center gap-1 cursor-pointer ${isDark ? 'text-cyan-400 hover:text-cyan-300' : 'text-blue-600 hover:text-blue-700'
+                                  }`}
                               >
                                 <Search className="w-3 h-3" />
                                 <span>Select Registered</span>
@@ -4041,9 +3997,8 @@ export default function BookingsMasterPage() {
                                   setIsManualConsignor(true);
                                   setShowConsignorDropdown(false);
                                 }}
-                                className={`text-[11px] font-bold transition-colors flex items-center gap-1 cursor-pointer ${
-                                  isDark ? 'text-amber-400 hover:text-amber-300' : 'text-amber-600 hover:text-amber-700'
-                                }`}
+                                className={`text-[11px] font-bold transition-colors flex items-center gap-1 cursor-pointer ${isDark ? 'text-amber-400 hover:text-amber-300' : 'text-amber-600 hover:text-amber-700'
+                                  }`}
                               >
                                 <Sparkles className="w-3 h-3" />
                                 <span>+ Not Registered Shipper</span>
@@ -4100,13 +4055,12 @@ export default function BookingsMasterPage() {
                               const isHoApproved = limit > scBranchCap;
 
                               return (
-                                <div className={`p-2 rounded-xl border text-[11px] flex items-center justify-between gap-2 ${
-                                  isBreached
+                                <div className={`p-2 rounded-xl border text-[11px] flex items-center justify-between gap-2 ${isBreached
                                     ? 'bg-rose-500/15 border-rose-500/40 text-rose-300'
                                     : isDark
-                                    ? 'bg-amber-500/10 border-amber-500/25 text-amber-300'
-                                    : 'bg-amber-50 border-amber-200 text-amber-900'
-                                }`}>
+                                      ? 'bg-amber-500/10 border-amber-500/25 text-amber-300'
+                                      : 'bg-amber-50 border-amber-200 text-amber-900'
+                                  }`}>
                                   <div className="flex items-center gap-1.5 min-w-0">
                                     <span className="font-bold shrink-0">⭐ TBB Credit:</span>
                                     <span className="truncate font-mono">Limit: ₹{limit.toLocaleString('en-IN')}</span>
@@ -4133,11 +4087,10 @@ export default function BookingsMasterPage() {
                                 placeholder="Person or Company Name (Not Registered)"
                                 value={formData.consignorName}
                                 onChange={(e) => setFormData(prev => ({ ...prev, consignorName: e.target.value, consignorId: '' }))}
-                                className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${
-                                  isDark
+                                className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
                                     ? 'border-slate-800 bg-slate-900/90 text-white placeholder-slate-500 focus:border-cyan-400'
                                     : 'border-slate-300 bg-white text-slate-900 placeholder-slate-400 focus:border-blue-500'
-                                }`}
+                                  }`}
                               />
                             </div>
 
@@ -4158,15 +4111,14 @@ export default function BookingsMasterPage() {
                                       const val = e.target.value.replace(/\D/g, '').slice(0, 10);
                                       setFormData(prev => ({ ...prev, consignorPhone: val }));
                                     }}
-                                    className={`w-full px-3 py-2 pr-7 rounded-xl border text-xs font-mono font-bold focus:outline-none transition-all ${
-                                      (formData.consignorPhone || '').replace(/\D/g, '').length === 10
+                                    className={`w-full px-3 py-2 pr-7 rounded-xl border text-xs font-mono font-bold focus:outline-none transition-all ${(formData.consignorPhone || '').replace(/\D/g, '').length === 10
                                         ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 focus:border-emerald-500'
                                         : (formData.consignorPhone || '').length > 0
-                                        ? 'border-rose-500 bg-rose-500/10 text-rose-500 focus:border-rose-500'
-                                        : isDark
-                                        ? 'border-slate-800 bg-slate-900/90 text-white placeholder-slate-500 focus:border-cyan-400'
-                                        : 'border-slate-300 bg-white text-slate-900 placeholder-slate-400 focus:border-blue-500'
-                                    }`}
+                                          ? 'border-rose-500 bg-rose-500/10 text-rose-500 focus:border-rose-500'
+                                          : isDark
+                                            ? 'border-slate-800 bg-slate-900/90 text-white placeholder-slate-500 focus:border-cyan-400'
+                                            : 'border-slate-300 bg-white text-slate-900 placeholder-slate-400 focus:border-blue-500'
+                                      }`}
                                   />
                                   {(formData.consignorPhone || '').replace(/\D/g, '').length === 10 && (
                                     <Check className="w-3.5 h-3.5 text-emerald-500 absolute right-2.5 top-1/2 -translate-y-1/2" />
@@ -4183,11 +4135,10 @@ export default function BookingsMasterPage() {
                                   placeholder="Premises / City"
                                   value={formData.consignorAddress || ''}
                                   onChange={(e) => setFormData(prev => ({ ...prev, consignorAddress: e.target.value }))}
-                                  className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${
-                                    isDark
+                                  className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
                                       ? 'border-slate-800 bg-slate-900/90 text-white placeholder-slate-500 focus:border-cyan-400'
                                       : 'border-slate-300 bg-white text-slate-900 placeholder-slate-400 focus:border-blue-500'
-                                  }`}
+                                    }`}
                                 />
                               </div>
                             </div>
@@ -4262,11 +4213,10 @@ export default function BookingsMasterPage() {
                                     }
                                   }
                                 }}
-                                className={`w-full px-3.5 py-2.5 pr-14 rounded-xl border text-xs focus:outline-none transition-colors ${
-                                  isDark
+                                className={`w-full px-3.5 py-2.5 pr-14 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
                                     ? 'border-slate-800 bg-slate-900/80 text-white placeholder-slate-500 focus:border-cyan-400'
                                     : 'border-slate-200 bg-white text-slate-900 placeholder-slate-400 focus:border-blue-500'
-                                }`}
+                                  }`}
                               />
 
                               <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
@@ -4320,14 +4270,12 @@ export default function BookingsMasterPage() {
                                     ? { bottom: `${consignorCoords.bottom}px`, top: 'auto' }
                                     : { top: `${consignorCoords.top}px`, bottom: 'auto' }),
                                 }}
-                                className={`flex flex-col rounded-2xl border shadow-2xl overflow-hidden backdrop-blur-md transition-all ${
-                                isDark
-                                  ? 'bg-slate-900 border-slate-700/80 text-white shadow-cyan-950/40'
-                                  : 'bg-white border-slate-200 text-slate-900 shadow-slate-900/25'
-                              }`}>
-                                <div className={`px-3 py-2 border-b flex items-center justify-between text-[11px] font-semibold shrink-0 ${
-                                  isDark ? 'bg-slate-950/80 border-slate-800 text-slate-400' : 'bg-slate-50 border-slate-100 text-slate-600'
-                                }`}>
+                                className={`flex flex-col rounded-2xl border shadow-2xl overflow-hidden backdrop-blur-md transition-all ${isDark
+                                    ? 'bg-slate-900 border-slate-700/80 text-white shadow-cyan-950/40'
+                                    : 'bg-white border-slate-200 text-slate-900 shadow-slate-900/25'
+                                  }`}>
+                                <div className={`px-3 py-2 border-b flex items-center justify-between text-[11px] font-semibold shrink-0 ${isDark ? 'bg-slate-950/80 border-slate-800 text-slate-400' : 'bg-slate-50 border-slate-100 text-slate-600'
+                                  }`}>
                                   <span className="flex items-center gap-1.5 truncate">
                                     <Users className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
                                     <span>
@@ -4379,20 +4327,18 @@ export default function BookingsMasterPage() {
                                             setIsManualConsignor(false);
                                             setShowConsignorDropdown(false);
                                           }}
-                                          className={`p-2.5 px-3 cursor-pointer transition-colors flex items-center justify-between gap-2 ${
-                                            isSelected
+                                          className={`p-2.5 px-3 cursor-pointer transition-colors flex items-center justify-between gap-2 ${isSelected
                                               ? isDark ? 'bg-cyan-500/20 text-cyan-300' : 'bg-blue-50 text-blue-900 font-semibold'
                                               : isDark
-                                              ? 'hover:bg-slate-800/80 text-slate-200'
-                                              : 'hover:bg-slate-50 text-slate-700'
-                                          }`}
+                                                ? 'hover:bg-slate-800/80 text-slate-200'
+                                                : 'hover:bg-slate-50 text-slate-700'
+                                            }`}
                                         >
                                           <div className="flex-1 min-w-0">
                                             <div className="flex items-center gap-1.5 flex-wrap">
                                               <span className="text-xs font-bold truncate">{c.name}</span>
-                                              <span className={`text-[10px] px-1 py-0.2 rounded font-mono font-medium ${
-                                                isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-600'
-                                              }`}>
+                                              <span className={`text-[10px] px-1 py-0.2 rounded font-mono font-medium ${isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-600'
+                                                }`}>
                                                 {c.customer_code || 'ID:' + c.id}
                                               </span>
                                               {(parseInt(c.credit_days, 10) > 0 || parseFloat(c.credit_limit || 0) > 0) && (
@@ -4401,9 +4347,8 @@ export default function BookingsMasterPage() {
                                                 </span>
                                               )}
                                             </div>
-                                            <div className={`text-[11px] flex items-center gap-2 mt-0.5 flex-wrap ${
-                                              isDark ? 'text-slate-400' : 'text-slate-500'
-                                            }`}>
+                                            <div className={`text-[11px] flex items-center gap-2 mt-0.5 flex-wrap ${isDark ? 'text-slate-400' : 'text-slate-500'
+                                              }`}>
                                               {c.city && <span>📍 {c.city}</span>}
                                               {c.phone && <span>📞 {c.phone}</span>}
                                             </div>
@@ -4425,9 +4370,8 @@ export default function BookingsMasterPage() {
                                       setIsManualConsignor(true);
                                       setShowConsignorDropdown(false);
                                     }}
-                                    className={`p-2 px-3 border-t text-xs cursor-pointer flex items-center justify-between font-medium shrink-0 ${
-                                      isDark ? 'bg-slate-950/80 border-slate-800 text-cyan-400 hover:bg-slate-800' : 'bg-slate-50 border-slate-100 text-blue-600 hover:bg-slate-100'
-                                    }`}
+                                    className={`p-2 px-3 border-t text-xs cursor-pointer flex items-center justify-between font-medium shrink-0 ${isDark ? 'bg-slate-950/80 border-slate-800 text-cyan-400 hover:bg-slate-800' : 'bg-slate-50 border-slate-100 text-blue-600 hover:bg-slate-100'
+                                      }`}
                                   >
                                     <span>Use &quot;{formData.consignorName}&quot; as Not Registered Shipper</span>
                                     <ArrowRight className="w-3.5 h-3.5" />
@@ -4442,25 +4386,22 @@ export default function BookingsMasterPage() {
 
                       {/* 2. CONSIGNEE (RECEIVER) CARD */}
                       <div
-                        className={`p-4 rounded-2xl border transition-all relative ${
-                          !isManualConsignee && showConsigneeDropdown ? 'z-50' : 'z-20'
-                        } ${
-                          formData.consigneeId
+                        className={`p-4 rounded-2xl border transition-all relative ${!isManualConsignee && showConsigneeDropdown ? 'z-50' : 'z-20'
+                          } ${formData.consigneeId
                             ? isDark
                               ? 'bg-blue-950/20 border-blue-500/40 shadow-sm'
                               : 'bg-blue-50/50 border-blue-300 shadow-xs'
                             : isDark
-                            ? 'bg-slate-900/60 border-slate-800'
-                            : 'bg-slate-50/80 border-slate-200'
-                        }`}
+                              ? 'bg-slate-900/60 border-slate-800'
+                              : 'bg-slate-50/80 border-slate-200'
+                          }`}
                         ref={consigneeDropdownRef}
                       >
                         {/* Header */}
                         <div className="flex items-center justify-between mb-3 pb-2.5 border-b border-slate-200/60 dark:border-slate-800/60">
                           <div className="flex items-center gap-2 min-w-0">
-                            <span className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
-                              isDark ? 'bg-blue-500/20 text-blue-400' : 'bg-blue-100 text-blue-700'
-                            }`}>
+                            <span className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${isDark ? 'bg-blue-500/20 text-blue-400' : 'bg-blue-100 text-blue-700'
+                              }`}>
                               <UserCheck className="w-4 h-4" />
                             </span>
                             <div>
@@ -4502,9 +4443,8 @@ export default function BookingsMasterPage() {
                                   setIsManualConsignee(false);
                                   setShowConsigneeDropdown(true);
                                 }}
-                                className={`text-[11px] font-bold transition-colors flex items-center gap-1 cursor-pointer ${
-                                  isDark ? 'text-cyan-400 hover:text-cyan-300' : 'text-blue-600 hover:text-blue-700'
-                                }`}
+                                className={`text-[11px] font-bold transition-colors flex items-center gap-1 cursor-pointer ${isDark ? 'text-cyan-400 hover:text-cyan-300' : 'text-blue-600 hover:text-blue-700'
+                                  }`}
                               >
                                 <Search className="w-3 h-3" />
                                 <span>Select Registered</span>
@@ -4516,9 +4456,8 @@ export default function BookingsMasterPage() {
                                   setIsManualConsignee(true);
                                   setShowConsigneeDropdown(false);
                                 }}
-                                className={`text-[11px] font-bold transition-colors flex items-center gap-1 cursor-pointer ${
-                                  isDark ? 'text-amber-400 hover:text-amber-300' : 'text-amber-600 hover:text-amber-700'
-                                }`}
+                                className={`text-[11px] font-bold transition-colors flex items-center gap-1 cursor-pointer ${isDark ? 'text-amber-400 hover:text-amber-300' : 'text-amber-600 hover:text-amber-700'
+                                  }`}
                               >
                                 <Sparkles className="w-3 h-3" />
                                 <span>+ Not Registered Receiver</span>
@@ -4576,11 +4515,10 @@ export default function BookingsMasterPage() {
                                 placeholder="Person or Company Name (Not Registered)"
                                 value={formData.consigneeName}
                                 onChange={(e) => setFormData(prev => ({ ...prev, consigneeName: e.target.value, consigneeId: '' }))}
-                                className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${
-                                  isDark
+                                className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
                                     ? 'border-slate-800 bg-slate-900/90 text-white placeholder-slate-500 focus:border-cyan-400'
                                     : 'border-slate-300 bg-white text-slate-900 placeholder-slate-400 focus:border-blue-500'
-                                }`}
+                                  }`}
                               />
                             </div>
 
@@ -4601,15 +4539,14 @@ export default function BookingsMasterPage() {
                                       const val = e.target.value.replace(/\D/g, '').slice(0, 10);
                                       setFormData(prev => ({ ...prev, consigneePhone: val }));
                                     }}
-                                    className={`w-full px-3 py-2 pr-7 rounded-xl border text-xs font-mono font-bold focus:outline-none transition-all ${
-                                      (formData.consigneePhone || '').replace(/\D/g, '').length === 10
+                                    className={`w-full px-3 py-2 pr-7 rounded-xl border text-xs font-mono font-bold focus:outline-none transition-all ${(formData.consigneePhone || '').replace(/\D/g, '').length === 10
                                         ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 focus:border-emerald-500'
                                         : (formData.consigneePhone || '').length > 0
-                                        ? 'border-rose-500 bg-rose-500/10 text-rose-500 focus:border-rose-500'
-                                        : isDark
-                                        ? 'border-slate-800 bg-slate-900/90 text-white placeholder-slate-500 focus:border-cyan-400'
-                                        : 'border-slate-300 bg-white text-slate-900 placeholder-slate-400 focus:border-blue-500'
-                                    }`}
+                                          ? 'border-rose-500 bg-rose-500/10 text-rose-500 focus:border-rose-500'
+                                          : isDark
+                                            ? 'border-slate-800 bg-slate-900/90 text-white placeholder-slate-500 focus:border-cyan-400'
+                                            : 'border-slate-300 bg-white text-slate-900 placeholder-slate-400 focus:border-blue-500'
+                                      }`}
                                   />
                                   {(formData.consigneePhone || '').replace(/\D/g, '').length === 10 && (
                                     <Check className="w-3.5 h-3.5 text-emerald-500 absolute right-2.5 top-1/2 -translate-y-1/2" />
@@ -4626,11 +4563,10 @@ export default function BookingsMasterPage() {
                                   placeholder="Shop / Plot / City"
                                   value={formData.consigneeAddress || ''}
                                   onChange={(e) => setFormData(prev => ({ ...prev, consigneeAddress: e.target.value }))}
-                                  className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${
-                                    isDark
+                                  className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
                                       ? 'border-slate-800 bg-slate-900/90 text-white placeholder-slate-500 focus:border-cyan-400'
                                       : 'border-slate-300 bg-white text-slate-900 placeholder-slate-400 focus:border-blue-500'
-                                  }`}
+                                    }`}
                                 />
                               </div>
                             </div>
@@ -4701,11 +4637,10 @@ export default function BookingsMasterPage() {
                                     }
                                   }
                                 }}
-                                className={`w-full px-3.5 py-2.5 pr-14 rounded-xl border text-xs focus:outline-none transition-colors ${
-                                  isDark
+                                className={`w-full px-3.5 py-2.5 pr-14 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
                                     ? 'border-slate-800 bg-slate-900/80 text-white placeholder-slate-500 focus:border-cyan-400'
                                     : 'border-slate-200 bg-white text-slate-900 placeholder-slate-400 focus:border-blue-500'
-                                }`}
+                                  }`}
                               />
 
                               <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
@@ -4759,14 +4694,12 @@ export default function BookingsMasterPage() {
                                     ? { bottom: `${consigneeCoords.bottom}px`, top: 'auto' }
                                     : { top: `${consigneeCoords.top}px`, bottom: 'auto' }),
                                 }}
-                                className={`flex flex-col rounded-2xl border shadow-2xl overflow-hidden backdrop-blur-md transition-all ${
-                                isDark
-                                  ? 'bg-slate-900 border-slate-700/80 text-white shadow-blue-950/40'
-                                  : 'bg-white border-slate-200 text-slate-900 shadow-slate-900/25'
-                              }`}>
-                                <div className={`px-3 py-2 border-b flex items-center justify-between text-[11px] font-semibold shrink-0 ${
-                                  isDark ? 'bg-slate-950/80 border-slate-800 text-slate-400' : 'bg-slate-50 border-slate-100 text-slate-600'
-                                }`}>
+                                className={`flex flex-col rounded-2xl border shadow-2xl overflow-hidden backdrop-blur-md transition-all ${isDark
+                                    ? 'bg-slate-900 border-slate-700/80 text-white shadow-blue-950/40'
+                                    : 'bg-white border-slate-200 text-slate-900 shadow-slate-900/25'
+                                  }`}>
+                                <div className={`px-3 py-2 border-b flex items-center justify-between text-[11px] font-semibold shrink-0 ${isDark ? 'bg-slate-950/80 border-slate-800 text-slate-400' : 'bg-slate-50 border-slate-100 text-slate-600'
+                                  }`}>
                                   <span className="flex items-center gap-1.5 truncate">
                                     <Users className="w-3.5 h-3.5 text-blue-400 shrink-0" />
                                     <span>Registered Receivers ({filteredConsignees.length})</span>
@@ -4800,26 +4733,23 @@ export default function BookingsMasterPage() {
                                             setIsManualConsignee(false);
                                             setShowConsigneeDropdown(false);
                                           }}
-                                          className={`p-2.5 px-3 cursor-pointer transition-colors flex items-center justify-between gap-2 ${
-                                            isSelected
+                                          className={`p-2.5 px-3 cursor-pointer transition-colors flex items-center justify-between gap-2 ${isSelected
                                               ? isDark ? 'bg-blue-500/20 text-blue-300' : 'bg-blue-50 text-blue-900 font-semibold'
                                               : isDark
-                                              ? 'hover:bg-slate-800/80 text-slate-200'
-                                              : 'hover:bg-slate-50 text-slate-700'
-                                          }`}
+                                                ? 'hover:bg-slate-800/80 text-slate-200'
+                                                : 'hover:bg-slate-50 text-slate-700'
+                                            }`}
                                         >
                                           <div className="flex-1 min-w-0">
                                             <div className="flex items-center gap-1.5 flex-wrap">
                                               <span className="text-xs font-bold truncate">{c.name}</span>
-                                              <span className={`text-[10px] px-1 py-0.2 rounded font-mono font-medium ${
-                                                isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-600'
-                                              }`}>
+                                              <span className={`text-[10px] px-1 py-0.2 rounded font-mono font-medium ${isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-600'
+                                                }`}>
                                                 {c.customer_code || 'ID:' + c.id}
                                               </span>
                                             </div>
-                                            <div className={`text-[11px] flex items-center gap-2 mt-0.5 flex-wrap ${
-                                              isDark ? 'text-slate-400' : 'text-slate-500'
-                                            }`}>
+                                            <div className={`text-[11px] flex items-center gap-2 mt-0.5 flex-wrap ${isDark ? 'text-slate-400' : 'text-slate-500'
+                                              }`}>
                                               {c.city && <span>📍 {c.city}</span>}
                                               {c.phone && <span>📞 {c.phone}</span>}
                                             </div>
@@ -4841,9 +4771,8 @@ export default function BookingsMasterPage() {
                                       setIsManualConsignee(true);
                                       setShowConsigneeDropdown(false);
                                     }}
-                                    className={`p-2 px-3 border-t text-xs cursor-pointer flex items-center justify-between font-medium shrink-0 ${
-                                      isDark ? 'bg-slate-950/80 border-slate-800 text-blue-400 hover:bg-slate-800' : 'bg-slate-50 border-slate-100 text-blue-600 hover:bg-slate-100'
-                                    }`}
+                                    className={`p-2 px-3 border-t text-xs cursor-pointer flex items-center justify-between font-medium shrink-0 ${isDark ? 'bg-slate-950/80 border-slate-800 text-blue-400 hover:bg-slate-800' : 'bg-slate-50 border-slate-100 text-blue-600 hover:bg-slate-100'
+                                      }`}
                                   >
                                     <span>Use &quot;{formData.consigneeName}&quot; as Not Registered Receiver</span>
                                     <ArrowRight className="w-3.5 h-3.5" />
@@ -4865,11 +4794,10 @@ export default function BookingsMasterPage() {
                   <div className="space-y-4">
 
                     {/* Movement Indicator Strip */}
-                    <div className={`p-3 rounded-xl border flex items-center justify-between text-xs ${
-                      (formData.loadType || 'PTL') === 'FTL'
+                    <div className={`p-3 rounded-xl border flex items-center justify-between text-xs ${(formData.loadType || 'PTL') === 'FTL'
                         ? isDark ? 'bg-purple-950/20 border-purple-500/30 text-purple-200' : 'bg-purple-50 border-purple-200 text-purple-900'
                         : isDark ? 'bg-amber-950/20 border-amber-500/30 text-amber-200' : 'bg-amber-50 border-amber-200 text-amber-900'
-                    }`}>
+                      }`}>
                       <div className="flex items-center gap-2">
                         <span className="text-base">{(formData.loadType || 'PTL') === 'FTL' ? '🚛' : '📦'}</span>
                         <span className="font-bold">
@@ -4885,14 +4813,12 @@ export default function BookingsMasterPage() {
                     </div>
 
                     {/* Corridor Route Section */}
-                    <div className={`p-4 rounded-2xl border transition-all ${
-                      isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50/80 border-slate-200'
-                    }`}>
+                    <div className={`p-4 rounded-2xl border transition-all ${isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50/80 border-slate-200'
+                      }`}>
                       <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-200/60 dark:border-slate-800/60">
                         <div className="flex items-center gap-2">
-                          <span className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 ${
-                            isDark ? 'bg-blue-500/20 text-cyan-400' : 'bg-blue-100 text-blue-700'
-                          }`}>
+                          <span className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 ${isDark ? 'bg-blue-500/20 text-cyan-400' : 'bg-blue-100 text-blue-700'
+                            }`}>
                             <Truck className="w-3.5 h-3.5" />
                           </span>
                           <span className={`text-xs font-bold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
@@ -4905,9 +4831,8 @@ export default function BookingsMasterPage() {
                           <Link
                             href="/branches"
                             target="_blank"
-                            className={`text-[11px] font-semibold flex items-center gap-0.5 ${
-                              isDark ? 'text-cyan-400 hover:text-cyan-300' : 'text-blue-600 hover:text-blue-700'
-                            }`}
+                            className={`text-[11px] font-semibold flex items-center gap-0.5 ${isDark ? 'text-cyan-400 hover:text-cyan-300' : 'text-blue-600 hover:text-blue-700'
+                              }`}
                           >
                             <span>+ Add Hub</span>
                           </Link>
@@ -4935,17 +4860,15 @@ export default function BookingsMasterPage() {
                           </div>
 
                           {isRestrictedBranchUser ? (
-                            <div className={`w-full h-11 px-3 rounded-xl border text-xs font-bold flex items-center justify-between shadow-xs ${
-                              isDark ? 'border-slate-800 bg-slate-900/90 text-white' : 'border-slate-200 bg-slate-100/90 text-slate-900'
-                            }`}>
+                            <div className={`w-full h-11 px-3 rounded-xl border text-xs font-bold flex items-center justify-between shadow-xs ${isDark ? 'border-slate-800 bg-slate-900/90 text-white' : 'border-slate-200 bg-slate-100/90 text-slate-900'
+                              }`}>
                               <div className="flex items-center gap-1.5 truncate flex-1 min-w-0">
                                 <Building2 className={`w-3.5 h-3.5 shrink-0 ${isDark ? 'text-cyan-400' : 'text-blue-600'}`} />
                                 <span className="truncate">
                                   {branchesList.find((b) => b.id === userBranchId)?.branch_name || user?.branchName || 'Your Branch'}
                                 </span>
-                                <span className={`font-mono text-[10px] font-bold px-1.5 py-0.5 rounded-md shrink-0 border ${
-                                  isDark ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30' : 'bg-blue-50 text-blue-700 border-blue-200'
-                                }`}>
+                                <span className={`font-mono text-[10px] font-bold px-1.5 py-0.5 rounded-md shrink-0 border ${isDark ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30' : 'bg-blue-50 text-blue-700 border-blue-200'
+                                  }`}>
                                   [{branchesList.find((b) => b.id === userBranchId)?.branch_code || 'HUB'}]
                                 </span>
                                 <span className={`text-[11px] font-normal truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
@@ -4984,9 +4907,8 @@ export default function BookingsMasterPage() {
                                 Direct Point-to-Point
                               </span>
                             </div>
-                            <div className={`w-full h-11 px-3 rounded-xl border text-xs flex items-center justify-between shadow-xs ${
-                              isDark ? 'border-purple-500/40 bg-purple-950/20 text-purple-200' : 'border-purple-200 bg-purple-50/70 text-purple-900'
-                            }`}>
+                            <div className={`w-full h-11 px-3 rounded-xl border text-xs flex items-center justify-between shadow-xs ${isDark ? 'border-purple-500/40 bg-purple-950/20 text-purple-200' : 'border-purple-200 bg-purple-50/70 text-purple-900'
+                              }`}>
                               <div className="flex items-center gap-2 truncate flex-1 min-w-0">
                                 <MapPin className="w-3.5 h-3.5 text-purple-500 shrink-0" />
                                 <span className="font-bold truncate text-slate-900 dark:text-white">
@@ -5032,9 +4954,8 @@ export default function BookingsMasterPage() {
                     </div>
 
                     {/* Dispatch Parameters: Pickup Date, Transit Mode & Delivery Type */}
-                    <div className={`p-4 rounded-2xl border transition-all ${
-                      isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50/80 border-slate-200'
-                    }`}>
+                    <div className={`p-4 rounded-2xl border transition-all ${isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50/80 border-slate-200'
+                      }`}>
                       {(formData.loadType || 'PTL') === 'FTL' ? (
                         /* FTL: All 3 parameters in a single unified row, fixed and non-changeable */
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
@@ -5051,11 +4972,10 @@ export default function BookingsMasterPage() {
                               type="date"
                               value={formData.pickupDate}
                               onChange={(e) => setFormData({ ...formData, pickupDate: e.target.value })}
-                              className={`w-full h-11 px-3 rounded-xl border text-xs font-bold focus:outline-none transition-colors cursor-pointer shadow-xs ${
-                                isDark
+                              className={`w-full h-11 px-3 rounded-xl border text-xs font-bold focus:outline-none transition-colors cursor-pointer shadow-xs ${isDark
                                   ? 'border-purple-500/40 bg-slate-900/90 text-white focus:border-purple-400 [color-scheme:dark]'
                                   : 'border-purple-200 bg-white text-slate-900 focus:border-purple-500 [color-scheme:light]'
-                              }`}
+                                }`}
                             />
                           </div>
 
@@ -5068,9 +4988,8 @@ export default function BookingsMasterPage() {
                                 <span className="text-rose-500 font-bold">*</span>
                               </label>
                             </div>
-                            <div className={`w-full h-11 px-3 rounded-xl border text-xs font-bold flex items-center justify-between shadow-xs select-none ${
-                              isDark ? 'border-purple-500/40 bg-purple-950/20 text-purple-200' : 'border-purple-200 bg-purple-50/70 text-purple-900'
-                            }`}>
+                            <div className={`w-full h-11 px-3 rounded-xl border text-xs font-bold flex items-center justify-between shadow-xs select-none ${isDark ? 'border-purple-500/40 bg-purple-950/20 text-purple-200' : 'border-purple-200 bg-purple-50/70 text-purple-900'
+                              }`}>
                               <div className="flex items-center gap-2 truncate">
                                 <Truck className="w-4 h-4 text-purple-500 shrink-0" />
                                 <span className="truncate">By Road (Dedicated Truck)</span>
@@ -5090,9 +5009,8 @@ export default function BookingsMasterPage() {
                                 <span className="text-rose-500 font-bold">*</span>
                               </label>
                             </div>
-                            <div className={`w-full h-11 px-3 rounded-xl border text-xs font-bold flex items-center justify-between shadow-xs select-none ${
-                              isDark ? 'border-emerald-500/40 bg-emerald-950/20 text-emerald-200' : 'border-emerald-200 bg-emerald-50/70 text-emerald-900'
-                            }`}>
+                            <div className={`w-full h-11 px-3 rounded-xl border text-xs font-bold flex items-center justify-between shadow-xs select-none ${isDark ? 'border-emerald-500/40 bg-emerald-950/20 text-emerald-200' : 'border-emerald-200 bg-emerald-50/70 text-emerald-900'
+                              }`}>
                               <div className="flex items-center gap-2 truncate">
                                 <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
                                 <span className="truncate">Direct Doorstep Delivery</span>
@@ -5117,11 +5035,10 @@ export default function BookingsMasterPage() {
                                 type="date"
                                 value={formData.pickupDate}
                                 onChange={(e) => setFormData({ ...formData, pickupDate: e.target.value })}
-                                className={`w-full px-3 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${
-                                  isDark
+                                className={`w-full px-3 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
                                     ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400 [color-scheme:dark]'
                                     : 'border-slate-200 bg-white text-slate-900 focus:border-blue-500 [color-scheme:light]'
-                                }`}
+                                  }`}
                               />
                             </div>
 
@@ -5144,13 +5061,12 @@ export default function BookingsMasterPage() {
                                       key={m.id}
                                       type="button"
                                       onClick={() => setFormData({ ...formData, transportMode: m.id })}
-                                      className={`py-2 px-1.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                                        isSelected
+                                      className={`py-2 px-1.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${isSelected
                                           ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
                                           : isDark
-                                          ? 'bg-slate-900/80 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
-                                          : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
-                                      }`}
+                                            ? 'bg-slate-900/80 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
+                                            : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
+                                        }`}
                                     >
                                       <IconComp className="w-3.5 h-3.5 shrink-0" />
                                       <span className="truncate">{m.label}</span>
@@ -5185,20 +5101,18 @@ export default function BookingsMasterPage() {
                                     doorDeliveryCharges: curDdc < 100 ? '100' : formData.doorDeliveryCharges,
                                   });
                                 }}
-                                className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                                  (formData.deliveryType || 'DOOR_DELIVERY') === 'DOOR_DELIVERY'
+                                className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${(formData.deliveryType || 'DOOR_DELIVERY') === 'DOOR_DELIVERY'
                                     ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
                                     : isDark
-                                    ? 'bg-slate-900/80 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
-                                    : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
-                                }`}
+                                      ? 'bg-slate-900/80 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
+                                      : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
+                                  }`}
                               >
                                 <Truck className="w-4 h-4 shrink-0" />
                                 <div className="text-left">
                                   <span className="block leading-tight">Door Delivery</span>
-                                  <span className={`block text-[10px] font-normal ${
-                                    (formData.deliveryType || 'DOOR_DELIVERY') === 'DOOR_DELIVERY' ? 'text-blue-100' : 'text-slate-400'
-                                  }`}>Direct doorstep delivery</span>
+                                  <span className={`block text-[10px] font-normal ${(formData.deliveryType || 'DOOR_DELIVERY') === 'DOOR_DELIVERY' ? 'text-blue-100' : 'text-slate-400'
+                                    }`}>Direct doorstep delivery</span>
                                 </div>
                               </button>
 
@@ -5212,20 +5126,18 @@ export default function BookingsMasterPage() {
                                     doorDeliveryCharges: curDdc === 100 ? '0' : formData.doorDeliveryCharges,
                                   });
                                 }}
-                                className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                                  formData.deliveryType === 'GODOWN_DELIVERY'
+                                className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${formData.deliveryType === 'GODOWN_DELIVERY'
                                     ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
                                     : isDark
-                                    ? 'bg-slate-900/80 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
-                                    : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
-                                }`}
+                                      ? 'bg-slate-900/80 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
+                                      : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
+                                  }`}
                               >
                                 <Building2 className="w-4 h-4 shrink-0" />
                                 <div className="text-left">
                                   <span className="block leading-tight">Godown Delivery</span>
-                                  <span className={`block text-[10px] font-normal ${
-                                    formData.deliveryType === 'GODOWN_DELIVERY' ? 'text-blue-100' : 'text-slate-400'
-                                  }`}>Pickup from branch</span>
+                                  <span className={`block text-[10px] font-normal ${formData.deliveryType === 'GODOWN_DELIVERY' ? 'text-blue-100' : 'text-slate-400'
+                                    }`}>Pickup from branch</span>
                                 </div>
                               </button>
                             </div>
@@ -5242,9 +5154,8 @@ export default function BookingsMasterPage() {
                   <div className="space-y-4">
                     {/* If FTL is active: Pricing mode (Lump Sum Truck Hire vs Per KG) */}
                     {(formData.loadType || 'PTL') === 'FTL' && (
-                      <div className={`p-4 rounded-2xl border transition-all ${
-                        isDark ? 'bg-purple-950/20 border-purple-500/30' : 'bg-purple-50/70 border-purple-200'
-                      }`}>
+                      <div className={`p-4 rounded-2xl border transition-all ${isDark ? 'bg-purple-950/20 border-purple-500/30' : 'bg-purple-50/70 border-purple-200'
+                        }`}>
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                           <div>
                             <div className="flex items-center gap-2">
@@ -5267,22 +5178,20 @@ export default function BookingsMasterPage() {
                             <button
                               type="button"
                               onClick={() => setFormData(prev => ({ ...prev, ftlPricingMode: 'FIXED' }))}
-                              className={`h-full px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                                (formData.ftlPricingMode || 'FIXED') === 'FIXED'
+                              className={`h-full px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${(formData.ftlPricingMode || 'FIXED') === 'FIXED'
                                   ? 'bg-purple-600 text-white border-purple-500 shadow-md shadow-purple-600/25'
                                   : isDark ? 'bg-slate-900/80 border-slate-800 text-slate-300 hover:border-slate-700' : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
-                              }`}
+                                }`}
                             >
                               <span>Fixed Truck Hire (₹)</span>
                             </button>
                             <button
                               type="button"
                               onClick={() => setFormData(prev => ({ ...prev, ftlPricingMode: 'PER_KG' }))}
-                              className={`h-full px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                                formData.ftlPricingMode === 'PER_KG'
+                              className={`h-full px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${formData.ftlPricingMode === 'PER_KG'
                                   ? 'bg-purple-600 text-white border-purple-500 shadow-md shadow-purple-600/25'
                                   : isDark ? 'bg-slate-900/80 border-slate-800 text-slate-300 hover:border-slate-700' : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
-                              }`}
+                                }`}
                             >
                               <span>Weight / Per KG (₹)</span>
                             </button>
@@ -5302,8 +5211,8 @@ export default function BookingsMasterPage() {
                         value={formData.cargoType}
                         onChange={(e) => setFormData({ ...formData, cargoType: e.target.value })}
                         className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
-                            ? 'border-slate-800 bg-slate-900/80 text-white placeholder-slate-500 focus:border-cyan-400'
-                            : 'border-slate-200 bg-slate-50 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:bg-white'
+                          ? 'border-slate-800 bg-slate-900/80 text-white placeholder-slate-500 focus:border-cyan-400'
+                          : 'border-slate-200 bg-slate-50 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:bg-white'
                           }`}
                       />
                     </div>
@@ -5322,8 +5231,8 @@ export default function BookingsMasterPage() {
                             value={formData.packagesCount}
                             onChange={(e) => setFormData({ ...formData, packagesCount: e.target.value })}
                             className={`w-full px-3.5 pr-12 py-2.5 rounded-xl border text-xs font-semibold focus:outline-none transition-colors ${isDark
-                                ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
-                                : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                              ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                              : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
                               }`}
                           />
                           <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400 uppercase pointer-events-none">
@@ -5345,8 +5254,8 @@ export default function BookingsMasterPage() {
                             value={formData.weightKg}
                             onChange={(e) => setFormData({ ...formData, weightKg: e.target.value })}
                             className={`w-full px-3.5 pr-10 py-2.5 rounded-xl border text-xs font-semibold focus:outline-none transition-colors ${isDark
-                                ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
-                                : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                              ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                              : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
                               }`}
                           />
                           <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400 uppercase pointer-events-none">
@@ -5373,8 +5282,8 @@ export default function BookingsMasterPage() {
                               value={formData.ftlFreightAmount}
                               onChange={(e) => setFormData({ ...formData, ftlFreightAmount: e.target.value })}
                               className={`w-full pl-7 pr-16 py-2.5 rounded-xl border text-xs font-semibold focus:outline-none transition-colors ${isDark
-                                  ? 'border-purple-500/40 bg-slate-900/80 text-white focus:border-purple-400'
-                                  : 'border-purple-300 bg-purple-50/30 text-slate-900 focus:border-purple-500 focus:bg-white'
+                                ? 'border-purple-500/40 bg-slate-900/80 text-white focus:border-purple-400'
+                                : 'border-purple-300 bg-purple-50/30 text-slate-900 focus:border-purple-500 focus:bg-white'
                                 }`}
                             />
                           ) : (
@@ -5386,8 +5295,8 @@ export default function BookingsMasterPage() {
                               value={formData.ratePerKg}
                               onChange={(e) => setFormData({ ...formData, ratePerKg: e.target.value })}
                               className={`w-full pl-7 pr-12 py-2.5 rounded-xl border text-xs font-semibold focus:outline-none transition-colors ${isDark
-                                  ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
-                                  : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                                ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                                : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
                                 }`}
                             />
                           )}
@@ -5411,10 +5320,10 @@ export default function BookingsMasterPage() {
                             type="button"
                             onClick={() => setFormData({ ...formData, paymentMode: mode })}
                             className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all ${formData.paymentMode === mode
-                                ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
-                                : isDark
-                                  ? 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
-                                  : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200 hover:text-slate-900'
+                              ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
+                              : isDark
+                                ? 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                                : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200 hover:text-slate-900'
                               }`}
                           >
                             {mode === 'TBB' ? 'T.B.B. (Bill)' : mode}
@@ -5447,8 +5356,8 @@ export default function BookingsMasterPage() {
                                 });
                               }}
                               className={`text-xs font-bold px-2.5 py-1 rounded-lg border flex items-center gap-1 transition-all ${isDark
-                                  ? 'border-cyan-500/30 bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/20'
-                                  : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                                ? 'border-cyan-500/30 bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/20'
+                                : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
                                 }`}
                             >
                               <Plus className="w-3 h-3" />
@@ -5471,8 +5380,8 @@ export default function BookingsMasterPage() {
                                 onChange={(e) => setFormData({ ...formData, loadingCharges: e.target.value })}
                                 placeholder="0"
                                 className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
-                                    ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
-                                    : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                                  ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                                  : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
                                   }`}
                               />
                             </div>
@@ -5490,8 +5399,8 @@ export default function BookingsMasterPage() {
                                 onChange={(e) => setFormData({ ...formData, biltyFee: e.target.value })}
                                 placeholder="0"
                                 className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
-                                    ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
-                                    : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                                  ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                                  : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
                                   }`}
                               />
                             </div>
@@ -5515,15 +5424,14 @@ export default function BookingsMasterPage() {
                                 value={formData.doorDeliveryCharges}
                                 onChange={(e) => setFormData({ ...formData, doorDeliveryCharges: e.target.value })}
                                 placeholder="0"
-                                className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${
-                                  formData.deliveryType === 'DOOR_DELIVERY' && parseFloat(formData.doorDeliveryCharges || 0) >= 100
+                                className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${formData.deliveryType === 'DOOR_DELIVERY' && parseFloat(formData.doorDeliveryCharges || 0) >= 100
                                     ? isDark
                                       ? 'border-emerald-500/50 bg-slate-900/80 text-emerald-300 focus:border-emerald-400 font-semibold'
                                       : 'border-emerald-300 bg-emerald-50/30 text-emerald-900 focus:border-emerald-500 focus:bg-white font-semibold'
                                     : isDark
                                       ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
                                       : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
-                                }`}
+                                  }`}
                               />
                             </div>
 
@@ -5540,8 +5448,8 @@ export default function BookingsMasterPage() {
                                 onChange={(e) => setFormData({ ...formData, unloadingCharges: e.target.value })}
                                 placeholder="0"
                                 className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
-                                    ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
-                                    : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                                  ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                                  : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
                                   }`}
                               />
                             </div>
@@ -5571,8 +5479,8 @@ export default function BookingsMasterPage() {
                                         setFormData({ ...formData, customCharges: updated });
                                       }}
                                       className={`w-full px-2.5 py-1.5 rounded-lg border text-xs focus:outline-none ${isDark
-                                          ? 'border-slate-700 bg-slate-800 text-white focus:border-cyan-400'
-                                          : 'border-slate-300 bg-white text-slate-900 focus:border-blue-500'
+                                        ? 'border-slate-700 bg-slate-800 text-white focus:border-cyan-400'
+                                        : 'border-slate-300 bg-white text-slate-900 focus:border-blue-500'
                                         }`}
                                     />
                                     <datalist id={`charge-suggestions-${index}`}>
@@ -5598,8 +5506,8 @@ export default function BookingsMasterPage() {
                                         setFormData({ ...formData, customCharges: updated });
                                       }}
                                       className={`w-full pl-6 pr-2.5 py-1.5 rounded-lg border text-xs font-mono font-bold focus:outline-none ${isDark
-                                          ? 'border-slate-700 bg-slate-800 text-white focus:border-cyan-400'
-                                          : 'border-slate-300 bg-white text-slate-900 focus:border-blue-500'
+                                        ? 'border-slate-700 bg-slate-800 text-white focus:border-cyan-400'
+                                        : 'border-slate-300 bg-white text-slate-900 focus:border-blue-500'
                                         }`}
                                     />
                                   </div>
@@ -5633,8 +5541,8 @@ export default function BookingsMasterPage() {
                                 onChange={(e) => setFormData({ ...formData, discountAmount: e.target.value })}
                                 placeholder="0"
                                 className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
-                                    ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
-                                    : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                                  ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                                  : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
                                   }`}
                               />
                             </div>
@@ -5647,8 +5555,8 @@ export default function BookingsMasterPage() {
                                 value={formData.gstMode}
                                 onChange={(e) => setFormData({ ...formData, gstMode: e.target.value })}
                                 className={`w-full px-3 py-2 rounded-xl border text-xs font-semibold focus:outline-none transition-colors ${isDark
-                                    ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
-                                    : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                                  ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                                  : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
                                   }`}
                               >
                                 <option value="RCM">5% GTA (RCM - ₹0 added)</option>
@@ -5774,8 +5682,8 @@ export default function BookingsMasterPage() {
                 {bookingStep === 4 && (
                   <div className="space-y-4">
                     <div className={`p-4 rounded-2xl border space-y-3 ${isDark
-                        ? 'bg-gradient-to-br from-blue-950/40 via-slate-900 to-cyan-950/30 border-cyan-500/40'
-                        : 'bg-gradient-to-br from-blue-50/70 via-slate-50 to-indigo-50/50 border-blue-200'
+                      ? 'bg-gradient-to-br from-blue-950/40 via-slate-900 to-cyan-950/30 border-cyan-500/40'
+                      : 'bg-gradient-to-br from-blue-50/70 via-slate-50 to-indigo-50/50 border-blue-200'
                       }`}>
                       <div className={`flex items-center justify-between pb-2 border-b ${isDark ? 'border-slate-800' : 'border-slate-200'
                         }`}>
@@ -5790,12 +5698,12 @@ export default function BookingsMasterPage() {
                           </div>
                         </div>
                         <span className={`text-xs font-bold px-2 py-0.5 rounded border ${formData.docketNumberMode === 'manual'
-                            ? isDark
-                              ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
-                              : 'bg-amber-50 text-amber-700 border-amber-200'
-                            : isDark
-                              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
-                              : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          ? isDark
+                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                            : 'bg-amber-50 text-amber-700 border-amber-200'
+                          : isDark
+                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                            : 'bg-emerald-50 text-emerald-700 border-emerald-200'
                           }`}>
                           {formData.docketNumberMode === 'manual' ? 'Manual Stationery' : 'Auto Sequenced'}
                         </span>
@@ -5868,10 +5776,10 @@ export default function BookingsMasterPage() {
                         <div>
                           <span className={`text-[10px] block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Transport Mode:</span>
                           <span className={`font-bold inline-flex items-center gap-1.5 ${formData.transportMode === 'AIR'
-                              ? isDark ? 'text-purple-400' : 'text-purple-700'
-                              : formData.transportMode === 'RAIL'
-                                ? isDark ? 'text-emerald-400' : 'text-emerald-700'
-                                : isDark ? 'text-cyan-400' : 'text-blue-700'
+                            ? isDark ? 'text-purple-400' : 'text-purple-700'
+                            : formData.transportMode === 'RAIL'
+                              ? isDark ? 'text-emerald-400' : 'text-emerald-700'
+                              : isDark ? 'text-cyan-400' : 'text-blue-700'
                             }`}>
                             {formData.transportMode === 'AIR' ? <Plane className="w-3.5 h-3.5" /> : formData.transportMode === 'RAIL' ? <Train className="w-3.5 h-3.5" /> : <Truck className="w-3.5 h-3.5" />}
                             {formData.transportMode === 'AIR' ? 'By Air Cargo' : formData.transportMode === 'RAIL' ? 'By Rail Express' : 'By Road Line-haul'}
@@ -5879,11 +5787,10 @@ export default function BookingsMasterPage() {
                         </div>
                         <div>
                           <span className={`text-[10px] block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Movement Type:</span>
-                          <span className={`font-bold inline-flex items-center gap-1.5 px-2 py-0.5 rounded border text-[11px] ${
-                            (formData.loadType || 'PTL') === 'FTL'
+                          <span className={`font-bold inline-flex items-center gap-1.5 px-2 py-0.5 rounded border text-[11px] ${(formData.loadType || 'PTL') === 'FTL'
                               ? isDark ? 'bg-purple-500/15 text-purple-300 border-purple-500/30' : 'bg-purple-100 text-purple-800 border-purple-300'
                               : isDark ? 'bg-amber-500/15 text-amber-300 border-amber-500/30' : 'bg-amber-50 text-amber-800 border-amber-300'
-                          }`}>
+                            }`}>
                             <span>{(formData.loadType || 'PTL') === 'FTL' ? '🚛 FTL (Full Truck)' : '📦 PTL (Part Load)'}</span>
                             {formData.loadType === 'FTL' && formData.ftlVehicleType && (
                               <span className="opacity-80 font-normal">({formData.ftlVehicleType})</span>
@@ -5892,11 +5799,10 @@ export default function BookingsMasterPage() {
                         </div>
                         <div>
                           <span className={`text-[10px] block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Delivery Type:</span>
-                          <span className={`font-bold inline-flex items-center gap-1.5 ${
-                            formData.deliveryType === 'DOOR_DELIVERY'
+                          <span className={`font-bold inline-flex items-center gap-1.5 ${formData.deliveryType === 'DOOR_DELIVERY'
                               ? isDark ? 'text-emerald-400' : 'text-emerald-700'
                               : isDark ? 'text-cyan-400' : 'text-blue-700'
-                          }`}>
+                            }`}>
                             {formData.deliveryType === 'DOOR_DELIVERY' ? <Truck className="w-3.5 h-3.5" /> : <Building2 className="w-3.5 h-3.5" />}
                             {formData.deliveryType === 'DOOR_DELIVERY' ? 'Door Delivery' : 'Godown Delivery'}
                           </span>
@@ -5965,8 +5871,8 @@ export default function BookingsMasterPage() {
                     type="button"
                     onClick={() => setBookingStep(bookingStep - 1)}
                     className={`px-4 py-2 rounded-xl border text-xs font-bold transition-colors ${isDark
-                        ? 'border-slate-800 bg-slate-900 text-slate-300 hover:text-white'
-                        : 'border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200 hover:text-slate-900'
+                      ? 'border-slate-800 bg-slate-900 text-slate-300 hover:text-white'
+                      : 'border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200 hover:text-slate-900'
                       }`}
                   >
                     ← Previous
@@ -5976,8 +5882,8 @@ export default function BookingsMasterPage() {
                     type="button"
                     onClick={() => setIsDrawerOpen(false)}
                     className={`px-4 py-2 rounded-xl border text-xs font-bold transition-colors ${isDark
-                        ? 'border-slate-800 bg-slate-900 text-slate-400 hover:text-white'
-                        : 'border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200 hover:text-slate-900'
+                      ? 'border-slate-800 bg-slate-900 text-slate-400 hover:text-white'
+                      : 'border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200 hover:text-slate-900'
                       }`}
                   >
                     Cancel
@@ -6001,8 +5907,8 @@ export default function BookingsMasterPage() {
                         setBookingStep(bookingStep + 1);
                       }}
                       className={`px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${isCurrentStepValid
-                          ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-600/30 cursor-pointer active:scale-95'
-                          : 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border border-slate-300 dark:border-slate-700/60 shadow-none cursor-not-allowed opacity-60'
+                        ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-600/30 cursor-pointer active:scale-95'
+                        : 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border border-slate-300 dark:border-slate-700/60 shadow-none cursor-not-allowed opacity-60'
                         }`}
                     >
                       <span>
@@ -6015,8 +5921,8 @@ export default function BookingsMasterPage() {
                       type="submit"
                       disabled={isLoading || !isStep1Valid || !isStep2Valid || !isStep3Valid}
                       className={`px-6 py-2.5 rounded-xl text-white text-xs font-black shadow-lg shadow-cyan-500/25 active:scale-95 transition-all flex items-center gap-1.5 ${isLoading || !isStep1Valid || !isStep2Valid || !isStep3Valid
-                          ? 'bg-slate-700 opacity-60 cursor-not-allowed'
-                          : 'bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 cursor-pointer'
+                        ? 'bg-slate-700 opacity-60 cursor-not-allowed'
+                        : 'bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 cursor-pointer'
                         }`}
                     >
                       {isLoading ? (
@@ -6057,10 +5963,10 @@ export default function BookingsMasterPage() {
             <div className="w-full h-1 bg-slate-100 dark:bg-slate-800/80 overflow-hidden shrink-0">
               <div
                 className={`h-full transition-all duration-1000 ease-linear ${isAutoClosePaused
-                    ? 'bg-amber-500/50'
-                    : autoCloseCountdown <= 5
-                      ? 'bg-rose-500'
-                      : 'bg-gradient-to-r from-blue-500 to-cyan-400'
+                  ? 'bg-amber-500/50'
+                  : autoCloseCountdown <= 5
+                    ? 'bg-rose-500'
+                    : 'bg-gradient-to-r from-blue-500 to-cyan-400'
                   }`}
                 style={{ width: `${(autoCloseCountdown / 30) * 100}%` }}
               />
@@ -6076,12 +5982,12 @@ export default function BookingsMasterPage() {
                   </span>
                   <BuiltyTypeBadge docket={selectedConsignment} />
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${selectedConsignment.status === 'IN_TRANSIT'
-                      ? isDark
-                        ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30'
-                        : 'bg-cyan-50 text-cyan-700 border-cyan-200'
-                      : isDark
-                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
-                        : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    ? isDark
+                      ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30'
+                      : 'bg-cyan-50 text-cyan-700 border-cyan-200'
+                    : isDark
+                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                      : 'bg-emerald-50 text-emerald-700 border-emerald-200'
                     }`}>
                     {selectedConsignment.status_label}
                   </span>
@@ -6097,10 +6003,10 @@ export default function BookingsMasterPage() {
                   type="button"
                   onClick={() => setIsAutoClosePaused((p) => !p)}
                   className={`text-[10px] font-mono px-2 py-1.5 rounded-xl border flex items-center gap-1 transition-all ${isAutoClosePaused
-                      ? 'border-amber-500/40 bg-amber-500/10 text-amber-500 font-bold'
-                      : isDark
-                        ? 'border-slate-800 bg-slate-900/60 text-slate-400 hover:text-slate-200'
-                        : 'border-slate-200 bg-slate-100 text-slate-600 hover:text-slate-900'
+                    ? 'border-amber-500/40 bg-amber-500/10 text-amber-500 font-bold'
+                    : isDark
+                      ? 'border-slate-800 bg-slate-900/60 text-slate-400 hover:text-slate-200'
+                      : 'border-slate-200 bg-slate-100 text-slate-600 hover:text-slate-900'
                     }`}
                   title={isAutoClosePaused ? "Auto-close is paused. Click to resume 30s timer" : "Auto-closes after 30 seconds. Click to pause"}
                 >
@@ -6117,8 +6023,8 @@ export default function BookingsMasterPage() {
                   <button
                     onClick={() => handleOpenEdit(selectedConsignment)}
                     className={`p-2 rounded-xl border transition-colors ${isDark
-                        ? 'border-slate-800 bg-slate-900/60 text-amber-400 hover:text-amber-300 hover:bg-amber-500/10'
-                        : 'border-slate-200 bg-amber-50 text-amber-600 hover:bg-amber-100 hover:text-amber-700'
+                      ? 'border-slate-800 bg-slate-900/60 text-amber-400 hover:text-amber-300 hover:bg-amber-500/10'
+                      : 'border-slate-200 bg-amber-50 text-amber-600 hover:bg-amber-100 hover:text-amber-700'
                       }`}
                     title="Edit Docket"
                   >
@@ -6129,8 +6035,8 @@ export default function BookingsMasterPage() {
                   <button
                     onClick={() => handleOpenDelete(selectedConsignment)}
                     className={`p-2 rounded-xl border transition-colors ${isDark
-                        ? 'border-slate-800 bg-slate-900/60 text-rose-400 hover:text-rose-300 hover:bg-rose-500/10'
-                        : 'border-slate-200 bg-rose-50 text-rose-600 hover:bg-rose-100 hover:text-rose-700'
+                      ? 'border-slate-800 bg-slate-900/60 text-rose-400 hover:text-rose-300 hover:bg-rose-500/10'
+                      : 'border-slate-200 bg-rose-50 text-rose-600 hover:bg-rose-100 hover:text-rose-700'
                       }`}
                     title="Delete Docket"
                   >
@@ -6140,8 +6046,8 @@ export default function BookingsMasterPage() {
                 <button
                   onClick={() => handleOpenPrintPreview(selectedConsignment)}
                   className={`p-2 rounded-xl border transition-colors ${isDark
-                      ? 'border-slate-800 bg-slate-900/60 text-slate-300 hover:text-white'
-                      : 'border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200 hover:text-slate-900'
+                    ? 'border-slate-800 bg-slate-900/60 text-slate-300 hover:text-white'
+                    : 'border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200 hover:text-slate-900'
                     }`}
                   title="Print Bilty"
                 >
@@ -6150,8 +6056,8 @@ export default function BookingsMasterPage() {
                 <button
                   onClick={() => setIsDetailsOpen(false)}
                   className={`p-2 rounded-xl border transition-colors ${isDark
-                      ? 'border-slate-800 bg-slate-900/60 text-slate-400 hover:text-white'
-                      : 'border-slate-200 bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900'
+                    ? 'border-slate-800 bg-slate-900/60 text-slate-400 hover:text-white'
+                    : 'border-slate-200 bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900'
                     }`}
                 >
                   <X className="w-4 h-4" />
@@ -6191,24 +6097,21 @@ export default function BookingsMasterPage() {
               </div>
 
               {/* Present Location & Branch Journey Card */}
-              <div className={`p-4 rounded-2xl border space-y-3.5 ${
-                isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
-              }`}>
+              <div className={`p-4 rounded-2xl border space-y-3.5 ${isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
+                }`}>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <div className={`p-2 rounded-xl ${
-                      selectedConsignment.present_location_type === 'DELIVERED'
+                    <div className={`p-2 rounded-xl ${selectedConsignment.present_location_type === 'DELIVERED'
                         ? 'bg-emerald-500/10 text-emerald-500'
                         : selectedConsignment.present_location_type === 'IN_TRANSIT'
-                        ? 'bg-cyan-500/10 text-cyan-400'
-                        : 'bg-amber-500/10 text-amber-500'
-                    }`}>
+                          ? 'bg-cyan-500/10 text-cyan-400'
+                          : 'bg-amber-500/10 text-amber-500'
+                      }`}>
                       <MapPin className="w-4 h-4" />
                     </div>
                     <div>
-                      <span className={`text-[10px] uppercase font-bold tracking-wider block ${
-                        isDark ? 'text-slate-400' : 'text-slate-500'
-                      }`}>
+                      <span className={`text-[10px] uppercase font-bold tracking-wider block ${isDark ? 'text-slate-400' : 'text-slate-500'
+                        }`}>
                         Current Present Location
                       </span>
                       <h4 className={`text-sm font-extrabold ${isDark ? 'text-white' : 'text-slate-900'}`}>
@@ -6216,32 +6119,28 @@ export default function BookingsMasterPage() {
                       </h4>
                     </div>
                   </div>
-                  <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${
-                    selectedConsignment.status === 'DELIVERED'
+                  <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${selectedConsignment.status === 'DELIVERED'
                       ? isDark ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' : 'bg-emerald-50 text-emerald-800 border-emerald-200'
                       : selectedConsignment.status === 'IN_TRANSIT' || selectedConsignment.status === 'DISPATCHED'
-                      ? isDark ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30' : 'bg-cyan-50 text-cyan-800 border-cyan-200'
-                      : isDark ? 'bg-amber-500/15 text-amber-300 border-amber-500/30' : 'bg-amber-50 text-amber-800 border-amber-200'
-                  }`}>
+                        ? isDark ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30' : 'bg-cyan-50 text-cyan-800 border-cyan-200'
+                        : isDark ? 'bg-amber-500/15 text-amber-300 border-amber-500/30' : 'bg-amber-50 text-amber-800 border-amber-200'
+                    }`}>
                     {selectedConsignment.status_label || selectedConsignment.status}
                   </span>
                 </div>
 
-                <p className={`text-xs leading-relaxed px-3 py-2 rounded-xl ${
-                  isDark ? 'bg-slate-800/60 text-slate-300' : 'bg-slate-50 text-slate-600'
-                }`}>
+                <p className={`text-xs leading-relaxed px-3 py-2 rounded-xl ${isDark ? 'bg-slate-800/60 text-slate-300' : 'bg-slate-50 text-slate-600'
+                  }`}>
                   {selectedConsignment.present_location_detail}
                 </p>
 
                 {/* 3-Step Journey Nodes */}
-                <div className={`pt-2 border-t grid grid-cols-3 gap-2 text-center text-xs ${
-                  isDark ? 'border-slate-800/80' : 'border-slate-100'
-                }`}>
-                  <div className={`p-2 rounded-xl ${
-                    selectedConsignment.present_location_type === 'ORIGIN_GODOWN'
+                <div className={`pt-2 border-t grid grid-cols-3 gap-2 text-center text-xs ${isDark ? 'border-slate-800/80' : 'border-slate-100'
+                  }`}>
+                  <div className={`p-2 rounded-xl ${selectedConsignment.present_location_type === 'ORIGIN_GODOWN'
                       ? isDark ? 'bg-amber-500/15 border border-amber-500/30' : 'bg-amber-50 border border-amber-200'
                       : isDark ? 'bg-slate-800/40' : 'bg-slate-50'
-                  }`}>
+                    }`}>
                     <div className={`text-[10px] font-bold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Origin Branch</div>
                     <div className={`font-mono font-bold text-xs mt-0.5 ${isDark ? 'text-white' : 'text-slate-800'}`}>
                       {selectedConsignment.origin_branch_code || selectedConsignment.origin_city}
@@ -6249,11 +6148,10 @@ export default function BookingsMasterPage() {
                     <div className="text-[10px] text-slate-400 truncate mt-0.5">{selectedConsignment.origin_branch_name}</div>
                   </div>
 
-                  <div className={`p-2 rounded-xl ${
-                    selectedConsignment.present_location_type === 'IN_TRANSIT' || selectedConsignment.present_location_type === 'TRANSIT_HUB'
+                  <div className={`p-2 rounded-xl ${selectedConsignment.present_location_type === 'IN_TRANSIT' || selectedConsignment.present_location_type === 'TRANSIT_HUB'
                       ? isDark ? 'bg-cyan-500/15 border border-cyan-500/30' : 'bg-cyan-50 border border-cyan-200'
                       : isDark ? 'bg-slate-800/40' : 'bg-slate-50'
-                  }`}>
+                    }`}>
                     <div className={`text-[10px] font-bold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Corridor Route</div>
                     <div className={`font-mono font-bold text-xs mt-0.5 ${isDark ? 'text-cyan-400' : 'text-blue-600'}`}>
                       {selectedConsignment.route_code}
@@ -6263,11 +6161,10 @@ export default function BookingsMasterPage() {
                     </div>
                   </div>
 
-                  <div className={`p-2 rounded-xl ${
-                    selectedConsignment.present_location_type === 'DEST_GODOWN' || selectedConsignment.present_location_type === 'OUT_FOR_DELIVERY' || selectedConsignment.present_location_type === 'DELIVERED'
+                  <div className={`p-2 rounded-xl ${selectedConsignment.present_location_type === 'DEST_GODOWN' || selectedConsignment.present_location_type === 'OUT_FOR_DELIVERY' || selectedConsignment.present_location_type === 'DELIVERED'
                       ? isDark ? 'bg-emerald-500/15 border border-emerald-500/30' : 'bg-emerald-50 border border-emerald-200'
                       : isDark ? 'bg-slate-800/40' : 'bg-slate-50'
-                  }`}>
+                    }`}>
                     <div className={`text-[10px] font-bold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Destination Branch</div>
                     <div className={`font-mono font-bold text-xs mt-0.5 ${isDark ? 'text-white' : 'text-slate-800'}`}>
                       {selectedConsignment.destination_branch_code || selectedConsignment.destination_city}
@@ -6307,10 +6204,10 @@ export default function BookingsMasterPage() {
                   <div>
                     <span className={`text-[10px] block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Transport Mode:</span>
                     <span className={`font-bold inline-flex items-center gap-1.5 ${selectedConsignment.transport_mode === 'AIR'
-                        ? isDark ? 'text-purple-400' : 'text-purple-600'
-                        : selectedConsignment.transport_mode === 'RAIL'
-                          ? isDark ? 'text-emerald-400' : 'text-emerald-600'
-                          : isDark ? 'text-cyan-400' : 'text-blue-600'
+                      ? isDark ? 'text-purple-400' : 'text-purple-600'
+                      : selectedConsignment.transport_mode === 'RAIL'
+                        ? isDark ? 'text-emerald-400' : 'text-emerald-600'
+                        : isDark ? 'text-cyan-400' : 'text-blue-600'
                       }`}>
                       {selectedConsignment.transport_mode === 'AIR' ? <Plane className="w-3.5 h-3.5" /> : selectedConsignment.transport_mode === 'RAIL' ? <Train className="w-3.5 h-3.5" /> : <Truck className="w-3.5 h-3.5" />}
                       {selectedConsignment.transport_mode === 'AIR' ? 'By Air Cargo' : selectedConsignment.transport_mode === 'RAIL' ? 'By Rail Express' : 'By Road Line-haul'}
@@ -6318,11 +6215,10 @@ export default function BookingsMasterPage() {
                   </div>
                   <div>
                     <span className={`text-[10px] block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Delivery Type:</span>
-                    <span className={`font-bold inline-flex items-center gap-1.5 ${
-                      selectedConsignment.delivery_type === 'DOOR_DELIVERY'
+                    <span className={`font-bold inline-flex items-center gap-1.5 ${selectedConsignment.delivery_type === 'DOOR_DELIVERY'
                         ? isDark ? 'text-emerald-400' : 'text-emerald-600'
                         : isDark ? 'text-cyan-400' : 'text-blue-600'
-                    }`}>
+                      }`}>
                       {selectedConsignment.delivery_type === 'DOOR_DELIVERY' ? <Truck className="w-3.5 h-3.5" /> : <Building2 className="w-3.5 h-3.5" />}
                       {selectedConsignment.delivery_type === 'DOOR_DELIVERY' ? 'Door Delivery' : 'Godown Delivery'}
                     </span>
@@ -6340,7 +6236,7 @@ export default function BookingsMasterPage() {
                   </div>
                   {selectedConsignment.trip_number && (
                     <div>
-                      <span className={`text-[10px] block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Active Trip ID:</span>
+                      <span className={`text-[10px] block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Trip #:</span>
                       <span className={`font-mono font-bold ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>{selectedConsignment.trip_number}</span>
                     </div>
                   )}
@@ -6495,8 +6391,8 @@ export default function BookingsMasterPage() {
               }`}>
               <div className="flex items-center space-x-2.5">
                 <div className={`p-2 rounded-xl border ${isDark
-                    ? 'bg-amber-500/20 text-amber-400 border-amber-500/30'
-                    : 'bg-amber-50 text-amber-600 border-amber-200'
+                  ? 'bg-amber-500/20 text-amber-400 border-amber-500/30'
+                  : 'bg-amber-50 text-amber-600 border-amber-200'
                   }`}>
                   <Pencil className="w-4 h-4" />
                 </div>
@@ -6512,8 +6408,8 @@ export default function BookingsMasterPage() {
                 onClick={() => setIsEditModalOpen(false)}
                 disabled={isSubmittingEdit}
                 className={`p-1.5 rounded-lg border transition-colors ${isDark
-                    ? 'border-slate-800 text-slate-400 hover:text-white'
-                    : 'border-slate-200 text-slate-500 hover:text-slate-900 hover:bg-slate-100'
+                  ? 'border-slate-800 text-slate-400 hover:text-white'
+                  : 'border-slate-200 text-slate-500 hover:text-slate-900 hover:bg-slate-100'
                   }`}
               >
                 <X className="w-4 h-4" />
@@ -6536,8 +6432,8 @@ export default function BookingsMasterPage() {
                       value={editFormData.docketNumber}
                       onChange={(e) => setEditFormData({ ...editFormData, docketNumber: e.target.value })}
                       className={`w-full px-3 py-2 rounded-xl border text-xs font-mono focus:outline-none transition-colors ${isDark
-                          ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
-                          : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                        ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                        : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
                         }`}
                     />
                   </div>
@@ -6552,8 +6448,8 @@ export default function BookingsMasterPage() {
                       value={editFormData.status}
                       onChange={(e) => setEditFormData({ ...editFormData, status: e.target.value })}
                       className={`w-full px-3 py-2 rounded-xl border text-xs font-bold focus:outline-none transition-colors ${isDark
-                          ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
-                          : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                        ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                        : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
                         }`}
                     >
                       <option value="BOOKED">Booked / Godown</option>
@@ -6577,8 +6473,8 @@ export default function BookingsMasterPage() {
                       value={editFormData.consignorName}
                       onChange={(e) => setEditFormData({ ...editFormData, consignorName: e.target.value })}
                       className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
-                          ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
-                          : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                        ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                        : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
                         }`}
                     />
                   </div>
@@ -6595,8 +6491,8 @@ export default function BookingsMasterPage() {
                       value={editFormData.consigneeName}
                       onChange={(e) => setEditFormData({ ...editFormData, consigneeName: e.target.value })}
                       className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
-                          ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
-                          : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                        ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                        : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
                         }`}
                     />
                   </div>
@@ -6609,18 +6505,16 @@ export default function BookingsMasterPage() {
                         <span className="text-red-500 font-bold">*</span>
                       </label>
                       {resolvedOriginCode && (
-                        <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-md border flex items-center gap-1 ${
-                          isDark ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30' : 'bg-blue-50 text-blue-700 border-blue-200'
-                        }`}>
+                        <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-md border flex items-center gap-1 ${isDark ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30' : 'bg-blue-50 text-blue-700 border-blue-200'
+                          }`}>
                           <Building2 className="w-3 h-3" />
                           <span>Branch Code: {resolvedOriginCode}</span>
                         </span>
                       )}
                     </div>
                     <div className="relative flex items-center">
-                      <span className={`px-2.5 py-2 rounded-l-xl border border-r-0 text-xs font-mono font-bold shrink-0 flex items-center gap-1 ${
-                        isDark ? 'bg-slate-800 text-cyan-400 border-slate-800' : 'bg-slate-100 text-blue-700 border-slate-200'
-                      }`}>
+                      <span className={`px-2.5 py-2 rounded-l-xl border border-r-0 text-xs font-mono font-bold shrink-0 flex items-center gap-1 ${isDark ? 'bg-slate-800 text-cyan-400 border-slate-800' : 'bg-slate-100 text-blue-700 border-slate-200'
+                        }`}>
                         [{resolvedOriginCode || 'ORG'}]
                       </span>
                       <input
@@ -6644,8 +6538,8 @@ export default function BookingsMasterPage() {
                         list="edit-origin-branches-list"
                         placeholder="e.g. Bengaluru"
                         className={`w-full px-3 py-2 rounded-r-xl border text-xs focus:outline-none transition-colors ${isDark
-                            ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
-                            : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                          ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                          : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
                           }`}
                       />
                       <datalist id="edit-origin-branches-list">
@@ -6666,18 +6560,16 @@ export default function BookingsMasterPage() {
                         <span className="text-red-500 font-bold">*</span>
                       </label>
                       {resolvedDestCode && (
-                        <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-md border flex items-center gap-1 ${
-                          isDark ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30' : 'bg-blue-50 text-blue-700 border-blue-200'
-                        }`}>
+                        <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-md border flex items-center gap-1 ${isDark ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30' : 'bg-blue-50 text-blue-700 border-blue-200'
+                          }`}>
                           <Building2 className="w-3 h-3" />
                           <span>Branch Code: {resolvedDestCode}</span>
                         </span>
                       )}
                     </div>
                     <div className="relative flex items-center">
-                      <span className={`px-2.5 py-2 rounded-l-xl border border-r-0 text-xs font-mono font-bold shrink-0 flex items-center gap-1 ${
-                        isDark ? 'bg-slate-800 text-cyan-400 border-slate-800' : 'bg-slate-100 text-blue-700 border-slate-200'
-                      }`}>
+                      <span className={`px-2.5 py-2 rounded-l-xl border border-r-0 text-xs font-mono font-bold shrink-0 flex items-center gap-1 ${isDark ? 'bg-slate-800 text-cyan-400 border-slate-800' : 'bg-slate-100 text-blue-700 border-slate-200'
+                        }`}>
                         [{resolvedDestCode || 'DST'}]
                       </span>
                       <input
@@ -6701,8 +6593,8 @@ export default function BookingsMasterPage() {
                         list="edit-dest-branches-list"
                         placeholder="e.g. South West Delhi"
                         className={`w-full px-3 py-2 rounded-r-xl border text-xs focus:outline-none transition-colors ${isDark
-                            ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
-                            : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                          ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                          : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
                           }`}
                       />
                       <datalist id="edit-dest-branches-list">
@@ -6727,8 +6619,8 @@ export default function BookingsMasterPage() {
                       value={editFormData.cargoType}
                       onChange={(e) => setEditFormData({ ...editFormData, cargoType: e.target.value })}
                       className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
-                          ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
-                          : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                        ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                        : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
                         }`}
                     />
                   </div>
@@ -6753,13 +6645,12 @@ export default function BookingsMasterPage() {
                       disabled={isEditingDocketPaid}
                       value={editFormData.packagesCount}
                       onChange={(e) => setEditFormData({ ...editFormData, packagesCount: e.target.value })}
-                      className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${
-                        isEditingDocketPaid
+                      className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${isEditingDocketPaid
                           ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-800'
                           : isDark
-                          ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
-                          : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
-                      }`}
+                            ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                            : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                        }`}
                     />
                   </div>
 
@@ -6783,13 +6674,12 @@ export default function BookingsMasterPage() {
                       disabled={isEditingDocketPaid}
                       value={editFormData.weightKg}
                       onChange={(e) => updateEditField('weightKg', e.target.value)}
-                      className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${
-                        isEditingDocketPaid
+                      className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${isEditingDocketPaid
                           ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-800'
                           : isDark
-                          ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
-                          : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
-                      }`}
+                            ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                            : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                        }`}
                     />
                   </div>
 
@@ -6814,13 +6704,12 @@ export default function BookingsMasterPage() {
                       disabled={isEditingDocketPaid}
                       value={editFormData.ratePerKg}
                       onChange={(e) => updateEditField('ratePerKg', e.target.value)}
-                      className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${
-                        isEditingDocketPaid
+                      className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none transition-colors ${isEditingDocketPaid
                           ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-800'
                           : isDark
-                          ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
-                          : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
-                      }`}
+                            ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                            : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                        }`}
                     />
                   </div>
 
@@ -6844,8 +6733,8 @@ export default function BookingsMasterPage() {
                             updateEditField('customCharges', nextCustom, nextCustom);
                           }}
                           className={`text-xs font-bold px-2.5 py-1 rounded-lg border flex items-center gap-1 transition-all ${isDark
-                              ? 'border-cyan-500/30 bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/20'
-                              : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                            ? 'border-cyan-500/30 bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/20'
+                            : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
                             }`}
                         >
                           <Plus className="w-3 h-3" />
@@ -6881,13 +6770,12 @@ export default function BookingsMasterPage() {
                           value={editFormData.loadingCharges}
                           onChange={(e) => updateEditField('loadingCharges', e.target.value)}
                           placeholder="0"
-                          className={`w-full px-2.5 py-1.5 rounded-lg border text-xs focus:outline-none ${
-                            isEditingDocketPaid
+                          className={`w-full px-2.5 py-1.5 rounded-lg border text-xs focus:outline-none ${isEditingDocketPaid
                               ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-800'
                               : isDark
-                              ? 'border-slate-700 bg-slate-800 text-white focus:border-cyan-400'
-                              : 'border-slate-300 bg-white text-slate-900 focus:border-blue-500'
-                          }`}
+                                ? 'border-slate-700 bg-slate-800 text-white focus:border-cyan-400'
+                                : 'border-slate-300 bg-white text-slate-900 focus:border-blue-500'
+                            }`}
                         />
                       </div>
 
@@ -6903,13 +6791,12 @@ export default function BookingsMasterPage() {
                           value={editFormData.unloadingCharges}
                           onChange={(e) => updateEditField('unloadingCharges', e.target.value)}
                           placeholder="0"
-                          className={`w-full px-2.5 py-1.5 rounded-lg border text-xs focus:outline-none ${
-                            isEditingDocketPaid
+                          className={`w-full px-2.5 py-1.5 rounded-lg border text-xs focus:outline-none ${isEditingDocketPaid
                               ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-800'
                               : isDark
-                              ? 'border-slate-700 bg-slate-800 text-white focus:border-cyan-400'
-                              : 'border-slate-300 bg-white text-slate-900 focus:border-blue-500'
-                          }`}
+                                ? 'border-slate-700 bg-slate-800 text-white focus:border-cyan-400'
+                                : 'border-slate-300 bg-white text-slate-900 focus:border-blue-500'
+                            }`}
                         />
                       </div>
 
@@ -6925,13 +6812,12 @@ export default function BookingsMasterPage() {
                           value={editFormData.doorDeliveryCharges}
                           onChange={(e) => updateEditField('doorDeliveryCharges', e.target.value)}
                           placeholder="0"
-                          className={`w-full px-2.5 py-1.5 rounded-lg border text-xs focus:outline-none ${
-                            isEditingDocketPaid
+                          className={`w-full px-2.5 py-1.5 rounded-lg border text-xs focus:outline-none ${isEditingDocketPaid
                               ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-800'
                               : isDark
-                              ? 'border-slate-700 bg-slate-800 text-white focus:border-cyan-400'
-                              : 'border-slate-300 bg-white text-slate-900 focus:border-blue-500'
-                          }`}
+                                ? 'border-slate-700 bg-slate-800 text-white focus:border-cyan-400'
+                                : 'border-slate-300 bg-white text-slate-900 focus:border-blue-500'
+                            }`}
                         />
                       </div>
 
@@ -6947,13 +6833,12 @@ export default function BookingsMasterPage() {
                           value={editFormData.otherCharges}
                           onChange={(e) => updateEditField('otherCharges', e.target.value)}
                           placeholder="0"
-                          className={`w-full px-2.5 py-1.5 rounded-lg border text-xs focus:outline-none ${
-                            isEditingDocketPaid
+                          className={`w-full px-2.5 py-1.5 rounded-lg border text-xs focus:outline-none ${isEditingDocketPaid
                               ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-800'
                               : isDark
-                              ? 'border-slate-700 bg-slate-800 text-white focus:border-cyan-400'
-                              : 'border-slate-300 bg-white text-slate-900 focus:border-blue-500'
-                          }`}
+                                ? 'border-slate-700 bg-slate-800 text-white focus:border-cyan-400'
+                                : 'border-slate-300 bg-white text-slate-900 focus:border-blue-500'
+                            }`}
                         />
                       </div>
                     </div>
@@ -6982,13 +6867,12 @@ export default function BookingsMasterPage() {
                                   updatedList[index] = { ...updatedList[index], name: e.target.value };
                                   updateEditField('customCharges', updatedList, updatedList);
                                 }}
-                                className={`w-full px-2.5 py-1.5 rounded-lg border text-xs focus:outline-none ${
-                                  isEditingDocketPaid
+                                className={`w-full px-2.5 py-1.5 rounded-lg border text-xs focus:outline-none ${isEditingDocketPaid
                                     ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-800'
                                     : isDark
-                                    ? 'border-slate-700 bg-slate-800 text-white focus:border-cyan-400'
-                                    : 'border-slate-300 bg-slate-50 text-slate-900 focus:border-blue-500'
-                                }`}
+                                      ? 'border-slate-700 bg-slate-800 text-white focus:border-cyan-400'
+                                      : 'border-slate-300 bg-slate-50 text-slate-900 focus:border-blue-500'
+                                  }`}
                               />
                               <datalist id={`edit-charge-suggestions-${index}`}>
                                 <option value="Toll / Border Tax" />
@@ -7013,13 +6897,12 @@ export default function BookingsMasterPage() {
                                   updatedList[index] = { ...updatedList[index], amount: e.target.value };
                                   updateEditField('customCharges', updatedList, updatedList);
                                 }}
-                                className={`w-full pl-6 pr-2.5 py-1.5 rounded-lg border text-xs font-mono font-bold focus:outline-none ${
-                                  isEditingDocketPaid
+                                className={`w-full pl-6 pr-2.5 py-1.5 rounded-lg border text-xs font-mono font-bold focus:outline-none ${isEditingDocketPaid
                                     ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-800'
                                     : isDark
-                                    ? 'border-slate-700 bg-slate-800 text-white focus:border-cyan-400'
-                                    : 'border-slate-300 bg-slate-50 text-slate-900 focus:border-blue-500'
-                                }`}
+                                      ? 'border-slate-700 bg-slate-800 text-white focus:border-cyan-400'
+                                      : 'border-slate-300 bg-slate-50 text-slate-900 focus:border-blue-500'
+                                  }`}
                               />
                             </div>
                             {!isEditingDocketPaid && (
@@ -7054,13 +6937,12 @@ export default function BookingsMasterPage() {
                           value={editFormData.discountAmount}
                           onChange={(e) => updateEditField('discountAmount', e.target.value)}
                           placeholder="0"
-                          className={`w-full px-2.5 py-1.5 rounded-lg border text-xs focus:outline-none ${
-                            isEditingDocketPaid
+                          className={`w-full px-2.5 py-1.5 rounded-lg border text-xs focus:outline-none ${isEditingDocketPaid
                               ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-800'
                               : isDark
-                              ? 'border-slate-700 bg-slate-800 text-white focus:border-cyan-400'
-                              : 'border-slate-300 bg-white text-slate-900 focus:border-blue-500'
-                          }`}
+                                ? 'border-slate-700 bg-slate-800 text-white focus:border-cyan-400'
+                                : 'border-slate-300 bg-white text-slate-900 focus:border-blue-500'
+                            }`}
                         />
                       </div>
 
@@ -7076,13 +6958,12 @@ export default function BookingsMasterPage() {
                           value={editFormData.taxPercent}
                           onChange={(e) => updateEditField('taxPercent', e.target.value)}
                           placeholder="0"
-                          className={`w-full px-2.5 py-1.5 rounded-lg border text-xs focus:outline-none ${
-                            isEditingDocketPaid
+                          className={`w-full px-2.5 py-1.5 rounded-lg border text-xs focus:outline-none ${isEditingDocketPaid
                               ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-800'
                               : isDark
-                              ? 'border-slate-700 bg-slate-800 text-white focus:border-cyan-400'
-                              : 'border-slate-300 bg-white text-slate-900 focus:border-blue-500'
-                          }`}
+                                ? 'border-slate-700 bg-slate-800 text-white focus:border-cyan-400'
+                                : 'border-slate-300 bg-white text-slate-900 focus:border-blue-500'
+                            }`}
                         />
                       </div>
                     </div>
@@ -7109,13 +6990,12 @@ export default function BookingsMasterPage() {
                       disabled={isEditingDocketPaid}
                       value={editFormData.totalAmount}
                       onChange={(e) => updateEditField('totalAmount', e.target.value)}
-                      className={`w-full px-3 py-2.5 rounded-xl border text-sm font-mono font-black focus:outline-none transition-colors ${
-                        isEditingDocketPaid
+                      className={`w-full px-3 py-2.5 rounded-xl border text-sm font-mono font-black focus:outline-none transition-colors ${isEditingDocketPaid
                           ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-800 text-slate-500'
                           : isDark
-                          ? 'border-slate-800 bg-slate-900/90 text-cyan-300 focus:border-cyan-400'
-                          : 'border-blue-200 bg-blue-50/50 text-blue-700 focus:border-blue-500 focus:bg-white'
-                      }`}
+                            ? 'border-slate-800 bg-slate-900/90 text-cyan-300 focus:border-cyan-400'
+                            : 'border-blue-200 bg-blue-50/50 text-blue-700 focus:border-blue-500 focus:bg-white'
+                        }`}
                     />
                   </div>
 
@@ -7139,9 +7019,8 @@ export default function BookingsMasterPage() {
                           type="button"
                           disabled={isEditingDocketPaid}
                           onClick={() => setEditFormData({ ...editFormData, paymentMode: mode })}
-                          className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all ${
-                            isEditingDocketPaid ? 'opacity-60 cursor-not-allowed ' : ''
-                          }${editFormData.paymentMode === mode
+                          className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all ${isEditingDocketPaid ? 'opacity-60 cursor-not-allowed ' : ''
+                            }${editFormData.paymentMode === mode
                               ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
                               : isDark
                                 ? 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
@@ -7163,11 +7042,10 @@ export default function BookingsMasterPage() {
                       <button
                         type="button"
                         onClick={() => setEditFormData({ ...editFormData, loadType: 'PTL' })}
-                        className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                          (editFormData.loadType || 'PTL') === 'PTL'
+                        className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${(editFormData.loadType || 'PTL') === 'PTL'
                             ? 'bg-amber-500 text-white border-amber-600 shadow-sm'
                             : isDark ? 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white' : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200'
-                        }`}
+                          }`}
                       >
                         <span>📦</span>
                         <span>PTL (Part Truck Load)</span>
@@ -7175,11 +7053,10 @@ export default function BookingsMasterPage() {
                       <button
                         type="button"
                         onClick={() => setEditFormData({ ...editFormData, loadType: 'FTL' })}
-                        className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                          (editFormData.loadType || 'PTL') === 'FTL'
+                        className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${(editFormData.loadType || 'PTL') === 'FTL'
                             ? 'bg-purple-600 text-white border-purple-500 shadow-sm'
                             : isDark ? 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white' : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200'
-                        }`}
+                          }`}
                       >
                         <span>🚛</span>
                         <span>FTL (Full Truck Load)</span>
@@ -7213,9 +7090,8 @@ export default function BookingsMasterPage() {
                             type="button"
                             disabled={isEditingDocketPaid}
                             onClick={() => setEditFormData({ ...editFormData, transportMode: m.id })}
-                            className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
-                              isEditingDocketPaid ? 'opacity-60 cursor-not-allowed ' : ''
-                            }${isSelected
+                            className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${isEditingDocketPaid ? 'opacity-60 cursor-not-allowed ' : ''
+                              }${isSelected
                                 ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
                                 : isDark
                                   ? 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
@@ -7251,14 +7127,13 @@ export default function BookingsMasterPage() {
                         type="button"
                         disabled={isEditingDocketPaid}
                         onClick={() => updateEditField('deliveryType', 'GODOWN_DELIVERY')}
-                        className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all ${
-                          isEditingDocketPaid ? 'opacity-60 cursor-not-allowed ' : ''
-                        }${(editFormData.deliveryType || 'GODOWN_DELIVERY') === 'GODOWN_DELIVERY'
-                          ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
-                          : isDark
-                            ? 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
-                            : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200 hover:text-slate-900'
-                        }`}
+                        className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all ${isEditingDocketPaid ? 'opacity-60 cursor-not-allowed ' : ''
+                          }${(editFormData.deliveryType || 'GODOWN_DELIVERY') === 'GODOWN_DELIVERY'
+                            ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
+                            : isDark
+                              ? 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                              : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200 hover:text-slate-900'
+                          }`}
                       >
                         <Building2 className="w-3.5 h-3.5" />
                         <span>Godown Delivery</span>
@@ -7268,14 +7143,13 @@ export default function BookingsMasterPage() {
                         type="button"
                         disabled={isEditingDocketPaid}
                         onClick={() => updateEditField('deliveryType', 'DOOR_DELIVERY')}
-                        className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all ${
-                          isEditingDocketPaid ? 'opacity-60 cursor-not-allowed ' : ''
-                        }${editFormData.deliveryType === 'DOOR_DELIVERY'
-                          ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm'
-                          : isDark
-                            ? 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
-                            : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200 hover:text-slate-900'
-                        }`}
+                        className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all ${isEditingDocketPaid ? 'opacity-60 cursor-not-allowed ' : ''
+                          }${editFormData.deliveryType === 'DOOR_DELIVERY'
+                            ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm'
+                            : isDark
+                              ? 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                              : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200 hover:text-slate-900'
+                          }`}
                       >
                         <Truck className="w-3.5 h-3.5" />
                         <span>Door Delivery</span>
@@ -7294,8 +7168,8 @@ export default function BookingsMasterPage() {
                   disabled={isSubmittingEdit}
                   onClick={() => setIsEditModalOpen(false)}
                   className={`px-4 py-2 rounded-xl border text-xs font-bold transition-colors ${isDark
-                      ? 'border-slate-800 bg-slate-900 text-slate-400 hover:text-white'
-                      : 'border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200 hover:text-slate-900'
+                    ? 'border-slate-800 bg-slate-900 text-slate-400 hover:text-white'
+                    : 'border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200 hover:text-slate-900'
                     }`}
                 >
                   Cancel
@@ -7343,8 +7217,8 @@ export default function BookingsMasterPage() {
             </div>
 
             <div className={`mt-4 p-3.5 rounded-xl border text-xs space-y-1 ${isDark
-                ? 'bg-rose-950/20 border-rose-500/20 text-rose-300'
-                : 'bg-rose-50 border-rose-200 text-rose-800'
+              ? 'bg-rose-950/20 border-rose-500/20 text-rose-300'
+              : 'bg-rose-50 border-rose-200 text-rose-800'
               }`}>
               <p className="font-bold">
                 Are you sure you want to delete Docket <span className={`font-mono underline ${isDark ? 'text-white' : 'text-slate-900 font-bold'}`}>{deletingDocket.lr_number}</span>?
@@ -7360,8 +7234,8 @@ export default function BookingsMasterPage() {
                 disabled={isSubmittingDelete}
                 onClick={() => setIsDeleteModalOpen(false)}
                 className={`px-4 py-2 rounded-xl border text-xs font-bold transition-colors ${isDark
-                    ? 'border-slate-800 bg-slate-900 text-slate-400 hover:text-white'
-                    : 'border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200 hover:text-slate-900'
+                  ? 'border-slate-800 bg-slate-900 text-slate-400 hover:text-white'
+                  : 'border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200 hover:text-slate-900'
                   }`}
               >
                 Cancel
@@ -7577,8 +7451,8 @@ export default function BookingsMasterPage() {
                       type="button"
                       onClick={() => setActivePrintCopy('ALL')}
                       className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${activePrintCopy === 'ALL'
-                          ? 'bg-blue-600 text-white shadow-xs'
-                          : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
                         }`}
                     >
                       Triplicate (All 3)
@@ -7587,8 +7461,8 @@ export default function BookingsMasterPage() {
                       type="button"
                       onClick={() => setActivePrintCopy('CONSIGNOR')}
                       className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${activePrintCopy === 'CONSIGNOR'
-                          ? 'bg-rose-600 text-white shadow-xs'
-                          : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+                        ? 'bg-rose-600 text-white shadow-xs'
+                        : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
                         }`}
                     >
                       Consignor Copy
@@ -7597,8 +7471,8 @@ export default function BookingsMasterPage() {
                       type="button"
                       onClick={() => setActivePrintCopy('CONSIGNEE')}
                       className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${activePrintCopy === 'CONSIGNEE'
-                          ? 'bg-emerald-600 text-white shadow-xs'
-                          : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
                         }`}
                     >
                       Consignee Copy
@@ -7607,8 +7481,8 @@ export default function BookingsMasterPage() {
                       type="button"
                       onClick={() => setActivePrintCopy('DRIVER')}
                       className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${activePrintCopy === 'DRIVER'
-                          ? 'bg-cyan-600 text-white shadow-xs'
-                          : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+                        ? 'bg-cyan-600 text-white shadow-xs'
+                        : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
                         }`}
                     >
                       Driver / Transporter
@@ -7631,8 +7505,8 @@ export default function BookingsMasterPage() {
                       type="button"
                       onClick={() => setIsPrintModalOpen(false)}
                       className={`p-1.5 rounded-xl border transition-colors cursor-pointer shrink-0 ${isDark
-                          ? 'border-slate-800 bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800'
-                          : 'border-slate-200 bg-slate-100 text-slate-600 hover:text-slate-900 hover:bg-slate-200'
+                        ? 'border-slate-800 bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800'
+                        : 'border-slate-200 bg-slate-100 text-slate-600 hover:text-slate-900 hover:bg-slate-200'
                         }`}
                       title="Close preview"
                     >

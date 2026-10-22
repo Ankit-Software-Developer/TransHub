@@ -5,6 +5,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import api from '../../services/api';
 import { usePermissions } from '../../hooks/usePermissions';
 import { useTheme } from '../ThemeProvider';
+import { useToast } from '../ui/AlertModalProvider';
 import {
   Shield,
   Lock,
@@ -49,7 +50,7 @@ export default function RolePermissionMatrix() {
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [feedback, setFeedback] = useState({ type: '', message: '' });
+  const { showToast } = useToast();
 
   // Custom Role Modals
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -115,7 +116,7 @@ export default function RolePermissionMatrix() {
       }
     } catch (err) {
       console.error('Failed to load roles/permissions:', err);
-      setFeedback({ type: 'error', message: 'Failed to load roles and permissions matrix' });
+      showToast({ type: 'error', title: 'Load Failed', message: 'Failed to load roles and permissions matrix' });
     } finally {
       setIsLoading(false);
     }
@@ -218,7 +219,6 @@ export default function RolePermissionMatrix() {
   const handleSave = async () => {
     if (!selectedRole) return;
     setIsSaving(true);
-    setFeedback({ type: '', message: '' });
     try {
       const codes = draftPermissions[selectedRole.id] || [];
       await api.put(`/roles/${selectedRole.id}/permissions`, {
@@ -243,14 +243,15 @@ export default function RolePermissionMatrix() {
         )
       );
 
-      setFeedback({
+      showToast({
         type: 'success',
+        title: 'Permissions Saved',
         message: `Permissions updated successfully for ${selectedRole.name === 'ADMIN' ? 'Admin' : selectedRole.display_name}!`,
       });
-      setTimeout(() => setFeedback({ type: '', message: '' }), 4000);
     } catch (err) {
-      setFeedback({
+      showToast({
         type: 'error',
+        title: 'Save Failed',
         message: err.response?.data?.message || 'Failed to save permissions',
       });
     } finally {
@@ -282,10 +283,18 @@ export default function RolePermissionMatrix() {
         setSelectedRoleId(createdRole.id);
         setIsCreateModalOpen(false);
         setNewRoleForm({ name: '', display_name: '', description: '', clone_from: '' });
-        setFeedback({ type: 'success', message: `Custom role "${createdRole.display_name}" created successfully!` });
+        showToast({
+          type: 'success',
+          title: 'Role Created',
+          message: `Custom role "${createdRole.display_name}" created successfully!`,
+        });
       }
     } catch (err) {
-      setFeedback({ type: 'error', message: err.response?.data?.message || 'Failed to create role' });
+      showToast({
+        type: 'error',
+        title: 'Creation Failed',
+        message: err.response?.data?.message || 'Failed to create role',
+      });
     } finally {
       setIsCreatingRole(false);
     }
@@ -309,10 +318,18 @@ export default function RolePermissionMatrix() {
           )
         );
         setIsEditModalOpen(false);
-        setFeedback({ type: 'success', message: 'Role updated successfully' });
+        showToast({
+          type: 'success',
+          title: 'Role Updated',
+          message: 'Role updated successfully',
+        });
       }
     } catch (err) {
-      setFeedback({ type: 'error', message: err.response?.data?.message || 'Failed to update role' });
+      showToast({
+        type: 'error',
+        title: 'Update Failed',
+        message: err.response?.data?.message || 'Failed to update role',
+      });
     }
   };
 
@@ -326,9 +343,17 @@ export default function RolePermissionMatrix() {
         setSelectedRoleId(roles[0]?.id || null);
       }
       setRoleToDelete(null);
-      setFeedback({ type: 'success', message: 'Role deleted successfully' });
+      showToast({
+        type: 'success',
+        title: 'Role Deleted',
+        message: 'Role deleted successfully',
+      });
     } catch (err) {
-      setFeedback({ type: 'error', message: err.response?.data?.message || 'Failed to delete role' });
+      showToast({
+        type: 'error',
+        title: 'Delete Failed',
+        message: err.response?.data?.message || 'Failed to delete role',
+      });
     }
   };
 
@@ -367,20 +392,6 @@ export default function RolePermissionMatrix() {
           2 of 83 permissions are not enforced by any route. They can be granted and saved, but no request checks them, so moving those toggles does not change what anyone can do. Hover a toggle to see whether it is one of them. This is a gap in coverage, not a fault in the permission system — the 81 that are enforced work exactly as shown.
         </p>
       </div>
-
-      {/* Feedback Toast */}
-      {feedback.message && (
-        <div className={`mb-4 p-3 rounded-xl border text-xs font-semibold flex items-center justify-between animate-in fade-in ${
-          feedback.type === 'error'
-            ? isDark ? 'bg-rose-950/80 border-rose-500/50 text-rose-300' : 'bg-rose-50 border-rose-300 text-rose-800'
-            : isDark ? 'bg-blue-950/80 border-blue-500/50 text-blue-300' : 'bg-blue-50 border-blue-300 text-blue-800'
-        }`}>
-          <span>{feedback.message}</span>
-          <button type="button" onClick={() => setFeedback({ type: '', message: '' })}>
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      )}
 
       {/* 3. Main Split-Screen Container */}
       {isLoading ? (

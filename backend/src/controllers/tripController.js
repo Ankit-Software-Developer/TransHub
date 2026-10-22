@@ -60,21 +60,35 @@ const resolveCityAndSiblingBranches = async (branchId, Branch, organizationId) =
 
 const listTrips = async (req, res) => {
   try {
-    const { status, page = 1, limit = 20, search, sort_by, sort_order, from_date, to_date, branch_id, origin_branch_id, dest_branch_id, load_type } = req.query;
-    const { Trip, Vehicle, Driver, Branch, Dispatch, Consignment } = req.tenantDb || defaultModels;
+    const { status, settlement_status, page = 1, limit = 20, search, sort_by, sort_order, from_date, to_date, branch_id, origin_branch_id, dest_branch_id, load_type, trip_mode } = req.query;
+    const { Trip, Vehicle, Driver, Branch, Dispatch, Consignment, Customer, Vendor } = req.tenantDb || defaultModels;
     const where = {
       tenant_id: req.tenant.tenantId,
       organization_id: req.tenant.organizationId,
     };
     if (status) {
-      if (status.includes(',')) {
+      const upperStatus = status.toUpperCase().trim();
+      if (upperStatus === 'SETTLED') {
+        where.settlement_status = 'SETTLED';
+      } else if (upperStatus === 'UNSETTLED') {
+        where.status = 'COMPLETED';
+        where.settlement_status = { [Op.ne]: 'SETTLED' };
+      } else if (upperStatus === 'IN_TRANSIT' || upperStatus === 'DISPATCHED') {
+        where.status = 'RUNNING';
+      } else if (status.includes(',')) {
         where.status = { [Op.in]: status.split(',').map((s) => s.trim().toUpperCase()) };
       } else {
-        where.status = status;
+        where.status = upperStatus;
       }
+    }
+    if (settlement_status) {
+      where.settlement_status = settlement_status.toUpperCase().trim();
     }
     if (load_type && ['FTL', 'PTL'].includes(load_type.toUpperCase())) {
       where.load_type = load_type.toUpperCase();
+    }
+    if (trip_mode) {
+      where.trip_mode = trip_mode;
     }
 
     if (from_date && to_date) {
@@ -134,6 +148,9 @@ const listTrips = async (req, res) => {
           { trip_number: { [Op.like]: `%${q}%` } },
           { origin_city: { [Op.like]: `%${q}%` } },
           { destination_city: { [Op.like]: `%${q}%` } },
+          { hiring_party_name: { [Op.like]: `%${q}%` } },
+          { party_ref_number: { [Op.like]: `%${q}%` } },
+          { eway_bill_no: { [Op.like]: `%${q}%` } },
           { '$vehicle.vehicle_number$': { [Op.like]: `%${q}%` } },
           { '$driver.name$': { [Op.like]: `%${q}%` } },
           { '$driver.phone$': { [Op.like]: `%${q}%` } },
@@ -171,6 +188,8 @@ const listTrips = async (req, res) => {
         { model: Driver, as: 'driver', attributes: ['id', 'name', 'phone'], required: false },
         { model: Branch, as: 'originBranch', attributes: ['id', 'branch_code', 'branch_name', 'city', 'is_hub'], required: false },
         { model: Branch, as: 'destBranch', attributes: ['id', 'branch_code', 'branch_name', 'city', 'is_hub'], required: false },
+        { model: Customer, as: 'customer', attributes: ['id', 'name', 'phone'], required: false },
+        { model: Vendor, as: 'vendor', attributes: ['id', 'name', 'phone'], required: false },
         { model: Dispatch, as: 'dispatches', attributes: ['id', 'dispatch_number', 'seal_number'], required: false },
         {
           model: Consignment,
@@ -212,7 +231,7 @@ const listTrips = async (req, res) => {
 const getTripDetail = async (req, res) => {
   try {
     const { id } = req.params;
-    const { Trip, Vehicle, Driver, Branch, Consignment, Dispatch, Expense, ExpenseCategory, DriverAdvance, TripSettlement } = req.tenantDb || defaultModels;
+    const { Trip, Vehicle, Driver, Branch, Consignment, Dispatch, Expense, ExpenseCategory, DriverAdvance, TripSettlement, Customer, Vendor } = req.tenantDb || defaultModels;
     const include = [
       { model: Vehicle, as: 'vehicle' },
       { model: Driver, as: 'driver' },
@@ -225,6 +244,8 @@ const getTripDetail = async (req, res) => {
       },
       { model: Dispatch, as: 'dispatches' },
     ];
+    if (Customer) include.push({ model: Customer, as: 'customer', attributes: ['id', 'name', 'phone'] });
+    if (Vendor) include.push({ model: Vendor, as: 'vendor', attributes: ['id', 'name', 'phone'] });
     if (Expense) {
       include.push({
         model: Expense,
@@ -513,16 +534,19 @@ const createTrip = async (req, res) => {
       models: req.tenantDb || defaultModels,
     });
 
-    const originBranch = origin_branch_id ? await Branch.findByPk(origin_branch_id) : null;
-    const destBranch = dest_branch_id ? await Branch.findByPk(dest_branch_id) : null;
+    const resolvedOriginBranchId = origin_branch_id || req.user?.branch_id || null;
+    const resolvedDestBranchId = dest_branch_id || resolvedOriginBranchId;
+
+    const originBranch = resolvedOriginBranchId ? await Branch.findByPk(resolvedOriginBranchId) : null;
+    const destBranch = resolvedDestBranchId ? await Branch.findByPk(resolvedDestBranchId) : null;
 
     const newTrip = await Trip.create({
       tenant_id: req.tenant.tenantId,
       organization_id: req.tenant.organizationId,
       trip_number: tripNumber,
       trip_date: trip_date || new Date().toISOString().slice(0, 10),
-      origin_branch_id: origin_branch_id || null,
-      dest_branch_id: dest_branch_id || null,
+      origin_branch_id: resolvedOriginBranchId,
+      dest_branch_id: resolvedDestBranchId,
       origin_city: originBranch ? originBranch.city : 'Origin Hub',
       destination_city: destBranch ? destBranch.city : 'Destination Hub',
       vehicle_id,
@@ -1023,25 +1047,28 @@ const completeFtlDelivery = async (req, res) => {
       return errorResponse(res, 'Trip is already marked as completed', null, 400);
     }
 
-    const endOdo = end_odometer !== undefined && end_odometer !== null && end_odometer !== ''
-      ? parseInt(end_odometer, 10)
-      : trip.start_odometer;
+    const startOdo = parseInt(trip.start_odometer || 0, 10);
+    const hasEndOdo = end_odometer !== undefined && end_odometer !== null && end_odometer !== '';
+    const endOdo = hasEndOdo ? parseInt(end_odometer, 10) : startOdo;
 
-    if (endOdo < trip.start_odometer) {
+    if (hasEndOdo && endOdo < startOdo) {
       await transaction.rollback();
-      return errorResponse(res, `Delivery odometer (${endOdo} KM) cannot be less than departure odometer (${trip.start_odometer} KM)`, null, 400);
+      return errorResponse(res, `Delivery odometer (${endOdo} KM) cannot be less than departure odometer (${startOdo} KM)`, null, 400);
     }
 
     const deliveryTime = delivery_date ? new Date(delivery_date) : new Date();
     const kmRun = endOdo - (trip.start_odometer || 0);
 
+    const isDirectPlacement = trip.trip_mode === 'DIRECT_VEHICLE_HIRE';
     const sealFlag = seal_status === 'BROKEN' ? '(BROKEN)' : seal_status === 'MISMATCH' ? '(MISMATCH)' : '';
-    const sealNote = `Seal: ${received_seal_number || 'N/A'} [${seal_status || 'INTACT'}]${sealFlag ? ` ${sealFlag}` : ''}${discrepancy_reason ? ` | Discrepancy: ${discrepancy_reason}` : ''}${cargo_condition && cargo_condition !== 'INTACT' ? ` | Cargo Condition: ${cargo_condition}` : ''}`;
+    const sealNote = isDirectPlacement
+      ? 'Vehicle Placement Completed'
+      : `Seal: ${received_seal_number || 'N/A'} [${seal_status || 'INTACT'}]${sealFlag ? ` ${sealFlag}` : ''}${discrepancy_reason ? ` | Discrepancy: ${discrepancy_reason}` : ''}${cargo_condition && cargo_condition !== 'INTACT' ? ` | Cargo Condition: ${cargo_condition}` : ''}`;
 
     const completionNotes = [
       trip.remarks,
-      `[DIRECT FTL CLIENT DELIVERY] ${sealNote}`,
-      `Delivered to: ${receiver_name || 'Customer'} (${receiver_phone || 'N/A'}). End Odo: ${endOdo} KM (+${kmRun} KM). POD Ref: ${pod_number || 'Signed Copy'}${pod_doc_type ? ` [${pod_doc_type}]` : ''}. Notes: ${delivery_remarks || 'Material handed over in good condition.'}`,
+      isDirectPlacement ? `[DIRECT VEHICLE PLACEMENT DELIVERY]` : `[DIRECT FTL CLIENT DELIVERY] ${sealNote}`,
+      `Delivered to: ${receiver_name || 'Customer'} (${receiver_phone || 'N/A'}). End Odo: ${endOdo} KM (+${kmRun} KM). POD Ref: ${pod_number || 'Signed Copy'}${pod_doc_type ? ` [${pod_doc_type}]` : ''}. Notes: ${delivery_remarks || (isDirectPlacement ? 'Vehicle placement concluded.' : 'Material handed over in good condition.')}`,
     ].filter(Boolean).join('\n');
 
     // 1. Complete Trip
@@ -1049,6 +1076,13 @@ const completeFtlDelivery = async (req, res) => {
       status: 'COMPLETED',
       end_odometer: endOdo,
       end_time: deliveryTime,
+      delivered_at: deliveryTime,
+      receiver_name: receiver_name || (isDirectPlacement ? (trip.hiring_party_name || 'Client Receiver') : 'Client Representative'),
+      receiver_phone: receiver_phone || '',
+      pod_doc_type: pod_doc_type || 'SIGNED_CHALLAN',
+      pod_number: pod_number || '',
+      pod_file_url: pod_file_url || null,
+      delivery_remarks: delivery_remarks || '',
       remarks: completionNotes,
     }, { transaction });
 
@@ -1174,11 +1208,208 @@ const completeFtlDelivery = async (req, res) => {
   }
 };
 
+const createDirectHireTrip = async (req, res) => {
+  try {
+    const {
+      vehicle_id,
+      driver_id,
+      origin_branch_id,
+      dest_branch_id,
+      origin_city,
+      destination_city,
+      contract_amount,
+      advance_received = 0,
+      driver_advance = 0,
+      advance_mode = 'CASH',
+      hiring_party_type, // 'CUSTOMER', 'VENDOR_TRANSPORTER', 'DIRECT_PARTY'
+      customer_id,
+      vendor_id,
+      hiring_party_name,
+      hiring_party_phone,
+      party_ref_number,
+      eway_bill_no,
+      goods_description,
+      start_odometer,
+      remarks,
+    } = req.body;
+
+    const { Trip, Vehicle, Driver, Branch, Customer, Vendor, DriverAdvance } = req.tenantDb || defaultModels;
+
+    if (!vehicle_id) {
+      return errorResponse(res, 'Please select a vehicle to assign', null, 400);
+    }
+    if (!driver_id) {
+      return errorResponse(res, 'Please select an assigned driver', null, 400);
+    }
+    if (!origin_city?.trim() || !destination_city?.trim()) {
+      return errorResponse(res, 'Origin city and destination city are required', null, 400);
+    }
+    if (!contract_amount || parseFloat(contract_amount) <= 0) {
+      return errorResponse(res, 'Please enter a valid agreed hiring / contract freight amount', null, 400);
+    }
+
+    const vehicle = await Vehicle.findOne({
+      where: {
+        id: vehicle_id,
+        tenant_id: req.tenant.tenantId,
+        organization_id: req.tenant.organizationId,
+      },
+    });
+
+    if (!vehicle) {
+      return errorResponse(res, 'Vehicle not found in fleet records', null, 404);
+    }
+
+    // Resolve Origin Branch
+    let resolvedOriginBranchId = origin_branch_id;
+    if (!resolvedOriginBranchId) {
+      resolvedOriginBranchId = vehicle.branch_id || req.user?.branch_id || null;
+      if (!resolvedOriginBranchId) {
+        const firstBranch = await Branch.findOne({ where: { organization_id: req.tenant.organizationId } });
+        resolvedOriginBranchId = firstBranch ? firstBranch.id : null;
+      }
+    }
+
+    // Resolve Destination Branch (match destination city if hub exists, otherwise default to origin dispatch branch)
+    let resolvedDestBranchId = dest_branch_id || null;
+    if (!resolvedDestBranchId && destination_city) {
+      const destCityNorm = destination_city.trim().toLowerCase();
+      const allBranches = await Branch.findAll({
+        where: { organization_id: req.tenant.organizationId },
+        attributes: ['id', 'city', 'branch_name'],
+      });
+      const matchedBranch = allBranches.find(
+        (b) => b.city && (b.city.toLowerCase() === destCityNorm || destCityNorm.includes(b.city.toLowerCase()))
+      );
+      resolvedDestBranchId = matchedBranch ? matchedBranch.id : resolvedOriginBranchId;
+    }
+    if (!resolvedDestBranchId) {
+      resolvedDestBranchId = resolvedOriginBranchId;
+    }
+
+    // Generate unique Trip Number
+    const { formattedNumber: tripNumber } = await generateNextNumber({
+      tenantId: req.tenant.tenantId,
+      organizationId: req.tenant.organizationId,
+      branchId: resolvedOriginBranchId,
+      documentType: 'TRIP',
+      models: req.tenantDb || defaultModels,
+    });
+
+    const parsedContractAmount = parseFloat(contract_amount) || 0;
+    const parsedAdvanceReceived = parseFloat(advance_received) || 0;
+    const parsedDriverAdvance = parseFloat(driver_advance) || 0;
+    const initialStartOdometer = start_odometer !== undefined && start_odometer !== '' && start_odometer !== null
+      ? parseInt(start_odometer, 10)
+      : (vehicle.current_odometer || 0);
+
+    // Resolve Party Name
+    let resolvedPartyName = hiring_party_name;
+    let resolvedPartyPhone = hiring_party_phone;
+    if (customer_id && !resolvedPartyName) {
+      const cust = await Customer.findByPk(customer_id);
+      if (cust) {
+        resolvedPartyName = cust.company_name || cust.name;
+        resolvedPartyPhone = resolvedPartyPhone || cust.phone;
+      }
+    } else if (vendor_id && !resolvedPartyName) {
+      const vend = await Vendor.findByPk(vendor_id);
+      if (vend) {
+        resolvedPartyName = vend.company_name || vend.name;
+        resolvedPartyPhone = resolvedPartyPhone || vend.phone;
+      }
+    }
+
+    const newTrip = await Trip.create({
+      tenant_id: req.tenant.tenantId,
+      organization_id: req.tenant.organizationId,
+      trip_number: tripNumber,
+      trip_date: new Date().toISOString().slice(0, 10),
+      origin_branch_id: resolvedOriginBranchId,
+      dest_branch_id: resolvedDestBranchId,
+      origin_city: origin_city.trim(),
+      destination_city: destination_city.trim(),
+      vehicle_id,
+      driver_id,
+      vendor_id: vendor_id || null,
+      customer_id: customer_id || null,
+      trip_mode: 'DIRECT_VEHICLE_HIRE',
+      hiring_party_type: hiring_party_type || (customer_id ? 'CUSTOMER' : vendor_id ? 'VENDOR_TRANSPORTER' : 'DIRECT_PARTY'),
+      hiring_party_name: resolvedPartyName || 'Direct Hiring Client',
+      hiring_party_phone: resolvedPartyPhone || null,
+      party_ref_number: party_ref_number?.trim() || null,
+      eway_bill_no: eway_bill_no?.trim() || null,
+      goods_description: goods_description?.trim() || null,
+      contract_amount: parsedContractAmount,
+      advance_received: parsedAdvanceReceived,
+      expected_revenue: parsedContractAmount,
+      driver_advance: parsedDriverAdvance,
+      trip_type: 'DIRECT',
+      load_type: 'FTL',
+      start_odometer: initialStartOdometer,
+      start_time: new Date(),
+      status: 'RUNNING',
+      settlement_status: 'OPEN',
+      billing_status: 'UNBILLED',
+      remarks: remarks || `Dedicated FTL Vehicle Hire for ${resolvedPartyName || 'Client'}. Agreed Hire: ₹${parsedContractAmount}`,
+      created_by: req.user.id,
+    });
+
+    // Update Vehicle to ON_TRIP / ON_ROAD
+    vehicle.status = 'ON_TRIP';
+    if (initialStartOdometer > (vehicle.current_odometer || 0)) {
+      vehicle.current_odometer = initialStartOdometer;
+    }
+    await vehicle.save();
+
+    // If driver advance was issued at dispatch, create DriverAdvance record
+    if (parsedDriverAdvance > 0 && DriverAdvance) {
+      await DriverAdvance.create({
+        tenant_id: req.tenant.tenantId,
+        organization_id: req.tenant.organizationId,
+        trip_id: newTrip.id,
+        driver_id,
+        amount: parsedDriverAdvance,
+        disbursed_date: new Date().toISOString().slice(0, 10),
+        disbursed_mode: advance_mode || 'CASH',
+        remarks: `Driver advance for Direct Contract Trip #${newTrip.trip_number} (${origin_city} ➔ ${destination_city})`,
+        disbursed_by: req.user.id,
+      });
+    }
+
+    logAudit({
+      req,
+      action: 'CREATE',
+      entityType: 'TRIP',
+      entityId: newTrip.trip_number,
+      entityName: `Direct Trip ${newTrip.trip_number}`,
+      summary: `Created Dedicated Vehicle Placement Trip #${newTrip.trip_number} (${newTrip.origin_city} ➔ ${newTrip.destination_city}) with vehicle ${vehicle.vehicle_number} for ${resolvedPartyName || 'Party'} (Agreed Freight: ₹${parsedContractAmount})`,
+      newValues: newTrip.toJSON ? newTrip.toJSON() : newTrip,
+    });
+
+    const fullTrip = await Trip.findByPk(newTrip.id, {
+      include: [
+        { model: Vehicle, as: 'vehicle' },
+        { model: Driver, as: 'driver' },
+        { model: Branch, as: 'originBranch' },
+        { model: Branch, as: 'destBranch' },
+        { model: Customer, as: 'customer' },
+        { model: Vendor, as: 'vendor' },
+      ],
+    });
+
+    return successResponse(res, `Dedicated vehicle placement trip #${newTrip.trip_number} started successfully`, fullTrip, 201);
+  } catch (error) {
+    return errorResponse(res, error.message, null, 500);
+  }
+};
+
 module.exports = {
   listTrips,
   getTripDetail,
   createTripAndDispatch,
   createTrip,
+  createDirectHireTrip,
   assignVehicleToTrip,
   getTripUnloadManifest,
   completeTripAndUnload,

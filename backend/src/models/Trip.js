@@ -30,7 +30,7 @@ module.exports = (sequelize) => {
     },
     dest_branch_id: {
       type: DataTypes.UUID,
-      allowNull: false,
+      allowNull: true,
     },
     origin_city: {
       type: DataTypes.STRING(100),
@@ -50,7 +50,58 @@ module.exports = (sequelize) => {
     },
     vendor_id: {
       type: DataTypes.UUID,
-      allowNull: true, // If market vehicle
+      allowNull: true, // If market vehicle or hiring vendor transporter
+    },
+    trip_mode: {
+      type: DataTypes.STRING(40),
+      defaultValue: 'CONSIGNMENT_MANIFEST',
+      comment: 'CONSIGNMENT_MANIFEST (regular builty manifest) or DIRECT_VEHICLE_HIRE (dedicated contract)',
+    },
+    hiring_party_type: {
+      type: DataTypes.STRING(30),
+      defaultValue: 'CUSTOMER',
+      comment: 'CUSTOMER, VENDOR_TRANSPORTER, or DIRECT_PARTY',
+    },
+    customer_id: {
+      type: DataTypes.UUID,
+      allowNull: true,
+    },
+    hiring_party_name: {
+      type: DataTypes.STRING(150),
+      allowNull: true,
+    },
+    hiring_party_phone: {
+      type: DataTypes.STRING(30),
+      allowNull: true,
+    },
+    party_ref_number: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+      comment: "Customer's or Hirer's own Challan, Memo, or Docket number",
+    },
+    eway_bill_no: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+    },
+    contract_amount: {
+      type: DataTypes.DECIMAL(12, 2),
+      defaultValue: 0.00,
+      comment: 'Agreed contract freight rate payable to us by the hiring party',
+    },
+    advance_received: {
+      type: DataTypes.DECIMAL(12, 2),
+      defaultValue: 0.00,
+      comment: 'Advance received from the hiring party at placement',
+    },
+    billing_status: {
+      type: DataTypes.STRING(30),
+      defaultValue: 'UNBILLED',
+      comment: 'UNBILLED, INVOICED, or SETTLED',
+    },
+    goods_description: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+      comment: 'Summary of goods or cargo loaded (e.g. Steel Coils, FMCG)',
     },
     trip_type: {
       type: DataTypes.ENUM('DIRECT', 'HUB', 'MULTI_STOP'),
@@ -110,6 +161,37 @@ module.exports = (sequelize) => {
     created_by: {
       type: DataTypes.UUID,
       allowNull: false,
+    },
+    receiver_name: {
+      type: DataTypes.STRING(150),
+      allowNull: true,
+      comment: 'Name of the receiver who accepted direct delivery',
+    },
+    receiver_phone: {
+      type: DataTypes.STRING(30),
+      allowNull: true,
+    },
+    pod_doc_type: {
+      type: DataTypes.STRING(50),
+      allowNull: true,
+      defaultValue: 'SIGNED_CHALLAN',
+    },
+    pod_number: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+    },
+    pod_file_url: {
+      type: DataTypes.TEXT('long'),
+      allowNull: true,
+      comment: 'Proof of Delivery (POD) photo/document URL for direct vehicle placement',
+    },
+    delivery_remarks: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    delivered_at: {
+      type: DataTypes.DATE,
+      allowNull: true,
     },
   }, {
     tableName: 'trips',

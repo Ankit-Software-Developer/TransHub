@@ -1068,6 +1068,20 @@ export default function FleetManagementPage() {
             >
               <Eye className="w-3.5 h-3.5" />
             </button>
+
+            {/* Quick Dedicated Vehicle Hire Placement */}
+            {(row.status === 'AVAILABLE' || row.status === 'YARD' || row.status === 'IDLE') && (
+              <Link
+                href={`/trips?action=new-placement&vehicleId=${row.id}`}
+                className={`p-1.5 rounded-lg border text-xs font-semibold transition-colors cursor-pointer flex items-center justify-center ${isDark
+                    ? 'border-purple-800/60 bg-purple-950/40 text-purple-400 hover:text-purple-300 hover:bg-purple-900/60'
+                    : 'border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100'
+                  }`}
+                title="Deploy on Dedicated Vehicle Hire / Direct Placement"
+              >
+                <Truck className="w-3.5 h-3.5" />
+              </Link>
+            )}
           </div>
         ),
       },

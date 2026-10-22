@@ -158,7 +158,7 @@ const initMasterDatabase = async () => {
           if (t.database_name && t.database_name !== dbName) {
             try {
               const tConn = await getTenantConnection(t.database_name);
-              await tConn.sequelize.sync({ alter: true });
+              await tConn.sequelize.sync();
               console.log(`✅ [Multi-Tenant Sync] Verified & synced tenant DB: ${t.database_name}`);
             } catch (tSyncErr) {
               console.warn(`⚠️ [Multi-Tenant Sync] Sync notice for ${t.database_name}:`, tSyncErr.message);

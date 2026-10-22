@@ -80,6 +80,55 @@ async function migrate() {
       } catch (payErr) {
         console.warn(`   ⚠️ payments notice in ${dbName}: ${payErr.message}`);
       }
+
+      // 4. trips table: Ensure dest_branch_id is nullable for direct contract delivery sites
+      try {
+        await sequelize.query(`ALTER TABLE \`${dbName}\`.trips MODIFY COLUMN \`dest_branch_id\` CHAR(36) NULL`);
+        console.log(`   ✔️ Allowed NULL for \`trips\`.\`dest_branch_id\` in ${dbName}.`);
+      } catch (tripErr) {
+        console.warn(`   ⚠️ trips dest_branch_id notice in ${dbName}: ${tripErr.message}`);
+      }
+
+      // 5. Clean up redundant duplicate indexes created by Sequelize sync({ alter: true })
+      try {
+        const [indexes] = await sequelize.query(`
+          SELECT TABLE_NAME, INDEX_NAME, COLUMN_NAME, SEQ_IN_INDEX
+          FROM INFORMATION_SCHEMA.STATISTICS
+          WHERE TABLE_SCHEMA = '${dbName}'
+            AND INDEX_NAME != 'PRIMARY'
+          ORDER BY TABLE_NAME, COLUMN_NAME, INDEX_NAME
+        `);
+
+        const colIndexGroups = {};
+        for (const idx of indexes) {
+          if (idx.SEQ_IN_INDEX === 1) {
+            const key = `${idx.TABLE_NAME}###${idx.COLUMN_NAME}`;
+            if (!colIndexGroups[key]) {
+              colIndexGroups[key] = [];
+            }
+            if (!colIndexGroups[key].includes(idx.INDEX_NAME)) {
+              colIndexGroups[key].push(idx.INDEX_NAME);
+            }
+          }
+        }
+
+        for (const [key, idxList] of Object.entries(colIndexGroups)) {
+          if (idxList.length > 1) {
+            const [tableName, colName] = key.split('###');
+            for (let i = 1; i < idxList.length; i++) {
+              const dropIdx = idxList[i];
+              try {
+                await sequelize.query(`ALTER TABLE \`${dbName}\`.\`${tableName}\` DROP INDEX \`${dropIdx}\``);
+                console.log(`   🧹 Pruned duplicate index \`${dropIdx}\` on \`${tableName}\`.\`${colName}\` in ${dbName}`);
+              } catch (dropErr) {
+                // If needed by FK constraint, safely continue
+              }
+            }
+          }
+        }
+      } catch (idxErr) {
+        console.warn(`   ⚠️ Index pruning notice in ${dbName}:`, idxErr.message);
+      }
     }
 
     console.log('\n🎉 Payment Automation database migration completed successfully!');

@@ -364,7 +364,15 @@ const createExpense = async (req, res) => {
       newValues: expense.toJSON ? expense.toJSON() : expense,
     });
 
-    return successResponse(res, 'Expense recorded successfully', expense, 201);
+    let responseData = expense;
+    if (ExpenseCategory) {
+      const fullExp = await Expense.findByPk(expense.id, {
+        include: [{ model: ExpenseCategory, as: 'category', attributes: ['id', 'name', 'code', 'is_trip_expense'] }]
+      });
+      if (fullExp) responseData = fullExp;
+    }
+
+    return successResponse(res, 'Expense recorded successfully', responseData, 201);
   } catch (error) {
     console.error('createExpense error:', error);
     return errorResponse(res, error.message, null, 500);
@@ -1354,6 +1362,7 @@ const listTripWiseExpenses = async (req, res) => {
       DriverAdvance,
       FuelEntry,
       Consignment,
+      TripSettlement,
     } = req.tenantDb || defaultModels;
 
     const where = {
@@ -1391,7 +1400,13 @@ const listTripWiseExpenses = async (req, res) => {
     }
 
     if (settlement_status && settlement_status !== 'ALL') {
-      where.settlement_status = settlement_status;
+      if (settlement_status === 'SETTLED') {
+        where.settlement_status = 'SETTLED';
+      } else if (settlement_status === 'PENDING' || settlement_status === 'OPEN') {
+        where.settlement_status = { [Op.or]: [{ [Op.ne]: 'SETTLED' }, { [Op.is]: null }] };
+      } else {
+        where.settlement_status = settlement_status;
+      }
     }
 
     if (from_date && to_date) {
@@ -1489,6 +1504,14 @@ const listTripWiseExpenses = async (req, res) => {
         required: false,
       });
     }
+    if (TripSettlement) {
+      includeList.push({
+        model: TripSettlement,
+        as: 'settlement',
+        attributes: ['id', 'settlement_number', 'settlement_date', 'total_advance', 'total_expenses', 'driver_allowance', 'balance_payable_or_receivable', 'vehicle_charge', 'profit_margin', 'settlement_type', 'status'],
+        required: false,
+      });
+    }
 
     const allowedSort = {
       trip_number: 'trip_number',
@@ -1524,17 +1547,29 @@ const listTripWiseExpenses = async (req, res) => {
     const enrichedTrips = rows.map((t) => {
       const tripJson = t.toJSON ? t.toJSON() : { ...t };
 
-      // 1. Driver Bhatta & Advances Total
+      const settlement = tripJson.settlement || null;
+      const isSettled = tripJson.settlement_status === 'SETTLED' || settlement?.status === 'SETTLED';
+
+      // 1. Driver Cash Advances Disbursed
       let driverAdvances = (tripJson.advances || []).reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
       if (driverAdvances <= 0 && parseFloat(tripJson.driver_advance || 0) > 0) {
         driverAdvances = parseFloat(tripJson.driver_advance || 0);
       }
+      if (settlement && parseFloat(settlement.total_advance || 0) > 0) {
+        driverAdvances = parseFloat(settlement.total_advance);
+      }
 
-      // 2. Fuel Outflow: From fuelEntries + any Expense categorised as Fuel
+      // 2. Driver Bhatta / Daily Allowance from Settlement Voucher or Vouchers
+      let driverBhatta = 0;
+      if (settlement && parseFloat(settlement.driver_allowance || 0) > 0) {
+        driverBhatta = parseFloat(settlement.driver_allowance);
+      }
+
+      // 3. Fuel Outflow: From fuelEntries + any Expense categorised as Fuel
       let fuelCost = (tripJson.fuelEntries || []).reduce((sum, f) => sum + parseFloat(f.total_amount || 0), 0);
       let fuelLitres = (tripJson.fuelEntries || []).reduce((sum, f) => sum + parseFloat(f.litres || 0), 0);
 
-      // 3. Toll, En-route & Running Repairs
+      // 4. Toll, En-route & Running Repairs
       let runningExpenses = 0;
       (tripJson.expenses || []).forEach((e) => {
         const catName = (e.category?.name || '').toLowerCase();
@@ -1543,6 +1578,8 @@ const listTripWiseExpenses = async (req, res) => {
 
         if (catName.includes('fuel') || catName.includes('diesel') || remarks.includes('diesel') || remarks.includes('fuel')) {
           fuelCost += amt;
+        } else if (catName.includes('bhatta') || catName.includes('food') || remarks.includes('bhatta')) {
+          if (!driverBhatta) driverBhatta += amt;
         } else {
           runningExpenses += amt;
         }
@@ -1551,24 +1588,45 @@ const listTripWiseExpenses = async (req, res) => {
         runningExpenses = parseFloat(tripJson.total_expenses || 0);
       }
 
-      // 4. Total Operational Outflows for this trip
-      const totalSpend = roundToTwo(driverAdvances + fuelCost + runningExpenses);
+      // 5. Total Operational Outflows for this trip:
+      // For Company Owned truck: Highway Direct Expenses (Fuel + Toll/Repairs) + Driver Bhatta (Allowance)
+      // Note: Advance is not added on top of expenses because advances are disbursed to pay for fuel/expenses.
+      // For Market / Attached truck: Agreed Vehicle Hire Charge
+      const isMarketOrAttached = (tripJson.vehicle?.ownership || 'OWN').toUpperCase() === 'MARKET' || (tripJson.vehicle?.ownership || 'OWN').toUpperCase() === 'ATTACHED';
+      const vehicleCharge = parseFloat(tripJson.vehicle_charge || 0);
 
-      // 5. Expected Freight Revenue
+      let totalSpend = 0;
+      if (isMarketOrAttached && vehicleCharge > 0) {
+        totalSpend = vehicleCharge;
+      } else {
+        totalSpend = roundToTwo(fuelCost + runningExpenses + driverBhatta);
+      }
+
+      // 6. Expected Freight Revenue
       let grossRevenue = parseFloat(tripJson.expected_revenue || 0);
       if (grossRevenue <= 0 && Array.isArray(tripJson.consignments) && tripJson.consignments.length > 0) {
         grossRevenue = tripJson.consignments.reduce((sum, c) => sum + parseFloat(c.total_amount || 0), 0);
       }
       grossRevenue = roundToTwo(grossRevenue);
 
-      // 6. Net Profit / Loss
-      const netProfitLoss = roundToTwo(grossRevenue - totalSpend);
+      // 7. Net Profit / Loss
+      let netProfitLoss = roundToTwo(grossRevenue - totalSpend);
+      if (settlement && settlement.profit_margin !== undefined && settlement.profit_margin !== null) {
+        netProfitLoss = roundToTwo(parseFloat(settlement.profit_margin));
+      }
       const marginPct = grossRevenue > 0 ? Number(((netProfitLoss / grossRevenue) * 100).toFixed(1)) : 0;
+
+      // 8. Reconciled Settlement Position (Balance & Settlement Type)
+      const settlementBalance = settlement ? parseFloat(settlement.balance_payable_or_receivable || 0) : Math.abs(driverAdvances - (fuelCost + runningExpenses + driverBhatta));
+      const settlementType = settlement?.settlement_type || (driverAdvances - (fuelCost + runningExpenses + driverBhatta) < 0 ? 'PAYABLE_TO_DRIVER' : 'REFUND_FROM_DRIVER');
 
       return {
         ...tripJson,
-        vehicle_charge: roundToTwo(parseFloat(tripJson.vehicle_charge || 0)),
+        vehicle_charge: roundToTwo(vehicleCharge),
         driver_advance_total: roundToTwo(driverAdvances),
+        driver_bhatta_total: roundToTwo(driverBhatta),
+        settlement_balance: settlementBalance,
+        settlement_type: settlementType,
         fuel_cost_total: roundToTwo(fuelCost),
         fuel_litres_total: roundToTwo(fuelLitres),
         running_expense_total: roundToTwo(runningExpenses),

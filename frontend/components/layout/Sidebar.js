@@ -154,7 +154,7 @@ export default function Sidebar() {
       >
       {/* Brand Header */}
       <div className={`h-20 flex items-center border-b transition-all ${
-        collapsed ? 'justify-center px-2' : 'justify-center lg:justify-between px-2 lg:px-3.5 xl:px-5'
+        collapsed ? 'justify-center px-2' : 'justify-between px-3 xl:px-4'
       } ${
         isDark ? 'border-slate-800/80 bg-[#0B1020]' : 'border-slate-200/80 bg-slate-50/50'
       }`}>
@@ -162,14 +162,20 @@ export default function Sidebar() {
           <div className="relative flex items-center justify-center w-full">
             <Link
               href="/"
-              className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-cyan-400 flex items-center justify-center text-white font-black shadow-md shadow-cyan-500/25 shrink-0 overflow-hidden hover:scale-105 transition-transform"
-              title={user?.businessName || 'TransHub'}
+              className="group relative w-11 h-11 rounded-2xl bg-gradient-to-br from-blue-600 via-indigo-600 to-cyan-500 flex items-center justify-center text-white shadow-md shadow-blue-500/25 ring-1 ring-white/20 dark:ring-white/10 shrink-0 overflow-hidden hover:scale-105 transition-all"
+              title={user?.businessName || user?.organizationName || 'TransHub'}
             >
               {user?.logoUrl ? (
                 <img src={user.logoUrl} alt="Logo" className="w-full h-full object-cover" />
               ) : (
-                <Truck className="w-5 h-5 text-white" />
+                <Truck className="w-5 h-5 text-white drop-shadow-sm transition-transform group-hover:scale-110" />
               )}
+              {/* Subtle status indicator dot in collapsed mode */}
+              <span
+                className={`absolute top-1.5 right-1.5 w-2 h-2 rounded-full ring-2 ring-white dark:ring-slate-900 ${
+                  isOnlyFTL ? 'bg-indigo-400' : isOnlyPTL ? 'bg-amber-400' : 'bg-cyan-400'
+                }`}
+              />
             </Link>
 
             {/* Floating Expand Toggle on Border */}
@@ -187,30 +193,40 @@ export default function Sidebar() {
           </div>
         ) : (
           <>
-            <Link href="/" className="flex items-center space-x-2.5 xl:space-x-3 overflow-hidden">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-cyan-400 flex items-center justify-center text-white font-black shadow-md shadow-cyan-500/25 shrink-0 overflow-hidden">
+            <Link href="/" className="flex items-center space-x-3 overflow-hidden group min-w-0">
+              {/* Professional Logo Squircle with Gradient & Ring */}
+              <div className="relative w-11 h-11 rounded-2xl bg-gradient-to-br from-blue-600 via-indigo-600 to-cyan-500 flex items-center justify-center text-white shadow-md shadow-blue-500/20 ring-1 ring-black/5 dark:ring-white/15 shrink-0 overflow-hidden transition-transform group-hover:scale-102">
                 {user?.logoUrl ? (
                   <img src={user.logoUrl} alt="Logo" className="w-full h-full object-cover" />
                 ) : (
-                  <Truck className="w-5 h-5 text-white" />
+                  <Truck className="w-5 h-5 text-white drop-shadow-sm" />
                 )}
               </div>
+
+              {/* Organization & Tier Info */}
               <div className="min-w-0 hidden lg:block">
                 <div className="flex items-center">
-                  <span className={`text-sm xl:text-base font-black tracking-tight truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                  <h2
+                    className={`text-[15px] font-bold tracking-tight truncate capitalize leading-tight ${
+                      isDark ? 'text-white' : 'text-slate-900'
+                    }`}
+                    title={user?.businessName || user?.organizationName || 'TransHub'}
+                  >
                     {user?.businessName || user?.organizationName || (
-                      <>Trans<span className="text-cyan-400">Hub</span></>
+                      <>Trans<span className="text-blue-600 dark:text-cyan-400">Hub</span></>
                     )}
-                  </span>
+                  </h2>
                 </div>
-                <div className="flex items-center gap-1 mt-0.5">
+
+                {/* Professional Operations Badge & Tagline */}
+                <div className="flex items-center gap-1.5 mt-1">
                   <span
-                    className={`inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[8px] font-black uppercase tracking-wider border shrink-0 leading-tight ${
+                    className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-bold tracking-wider uppercase border shadow-2xs transition-colors shrink-0 ${
                       isOnlyFTL
-                        ? 'bg-purple-500/15 text-purple-600 dark:text-purple-300 border-purple-500/30'
+                        ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200/90 dark:border-indigo-800/60'
                         : isOnlyPTL
-                        ? 'bg-amber-500/15 text-amber-600 dark:text-amber-300 border-amber-500/30'
-                        : 'bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border-cyan-500/30'
+                        ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-200/90 dark:border-amber-800/60'
+                        : 'bg-cyan-50 dark:bg-cyan-950/60 text-cyan-700 dark:text-cyan-300 border-cyan-200/90 dark:border-cyan-800/60'
                     }`}
                     title={
                       isOnlyFTL
@@ -220,13 +236,22 @@ export default function Sidebar() {
                         : 'Hybrid Operations (FTL + PTL)'
                     }
                   >
-                    {isOnlyFTL ? '🚛 FTL' : isOnlyPTL ? '📦 PTL' : '🔄 FTL+PTL'}
+                    <span className="relative flex h-1.5 w-1.5">
+                      <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-60 ${
+                        isOnlyFTL ? 'bg-indigo-400' : isOnlyPTL ? 'bg-amber-400' : 'bg-cyan-400'
+                      }`} />
+                      <span className={`relative inline-flex rounded-full h-1.5 w-1.5 ${
+                        isOnlyFTL ? 'bg-indigo-600 dark:bg-indigo-400' : isOnlyPTL ? 'bg-amber-500 dark:bg-amber-400' : 'bg-cyan-600 dark:bg-cyan-400'
+                      }`} />
+                    </span>
+                    <span>{isOnlyFTL ? 'FTL' : isOnlyPTL ? 'PTL' : 'FTL • PTL'}</span>
                   </span>
-                  <p className={`text-[9.5px] font-semibold tracking-wider uppercase truncate ${
+
+                  <span className={`text-[10px] font-semibold tracking-wider uppercase truncate ${
                     isDark ? 'text-slate-400' : 'text-slate-500'
                   }`}>
                     {user?.tagline || 'Logistics'}
-                  </p>
+                  </span>
                 </div>
               </div>
             </Link>
@@ -234,12 +259,14 @@ export default function Sidebar() {
             {/* Collapse toggle button on desktop/laptop */}
             <button
               onClick={() => setCollapsed(true)}
-              className={`hidden lg:flex p-1.5 rounded-lg border text-slate-400 hover:text-white transition-colors cursor-pointer ${
-                isDark ? 'border-slate-800 bg-slate-900/60 hover:bg-slate-800' : 'border-slate-200 bg-white hover:bg-slate-100 text-slate-600'
+              className={`hidden lg:flex items-center justify-center w-7 h-7 rounded-lg border transition-all cursor-pointer group shrink-0 ${
+                isDark
+                  ? 'border-slate-800 bg-slate-900/80 text-slate-400 hover:text-white hover:bg-slate-800 hover:border-slate-700'
+                  : 'border-slate-200 bg-white text-slate-400 hover:text-slate-700 hover:bg-slate-100 shadow-2xs hover:border-slate-300'
               }`}
-              title="Collapse sidebar to icons"
+              title="Collapse sidebar"
             >
-              <ChevronLeft className="w-4 h-4" />
+              <ChevronLeft className="w-4 h-4 transition-transform group-hover:-translate-x-0.5" />
             </button>
           </>
         )}
@@ -249,20 +276,21 @@ export default function Sidebar() {
       <nav className="flex-1 px-2 lg:px-2.5 xl:px-3 py-4 space-y-1 overflow-y-auto">
         {navItems
           .filter((item) => {
-            if (isOnlyFTL && (item.href === '/load-planning' || item.href === '/unload-planning')) {
+            if (isOnlyFTL && item.href === '/unload-planning') {
               return false;
             }
             return canAccessRoute(item.href);
           })
           .map((item) => {
           const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href));
-          const Icon = item.icon;
+          const Icon = (item.href === '/load-planning' && isOnlyFTL) ? Truck : item.icon;
+          const displayLabel = (item.href === '/load-planning' && isOnlyFTL) ? 'Dedicated Dispatch' : item.label;
 
           return (
             <Link
               key={item.href}
               href={item.href}
-              title={item.label}
+              title={displayLabel}
               className={`flex items-center relative rounded-xl text-xs font-semibold transition-all group ${
                 collapsed
                   ? 'justify-center p-3'
@@ -278,7 +306,7 @@ export default function Sidebar() {
               <Icon className={`w-4 h-4 shrink-0 transition-colors ${
                 isActive ? 'text-white' : isDark ? 'text-slate-400 group-hover:text-cyan-400' : 'text-slate-500 group-hover:text-blue-600'
               }`} />
-              {!collapsed && <span className="truncate flex-1 hidden lg:inline text-xs">{item.label}</span>}
+              {!collapsed && <span className="truncate flex-1 hidden lg:inline text-xs">{displayLabel}</span>}
               {item.badge > 0 && (
                 <span className={`text-[10px] rounded-full flex items-center justify-center shrink-0 ${
                   collapsed
@@ -379,28 +407,44 @@ export default function Sidebar() {
         }`}
       >
         {/* Header with Brand & Close Button */}
-        <div className={`h-16 px-4 flex items-center justify-between border-b shrink-0 ${
+        <div className={`h-18 px-4 flex items-center justify-between border-b shrink-0 ${
           isDark ? 'border-slate-800/80 bg-[#0B1020]' : 'border-slate-200 bg-slate-50/80'
         }`}>
           <Link
             href="/"
             onClick={() => setMobileSidebarOpen(false)}
-            className="flex items-center space-x-2.5 overflow-hidden"
+            className="flex items-center space-x-3 overflow-hidden min-w-0"
           >
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-cyan-400 flex items-center justify-center text-white font-black shadow-md shrink-0 overflow-hidden">
+            <div className="relative w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-600 via-indigo-600 to-cyan-500 flex items-center justify-center text-white shadow-md shadow-blue-500/20 ring-1 ring-black/5 dark:ring-white/15 shrink-0 overflow-hidden">
               {user?.logoUrl ? (
                 <img src={user.logoUrl} alt="Logo" className="w-full h-full object-cover" />
               ) : (
-                <Truck className="w-4 h-4 text-white" />
+                <Truck className="w-5 h-5 text-white drop-shadow-sm" />
               )}
             </div>
             <div className="min-w-0">
-              <span className={`text-base font-black truncate block ${isDark ? 'text-white' : 'text-slate-900'}`}>
+              <h2 className={`text-sm font-bold tracking-tight truncate capitalize leading-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
                 {user?.businessName || user?.organizationName || 'TransHub'}
-              </span>
-              <span className="text-[10px] text-slate-400 block truncate">
-                {user?.tagline || 'Logistics Platform'}
-              </span>
+              </h2>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span
+                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider uppercase border shrink-0 ${
+                    isOnlyFTL
+                      ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200/90 dark:border-indigo-800/60'
+                      : isOnlyPTL
+                      ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-200/90 dark:border-amber-800/60'
+                      : 'bg-cyan-50 dark:bg-cyan-950/60 text-cyan-700 dark:text-cyan-300 border-cyan-200/90 dark:border-cyan-800/60'
+                  }`}
+                >
+                  <span className={`w-1 h-1 rounded-full ${
+                    isOnlyFTL ? 'bg-indigo-500' : isOnlyPTL ? 'bg-amber-500' : 'bg-cyan-500'
+                  }`} />
+                  <span>{isOnlyFTL ? 'FTL' : isOnlyPTL ? 'PTL' : 'FTL • PTL'}</span>
+                </span>
+                <span className="text-[10px] text-slate-400 truncate">
+                  {user?.tagline || 'Logistics'}
+                </span>
+              </div>
             </div>
           </Link>
 
@@ -422,14 +466,15 @@ export default function Sidebar() {
         <nav className="flex-1 px-3 py-3 space-y-1 overflow-y-auto">
           {navItems
             .filter((item) => {
-              if (isOnlyFTL && (item.href === '/load-planning' || item.href === '/unload-planning')) {
+              if (isOnlyFTL && item.href === '/unload-planning') {
                 return false;
               }
               return canAccessRoute(item.href);
             })
             .map((item) => {
               const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href));
-              const Icon = item.icon;
+              const Icon = (item.href === '/load-planning' && isOnlyFTL) ? Truck : item.icon;
+              const displayLabel = (item.href === '/load-planning' && isOnlyFTL) ? 'Dedicated Dispatch' : item.label;
 
               return (
                 <Link
@@ -447,7 +492,7 @@ export default function Sidebar() {
                   <Icon className={`w-4 h-4 shrink-0 transition-colors ${
                     isActive ? 'text-white' : isDark ? 'text-slate-400' : 'text-slate-500'
                   }`} />
-                  <span className="truncate flex-1">{item.label}</span>
+                  <span className="truncate flex-1">{displayLabel}</span>
                   {item.badge > 0 && (
                     <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500 text-white shadow-xs ml-auto">
                       {item.badge > 99 ? '99+' : item.badge}

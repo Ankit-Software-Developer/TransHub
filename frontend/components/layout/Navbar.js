@@ -189,28 +189,26 @@ export default function Navbar() {
 
   const sub = user?.subscription || (typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('transporter_subscription') || 'null') : null);
   const rawCode = (sub?.planCode || user?.planCode || 'PRO').toUpperCase();
+  const isTrial = Boolean(sub?.isTrial || rawCode.includes('TRIAL') || sub?.status === 'TRIAL');
 
-  let planName = 'Pro Plan';
-  let planBadge = 'Pro';
-  let badgeColor = 'bg-cyan-500/20 text-cyan-400 border-cyan-500/40';
-
-  if (rawCode.includes('ENTERPRISE')) {
-    planName = 'Enterprise Plan';
-    planBadge = 'Enterprise';
-    badgeColor = 'bg-purple-500/20 text-purple-400 border-purple-500/40';
-  } else if (rawCode.includes('BASIC') || rawCode.includes('STARTER')) {
-    planName = 'Basic Plan';
-    planBadge = 'Basic';
-    badgeColor = 'bg-blue-500/20 text-blue-400 border-blue-500/40';
-  } else if (rawCode.includes('TRIAL') || sub?.isTrial) {
-    planName = sub?.planName ? `${sub.planName}` : 'Trial Plan';
-    planBadge = 'Trial';
-    badgeColor = 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40';
-  } else if (rawCode.includes('PRO')) {
-    planName = 'Pro Plan';
-    planBadge = 'Pro';
-    badgeColor = 'bg-cyan-500/20 text-cyan-400 border-cyan-500/40';
+  let baseTier = 'Pro';
+  if (rawCode.includes('ENTERPRISE') || sub?.planName?.toUpperCase().includes('ENTERPRISE')) {
+    baseTier = 'Enterprise';
+  } else if (rawCode.includes('BASIC') || rawCode.includes('STARTER') || sub?.planName?.toUpperCase().includes('BASIC')) {
+    baseTier = 'Basic';
+  } else {
+    baseTier = 'Pro';
   }
+
+  const planName = isTrial ? `${baseTier} Plan (Trial)` : `${baseTier} Plan`;
+  const planBadge = isTrial ? `${baseTier} Trial` : baseTier;
+  const badgeColor = isTrial
+    ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
+    : baseTier === 'Enterprise'
+    ? 'bg-purple-500/20 text-purple-400 border-purple-500/40'
+    : baseTier === 'Basic'
+    ? 'bg-blue-500/20 text-blue-400 border-blue-500/40'
+    : 'bg-cyan-500/20 text-cyan-400 border-cyan-500/40';
 
   // Calculate days remaining dynamically so each day automatically counts down
   let daysLeft = null;

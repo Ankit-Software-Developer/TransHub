@@ -218,19 +218,21 @@ export default function ControlTowerPage() {
       }
     });
 
-    // 2. Base list is derived strictly from real fleet vehicles with active GPS telemetry
+    // 2. Base list is derived from real fleet vehicles with active GPS telemetry
     const result = [];
     const seenPlates = new Set();
+    const seenTripIds = new Set();
 
-    (telemetryVehicles || []).forEach((tv, idx) => {
+    (telemetryVehicles || []).forEach((tv) => {
       const norm = normalizePlate(tv.vehicle_number);
       if (!norm || seenPlates.has(norm)) return;
-      seenPlates.add(norm);
 
       const realLat = parseFloat(tv.last_latitude);
       const realLng = parseFloat(tv.last_longitude);
       const hasRealGps = !isNaN(realLat) && !isNaN(realLng) && realLat > 0 && realLng > 0;
       if (!hasRealGps) return; // Only include real vehicles with valid coordinates
+
+      seenPlates.add(norm);
 
       const liveSpeed = parseFloat(tv.last_speed || 0);
       const isMoving = liveSpeed > 0;
@@ -241,11 +243,15 @@ export default function ControlTowerPage() {
       const matchingTrip = tripByPlate.get(norm) || (tv.id ? tripByVehicleId.get(tv.id) : null);
 
       if (matchingTrip) {
+        seenTripIds.add(matchingTrip.id);
+        if (matchingTrip.trip_number) seenTripIds.add(matchingTrip.trip_number);
+
         const oCity = matchingTrip.origin_city || matchingTrip.originBranch?.city || matchingTrip.originBranch?.branch_name || 'Origin Hub';
         const dCity = matchingTrip.destination_city || matchingTrip.destBranch?.city || matchingTrip.destBranch?.branch_name || 'Destination Hub';
         const dName = matchingTrip.driver?.name || matchingTrip.driver_name || tv.driver?.name || 'Driver In-charge';
         const dPhone = matchingTrip.driver?.phone || matchingTrip.driver_phone || tv.driver?.phone || '+91 98000 00000';
         const isTransit = ['IN_TRANSIT', 'RUNNING', 'DISPATCHED'].includes((matchingTrip.status || '').toUpperCase());
+        const isPlacement = matchingTrip.trip_mode === 'DIRECT_VEHICLE_HIRE';
 
         result.push({
           id: tv.id || matchingTrip.id,
@@ -253,7 +259,7 @@ export default function ControlTowerPage() {
           tripId: matchingTrip.id,
           trip_number: matchingTrip.trip_number || `TRP-${tv.vehicle_number}`,
           vehicleNumber: tv.vehicle_number,
-          vehicle_model: tv.vehicle_type || matchingTrip.vehicle?.vehicle_type || 'Commercial Truck (16T)',
+          vehicle_model: tv.vehicle_type || matchingTrip.vehicle?.vehicle_type || (isPlacement ? 'Dedicated FTL Truck' : 'Commercial Truck (16T)'),
           driver: dName,
           driver_phone: dPhone,
           rating: '4.9 ★',
@@ -268,14 +274,14 @@ export default function ControlTowerPage() {
           status_label: matchingTrip.status === 'IN_TRANSIT'
             ? 'In Transit (On Road)'
             : matchingTrip.status === 'RUNNING'
-            ? 'Running'
-            : matchingTrip.status === 'DISPATCHED'
-            ? 'Dispatched'
-            : isMoving
-            ? 'Moving on Highway'
-            : liveIgnition
-            ? 'Engine Idle (Ignition ON)'
-            : 'Stationed at Yard',
+              ? 'Running'
+              : matchingTrip.status === 'DISPATCHED'
+                ? 'Dispatched'
+                : isMoving
+                  ? 'Moving on Highway'
+                  : liveIgnition
+                    ? 'Engine Idle (Ignition ON)'
+                    : 'Stationed at Yard',
           isTransit,
           isMoving,
           latitude: realLat,
@@ -288,7 +294,7 @@ export default function ControlTowerPage() {
           eta: matchingTrip.trip_date ? `${new Date(matchingTrip.trip_date).toLocaleDateString()} Arrival` : 'On Schedule',
           on_time_buffer: '+1h 45m',
           progress: isTransit ? 55 : 0,
-          cargo: matchingTrip.total_weight ? `${Number(matchingTrip.total_weight).toLocaleString()} KG • ${matchingTrip.total_packages || 0} Pkgs` : 'General Freight Cargo',
+          cargo: matchingTrip.total_weight ? `${Number(matchingTrip.total_weight).toLocaleString()} KG • ${matchingTrip.total_packages || 0} Pkgs` : (isPlacement ? 'Dedicated Placement Cargo' : 'General Freight Cargo'),
           location: locName,
           total_weight: matchingTrip.total_weight || 0,
           total_packages: matchingTrip.total_packages || 0,
@@ -298,6 +304,7 @@ export default function ControlTowerPage() {
           gps_provider_name: tv.gps_provider_name || 'WheelsEye Fleet GPS',
           provider: tv.gps_provider_name || 'WheelsEye Fleet GPS',
           hasActiveTrip: true,
+          isPlacement,
           rawTrip: matchingTrip,
         });
       } else {
@@ -321,8 +328,8 @@ export default function ControlTowerPage() {
           status_label: isMoving
             ? 'Moving (Local Transit)'
             : liveIgnition
-            ? 'Engine Idle (Ignition ON)'
-            : 'Stationed at Yard',
+              ? 'Engine Idle (Ignition ON)'
+              : 'Stationed at Yard',
           isTransit: false,
           isMoving,
           latitude: realLat,
@@ -348,6 +355,82 @@ export default function ControlTowerPage() {
           rawTrip: null,
         });
       }
+    });
+
+    // 3. Always include ALL active trips from tripsData (running trips, dedicated vehicle placements, dispatches)
+    (tripsData || []).forEach((t) => {
+      const status = (t.status || '').toUpperCase();
+      const isActive = ['RUNNING', 'IN_TRANSIT', 'DISPATCHED', 'LOADING', 'CREATED', 'PLANNED', 'READY'].includes(status)
+        || (!['COMPLETED', 'CANCELLED', 'SETTLED'].includes(status) && Boolean(status));
+      if (!isActive) return;
+
+      const tripId = t.id || t.trip_number;
+      if (seenTripIds.has(t.id) || seenTripIds.has(tripId)) return;
+
+      const plate = t.vehicle?.vehicle_number || t.vehicle_number || t.party_ref_number || (t.trip_mode === 'DIRECT_VEHICLE_HIRE' ? `FTL-${t.trip_number}` : `TRP-${t.trip_number}`);
+      const norm = normalizePlate(plate);
+      if (norm && seenPlates.has(norm)) return;
+
+      if (norm) seenPlates.add(norm);
+      seenTripIds.add(t.id || tripId);
+
+      const oCity = t.origin_city || t.originBranch?.city || t.originBranch?.branch_name || 'Origin';
+      const dCity = t.destination_city || t.destBranch?.city || t.destBranch?.branch_name || oCity;
+      const isTransit = ['IN_TRANSIT', 'RUNNING', 'DISPATCHED', 'READY'].includes(status) || (oCity !== dCity);
+      const isPlacement = t.trip_mode === 'DIRECT_VEHICLE_HIRE';
+      const dName = t.driver?.name || t.driver_name || (t.hiring_party_name ? `${t.hiring_party_name} (Hiring Party)` : 'Assigned Pilot');
+      const dPhone = t.driver?.phone || t.driver_phone || '+91 98000 00000';
+      const vehModel = t.vehicle?.vehicle_type || (isPlacement ? 'Dedicated FTL Placement' : 'Commercial Freight Truck');
+      const locName = `${oCity} ➔ ${dCity} Corridor`;
+
+      result.push({
+        id: t.id,
+        rawId: t.vehicle_id || t.id,
+        tripId: t.id,
+        trip_number: t.trip_number,
+        vehicleNumber: plate,
+        vehicle_model: vehModel,
+        driver: dName,
+        driver_phone: dPhone,
+        rating: '4.9 ★',
+        origin: oCity,
+        destination: dCity,
+        originCity: oCity,
+        destCity: dCity,
+        origin_branch_name: t.originBranch?.branch_name || oCity,
+        dest_branch_name: t.destBranch?.branch_name || dCity,
+        route: oCity !== dCity ? `${oCity} ➔ ${dCity}` : `${oCity} Local Transit`,
+        status: t.status || 'RUNNING',
+        status_label: t.status === 'RUNNING'
+          ? 'Running'
+          : (t.status === 'IN_TRANSIT'
+            ? 'In Transit (On Road)'
+            : (t.status === 'DISPATCHED' ? 'Dispatched' : (t.status || 'Active'))),
+        isTransit,
+        isMoving: isTransit,
+        latitude: t.vehicle?.last_latitude || t.last_latitude || null,
+        longitude: t.vehicle?.last_longitude || t.last_longitude || null,
+        angle: 45,
+        speed: status === 'RUNNING' || status === 'IN_TRANSIT' ? '56 km/h' : '0 km/h',
+        ignition: true,
+        fuel: '84%',
+        remaining_km: '240 km',
+        eta: t.trip_date ? `${new Date(t.trip_date).toLocaleDateString()} Arrival` : 'On Schedule',
+        on_time_buffer: '+45m',
+        progress: 55,
+        cargo: t.total_weight ? `${Number(t.total_weight).toLocaleString()} KG • ${t.total_packages || 1} Pkgs` : (t.goods_description || (isPlacement ? 'Dedicated Placement Cargo' : 'General Freight Cargo')),
+        location: locName,
+        total_weight: t.total_weight || 0,
+        total_packages: t.total_packages || 1,
+        driver_advance: t.driver_advance || 0,
+        total_expenses: t.total_expenses || 0,
+        hasRealGps: Boolean(t.vehicle?.last_latitude && t.vehicle?.last_longitude),
+        gps_provider_name: isPlacement ? 'Vehicle Placement' : 'Active Dispatch',
+        provider: isPlacement ? 'Dedicated Placement' : 'Fleet Dispatch',
+        hasActiveTrip: true,
+        isPlacement,
+        rawTrip: t,
+      });
     });
 
     return result;
@@ -480,11 +563,10 @@ export default function ControlTowerPage() {
               setSelectedTrip(row);
               window.scrollTo({ top: 350, behavior: 'smooth' });
             }}
-            className={`px-3 py-1 rounded-lg text-[10px] font-bold shadow-xs transition-all ${
-              isCurrent
+            className={`px-3 py-1 rounded-lg text-[10px] font-bold shadow-xs transition-all ${isCurrent
                 ? 'bg-cyan-500 text-slate-950 font-black shadow-cyan-500/30'
                 : 'bg-blue-600 hover:bg-blue-500 text-white'
-            }`}
+              }`}
           >
             {isCurrent ? '● On Radar' : 'Locate'}
           </button>
@@ -494,15 +576,14 @@ export default function ControlTowerPage() {
   ], [selectedTrip]);
 
   return (
-    <div className={`flex min-h-screen transition-colors duration-300 ${
-      isDark ? 'bg-[#06080F] text-slate-100' : 'bg-[#F4F6FB] text-slate-900'
-    } font-sans`}>
+    <div className={`flex min-h-screen transition-colors duration-300 ${isDark ? 'bg-[#06080F] text-slate-100' : 'bg-[#F4F6FB] text-slate-900'
+      } font-sans`}>
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0">
         <Navbar />
 
         <main className="flex-1 p-3.5 sm:p-5 lg:p-6 xl:p-8 space-y-4 sm:space-y-6 w-full max-w-full">
-          
+
           {/* 24x7 Operations Command Strip Header */}
           <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3.5 sm:gap-4">
             <div className="min-w-0 flex-1">
@@ -512,19 +593,17 @@ export default function ControlTowerPage() {
                 </div>
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
-                    <h1 className={`text-base sm:text-lg lg:text-xl xl:text-2xl font-black tracking-tight text-balance sm:whitespace-nowrap ${
-                      isDark ? 'text-white' : 'text-slate-900'
-                    }`}>
+                    <h1 className={`text-base sm:text-lg lg:text-xl xl:text-2xl font-black tracking-tight text-balance sm:whitespace-nowrap ${isDark ? 'text-white' : 'text-slate-900'
+                      }`}>
                       24x7 Real-Time Control Tower
                     </h1>
                     <button
                       onClick={fetchControlTowerData}
                       disabled={loading}
-                      className={`p-1.5 sm:p-2 rounded-xl border transition-all cursor-pointer shrink-0 ${
-                        isDark
+                      className={`p-1.5 sm:p-2 rounded-xl border transition-all cursor-pointer shrink-0 ${isDark
                           ? 'bg-slate-900/80 border-slate-800 text-cyan-400 hover:text-white hover:border-slate-700'
                           : 'bg-white border-slate-200 text-blue-600 hover:text-blue-900 shadow-xs'
-                      }`}
+                        }`}
                       title="Refresh Live Fleet Telemetry"
                     >
                       <RefreshCw className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${isDark ? 'text-cyan-400' : 'text-blue-600'} ${loading ? 'animate-spin' : ''}`} />
@@ -554,9 +633,8 @@ export default function ControlTowerPage() {
               )}
 
               {/* Live IST Radar Time */}
-              <div className={`flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl border text-xs font-mono font-bold shrink-0 whitespace-nowrap ${
-                isDark ? 'bg-slate-900/90 border-slate-800 text-cyan-300' : 'bg-white border-slate-200 text-blue-700 shadow-xs'
-              }`}>
+              <div className={`flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl border text-xs font-mono font-bold shrink-0 whitespace-nowrap ${isDark ? 'bg-slate-900/90 border-slate-800 text-cyan-300' : 'bg-white border-slate-200 text-blue-700 shadow-xs'
+                }`}>
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
                 <span>IST: {currentTime || '07:24:32 PM'}</span>
                 <span className="hidden xl:inline text-[10px] text-emerald-400 font-sans">• LIVE RADAR</span>
@@ -620,18 +698,16 @@ export default function ControlTowerPage() {
 
           {/* Main Cockpit: Real Leaflet Map & Queue (8 Cols on xl+) + Telemetry & Exceptions (4 Cols on xl+) */}
           <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-stretch">
-            
+
             {/* Left Column: Full GPS Leaflet Map & Active Dispatch Queue (8 Columns on xl+, 100% on 1024px laptop & tablets) */}
             <div className="xl:col-span-8 flex flex-col h-full space-y-5">
-              
+
               {/* Real Interactive Leaflet India Map (Same as Dashboard, Showing only Running Trips) */}
-              <div className={`isolate relative z-0 p-4 sm:p-5 rounded-3xl border shadow-xl overflow-hidden flex flex-col justify-between flex-1 h-full ${
-                isDark ? 'bg-[#070B14] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
-              }`}>
-                {/* Map Toolbar */}
-                <div className={`flex flex-col md:flex-row md:items-center justify-between gap-3 z-10 pb-3 border-b min-w-0 ${
-                  isDark ? 'border-slate-800/80' : 'border-slate-200'
+              <div className={`isolate relative z-0 p-4 sm:p-5 rounded-3xl border shadow-xl overflow-hidden flex flex-col justify-between flex-1 h-full ${isDark ? 'bg-[#070B14] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
                 }`}>
+                {/* Map Toolbar */}
+                <div className={`flex flex-col md:flex-row md:items-center justify-between gap-3 z-10 pb-3 border-b min-w-0 ${isDark ? 'border-slate-800/80' : 'border-slate-200'
+                  }`}>
                   <div className="flex items-center space-x-2.5 min-w-0 shrink">
                     <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping shrink-0" />
                     <div className="min-w-0">
@@ -639,11 +715,10 @@ export default function ControlTowerPage() {
                         <span className={`text-sm font-black truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
                           All-India Live Fleet Radar
                         </span>
-                        <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-black border shrink-0 ${
-                          isDark 
-                            ? 'text-cyan-400 bg-cyan-950/80 border-cyan-500/30' 
+                        <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-black border shrink-0 ${isDark
+                            ? 'text-cyan-400 bg-cyan-950/80 border-cyan-500/30'
                             : 'text-blue-700 bg-blue-50 border-blue-200'
-                        }`}>
+                          }`}>
                           {allFleetVehicles.length} TRUCKS LIVE
                         </span>
                       </div>
@@ -668,11 +743,10 @@ export default function ControlTowerPage() {
                             if (found) setSelectedTrip(found);
                           }
                         }}
-                        className={`w-full text-xs font-bold py-1.5 pl-2.5 pr-7 rounded-xl border appearance-none cursor-pointer transition-all shadow-xs truncate ${
-                          isDark
+                        className={`w-full text-xs font-bold py-1.5 pl-2.5 pr-7 rounded-xl border appearance-none cursor-pointer transition-all shadow-xs truncate ${isDark
                             ? 'bg-slate-900/90 border-slate-700 text-cyan-300 hover:border-cyan-400'
                             : 'bg-white border-slate-300 text-slate-800 hover:border-blue-500'
-                        }`}
+                          }`}
                       >
                         <option value="ALL">🌐 All India ({allFleetVehicles.length} Trucks)</option>
                         {movingVehicles.length > 0 && (
@@ -696,36 +770,32 @@ export default function ControlTowerPage() {
                     </div>
 
                     {/* Layer Filter Pills */}
-                    <div className={`flex items-center gap-1 text-[11px] font-semibold p-1 rounded-xl border shrink-0 ${
-                      isDark ? 'bg-slate-950/80 border-slate-800' : 'bg-slate-100 border-slate-200'
-                    }`}>
+                    <div className={`flex items-center gap-1 text-[11px] font-semibold p-1 rounded-xl border shrink-0 ${isDark ? 'bg-slate-950/80 border-slate-800' : 'bg-slate-100 border-slate-200'
+                      }`}>
                       <button
                         onClick={() => setActiveLayer('ALL')}
-                        className={`px-2.5 py-1 rounded-lg transition-colors whitespace-nowrap ${
-                          activeLayer === 'ALL' 
-                            ? 'bg-blue-600 text-white shadow-xs' 
+                        className={`px-2.5 py-1 rounded-lg transition-colors whitespace-nowrap ${activeLayer === 'ALL'
+                            ? 'bg-blue-600 text-white shadow-xs'
                             : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
-                        }`}
+                          }`}
                       >
                         All Fleet ({allFleetVehicles.length})
                       </button>
                       <button
                         onClick={() => setActiveLayer('CORRIDORS')}
-                        className={`px-2.5 py-1 rounded-lg transition-colors whitespace-nowrap ${
-                          activeLayer === 'CORRIDORS' 
-                            ? 'bg-blue-600 text-white shadow-xs' 
+                        className={`px-2.5 py-1 rounded-lg transition-colors whitespace-nowrap ${activeLayer === 'CORRIDORS'
+                            ? 'bg-blue-600 text-white shadow-xs'
                             : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
-                        }`}
+                          }`}
                       >
                         Corridors ({runningTrips.length})
                       </button>
                       <button
                         onClick={() => setActiveLayer('GEOFENCE')}
-                        className={`px-2.5 py-1 rounded-lg transition-colors whitespace-nowrap ${
-                          activeLayer === 'GEOFENCE' 
-                            ? 'bg-blue-600 text-white shadow-xs' 
+                        className={`px-2.5 py-1 rounded-lg transition-colors whitespace-nowrap ${activeLayer === 'GEOFENCE'
+                            ? 'bg-blue-600 text-white shadow-xs'
                             : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
-                        }`}
+                          }`}
                       >
                         Moving ({movingVehicles.length})
                       </button>
@@ -735,11 +805,10 @@ export default function ControlTowerPage() {
                     {selectedTrip && (
                       <button
                         onClick={() => setSelectedTrip(null)}
-                        className={`px-2.5 py-1.5 rounded-xl border text-[11px] font-bold transition-all flex items-center gap-1 shrink-0 ${
-                          isDark
+                        className={`px-2.5 py-1.5 rounded-xl border text-[11px] font-bold transition-all flex items-center gap-1 shrink-0 ${isDark
                             ? 'bg-slate-900 border-slate-700 text-slate-300 hover:text-white hover:border-slate-500'
                             : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-xs'
-                        }`}
+                          }`}
                         title="Reset radar to full country view"
                       >
                         <RotateCcw className="w-3 h-3 text-cyan-400" />
@@ -749,11 +818,10 @@ export default function ControlTowerPage() {
 
                     <button
                       onClick={() => setIsMapModalOpen(true)}
-                      className={`p-1.5 rounded-xl border transition-colors shrink-0 ${
-                        isDark 
-                          ? 'border-slate-800 bg-slate-900 text-slate-300 hover:text-white hover:border-slate-700' 
+                      className={`p-1.5 rounded-xl border transition-colors shrink-0 ${isDark
+                          ? 'border-slate-800 bg-slate-900 text-slate-300 hover:text-white hover:border-slate-700'
                           : 'border-slate-200 bg-slate-100 text-slate-600 hover:text-slate-900 hover:bg-slate-200'
-                      }`}
+                        }`}
                       title="Expand Map to Fullscreen"
                     >
                       <Maximize2 className={`w-4 h-4 ${isDark ? 'text-cyan-400' : 'text-blue-600'}`} />
@@ -764,16 +832,14 @@ export default function ControlTowerPage() {
                 {/* Leaflet Map Body */}
                 <div className="w-full mt-3 flex-1 flex flex-col min-h-0">
                   {allFleetVehicles.length === 0 ? (
-                    <div className={`w-full flex-1 min-h-[460px] lg:min-h-[550px] rounded-2xl border flex flex-col items-center justify-center p-6 text-center transition-colors ${
-                      isDark 
-                        ? 'bg-[#070B14] border-slate-800 text-slate-400' 
+                    <div className={`w-full flex-1 min-h-[460px] lg:min-h-[550px] rounded-2xl border flex flex-col items-center justify-center p-6 text-center transition-colors ${isDark
+                        ? 'bg-[#070B14] border-slate-800 text-slate-400'
                         : 'bg-slate-50 border-slate-200 text-slate-600'
-                    }`}>
-                      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-3 border ${
-                        isDark 
-                          ? 'bg-cyan-500/10 border-cyan-500/20 text-cyan-400' 
-                          : 'bg-blue-50 border-blue-200 text-blue-600'
                       }`}>
+                      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-3 border ${isDark
+                          ? 'bg-cyan-500/10 border-cyan-500/20 text-cyan-400'
+                          : 'bg-blue-50 border-blue-200 text-blue-600'
+                        }`}>
                         <Truck className="w-7 h-7" />
                       </div>
                       <h4 className={`text-base font-bold mb-1 ${isDark ? 'text-white' : 'text-slate-900'}`}>
@@ -791,9 +857,8 @@ export default function ControlTowerPage() {
                           <button
                             type="button"
                             onClick={() => setSelectedBranchId('ALL')}
-                            className={`px-3 py-2 rounded-xl border text-xs font-bold transition-all ${
-                              isDark ? 'border-slate-700 bg-slate-800 text-cyan-300 hover:bg-slate-700' : 'border-slate-300 bg-white text-blue-700 hover:bg-slate-100 shadow-sm'
-                            }`}
+                            className={`px-3 py-2 rounded-xl border text-xs font-bold transition-all ${isDark ? 'border-slate-700 bg-slate-800 text-cyan-300 hover:bg-slate-700' : 'border-slate-300 bg-white text-blue-700 hover:bg-slate-100 shadow-sm'
+                              }`}
                           >
                             🌐 View All Branches
                           </button>
@@ -823,9 +888,8 @@ export default function ControlTowerPage() {
                 </div>
 
                 {/* Map Bottom Status Bar */}
-                <div className={`flex items-center justify-between text-[11px] pt-3 mt-2 border-t ${
-                  isDark ? 'border-slate-800/80 text-slate-400' : 'border-slate-200 text-slate-600'
-                }`}>
+                <div className={`flex items-center justify-between text-[11px] pt-3 mt-2 border-t ${isDark ? 'border-slate-800/80 text-slate-400' : 'border-slate-200 text-slate-600'
+                  }`}>
                   <div className="flex items-center space-x-3 font-mono text-[10px]">
                     <span className="flex items-center gap-1.5">
                       <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
@@ -847,14 +911,12 @@ export default function ControlTowerPage() {
 
             {/* Right Column: Live Telemetry HUD & Exception Center (4 Columns on xl+, 2 Columns side-by-side on 1024px laptop & tablets) */}
             <div className="xl:col-span-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-1 gap-5">
-              
+
               {/* Selected Vehicle Telemetry HUD (Live from DB & WheelsEye) */}
-              <div className={`p-4 sm:p-5 rounded-3xl border shadow-xl flex-1 flex flex-col justify-between ${
-                isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200'
-              }`}>
-                <div className={`flex items-center justify-between pb-3 border-b mb-3.5 ${
-                  isDark ? 'border-slate-800/80' : 'border-slate-200'
+              <div className={`p-4 sm:p-5 rounded-3xl border shadow-xl flex-1 flex flex-col justify-between ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200'
                 }`}>
+                <div className={`flex items-center justify-between pb-3 border-b mb-3.5 ${isDark ? 'border-slate-800/80' : 'border-slate-200'
+                  }`}>
                   <div className="flex items-center space-x-2">
                     <Radio className="w-4 h-4 text-cyan-400 animate-pulse" />
                     <h3 className={`text-sm font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
@@ -863,18 +925,16 @@ export default function ControlTowerPage() {
                   </div>
                   {selectedTrip ? (
                     <div className="flex items-center gap-1.5">
-                      <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-black border ${
-                        isDark 
-                          ? 'bg-cyan-950 text-cyan-300 border-cyan-500/30' 
+                      <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-black border ${isDark
+                          ? 'bg-cyan-950 text-cyan-300 border-cyan-500/30'
                           : 'bg-slate-100 text-slate-700 border-slate-200'
-                      }`}>
+                        }`}>
                         {selectedTrip.vehicleNumber}
                       </span>
                       <button
                         onClick={() => setSelectedTrip(null)}
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded transition-colors ${
-                          isDark ? 'text-slate-400 hover:text-white bg-slate-900' : 'text-slate-600 hover:text-slate-900 bg-slate-100'
-                        }`}
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded transition-colors ${isDark ? 'text-slate-400 hover:text-white bg-slate-900' : 'text-slate-600 hover:text-slate-900 bg-slate-100'
+                          }`}
                         title="Return to All Fleet Overview"
                       >
                         ✕ Close
@@ -895,22 +955,20 @@ export default function ControlTowerPage() {
                         <div className={`text-base font-black ${isDark ? 'text-white' : 'text-slate-900'}`}>
                           {selectedTrip.vehicleNumber}
                         </div>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                          parseFloat(selectedTrip.speed || 0) > 0
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${parseFloat(selectedTrip.speed || 0) > 0
                             ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
                             : 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
-                        }`}>
+                          }`}>
                           {parseFloat(selectedTrip.speed || 0) > 0 ? `Moving • ${selectedTrip.speed}` : 'Stationed at Yard'}
                         </span>
                       </div>
                       <div className={`text-xs mt-0.5 font-medium ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                         {selectedTrip.vehicle_model}
                       </div>
-                      
+
                       {/* Real Location Pill */}
-                      <div className={`mt-2 p-2.5 rounded-xl border flex items-center gap-2 ${
-                        isDark ? 'bg-slate-900/70 border-slate-800' : 'bg-slate-50 border-slate-200'
-                      }`}>
+                      <div className={`mt-2 p-2.5 rounded-xl border flex items-center gap-2 ${isDark ? 'bg-slate-900/70 border-slate-800' : 'bg-slate-50 border-slate-200'
+                        }`}>
                         <MapPin className="w-4 h-4 text-cyan-400 shrink-0" />
                         <div className="text-xs">
                           <div className={`font-semibold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
@@ -949,9 +1007,8 @@ export default function ControlTowerPage() {
                     </div>
 
                     {/* Driver Card with Quick Contact */}
-                    <div className={`p-3 rounded-2xl border flex items-center justify-between ${
-                      isDark ? 'bg-slate-900/50 border-slate-800' : 'bg-slate-50 border-slate-200'
-                    }`}>
+                    <div className={`p-3 rounded-2xl border flex items-center justify-between ${isDark ? 'bg-slate-900/50 border-slate-800' : 'bg-slate-50 border-slate-200'
+                      }`}>
                       <div>
                         <div className={`text-xs font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
                           {selectedTrip.driver}
@@ -984,9 +1041,8 @@ export default function ControlTowerPage() {
                     {selectedTrip.hasActiveTrip && selectedTrip.isTransit ? (
                       <>
                         {/* Financial Snapshot */}
-                        <div className={`p-3 rounded-2xl border text-xs space-y-1.5 ${
-                          isDark ? 'bg-slate-900/40 border-slate-800' : 'bg-slate-50 border-slate-200'
-                        }`}>
+                        <div className={`p-3 rounded-2xl border text-xs space-y-1.5 ${isDark ? 'bg-slate-900/40 border-slate-800' : 'bg-slate-50 border-slate-200'
+                          }`}>
                           <div className="flex justify-between">
                             <span className={isDark ? 'text-slate-400' : 'text-slate-600'}>Trip Sheet ID:</span>
                             <span className="font-mono font-bold text-cyan-400">
@@ -1033,9 +1089,8 @@ export default function ControlTowerPage() {
                       </>
                     ) : (
                       /* Standby at Depot Card */
-                      <div className={`p-3.5 rounded-2xl border space-y-2.5 ${
-                        isDark ? 'bg-slate-900/40 border-slate-800' : 'bg-slate-50 border-slate-200'
-                      }`}>
+                      <div className={`p-3.5 rounded-2xl border space-y-2.5 ${isDark ? 'bg-slate-900/40 border-slate-800' : 'bg-slate-50 border-slate-200'
+                        }`}>
                         <div className="flex items-center justify-between text-xs">
                           <span className={isDark ? 'text-slate-400' : 'text-slate-600'}>Operational Status:</span>
                           <span className="font-bold text-emerald-400">Available at Yard</span>
@@ -1091,11 +1146,10 @@ export default function ControlTowerPage() {
                                 setSelectedTrip(selectedTrip?.id === v.id || selectedTrip?.vehicleNumber === v.vehicleNumber ? null : v);
                                 window.scrollTo({ top: 350, behavior: 'smooth' });
                               }}
-                              className={`w-full p-2.5 rounded-xl border text-left flex items-center justify-between transition-all group ${
-                                isDark
+                              className={`w-full p-2.5 rounded-xl border text-left flex items-center justify-between transition-all group ${isDark
                                   ? 'bg-slate-900/60 border-slate-800 hover:border-cyan-400 hover:bg-slate-800'
                                   : 'bg-slate-50 border-slate-200 hover:border-blue-400 hover:bg-white shadow-xs'
-                              }`}
+                                }`}
                             >
                               <div className="min-w-0 pr-2">
                                 <div className="flex items-center gap-1.5 font-mono font-bold text-xs">
@@ -1108,11 +1162,10 @@ export default function ControlTowerPage() {
                                   📍 {v.location}
                                 </div>
                               </div>
-                              <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold shrink-0 ${
-                                isMoving
+                              <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold shrink-0 ${isMoving
                                   ? 'bg-emerald-500/20 text-emerald-400'
                                   : (isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-200 text-slate-600')
-                              }`}>
+                                }`}>
                                 {isMoving ? v.speed : 'Parked'}
                               </span>
                             </button>
@@ -1125,12 +1178,10 @@ export default function ControlTowerPage() {
               </div>
 
               {/* Exception & Incident Center */}
-              <div className={`p-4 sm:p-5 rounded-3xl border shadow-xl flex flex-col justify-between ${
-                isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200'
-              }`}>
-                <div className={`flex items-center justify-between pb-3 border-b mb-3.5 ${
-                  isDark ? 'border-slate-800/80' : 'border-slate-200'
+              <div className={`p-4 sm:p-5 rounded-3xl border shadow-xl flex flex-col justify-between ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200'
                 }`}>
+                <div className={`flex items-center justify-between pb-3 border-b mb-3.5 ${isDark ? 'border-slate-800/80' : 'border-slate-200'
+                  }`}>
                   <div className="flex items-center space-x-2">
                     <AlertTriangle className="w-4 h-4 text-rose-500 dark:text-rose-400" />
                     <h3 className={`text-sm font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
@@ -1147,12 +1198,10 @@ export default function ControlTowerPage() {
                     runningTrips
                       .filter((t) => t.status === 'DELAYED')
                       .map((t, idx) => (
-                        <div key={idx} className={`p-3 rounded-2xl border space-y-1 ${
-                          isDark ? 'bg-rose-500/10 border-rose-500/20' : 'bg-rose-50 border-rose-200'
-                        }`}>
-                          <div className={`flex items-center justify-between text-xs font-bold ${
-                            isDark ? 'text-rose-300' : 'text-rose-700'
+                        <div key={idx} className={`p-3 rounded-2xl border space-y-1 ${isDark ? 'bg-rose-500/10 border-rose-500/20' : 'bg-rose-50 border-rose-200'
                           }`}>
+                          <div className={`flex items-center justify-between text-xs font-bold ${isDark ? 'text-rose-300' : 'text-rose-700'
+                            }`}>
                             <span>Corridor Delay ({t.vehicleNumber})</span>
                             <span className={`text-[10px] font-mono ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Live</span>
                           </div>
@@ -1162,12 +1211,10 @@ export default function ControlTowerPage() {
                         </div>
                       ))
                   ) : (
-                    <div className={`p-3 rounded-2xl border space-y-1 ${
-                      isDark ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-emerald-50 border-emerald-200'
-                    }`}>
-                      <div className={`flex items-center justify-between text-xs font-bold ${
-                        isDark ? 'text-emerald-400' : 'text-emerald-700'
+                    <div className={`p-3 rounded-2xl border space-y-1 ${isDark ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-emerald-50 border-emerald-200'
                       }`}>
+                      <div className={`flex items-center justify-between text-xs font-bold ${isDark ? 'text-emerald-400' : 'text-emerald-700'
+                        }`}>
                         <span>All Corridors Clear</span>
                         <span className={`text-[10px] font-mono ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Active</span>
                       </div>
@@ -1184,12 +1231,10 @@ export default function ControlTowerPage() {
           </div>
 
           {/* Active Dispatch Queue Table - Full Width (100% across the cockpit) */}
-          <div className={`w-full p-5 rounded-3xl border shadow-xl ${
-            isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200'
-          }`}>
-            <div className={`flex items-center justify-between mb-4 pb-3 border-b ${
-              isDark ? 'border-slate-800/80' : 'border-slate-200'
+          <div className={`w-full p-5 rounded-3xl border shadow-xl ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200'
             }`}>
+            <div className={`flex items-center justify-between mb-4 pb-3 border-b ${isDark ? 'border-slate-800/80' : 'border-slate-200'
+              }`}>
               <div className="flex items-center space-x-2">
                 <Activity className="w-4 h-4 text-cyan-400" />
                 <h3 className={`text-base font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
@@ -1227,12 +1272,10 @@ export default function ControlTowerPage() {
       {/* Fullscreen Map Modal */}
       {isMapModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-          <div className={`relative w-full max-w-7xl h-[85vh] rounded-3xl p-5 flex flex-col shadow-2xl border ${
-            isDark ? 'bg-[#070B14] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
-          }`}>
-            <div className={`flex items-center justify-between pb-3 mb-2 border-b ${
-              isDark ? 'border-slate-800' : 'border-slate-200'
+          <div className={`relative w-full max-w-7xl h-[85vh] rounded-3xl p-5 flex flex-col shadow-2xl border ${isDark ? 'bg-[#070B14] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
             }`}>
+            <div className={`flex items-center justify-between pb-3 mb-2 border-b ${isDark ? 'border-slate-800' : 'border-slate-200'
+              }`}>
               <div className="flex items-center space-x-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
                 <h3 className={`text-base font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
@@ -1244,11 +1287,10 @@ export default function ControlTowerPage() {
               </div>
               <button
                 onClick={() => setIsMapModalOpen(false)}
-                className={`p-2 rounded-xl border transition-colors ${
-                  isDark 
-                    ? 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white' 
+                className={`p-2 rounded-xl border transition-colors ${isDark
+                    ? 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
                     : 'bg-slate-100 border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-200'
-                }`}
+                  }`}
               >
                 <X className="w-4 h-4" />
               </button>

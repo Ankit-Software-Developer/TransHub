@@ -9,6 +9,7 @@ router.use(authenticate, tenantResolver);
 
 router.get('/', tripController.listTrips);
 router.post('/', tripController.createTrip);
+router.post('/direct-hire', tripController.createDirectHireTrip);
 router.get('/:id', tripController.getTripDetail);
 router.get('/:id/manifest', tripController.getTripUnloadManifest);
 router.patch('/:id/assign-vehicle', tripController.assignVehicleToTrip);

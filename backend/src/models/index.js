@@ -264,6 +264,8 @@ const initTenantModels = (targetSequelize) => {
   Trip.belongsTo(Driver, { foreignKey: 'driver_id', as: 'driver' });
   Trip.belongsTo(Branch, { foreignKey: 'origin_branch_id', as: 'originBranch' });
   Trip.belongsTo(Branch, { foreignKey: 'dest_branch_id', as: 'destBranch' });
+  Trip.belongsTo(Customer, { foreignKey: 'customer_id', as: 'customer' });
+  Trip.belongsTo(Vendor, { foreignKey: 'vendor_id', as: 'vendor' });
 
   Trip.belongsToMany(Consignment, { through: TripConsignment, foreignKey: 'trip_id', as: 'consignments' });
   Consignment.belongsToMany(Trip, { through: TripConsignment, foreignKey: 'consignment_id', as: 'trips' });

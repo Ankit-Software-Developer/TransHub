@@ -68,7 +68,7 @@ const canAccessFinancialAudit = (req) => {
 const getDocketFreightReport = async (req, res) => {
   try {
     const m = req.tenantDb || defaultModels;
-    const { Consignment, Branch, Customer, Booking, Pod } = m;
+    const { Consignment, Branch, Customer, Booking, Pod, Trip, Vehicle, Driver, Expense, ExpenseCategory, DriverAdvance } = m;
     const {
       branch_id,
       date_from,
@@ -79,6 +79,7 @@ const getDocketFreightReport = async (req, res) => {
       status,
       customer_id,
       search,
+      order_type = 'ALL', // 'ALL', 'DOCKET', or 'PLACEMENT'
       page = 1,
       limit = 25,
     } = req.query;
@@ -190,11 +191,165 @@ const getDocketFreightReport = async (req, res) => {
       });
     }
 
-    const offset = (parseInt(page, 10) - 1) * parseInt(limit, 10);
+    // 1. Fetch Dockets / Consignments (if order_type is 'ALL' or 'DOCKET')
+    let consignmentRows = [];
+    let consignmentCount = 0;
+    let allConsignmentMatches = [];
 
-    const { count, rows } = await Consignment.findAndCountAll({
-      where,
-      include: [
+    if (order_type !== 'PLACEMENT') {
+      const cResult = await Consignment.findAndCountAll({
+        where,
+        include: [
+          {
+            model: Branch,
+            as: 'originBranch',
+            attributes: ['id', 'branch_name', 'branch_code', ['branch_name', 'name'], ['branch_code', 'code'], 'city'],
+            required: false,
+          },
+          {
+            model: Branch,
+            as: 'destBranch',
+            attributes: ['id', 'branch_name', 'branch_code', ['branch_name', 'name'], ['branch_code', 'code'], 'city'],
+            required: false,
+          },
+          {
+            model: Customer,
+            as: 'consignor',
+            attributes: ['id', 'name', 'phone', 'gstin'],
+            required: false,
+          },
+          {
+            model: Customer,
+            as: 'consignee',
+            attributes: ['id', 'name', 'phone', 'gstin'],
+            required: false,
+          },
+          {
+            model: Pod,
+            as: 'pod',
+            attributes: ['id', 'status', 'verified_at', 'file_url', ['file_url', 'pod_url']],
+            required: false,
+          },
+        ],
+        order: [['booking_date', 'DESC'], ['created_at', 'DESC']],
+        limit: order_type === 'DOCKET' ? parseInt(limit, 10) : 500,
+        offset: order_type === 'DOCKET' ? (parseInt(page, 10) - 1) * parseInt(limit, 10) : 0,
+      });
+
+      consignmentCount = cResult.count;
+      consignmentRows = cResult.rows.map((r) => {
+        const item = r.toJSON ? r.toJSON() : r;
+        const isCleared =
+          item.payment_type === 'PAID' ||
+          (item.payment_type === 'TO_PAY' && deliveredStatuses.includes(item.status)) ||
+          (['TBB', 'CREDIT'].includes(item.payment_type) && (item.is_billed || item.invoice_id));
+
+        const loading = Number(item.loading_charges || 0);
+        const unloading = Number(item.unloading_charges || 0);
+        const doorDel = Number(item.door_delivery_charges || 0);
+        const handling = Number(item.handling_charges || 0);
+        const docketExp = loading + unloading + doorDel + handling;
+        const docketBreakdown = [
+          loading > 0 ? `Loading: ₹${loading.toLocaleString('en-IN')}` : null,
+          unloading > 0 ? `Unloading: ₹${unloading.toLocaleString('en-IN')}` : null,
+          doorDel > 0 ? `Delivery: ₹${doorDel.toLocaleString('en-IN')}` : null,
+          handling > 0 ? `Handling: ₹${handling.toLocaleString('en-IN')}` : null,
+        ].filter(Boolean).join('; ') || (docketExp > 0 ? `Charges: ₹${docketExp.toLocaleString('en-IN')}` : 'None');
+
+        const totAmt = Number(item.total_amount || 0);
+        const isPaid = item.payment_type === 'PAID';
+
+        return {
+          ...item,
+          order_type: 'DOCKET',
+          is_placement: false,
+          payment_cleared: Boolean(isCleared),
+          clearance_status: isCleared ? 'CLEARED' : 'PENDING',
+          advance_received: isPaid ? totAmt : 0,
+          balance_due: isPaid ? 0 : totAmt,
+          driver_advance: 0,
+          total_expenses: docketExp,
+          vehicle_charge: 0,
+          net_profit: totAmt - docketExp,
+          expense_breakdown: docketBreakdown,
+          expense_items: [],
+        };
+      });
+
+      try {
+        allConsignmentMatches = await Consignment.findAll({
+          where: baseWhere,
+          attributes: [
+            'packages_count',
+            'actual_weight',
+            'charged_weight',
+            'freight_amount',
+            'loading_charges',
+            'unloading_charges',
+            'door_delivery_charges',
+            'handling_charges',
+            'tax_amount',
+            'total_amount',
+            'payment_type',
+            'status',
+            'is_billed',
+            'invoice_id',
+          ],
+        });
+      } catch (cSumErr) {
+        console.warn('allConsignmentMatches query warning:', cSumErr.message);
+        allConsignmentMatches = [];
+      }
+    }
+
+    // 2. Fetch Direct Vehicle Placement Trips (if order_type is 'ALL' or 'PLACEMENT')
+    let placementRows = [];
+    let placementCount = 0;
+    let allPlacementMatches = [];
+
+    if (order_type !== 'DOCKET' && Trip) {
+      const tripBaseWhere = {
+        tenant_id: req.tenant.tenantId,
+        ...(req.tenant.organizationId ? { organization_id: req.tenant.organizationId } : {}),
+        trip_mode: 'DIRECT_VEHICLE_HIRE',
+        status: { [Op.ne]: 'CANCELLED' },
+        ...buildDateRange(date_from, date_to, 'trip_date'),
+      };
+
+      if (effectiveBranchId) {
+        tripBaseWhere[Op.or] = [
+          { origin_branch_id: effectiveBranchId },
+          { dest_branch_id: effectiveBranchId },
+        ];
+      }
+
+      const tripWhere = { ...tripBaseWhere };
+
+      if (status && status !== 'ALL') {
+        tripWhere.status = status;
+      }
+
+      if (customer_id && customer_id !== 'ALL') {
+        tripWhere.customer_id = customer_id;
+      }
+
+      if (search && search.trim()) {
+        const q = `%${search.trim()}%`;
+        tripWhere[Op.and] = tripWhere[Op.and] || [];
+        tripWhere[Op.and].push({
+          [Op.or]: [
+            { trip_number: { [Op.like]: q } },
+            { party_ref_number: { [Op.like]: q } },
+            { hiring_party_name: { [Op.like]: q } },
+            { origin_city: { [Op.like]: q } },
+            { destination_city: { [Op.like]: q } },
+            { eway_bill_no: { [Op.like]: q } },
+            { goods_description: { [Op.like]: q } },
+          ],
+        });
+      }
+
+      const tripIncludes = [
         {
           model: Branch,
           as: 'originBranch',
@@ -207,51 +362,242 @@ const getDocketFreightReport = async (req, res) => {
           attributes: ['id', 'branch_name', 'branch_code', ['branch_name', 'name'], ['branch_code', 'code'], 'city'],
           required: false,
         },
-        {
+      ];
+
+      if (Vehicle) {
+        tripIncludes.push({
+          model: Vehicle,
+          as: 'vehicle',
+          attributes: ['id', 'vehicle_number', 'ownership', 'capacity_ton'],
+          required: false,
+        });
+      }
+      if (Driver) {
+        tripIncludes.push({
+          model: Driver,
+          as: 'driver',
+          attributes: ['id', 'name', 'phone'],
+          required: false,
+        });
+      }
+      if (Customer) {
+        tripIncludes.push({
           model: Customer,
-          as: 'consignor',
+          as: 'customer',
           attributes: ['id', 'name', 'phone', 'gstin'],
           required: false,
-        },
-        {
-          model: Customer,
-          as: 'consignee',
-          attributes: ['id', 'name', 'phone', 'gstin'],
+        });
+      }
+      if (Expense) {
+        tripIncludes.push({
+          model: Expense,
+          as: 'expenses',
+          attributes: ['id', 'amount', 'category_id', 'payment_method', 'vendor_name', 'remarks'],
+          include: ExpenseCategory ? [{ model: ExpenseCategory, as: 'category', attributes: ['id', 'name'] }] : [],
           required: false,
-        },
-        {
-          model: Pod,
-          as: 'pod',
-          attributes: ['id', 'status', 'verified_at', 'file_url', ['file_url', 'pod_url']],
+        });
+      }
+      if (DriverAdvance) {
+        tripIncludes.push({
+          model: DriverAdvance,
+          as: 'advances',
+          attributes: ['id', 'amount', 'disbursed_mode', 'remarks'],
           required: false,
-        },
-      ],
-      order: [['booking_date', 'DESC'], ['created_at', 'DESC']],
-      limit: parseInt(limit, 10),
-      offset,
-    });
+        });
+      }
 
-    // Overall summary calculations across all records in scope (Grand Total and full Cleared vs Pending breakdown)
-    const allMatches = await Consignment.findAll({
-      where: baseWhere,
-      attributes: [
-        'packages_count',
-        'actual_weight',
-        'charged_weight',
-        'freight_amount',
-        'loading_charges',
-        'unloading_charges',
-        'door_delivery_charges',
-        'handling_charges',
-        'tax_amount',
-        'total_amount',
-        'payment_type',
-        'status',
-        'is_billed',
-        'invoice_id',
-      ],
-    });
+      let rawPlacements = [];
+      try {
+        rawPlacements = await Trip.findAll({
+          where: tripWhere,
+          include: tripIncludes,
+          order: [['trip_date', 'DESC'], ['created_at', 'DESC']],
+          limit: order_type === 'PLACEMENT' ? parseInt(limit, 10) : 500,
+          offset: order_type === 'PLACEMENT' ? (parseInt(page, 10) - 1) * parseInt(limit, 10) : 0,
+        });
+      } catch (tripIncludeErr) {
+        console.warn('Trip.findAll with nested expenses/advances failed, falling back to basic trip include:', tripIncludeErr.message);
+        const safeTripIncludes = [
+          {
+            model: Branch,
+            as: 'originBranch',
+            attributes: ['id', 'branch_name', 'branch_code', ['branch_name', 'name'], ['branch_code', 'code'], 'city'],
+            required: false,
+          },
+          {
+            model: Branch,
+            as: 'destBranch',
+            attributes: ['id', 'branch_name', 'branch_code', ['branch_name', 'name'], ['branch_code', 'code'], 'city'],
+            required: false,
+          },
+        ];
+        if (Vehicle) {
+          safeTripIncludes.push({
+            model: Vehicle,
+            as: 'vehicle',
+            attributes: ['id', 'vehicle_number', 'ownership', 'capacity_ton'],
+            required: false,
+          });
+        }
+        if (Driver) {
+          safeTripIncludes.push({
+            model: Driver,
+            as: 'driver',
+            attributes: ['id', 'name', 'phone'],
+            required: false,
+          });
+        }
+        if (Customer) {
+          safeTripIncludes.push({
+            model: Customer,
+            as: 'customer',
+            attributes: ['id', 'name', 'phone', 'gstin'],
+            required: false,
+          });
+        }
+        rawPlacements = await Trip.findAll({
+          where: tripWhere,
+          include: safeTripIncludes,
+          order: [['trip_date', 'DESC'], ['created_at', 'DESC']],
+          limit: order_type === 'PLACEMENT' ? parseInt(limit, 10) : 500,
+          offset: order_type === 'PLACEMENT' ? (parseInt(page, 10) - 1) * parseInt(limit, 10) : 0,
+        });
+      }
 
+      // In-memory filter for payment type & clearance on placement trips (contract amount vs advance)
+      const filteredPlacements = rawPlacements.filter((t) => {
+        const contractAmt = Number(t.contract_amount || 0);
+        const advReceived = Number(t.advance_received || 0);
+        const isTripCleared = advReceived >= contractAmt || t.billing_status === 'SETTLED' || t.status === 'COMPLETED';
+
+        if (payment_type && payment_type !== 'ALL') {
+          if (payment_type === 'PAID' && advReceived < contractAmt) return false;
+          if (payment_type === 'TO_PAY' && advReceived >= contractAmt) return false;
+          if (['TBB', 'CREDIT'].includes(payment_type) && t.billing_status !== 'INVOICED') return false;
+        }
+
+        if (effectiveClearance && effectiveClearance !== 'ALL') {
+          if (effectiveClearance === 'CLEARED' && !isTripCleared) return false;
+          if ((effectiveClearance === 'PENDING' || effectiveClearance === 'UNCLEARED') && isTripCleared) return false;
+        }
+
+        return true;
+      });
+
+      placementCount = filteredPlacements.length;
+      placementRows = filteredPlacements.map((t) => {
+        const contractAmt = Number(t.contract_amount || 0);
+        const advReceived = Number(t.advance_received || 0);
+        const balDue = Math.max(0, contractAmt - advReceived);
+        const isCleared = advReceived >= contractAmt || t.billing_status === 'SETTLED' || t.status === 'COMPLETED';
+
+        const driverAdv = Number(t.driver_advance || 0) + (t.advances || []).reduce((acc, a) => acc + Number(a.amount || 0), 0);
+        const expenseItems = (t.expenses || []).map((e) => {
+          const cat = e.category?.name || 'General Expense';
+          const amt = Number(e.amount || 0);
+          const rem = e.remarks || e.vendor_name || '';
+          return {
+            category: cat,
+            amount: amt,
+            payment_method: e.payment_method || 'CASH',
+            remarks: rem,
+            text: `${cat}: ₹${amt.toLocaleString('en-IN')}${rem ? ` (${rem})` : ''}`,
+          };
+        });
+        const calculatedExpenses = expenseItems.reduce((acc, e) => acc + e.amount, 0);
+        const totalExpenses = Math.max(Number(t.total_expenses || 0), calculatedExpenses);
+        const vehicleHireCharge = Number(t.vehicle_charge || 0);
+        const netProfit = contractAmt - (totalExpenses + vehicleHireCharge);
+        const expenseBreakdown = expenseItems.length > 0
+          ? expenseItems.map((e) => e.text).join('; ')
+          : (totalExpenses > 0 ? `Total Expenses: ₹${totalExpenses.toLocaleString('en-IN')}` : 'None');
+
+        return {
+          id: t.id,
+          order_type: 'PLACEMENT',
+          is_placement: true,
+          lr_number: t.trip_number,
+          docket_number: t.party_ref_number || t.trip_number,
+          booking_date: t.trip_date || (t.created_at ? new Date(t.created_at).toISOString().slice(0, 10) : ''),
+          created_at: t.created_at,
+          origin_city: t.origin_city,
+          destination_city: t.destination_city,
+          originBranch: t.originBranch ? {
+            id: t.originBranch.id,
+            name: t.originBranch.branch_name || t.originBranch.name,
+            code: t.originBranch.branch_code || t.originBranch.code,
+            city: t.originBranch.city,
+          } : { name: t.origin_city, code: t.origin_city, city: t.origin_city },
+          destBranch: t.destBranch ? {
+            id: t.destBranch.id,
+            name: t.destBranch.branch_name || t.destBranch.name,
+            code: t.destBranch.branch_code || t.destBranch.code,
+            city: t.destBranch.city,
+          } : { name: t.destination_city, code: t.destination_city, city: t.destination_city },
+          consignor: {
+            name: t.hiring_party_name || (t.customer ? t.customer.name : 'Direct Hiring Client'),
+            phone: t.hiring_party_phone || (t.customer ? t.customer.phone : null),
+            gstin: t.customer?.gstin || null,
+          },
+          consignee: {
+            name: t.destination_city ? `${t.destination_city} Site / Unloading Point` : 'Consignee Site',
+            phone: null,
+            gstin: null,
+          },
+          packages_count: t.total_packages > 0 ? t.total_packages : 1,
+          actual_weight: Number(t.total_weight || 0),
+          charged_weight: Number(t.total_weight || 0),
+          freight_amount: contractAmt,
+          loading_charges: 0,
+          unloading_charges: 0,
+          door_delivery_charges: 0,
+          handling_charges: 0,
+          tax_amount: 0,
+          total_amount: contractAmt,
+          advance_received: advReceived,
+          balance_due: balDue,
+          driver_advance: driverAdv,
+          total_expenses: totalExpenses,
+          vehicle_charge: vehicleHireCharge,
+          net_profit: netProfit,
+          expense_breakdown: expenseBreakdown,
+          expense_items: expenseItems,
+          payment_type: advReceived >= contractAmt ? 'PAID' : (advReceived > 0 ? 'PARTIAL' : 'TO_PAY'),
+          payment_cleared: isCleared,
+          clearance_status: isCleared ? 'CLEARED' : 'PENDING',
+          status: t.status,
+          load_type: t.load_type || 'FTL',
+          trip_mode: t.trip_mode || 'DIRECT_VEHICLE_HIRE',
+          vehicle: t.vehicle ? { vehicle_number: t.vehicle.vehicle_number } : null,
+          driver: t.driver ? { name: t.driver.name, phone: t.driver.phone } : null,
+          eway_bill_no: t.eway_bill_no,
+          goods_description: t.goods_description,
+          party_ref_number: t.party_ref_number,
+        };
+      });
+
+      try {
+        allPlacementMatches = await Trip.findAll({
+          where: tripBaseWhere,
+          attributes: [
+            'contract_amount',
+            'advance_received',
+            'driver_advance',
+            'total_expenses',
+            'vehicle_charge',
+            'total_packages',
+            'total_weight',
+            'billing_status',
+            'status',
+          ],
+        });
+      } catch (pSumErr) {
+        console.warn('allPlacementMatches query warning:', pSumErr.message);
+        allPlacementMatches = [];
+      }
+    }
+
+    // 3. Overall Summary Calculations across all records in scope
     let totalPackages = 0;
     let totalActualWeight = 0;
     let totalChargedWeight = 0;
@@ -266,8 +612,12 @@ const getDocketFreightReport = async (req, res) => {
     let pendingCount = 0;
     let clearedRevenue = 0;
     let pendingRevenue = 0;
+    let totalAdvanceReceived = 0;
+    let totalDriverAdvance = 0;
+    let totalTripExpenses = 0;
 
-    allMatches.forEach((c) => {
+    // Consignment metrics
+    allConsignmentMatches.forEach((c) => {
       totalPackages += Number(c.packages_count || 0);
       totalActualWeight += Number(c.actual_weight || 0);
       totalChargedWeight += Number(c.charged_weight || 0);
@@ -281,8 +631,10 @@ const getDocketFreightReport = async (req, res) => {
       const rowTotal = Number(c.total_amount || 0);
       totalRevenue += rowTotal;
 
-      if (c.payment_type === 'PAID') paidCount++;
-      else if (c.payment_type === 'TO_PAY') toPayCount++;
+      if (c.payment_type === 'PAID') {
+        paidCount++;
+        totalAdvanceReceived += rowTotal;
+      } else if (c.payment_type === 'TO_PAY') toPayCount++;
       else if (['TBB', 'CREDIT'].includes(c.payment_type)) tbbCount++;
 
       const isItemCleared =
@@ -299,22 +651,78 @@ const getDocketFreightReport = async (req, res) => {
       }
     });
 
-    // Filtered selection calculations (when user filters by payment mode, clearance, status, search, etc.)
-    const isFiltered = count !== allMatches.length;
+    // Placement metrics
+    allPlacementMatches.forEach((t) => {
+      const contractAmt = Number(t.contract_amount || 0);
+      const advReceived = Number(t.advance_received || 0);
+      const balDue = Math.max(0, contractAmt - advReceived);
+      const isTripCleared = advReceived >= contractAmt || t.billing_status === 'SETTLED' || t.status === 'COMPLETED';
+      const drvAdv = Number(t.driver_advance || 0);
+      const tripExp = Number(t.total_expenses || 0);
+
+      totalPackages += Number(t.total_packages > 0 ? t.total_packages : 1);
+      totalActualWeight += Number(t.total_weight || 0);
+      totalChargedWeight += Number(t.total_weight || 0);
+      totalBaseFreight += contractAmt;
+      totalRevenue += contractAmt;
+      totalAdvanceReceived += advReceived;
+      totalDriverAdvance += drvAdv;
+      totalTripExpenses += tripExp;
+
+      if (advReceived >= contractAmt) paidCount++;
+      else if (advReceived > 0) toPayCount++;
+      else toPayCount++;
+
+      if (isTripCleared) {
+        clearedCount++;
+        clearedRevenue += contractAmt;
+      } else {
+        pendingCount++;
+        pendingRevenue += contractAmt;
+      }
+    });
+
+    // 4. Merge Rows and Apply Unified Sorting & Pagination
+    let finalRows = [];
+    let totalItems = 0;
+
+    if (order_type === 'PLACEMENT') {
+      finalRows = placementRows;
+      totalItems = placementCount;
+    } else if (order_type === 'DOCKET') {
+      finalRows = consignmentRows;
+      totalItems = consignmentCount;
+    } else {
+      // 'ALL': Merge both consignments and placement trips
+      const combined = [...consignmentRows, ...placementRows];
+      combined.sort((a, b) => {
+        const dateA = a.booking_date || '';
+        const dateB = b.booking_date || '';
+        if (dateB !== dateA) return dateB.localeCompare(dateA);
+        const timeA = new Date(a.created_at || 0).getTime();
+        const timeB = new Date(b.created_at || 0).getTime();
+        return timeB - timeA;
+      });
+
+      totalItems = combined.length;
+      const offset = (parseInt(page, 10) - 1) * parseInt(limit, 10);
+      finalRows = combined.slice(offset, offset + parseInt(limit, 10));
+    }
+
+    const totalBookingsScope = allConsignmentMatches.length + allPlacementMatches.length;
+    const isFiltered = totalItems !== totalBookingsScope;
     let filteredRevenue = 0;
     if (isFiltered) {
-      const filteredMatches = await Consignment.findAll({
-        where,
-        attributes: ['total_amount'],
-      });
-      filteredRevenue = filteredMatches.reduce((acc, curr) => acc + Number(curr.total_amount || 0), 0);
+      filteredRevenue = finalRows.reduce((acc, curr) => acc + Number(curr.total_amount || 0), 0);
     } else {
       filteredRevenue = totalRevenue;
     }
 
     const summary = {
-      totalBookings: allMatches.length,
-      filteredBookings: count,
+      totalBookings: totalBookingsScope,
+      docketsCount: allConsignmentMatches.length,
+      placementsCount: allPlacementMatches.length,
+      filteredBookings: totalItems,
       filteredRevenue: parseFloat(filteredRevenue.toFixed(2)),
       isFiltered,
       totalPackages,
@@ -326,6 +734,9 @@ const getDocketFreightReport = async (req, res) => {
       totalRevenue: parseFloat(totalRevenue.toFixed(2)),
       totalClearedRevenue: parseFloat(clearedRevenue.toFixed(2)),
       totalPendingRevenue: parseFloat(pendingRevenue.toFixed(2)),
+      totalAdvanceReceived: parseFloat(totalAdvanceReceived.toFixed(2)),
+      totalDriverAdvance: parseFloat(totalDriverAdvance.toFixed(2)),
+      totalTripExpenses: parseFloat(totalTripExpenses.toFixed(2)),
       breakdown: {
         paid: paidCount,
         toPay: toPayCount,
@@ -334,36 +745,26 @@ const getDocketFreightReport = async (req, res) => {
         pending: pendingCount,
         clearedRevenue: parseFloat(clearedRevenue.toFixed(2)),
         pendingRevenue: parseFloat(pendingRevenue.toFixed(2)),
+        advanceReceived: parseFloat(totalAdvanceReceived.toFixed(2)),
+        driverAdvance: parseFloat(totalDriverAdvance.toFixed(2)),
+        tripExpenses: parseFloat(totalTripExpenses.toFixed(2)),
       },
     };
 
-    const enrichedRows = rows.map((r) => {
-      const item = r.toJSON ? r.toJSON() : r;
-      const isCleared =
-        item.payment_type === 'PAID' ||
-        (item.payment_type === 'TO_PAY' && deliveredStatuses.includes(item.status)) ||
-        (['TBB', 'CREDIT'].includes(item.payment_type) && (item.is_billed || item.invoice_id));
-
-      return {
-        ...item,
-        payment_cleared: Boolean(isCleared),
-        clearance_status: isCleared ? 'CLEARED' : 'PENDING',
-      };
-    });
-
     return paginatedResponse(
       res,
-      'Docket freight register fetched successfully',
-      enrichedRows,
+      'Docket and vehicle placement freight register fetched successfully',
+      finalRows,
       {
         page: parseInt(page, 10),
         limit: parseInt(limit, 10),
-        total: count,
-        pages: Math.ceil(count / parseInt(limit, 10)),
+        total: totalItems,
+        pages: Math.ceil(totalItems / parseInt(limit, 10)) || 1,
         summary,
       }
     );
   } catch (error) {
+    console.error('getDocketFreightReport error:', error);
     return errorResponse(res, error.message, null, 500);
   }
 };
@@ -984,7 +1385,7 @@ const getTripProfitabilityReport = async (req, res) => {
 const getPodComplianceReport = async (req, res) => {
   try {
     const m = req.tenantDb || defaultModels;
-    const { Consignment, Branch, Customer, Pod, DeliveryRecord } = m;
+    const { Consignment, Branch, Customer, Pod, DeliveryRecord, Trip, Vehicle } = m;
     const {
       branch_id,
       date_from,
@@ -1182,6 +1583,127 @@ const getPodComplianceReport = async (req, res) => {
       };
     });
 
+    // Fetch direct vehicle placement trips
+    let placementRows = [];
+    let allPlacementMatches = [];
+    if (Trip) {
+      const placementBaseWhere = {
+        tenant_id: req.tenant.tenantId,
+        organization_id: req.tenant.organizationId,
+        trip_mode: 'DIRECT_VEHICLE_HIRE',
+        status: { [Op.ne]: 'CANCELLED' },
+        ...buildDateRange(date_from, date_to, 'trip_date'),
+      };
+      if (effectiveBranchId) {
+        placementBaseWhere[Op.or] = [
+          { origin_branch_id: effectiveBranchId },
+          { dest_branch_id: effectiveBranchId },
+        ];
+      }
+
+      const placementWhere = { ...placementBaseWhere };
+
+      if (effectiveDelivery && effectiveDelivery !== 'ALL') {
+        if (effectiveDelivery === 'DELIVERED') {
+          placementWhere.status = 'COMPLETED';
+        } else if (effectiveDelivery === 'PENDING') {
+          placementWhere.status = { [Op.ne]: 'COMPLETED' };
+        } else if (effectiveDelivery === 'OVERDUE' || effectiveDelivery === 'PRIORITY') {
+          placementWhere.status = { [Op.ne]: 'COMPLETED' };
+          placementWhere.trip_date = { [Op.lte]: sevenDaysAgoStr };
+        } else if (effectiveDelivery === 'UPLOADED' || effectiveDelivery === 'VERIFIED') {
+          placementWhere.pod_file_url = { [Op.ne]: null };
+        }
+      }
+
+      if (search && search.trim()) {
+        const q = `%${search.trim()}%`;
+        placementWhere[Op.and] = placementWhere[Op.and] || [];
+        placementWhere[Op.and].push({
+          [Op.or]: [
+            { trip_number: { [Op.like]: q } },
+            { party_ref_number: { [Op.like]: q } },
+            { destination_city: { [Op.like]: q } },
+            { origin_city: { [Op.like]: q } },
+            { hiring_party_name: { [Op.like]: q } },
+            { receiver_name: { [Op.like]: q } },
+          ],
+        });
+      }
+
+      const rawPlacementTrips = await Trip.findAll({
+        where: placementWhere,
+        include: [
+          { model: Branch, as: 'originBranch', attributes: ['id', 'branch_name', 'branch_code', ['branch_name', 'name'], 'city'], required: false },
+          { model: Branch, as: 'destBranch', attributes: ['id', 'branch_name', 'branch_code', ['branch_name', 'name'], 'city'], required: false },
+          ...(Customer ? [{ model: Customer, as: 'customer', attributes: ['id', 'name', 'phone'], required: false }] : []),
+          ...(Vehicle ? [{ model: Vehicle, as: 'vehicle', attributes: ['id', 'vehicle_number'], required: false }] : []),
+        ],
+        order: [['trip_date', 'DESC'], ['created_at', 'DESC']],
+        limit: 500,
+      }).catch(() => []);
+
+      placementRows = rawPlacementTrips.map((t) => {
+        const isDelivered = t.status === 'COMPLETED';
+        const deliveryDate = t.delivered_at || t.end_time || (isDelivered ? t.updated_at : null);
+        const bDate = new Date(t.trip_date);
+        const dDate = isDelivered && deliveryDate ? new Date(deliveryDate) : null;
+        let daysCount = 0;
+        let isOverdue = false;
+        let priorityLevel = 'ON_TRACK';
+
+        if (isDelivered && dDate && !isNaN(dDate.getTime())) {
+          daysCount = Math.max(0, Math.round((dDate - bDate) / (1000 * 60 * 60 * 24)));
+          isOverdue = daysCount > 7;
+          priorityLevel = isOverdue ? 'DELIVERED_LATE' : 'DELIVERED_ON_TIME';
+        } else {
+          const msDiff = Math.max(0, now.getTime() - bDate.getTime());
+          daysCount = Math.floor(msDiff / (1000 * 60 * 60 * 24));
+          isOverdue = daysCount > 7;
+          priorityLevel = isOverdue ? 'CRITICAL_LATE' : (daysCount >= 5 ? 'ATTENTION_DUE' : 'ON_TRACK');
+        }
+
+        let podStatus = 'PENDING';
+        if (t.pod_file_url) {
+          podStatus = 'UPLOADED';
+        } else if (isDelivered) {
+          podStatus = 'PENDING_UPLOAD';
+        }
+
+        return {
+          id: t.id,
+          lrNumber: t.trip_number,
+          docketNumber: t.party_ref_number || t.trip_number,
+          bookingDate: t.trip_date,
+          deliveryDate: isDelivered && dDate && !isNaN(dDate.getTime()) ? dDate.toISOString().split('T')[0] : (isDelivered ? 'Delivered' : 'Pending'),
+          isDelivered,
+          daysCount,
+          isOverdue,
+          priorityLevel,
+          transitDays: isDelivered ? `${daysCount} Day${daysCount === 1 ? '' : 's'}` : `${daysCount} Day${daysCount === 1 ? '' : 's'} Pending`,
+          originBranch: t.originBranch?.branch_name || t.origin_city || 'Origin',
+          destBranch: t.destBranch?.branch_name || t.destination_city || 'Destination',
+          consignorName: t.hiring_party_name || t.customer?.name || 'Direct Hiring Client',
+          consigneeName: t.destination_city ? `${t.destination_city} Site / Unloading Point` : 'Site Receiver',
+          shipmentStatus: t.status === 'COMPLETED' ? 'DELIVERED' : (t.status === 'RUNNING' ? 'IN_TRANSIT' : t.status),
+          podStatus,
+          podUrl: t.pod_file_url || null,
+          receiverName: t.receiver_name || 'Client Representative',
+          hasPhysicalPod: Boolean(t.pod_file_url),
+          verifiedAt: null,
+          load_type: 'FTL',
+          loadType: 'FTL Placement',
+          is_placement: true,
+          vehicleNumber: t.vehicle?.vehicle_number || null,
+        };
+      });
+
+      allPlacementMatches = await Trip.findAll({
+        where: placementBaseWhere,
+        attributes: ['id', 'status', 'trip_date', 'pod_file_url'],
+      }).catch(() => []);
+    }
+
     // Global POD & Operational Delivery summary scoped to current branch/dates
     const allMatches = await Consignment.findAll({
       where: baseWhere,
@@ -1221,12 +1743,38 @@ const getPodComplianceReport = async (req, res) => {
       else if (isDelivered) podPendingCount++;
     });
 
+    allPlacementMatches.forEach((t) => {
+      const isDelivered = t.status === 'COMPLETED';
+      const bDate = new Date(t.trip_date);
+      const daysElapsed = Math.floor(Math.max(0, now.getTime() - bDate.getTime()) / (1000 * 60 * 60 * 24));
+
+      if (isDelivered) {
+        totalDelivered++;
+      } else {
+        totalPending++;
+        if (daysElapsed > 7) {
+          pendingOverdueCount++;
+        }
+      }
+
+      if (t.pod_file_url) podUploadedCount++;
+      else if (isDelivered) podPendingCount++;
+    });
+
+    const combinedRows = [...enrichedRows, ...placementRows];
+    combinedRows.sort((a, b) => {
+      const dateA = a.bookingDate || '';
+      const dateB = b.bookingDate || '';
+      return dateB.localeCompare(dateA);
+    });
+
     const complianceRate = totalDelivered > 0
       ? (((podUploadedCount + podVerifiedCount) / totalDelivered) * 100).toFixed(1)
       : '100.0';
 
+    const totalRecords = count + placementRows.length;
     const summary = {
-      totalConsignments: allMatches.length,
+      totalConsignments: allMatches.length + allPlacementMatches.length,
       totalDelivered,
       totalPending,
       pendingOverdueCount,
@@ -1235,18 +1783,18 @@ const getPodComplianceReport = async (req, res) => {
       podPendingCount,
       complianceRatePct: parseFloat(complianceRate),
       isFiltered: Boolean((effectiveDelivery && effectiveDelivery !== 'ALL') || search),
-      filteredCount: count,
+      filteredCount: totalRecords,
     };
 
     return paginatedResponse(
       res,
       'POD compliance report fetched successfully',
-      enrichedRows,
+      combinedRows,
       {
         page: parseInt(page, 10),
         limit: parseInt(limit, 10),
-        total: count,
-        pages: Math.ceil(count / parseInt(limit, 10)),
+        total: totalRecords,
+        pages: Math.ceil(totalRecords / parseInt(limit, 10)) || 1,
         summary,
       }
     );
@@ -1261,7 +1809,7 @@ const getPodComplianceReport = async (req, res) => {
 const getDailyCollectionReport = async (req, res) => {
   try {
     const m = req.tenantDb || defaultModels;
-    const { Consignment, Branch, Payment, BranchCashClosure, Customer, Invoice, InvoiceItem } = m;
+    const { Consignment, Branch, Payment, BranchCashClosure, Customer, Invoice, InvoiceItem, Trip, Expense, DriverAdvance } = m;
     const { branch_id, date_from, date_to, search, page = 1, limit = 25 } = req.query;
 
     const whereScope = {
@@ -1309,8 +1857,154 @@ const getDailyCollectionReport = async (req, res) => {
       order: [['booking_date', 'DESC']],
     });
 
+    // Query Trips (including dedicated FTL vehicle placement trips with customer advances and branch expenses)
+    let placementTrips = [];
+    if (Trip) {
+      try {
+        const tripWhere = {
+          tenant_id: req.tenant.tenantId,
+          ...(req.tenant.organizationId ? { organization_id: req.tenant.organizationId } : {}),
+          ...(effectiveBranchId ? {
+            [Op.or]: [
+              { origin_branch_id: effectiveBranchId },
+              { dest_branch_id: effectiveBranchId },
+            ],
+          } : {}),
+        };
+        placementTrips = await Trip.findAll({
+          where: tripWhere,
+          include: [
+            ...(Branch ? [
+              { model: Branch, as: 'originBranch', attributes: ['id', 'branch_name', 'branch_code', 'city'], required: false },
+              { model: Branch, as: 'destBranch', attributes: ['id', 'branch_name', 'branch_code', 'city'], required: false },
+            ] : []),
+            ...(Customer ? [
+              { model: Customer, as: 'customer', attributes: ['id', 'name', 'phone'], required: false },
+            ] : []),
+            ...(Expense ? [
+              { model: Expense, as: 'expenses', attributes: ['id', 'amount', 'payment_method', 'expense_date', 'remarks'], required: false },
+            ] : []),
+            ...(DriverAdvance ? [
+              { model: DriverAdvance, as: 'advances', attributes: ['id', 'amount', 'disbursed_mode', 'disbursed_date', 'remarks'], required: false },
+            ] : []),
+          ],
+          order: [['trip_date', 'DESC'], ['created_at', 'DESC']],
+        });
+      } catch (trErr) {
+        console.warn('Trip query warning in collection report:', trErr.message);
+      }
+    }
+
+    let totalTripAdvanceCash = 0;
+    let totalTripExpensesCash = 0;
+    let totalTripNetDrawerCash = 0;
+    const tripFinancialMap = {};
+
+    placementTrips.forEach((t) => {
+      const advReceived = parseFloat(t.advance_received || 0);
+      const contractAmt = parseFloat(t.contract_amount || t.expected_revenue || 0);
+      const isPlacement = t.trip_mode === 'DIRECT_VEHICLE_HIRE' || advReceived > 0;
+
+      let driverAdvCash = 0;
+      if (t.advances && t.advances.length > 0) {
+        driverAdvCash = t.advances
+          .filter((a) => !a.disbursed_mode || a.disbursed_mode === 'CASH')
+          .reduce((sum, a) => sum + parseFloat(a.amount || 0), 0);
+      } else {
+        driverAdvCash = parseFloat(t.driver_advance || 0);
+      }
+
+      let otherCashExpenses = 0;
+      if (t.expenses && t.expenses.length > 0) {
+        otherCashExpenses = t.expenses
+          .filter((e) => !e.payment_method || e.payment_method === 'CASH')
+          .reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
+      } else {
+        otherCashExpenses = Math.max(0, parseFloat(t.total_expenses || 0) - driverAdvCash);
+      }
+
+      const totalBranchExpenses = driverAdvCash + otherCashExpenses;
+      const netDrawerCash = Math.max(0, advReceived - totalBranchExpenses);
+
+      if (advReceived > 0 || isPlacement) {
+        totalTripAdvanceCash += advReceived;
+        totalTripExpensesCash += totalBranchExpenses;
+        totalTripNetDrawerCash += netDrawerCash;
+
+        tripFinancialMap[t.trip_number] = {
+          tripId: t.id,
+          tripNumber: t.trip_number,
+          contractAmount: contractAmt,
+          advanceReceived: advReceived,
+          driverAdvanceCash: driverAdvCash,
+          otherCashExpenses: otherCashExpenses,
+          totalBranchExpenses: totalBranchExpenses,
+          netDrawerCash: netDrawerCash,
+          payableToMainBank: netDrawerCash,
+          originBranchId: t.origin_branch_id,
+          originCity: t.origin_city,
+          destCity: t.destination_city,
+          hiringPartyName: t.hiring_party_name || t.customer?.name || 'Hiring Client',
+        };
+      }
+    });
+
     // Aggregate into daily collections by Date & Branch
     const grouped = {};
+
+    // Incorporate Trip Advances and Net Cash into Origin Branch Daybook
+    placementTrips.forEach((t) => {
+      const advReceived = parseFloat(t.advance_received || 0);
+      if (advReceived <= 0) return;
+
+      const fInfo = tripFinancialMap[t.trip_number];
+      const netDrawerCash = fInfo ? fInfo.netDrawerCash : advReceived;
+      const branchExp = fInfo ? fInfo.totalBranchExpenses : 0;
+
+      const tDate = t.trip_date || (t.created_at ? t.created_at.toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
+      const originBrId = t.origin_branch_id;
+      if (effectiveBranchId && String(originBrId) !== String(effectiveBranchId)) return;
+
+      const originBrName = (originBrId && branchMap[String(originBrId)]) || t.originBranch?.branch_name || 'Origin Branch';
+      const gKey = `${tDate}_${originBrId || originBrName}`;
+
+      if (!grouped[gKey]) {
+        grouped[gKey] = {
+          date: tDate,
+          branchId: originBrId,
+          branchName: originBrName,
+          paidBookingsCount: 0,
+          paidCashAmount: 0,
+          bookedPaidCashAmount: 0,
+          toPayDeliveriesCount: 0,
+          toPayCashAmount: 0,
+          pendingToPayAmount: 0,
+          tbbCount: 0,
+          tbbAmount: 0,
+          totalCollected: 0,
+          deliveredAmount: 0,
+          deliveredPaidAmount: 0,
+          deliveredPaidCashAmount: 0,
+          deliveredTbbAmount: 0,
+          deliveredToPayAmount: 0,
+          deliveredToPayCashAmount: 0,
+          directBankAmount: 0,
+          deliveredDocketsCount: 0,
+          clearedAmount: 0,
+          pendingAmount: 0,
+          tripAdvanceCashAmount: 0,
+          tripExpensesCashAmount: 0,
+          tripNetDrawerCashAmount: 0,
+        };
+      }
+
+      grouped[gKey].bookedPaidCashAmount += netDrawerCash;
+      grouped[gKey].totalCollected += advReceived;
+      grouped[gKey].clearedAmount += advReceived;
+      grouped[gKey].tripAdvanceCashAmount = (grouped[gKey].tripAdvanceCashAmount || 0) + advReceived;
+      grouped[gKey].tripExpensesCashAmount = (grouped[gKey].tripExpensesCashAmount || 0) + branchExp;
+      grouped[gKey].tripNetDrawerCashAmount = (grouped[gKey].tripNetDrawerCashAmount || 0) + netDrawerCash;
+    });
 
     consignments.forEach((c) => {
       const isPaid = c.payment_type === 'PAID';
@@ -1527,6 +2221,7 @@ const getDailyCollectionReport = async (req, res) => {
         let coveredList = [];
         if (allMatches.length > 0) {
           allMatches.forEach((dNo) => {
+            const isTrip = dNo.toUpperCase().startsWith('TRP-');
             const found = consignments.find((cg) =>
               (cg.docket_number && cg.docket_number.toUpperCase() === dNo) ||
               (cg.lr_number && cg.lr_number.toUpperCase() === dNo)
@@ -1543,11 +2238,16 @@ const getDailyCollectionReport = async (req, res) => {
                 status: found.status,
                 consignorName: typeof found.consignor === 'object' ? found.consignor?.name : (found.consignor_name || 'Shipper'),
                 consigneeName: typeof found.consignee === 'object' ? found.consignee?.name : (found.consignee_name || 'Consignee'),
-                load_type: found.load_type || 'PTL',
-                loadType: found.load_type || 'PTL',
+                load_type: isTrip ? 'FTL' : (found.load_type || 'PTL'),
+                loadType: isTrip ? 'FTL' : (found.load_type || 'PTL'),
               });
             } else {
-              coveredList.push({ docketNumber: dNo, load_type: 'PTL' });
+              coveredList.push({
+                docketNumber: dNo,
+                load_type: isTrip ? 'FTL' : 'PTL',
+                loadType: isTrip ? 'FTL' : 'PTL',
+                totalAmount: parseFloat(c.remitted_amount || 0),
+              });
             }
           });
         } else if (linkedCg) {
@@ -1611,6 +2311,11 @@ const getDailyCollectionReport = async (req, res) => {
             : 'BRANCH_CASH_DRAWER',
           isDuplicateUtr,
           duplicateCount: utrKey ? (utrCountMap[utrKey] || 1) : 1,
+          placementFinancials: (docketNo && tripFinancialMap[docketNo])
+            ? tripFinancialMap[docketNo]
+            : (coveredList.find(d => d.docketNumber && tripFinancialMap[d.docketNumber])
+                ? tripFinancialMap[coveredList.find(d => d.docketNumber && tripFinancialMap[d.docketNumber]).docketNumber]
+                : null),
         };
       });
 
@@ -1677,8 +2382,10 @@ const getDailyCollectionReport = async (req, res) => {
 
           const coveredDocketsList = invItems.map((it) => {
             const cg = it.consignment;
+            const docNo = it.lr_number || cg?.docket_number || cg?.lr_number || 'N/A';
+            const isTrip = docNo.toUpperCase().startsWith('TRP-') || (cg && cg.load_type === 'FTL');
             return {
-              docketNumber: it.lr_number || cg?.docket_number || cg?.lr_number || 'N/A',
+              docketNumber: docNo,
               originCity: it.origin_city || cg?.origin_city || '',
               destCity: it.destination_city || cg?.destination_city || '',
               totalAmount: parseFloat(it.total_amount || cg?.total_amount || 0),
@@ -1687,6 +2394,8 @@ const getDailyCollectionReport = async (req, res) => {
               consignorName: cg?.consignor_name || 'Shipper',
               consigneeName: cg?.consignee_name || cust?.name || 'Customer',
               status: cg?.status || 'DELIVERED',
+              load_type: isTrip ? 'FTL' : (cg?.load_type || 'PTL'),
+              loadType: isTrip ? 'FTL' : (cg?.load_type || 'PTL'),
             };
           });
 
@@ -1734,6 +2443,15 @@ const getDailyCollectionReport = async (req, res) => {
             } : null,
             isDuplicateUtr: false,
             duplicateCount: 1,
+            placementFinancials: (() => {
+              const matchedTrip = coveredDocketsList.find(d => d.docketNumber && tripFinancialMap[d.docketNumber])?.docketNumber
+                || (coveredDocketsList.length === 1 && tripFinancialMap[coveredDocketsList[0].docketNumber] ? coveredDocketsList[0].docketNumber : null);
+              const pFin = matchedTrip ? tripFinancialMap[matchedTrip] : null;
+              return pFin ? {
+                ...pFin,
+                bankDepositedAmount: paymentAmt,
+              } : null;
+            })(),
           });
         });
       } catch (payQueryErr) {
@@ -1939,14 +2657,36 @@ const getDailyCollectionReport = async (req, res) => {
       pendingToPayAmount: parseFloat((b.pendingToPayAmount || 0).toFixed(2)),
     }));
 
-    const totalBranchRev = gPaidAmount + gTbbAmount + gToPayAmount;
-    const totalDelivRev = gDeliveredAmount;
+    // Incorporate FTL / Direct Invoices that are remitted or billed at the branch
+    let extraInvoiceRevenue = 0;
+    const uniqueInvoices = {};
+    depositTransactions.forEach((d) => {
+      const invNo = d.invoiceNumber || (d.docketNumber && d.docketNumber.startsWith('TRP-') ? d.docketNumber : null);
+      const invAmt = parseFloat(d.invoiceTotal || (d.linkedDocket?.totalAmount) || d.remittedAmount || 0);
+      if (invNo && invAmt > 0 && !uniqueInvoices[invNo]) {
+        uniqueInvoices[invNo] = invAmt;
+      }
+    });
+    const totalUniqueInvoiceAmount = Object.values(uniqueInvoices).reduce((acc, val) => acc + val, 0);
+    const consignmentRev = gPaidAmount + gTbbAmount + gToPayAmount;
+    if (totalUniqueInvoiceAmount > consignmentRev) {
+      extraInvoiceRevenue = totalUniqueInvoiceAmount - consignmentRev;
+    }
+
+    const totalBranchRev = consignmentRev + extraInvoiceRevenue;
+    const totalDelivRev = gDeliveredAmount + extraInvoiceRevenue;
     const totalUndelivRev = Math.max(0, totalBranchRev - totalDelivRev);
     const totalDelivTbb = gDeliveredTbbAmount;
-    // Branch Drawer Cash includes Booked PAID cash + Delivered TO-PAY cash + Delivered TBB of booking branch
+    // Branch Drawer Cash includes Booked PAID cash + Delivered TO-PAY cash + Delivered TBB of booking branch + Net Trip Advances (Advance minus Trip Expenses) minus cash remitted
     const totalBranchDrawerCash = Math.max(0, (gBookedPaidCashAmount + gDeliveredToPayCashAmount + totalDelivTbb) - gRemittedCashFromDrawer);
     const totalPhysicalCashInDrawer = Math.max(0, (gBookedPaidCashAmount + gDeliveredToPayCashAmount) - gRemittedCashFromDrawer);
     const totalDrawerMinusDep = Math.max(0, totalBranchDrawerCash - gRemittedTotalBank);
+
+    // Total pending revenue awaiting remittance:
+    // When customer has cleared payment via direct Bank payment + Branch cash advance,
+    // the unremitted amount is purely the physical cash in the branch drawer awaiting remittance to the main transporter bank.
+    const totalDueOutsideDrawer = Math.max(0, totalBranchRev - gRemittedTotalBank - totalTripAdvanceCash);
+    const totalPendingRev = totalDueOutsideDrawer + totalPhysicalCashInDrawer;
 
     const summary = {
       totalRecords: displayedRows.length,
@@ -1960,7 +2700,7 @@ const getDailyCollectionReport = async (req, res) => {
       totalDeliveredToPay: parseFloat(gDeliveredToPayAmount.toFixed(2)),
       totalDeliveredDocketsCount: gDeliveredDocketsCount,
       totalClearedRevenue: parseFloat(gClearedRevenue.toFixed(2)),
-      totalPendingRevenue: parseFloat(Math.max(0, totalBranchRev - gRemittedTotalBank).toFixed(2)),
+      totalPendingRevenue: parseFloat(totalPendingRev.toFixed(2)),
       totalPendingBranchRevenue: parseFloat(totalBranchDrawerCash.toFixed(2)),
       totalPaidCollected: parseFloat(gPaidAmount.toFixed(2)),
       totalToPayCollected: parseFloat(gToPayAmount.toFixed(2)),
@@ -1976,7 +2716,11 @@ const getDailyCollectionReport = async (req, res) => {
       totalPendingInBranch: parseFloat(totalBranchDrawerCash.toFixed(2)),
       totalBranchDrawerCash: parseFloat(totalBranchDrawerCash.toFixed(2)),
       totalDrawerMinusDeposits: parseFloat(totalDrawerMinusDep.toFixed(2)),
-      totalDueOutsideDrawer: parseFloat(Math.max(0, (totalBranchRev - gRemittedTotalBank) - totalPhysicalCashInDrawer).toFixed(2)),
+      totalDueOutsideDrawer: parseFloat(totalDueOutsideDrawer.toFixed(2)),
+      totalTripAdvanceCash: parseFloat(totalTripAdvanceCash.toFixed(2)),
+      totalTripExpensesCash: parseFloat(totalTripExpensesCash.toFixed(2)),
+      totalTripNetDrawerCash: parseFloat(totalTripNetDrawerCash.toFixed(2)),
+      totalPayableToMainBank: parseFloat(totalTripNetDrawerCash.toFixed(2)),
       totalDepositsCount: depositTransactions.length,
       viewMode,
       depositTransactions,

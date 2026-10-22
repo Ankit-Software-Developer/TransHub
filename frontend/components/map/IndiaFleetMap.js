@@ -202,6 +202,10 @@ function getTripRouteData(trip) {
   const oCity = trip?.originCity || trip?.origin_city || trip?.originBranch?.city || trip?.origin || trip?.branchCity || (hasRealGps ? locName : 'Delhi');
   const dCity = trip?.destCity || trip?.destination_city || trip?.destBranch?.city || trip?.destination || oCity;
 
+  const defaultGpsCoords = hasRealGps ? [realLat, realLng] : [28.6139, 77.2090];
+  const originCoords = getCityCoords(oCity, defaultGpsCoords);
+  const destCoords = getCityCoords(dCity, originCoords);
+
   // A vehicle is in an active transit corridor if flagged active/in transit AND has distinct origin and destination
   const isTransitStatus = Boolean(
     trip?.isTransit ||
@@ -242,9 +246,6 @@ function getTripRouteData(trip) {
         provider: trip?.provider || trip?.gps_provider_name || 'WheelsEye Fleet GPS',
       };
     }
-
-    const originCoords = getCityCoords(oCity, truckCoords);
-    const destCoords = getCityCoords(dCity, truckCoords);
 
     return {
       isStationary: false,

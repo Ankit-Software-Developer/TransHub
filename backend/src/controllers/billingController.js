@@ -355,8 +355,29 @@ const listInvoices = async (req, res) => {
       const uniqueTypes = Array.from(new Set(itemTypes));
       const primaryDocketType = uniqueTypes[0] || data.payment_type || 'TO_PAY';
 
+      // Determine invoice_load_type: 'FTL_PLACEMENT' | 'FTL' | 'PTL'
+      let invoiceLoadType = 'PTL';
+      const hasPlacementItem = enrichedItems.some((it) =>
+        it.consignment_id === null ||
+        (it.description && /placement|dedicated|vehicle hire/i.test(it.description)) ||
+        (data.remarks && /dedicated ftl|placement/i.test(data.remarks))
+      );
+      const hasFtlConsignment = enrichedItems.some((it) =>
+        (it.consignment?.load_type || '').toUpperCase() === 'FTL' ||
+        (it.description && /\bFTL\b/i.test(it.description))
+      );
+
+      if (hasPlacementItem) {
+        invoiceLoadType = 'FTL_PLACEMENT';
+      } else if (hasFtlConsignment) {
+        invoiceLoadType = 'FTL';
+      } else {
+        invoiceLoadType = 'PTL';
+      }
+
       return {
         ...data,
+        invoice_load_type: invoiceLoadType,
         is_overdue: isPastDue,
         computed_status: computedStatus,
         days_diff: daysDiff,
@@ -572,7 +593,7 @@ const getBillingSummary = async (req, res) => {
  */
 const getUnbilledConsignments = async (req, res) => {
   try {
-    const { Consignment, Customer, Branch, Pod } = req.tenantDb || defaultModels;
+    const { Consignment, Customer, Branch, Pod, Trip, Vehicle } = req.tenantDb || defaultModels;
     const {
       customer_id,
       tbb_only,
@@ -879,6 +900,87 @@ const getUnbilledConsignments = async (req, res) => {
       };
     });
 
+    // Also include Unbilled Dedicated Vehicle Placement Trips (DIRECT_VEHICLE_HIRE)
+    if (Trip) {
+      try {
+        const tripWhere = {
+          tenant_id: req.tenant.tenantId,
+          organization_id: req.tenant.organizationId,
+          trip_mode: 'DIRECT_VEHICLE_HIRE',
+          billing_status: { [Op.ne]: 'INVOICED' },
+        };
+        if (customer_id) {
+          tripWhere.customer_id = customer_id;
+        }
+
+        const unbilledTrips = await Trip.findAll({
+          where: tripWhere,
+          include: [
+            Vehicle ? { model: Vehicle, as: 'vehicle' } : null,
+            Customer ? { model: Customer, as: 'customer', attributes: ['id', 'name', 'gstin', 'credit_days', 'current_balance'] } : null,
+            Branch ? { model: Branch, as: 'originBranch', attributes: ['id', 'branch_name', 'branch_code', 'city'] } : null,
+            Branch ? { model: Branch, as: 'destBranch', attributes: ['id', 'branch_name', 'branch_code', 'city'] } : null,
+          ].filter(Boolean),
+          order: [['trip_date', 'DESC'], ['created_at', 'DESC']],
+        });
+
+        const unbilledTripsFormatted = unbilledTrips.map((t) => {
+          const tJson = t.toJSON ? t.toJSON() : t;
+          const contractAmt = parseFloat(tJson.contract_amount || tJson.expected_revenue || 0);
+          const advancePaid = parseFloat(tJson.advance_received || 0);
+          const balanceDue = Math.max(0, contractAmt - advancePaid);
+          const isDelivered = ['COMPLETED', 'SETTLED'].includes(tJson.status) || tJson.settlement_status === 'SETTLED';
+
+          return {
+            id: `trip_${tJson.id}`,
+            trip_id: tJson.id,
+            is_direct_placement_trip: true,
+            lr_number: tJson.party_ref_number || tJson.trip_number,
+            docket_number: tJson.trip_number,
+            booking_date: tJson.trip_date,
+            packages_count: tJson.total_packages || 1,
+            charged_weight: parseFloat(tJson.total_weight || 0),
+            freight_amount: contractAmt,
+            other_charges: 0,
+            advance_amount: advancePaid,
+            total_amount: contractAmt,
+            taxable_amount: contractAmt,
+            tax_amount: 0,
+            balance_due: balanceDue,
+            payment_type: 'TBB',
+            status: isDelivered ? 'DELIVERED' : 'IN_TRANSIT',
+            origin_city: tJson.origin_city,
+            destination_city: tJson.destination_city,
+            material_description: `Dedicated FTL Vehicle Placement (${tJson.vehicle?.vehicle_number || 'Truck'}) - ${tJson.goods_description || 'Direct Contract Hire'}`,
+            consignor_id: tJson.customer_id,
+            consignee_id: tJson.customer_id,
+            customer: tJson.hiring_party_name || tJson.customer?.name || 'Direct Hiring Client',
+            customer_gstin: tJson.customer?.gstin || 'URP',
+            customer_balance: tJson.customer?.current_balance || 0,
+            credit_days: tJson.customer?.credit_days || 30,
+            booking_branch_id: tJson.origin_branch_id,
+            booking_branch: tJson.originBranch?.branch_name || tJson.origin_city || 'Origin Branch',
+            delivery_branch_id: tJson.dest_branch_id,
+            delivery_branch: tJson.destBranch?.branch_name || tJson.destination_city || 'Dest Branch',
+            origin_branch: tJson.originBranch?.branch_name || tJson.origin_city || 'Origin Branch',
+            is_delivered: isDelivered,
+            is_pod_completed: isDelivered,
+            is_already_paid: false,
+            is_billable: isDelivered,
+            billing_category: isDelivered ? 'TBB_READY' : 'TBB_IN_TRANSIT',
+            billing_notice: isDelivered
+              ? `Dedicated Placement Completed • Agreed: ₹${contractAmt.toLocaleString('en-IN')} (Adv: ₹${advancePaid.toLocaleString('en-IN')}, Net Due: ₹${balanceDue.toLocaleString('en-IN')})`
+              : `In-Transit Placement • Invoicing after delivery completion`,
+            delivery_status_label: isDelivered ? 'Placement Delivered' : 'In Transit',
+          };
+        });
+
+        formatted.push(...unbilledTripsFormatted);
+      } catch (tErr) {
+        console.warn('Could not batch load unbilled trips for billing:', tErr.message);
+      }
+    }
+
     return successResponse(res, 'Unbilled consignments fetched', formatted);
   } catch (error) {
     return errorResponse(res, error.message, null, 500);
@@ -886,18 +988,19 @@ const getUnbilledConsignments = async (req, res) => {
 };
 
 /**
- * Generate Freight Tax Invoice for Selected Consignments
- * Accurately recognizes prepaid amounts for PAID and delivered TO_PAY consignments
+ * Generate Freight Tax Invoice for Selected Consignments or Dedicated Vehicle Placement Trip
+ * Accurately recognizes prepaid amounts for PAID and delivered TO_PAY consignments, or trip advances
  */
 const createInvoice = async (req, res) => {
   const db = req.tenantSequelize || defaultModels.sequelize;
-  const { Invoice, InvoiceItem, Consignment, CustomerLedger, Customer } = req.tenantDb || defaultModels;
+  const { Invoice, InvoiceItem, Consignment, CustomerLedger, Customer, Trip, Vehicle } = req.tenantDb || defaultModels;
   const transaction = await db.transaction();
 
   try {
     const {
       customer_id,
       consignment_ids = [],
+      trip_id,
       invoice_date,
       due_date,
       credit_days = 30,
@@ -908,9 +1011,180 @@ const createInvoice = async (req, res) => {
       remarks,
     } = req.body;
 
+    // Check if generating for a Dedicated Vehicle Placement Trip
+    if (trip_id) {
+      if (!Trip) {
+        await transaction.rollback();
+        return errorResponse(res, 'Trip model not available', null, 500);
+      }
+
+      const tripRecord = await Trip.findOne({
+        where: {
+          id: trip_id,
+          tenant_id: req.tenant.tenantId,
+        },
+        include: Vehicle ? [{ model: Vehicle, as: 'vehicle' }] : [],
+        transaction,
+      });
+
+      if (!tripRecord) {
+        await transaction.rollback();
+        return errorResponse(res, 'Vehicle placement trip not found', null, 404);
+      }
+
+      let resolvedCustomerId = customer_id || tripRecord.customer_id;
+      if (!resolvedCustomerId && tripRecord.hiring_party_name && Customer) {
+        let cust = await Customer.findOne({
+          where: {
+            tenant_id: req.tenant.tenantId,
+            name: tripRecord.hiring_party_name.trim(),
+          },
+          transaction,
+        });
+        if (!cust) {
+          cust = await Customer.create({
+            tenant_id: req.tenant.tenantId,
+            organization_id: req.tenant.organizationId,
+            name: tripRecord.hiring_party_name.trim(),
+            phone: tripRecord.hiring_party_phone || '0000000000',
+            customer_type: 'CORPORATE',
+            credit_days: credit_days || 30,
+          }, { transaction });
+        }
+        resolvedCustomerId = cust.id;
+        await tripRecord.update({ customer_id: cust.id }, { transaction });
+      }
+
+      if (!resolvedCustomerId) {
+        await transaction.rollback();
+        return errorResponse(res, 'Customer account could not be resolved for this trip', null, 400);
+      }
+
+      const { formattedNumber: invoiceNumber } = await generateNextNumber({
+        tenantId: req.tenant.tenantId,
+        organizationId: req.tenant.organizationId,
+        branchId: branch_id || tripRecord.origin_branch_id || req.branchId || null,
+        documentType: 'INVOICE',
+        transaction,
+        models: req.tenantDb,
+      });
+
+      const contractFreight = parseFloat(tripRecord.contract_amount || tripRecord.expected_revenue || 0);
+      const advancePaid = parseFloat(tripRecord.advance_received || 0);
+      const extra = roundToTwo(parseFloat(extra_charges || 0));
+      const gstPct = parseFloat(tax_rate || 5.0);
+
+      const totalTaxable = roundToTwo(contractFreight + extra);
+      const totalTax = (!is_rcm && gstPct > 0) ? roundToTwo((totalTaxable * gstPct) / 100) : 0;
+      const totalInvoiceAmount = roundToTwo(totalTaxable + totalTax);
+
+      let cgstRate = 0;
+      let sgstRate = 0;
+      let cgstAmount = 0;
+      let sgstAmount = 0;
+
+      if (!is_rcm && totalTax > 0) {
+        cgstRate = gstPct / 2;
+        sgstRate = gstPct / 2;
+        cgstAmount = roundToTwo(totalTax / 2);
+        sgstAmount = roundToTwo(totalTax - cgstAmount);
+      }
+
+      const prepaidAmount = Math.min(totalInvoiceAmount, advancePaid);
+      const balanceAmount = roundToTwo(Math.max(0, totalInvoiceAmount - prepaidAmount));
+
+      const invDateStr = invoice_date || new Date().toISOString().slice(0, 10);
+      let dueDateStr = due_date;
+      if (!dueDateStr) {
+        const d = new Date(invDateStr);
+        d.setDate(d.getDate() + parseInt(credit_days, 10));
+        dueDateStr = d.toISOString().slice(0, 10);
+      }
+
+      const invoiceBranchId = branch_id || tripRecord.origin_branch_id || req.branchId || null;
+
+      let initialStatus = 'GENERATED';
+      if (balanceAmount === 0) {
+        initialStatus = 'PAID';
+      } else if (prepaidAmount > 0) {
+        initialStatus = 'PARTIAL';
+      }
+
+      const invoice = await Invoice.create({
+        tenant_id: req.tenant.tenantId,
+        organization_id: req.tenant.organizationId,
+        branch_id: invoiceBranchId,
+        invoice_number: invoiceNumber,
+        customer_id: resolvedCustomerId,
+        invoice_date: invDateStr,
+        due_date: dueDateStr,
+        subtotal_amount: totalTaxable,
+        taxable_amount: totalTaxable,
+        cgst_rate: cgstRate,
+        cgst_amount: cgstAmount,
+        sgst_rate: sgstRate,
+        sgst_amount: sgstAmount,
+        total_tax_amount: totalTax,
+        total_amount: totalInvoiceAmount,
+        balance_amount: balanceAmount,
+        paid_amount: prepaidAmount,
+        status: initialStatus,
+        payment_terms: `${credit_days} Days Credit ${is_rcm ? '(GST RCM Applicable)' : ''}${prepaidAmount > 0 ? ` (₹${prepaidAmount.toLocaleString('en-IN')} Advance Deducted)` : ''}`,
+        remarks: remarks || `Dedicated FTL Vehicle Placement - Trip #${tripRecord.trip_number} (${tripRecord.origin_city} ➔ ${tripRecord.destination_city})`,
+        created_by: req.user.id,
+      }, { transaction });
+
+      await InvoiceItem.create({
+        invoice_id: invoice.id,
+        consignment_id: null,
+        lr_number: tripRecord.party_ref_number || tripRecord.trip_number,
+        booking_date: tripRecord.trip_date,
+        description: `Dedicated FTL Vehicle Placement - ${tripRecord.vehicle?.vehicle_number || 'Truck'} (${tripRecord.origin_city} to ${tripRecord.destination_city})${tripRecord.goods_description ? ` [${tripRecord.goods_description}]` : ''}`,
+        origin_city: tripRecord.origin_city,
+        destination_city: tripRecord.destination_city,
+        packages_count: tripRecord.total_packages || 1,
+        charged_weight: tripRecord.total_weight || 0,
+        freight_amount: contractFreight,
+        other_charges: extra,
+        total_amount: totalInvoiceAmount,
+      }, { transaction });
+
+      await tripRecord.update({
+        billing_status: 'INVOICED',
+      }, { transaction });
+
+      if (CustomerLedger) {
+        const lastLedger = await CustomerLedger.findOne({
+          where: { customer_id: resolvedCustomerId },
+          order: [['entry_date', 'DESC'], ['created_at', 'DESC']],
+          transaction,
+        });
+        const previousBalance = lastLedger ? parseFloat(lastLedger.running_balance) : 0;
+        const newBalance = roundToTwo(previousBalance + balanceAmount);
+
+        await CustomerLedger.create({
+          tenant_id: req.tenant.tenantId,
+          organization_id: req.tenant.organizationId,
+          customer_id: resolvedCustomerId,
+          entry_date: invoice.invoice_date,
+          entry_type: 'INVOICE',
+          reference_id: invoice.id,
+          reference_number: invoice.invoice_number,
+          description: `Freight Tax Invoice for FTL Placement Trip #${tripRecord.trip_number} (Contract: ₹${contractFreight}, Less Advance: ₹${prepaidAmount}, Balance Due: ₹${balanceAmount})`,
+          debit_amount: balanceAmount,
+          credit_amount: 0.00,
+          running_balance: newBalance,
+        }, { transaction });
+      }
+
+      await transaction.commit();
+      return successResponse(res, 'Freight Invoice created successfully for Dedicated Vehicle Placement', invoice, 201);
+    }
+
+    // Default Consignment-based invoice flow
     if (!customer_id || consignment_ids.length === 0) {
       await transaction.rollback();
-      return errorResponse(res, 'Customer and at least one consignment are required to generate an invoice', null, 400);
+      return errorResponse(res, 'Customer and at least one consignment or trip are required to generate an invoice', null, 400);
     }
 
     const { formattedNumber: invoiceNumber } = await generateNextNumber({

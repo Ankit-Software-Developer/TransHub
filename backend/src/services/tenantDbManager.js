@@ -59,9 +59,9 @@ const createTenantDatabase = async (companyName) => {
 
   // 4. Automatically sync all operational tables and columns into the newly created database
   try {
-    await tenantSequelize.sync({ alter: true });
-  } catch (syncErr) {
     await tenantSequelize.sync();
+  } catch (syncErr) {
+    console.warn(`[Multi-Tenant DB] Initial sync notice for ${dbName}:`, syncErr.message);
   }
 
   // 5. Cache the connection instance
@@ -370,13 +370,9 @@ const getTenantConnection = async (dbName) => {
   await ensureTableColumns(tenantSequelize, tenantModels);
 
   try {
-    await tenantSequelize.sync({ alter: true });
+    await tenantSequelize.sync();
   } catch (syncErr) {
-    try {
-      await tenantSequelize.sync();
-    } catch (fallbackErr) {
-      console.warn(`[Multi-Tenant DB] Auto-sync notice for ${dbName}:`, fallbackErr.message);
-    }
+    console.warn(`[Multi-Tenant DB] Auto-sync notice for ${dbName}:`, syncErr.message);
   }
 
   const connectionObj = {

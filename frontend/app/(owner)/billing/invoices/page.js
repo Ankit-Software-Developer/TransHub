@@ -12,6 +12,7 @@ import { useTheme } from '../../../../components/ThemeProvider';
 import { usePermissions } from '../../../../hooks/usePermissions';
 import { useStore } from '../../../../store/useStore';
 import { useTerminology } from '../../../../hooks/useTerminology';
+import { useOperationsType } from '../../../../hooks/useOperationsType';
 import api from '../../../../services/api';
 import billingService from '../../../../services/billingService';
 import {
@@ -65,6 +66,7 @@ export default function InvoicesMasterPage() {
   // Settings & Terminology from Zustand Store & useTerminology hook
   const { terminology: storeTerminology, user, activeBranch, setTerminology } = useStore();
   const terminologyHook = useTerminology();
+  const { isOnlyFTL, isOnlyPTL, isBoth } = useOperationsType();
   const [orgProfile, setOrgProfile] = useState(null);
 
   // Dynamic Terminology according to Transporter Settings (Docket / Bilty / LR / GR / Consignment Note)
@@ -183,8 +185,23 @@ export default function InvoicesMasterPage() {
   const [customersList, setCustomersList] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('TBB'); // Default to 'TBB'
+  const [statusFilter, setStatusFilter] = useState('ALL'); // 'ALL' | 'TBB' | 'OTHER'
+  const [loadTypeFilter, setLoadTypeFilter] = useState('ALL'); // 'ALL' | 'PTL' | 'FTL' | 'FTL_PLACEMENT'
   const [paymentClearanceFilter, setPaymentClearanceFilter] = useState('PENDING'); // 'PENDING' | 'CLEARED' | 'ALL'
+
+  // Helper to categorize invoices into PTL, FTL, or FTL (Vehicle Placement)
+  const getInvoiceLoadType = (inv) => {
+    if (!inv) return 'PTL';
+    if (inv.invoice_load_type === 'FTL_PLACEMENT' || inv.trip_id) return 'FTL_PLACEMENT';
+    const desc = (inv.items || []).map((it) => `${it.description || ''} ${it.lr_number || ''}`).join(' ') + ' ' + (inv.remarks || '');
+    if (/placement|dedicated|vehicle hire|contract hire/i.test(desc) || (inv.items || []).some((it) => it.consignment_id === null)) {
+      return 'FTL_PLACEMENT';
+    }
+    if (inv.invoice_load_type === 'FTL' || (inv.items || []).some((it) => (it.consignment?.load_type || '').toUpperCase() === 'FTL') || /\bFTL\b/i.test(desc)) {
+      return 'FTL';
+    }
+    return 'PTL';
+  };
   const [isClearanceDropdownOpen, setIsClearanceDropdownOpen] = useState(false);
   const clearanceDropdownRef = useRef(null);
 
@@ -320,8 +337,8 @@ export default function InvoicesMasterPage() {
         const bList = Array.isArray(bData)
           ? bData
           : Array.isArray(bData?.rows)
-          ? bData.rows
-          : [];
+            ? bData.rows
+            : [];
         setBranches(bList);
 
         // Pre-select user's active branch if available
@@ -352,12 +369,12 @@ export default function InvoicesMasterPage() {
 
       const rawInvoices = invRes.status === 'fulfilled'
         ? (Array.isArray(invRes.value?.data)
-            ? invRes.value.data
-            : Array.isArray(invRes.value?.data?.rows)
+          ? invRes.value.data
+          : Array.isArray(invRes.value?.data?.rows)
             ? invRes.value.data.rows
             : Array.isArray(invRes.value?.data?.data)
-            ? invRes.value.data.data
-            : [])
+              ? invRes.value.data.data
+              : [])
         : [];
 
       if (rawInvoices.length > 0) {
@@ -493,12 +510,6 @@ export default function InvoicesMasterPage() {
       });
       setUnbilledConsignments(unbilledList);
 
-      // Auto-default to Unbilled Dockets view if no invoices have been generated yet
-      const rowsCount = rawInvoices.length;
-      if (rowsCount === 0 && unbilledList.length > 0) {
-        setActiveTab('UNBILLED');
-      }
-
       if (custList.status === 'fulfilled' && Array.isArray(custList.value)) {
         setCustomersList(custList.value);
         if (custList.value.length > 0 && !selectedCustomerId) {
@@ -573,10 +584,10 @@ export default function InvoicesMasterPage() {
         const rows = Array.isArray(results?.data)
           ? results.data
           : Array.isArray(results?.data?.rows)
-          ? results.data.rows
-          : Array.isArray(results?.data?.data)
-          ? results.data.data
-          : [];
+            ? results.data.rows
+            : Array.isArray(results?.data?.data)
+              ? results.data.data
+              : [];
         if (rows.length > 0) {
           const todayStr = new Date().toISOString().slice(0, 10);
           const decorated = rows.map((row) => {
@@ -869,7 +880,7 @@ export default function InvoicesMasterPage() {
     branches.forEach((b) => {
       const cnt = unbilledConsignments.filter(
         (c) => isDocketRelatedToBranch(c, b) &&
-        (showPendingTransit || c.is_delivered || ['DELIVERED', 'POD_UPLOADED', 'COMPLETED', 'POD_VERIFIED'].includes(c.status))
+          (showPendingTransit || c.is_delivered || ['DELIVERED', 'POD_UPLOADED', 'COMPLETED', 'POD_VERIFIED'].includes(c.status))
       ).length;
       countsMap[String(b.id)] = cnt;
       if (b.branch_code) countsMap[b.branch_code.toUpperCase()] = cnt;
@@ -940,20 +951,31 @@ export default function InvoicesMasterPage() {
 
     const efficiency = totalInvoiced > 0 ? ((totalReceived / totalInvoiced) * 100).toFixed(1) : '0.0';
 
-    // Unbilled TBB delivered pending billing (scoped to active branch view)
-    const unbilledTbbItems = scopedUnbilledConsignments.filter((c) => c.payment_type === 'TBB');
-    const unbilledTbbDeliveredItems = unbilledTbbItems.filter(
-      (c) => c.is_delivered || ['DELIVERED', 'POD_UPLOADED', 'COMPLETED'].includes(c.status)
+    // Separate unbilled PTL/FTL bilty dockets from FTL Vehicle Placement trips
+    const unbilledPlacements = scopedUnbilledConsignments.filter(
+      (c) => c.is_direct_placement_trip || c.trip_id
     );
-    const unbilledTbbAmount = unbilledTbbDeliveredItems.reduce(
+    const unbilledDeliveredPlacements = unbilledPlacements.filter(
+      (c) => c.is_delivered || ['DELIVERED', 'COMPLETED', 'SETTLED'].includes(c.status)
+    );
+    const unbilledPlacementsAmount = unbilledDeliveredPlacements.reduce(
       (sum, c) => sum + parseFloat(c.total_amount || c.freight_amount || 0),
       0
     );
 
-    const unbilledTotalAmount = scopedUnbilledConsignments.reduce(
+    const unbilledDockets = scopedUnbilledConsignments.filter(
+      (c) => !c.is_direct_placement_trip && !c.trip_id
+    );
+    const unbilledDeliveredDockets = unbilledDockets.filter(
+      (c) => c.payment_type === 'TBB' && (c.is_delivered || ['DELIVERED', 'POD_UPLOADED', 'COMPLETED', 'POD_VERIFIED'].includes(c.status))
+    );
+    const unbilledDocketsAmount = unbilledDeliveredDockets.reduce(
       (sum, c) => sum + parseFloat(c.total_amount || c.freight_amount || 0),
       0
     );
+
+    const unbilledTotalReadyAmount = unbilledDocketsAmount + unbilledPlacementsAmount;
+    const unbilledTotalReadyCount = unbilledDeliveredDockets.length + unbilledDeliveredPlacements.length;
 
     return {
       totalInvoiced,
@@ -961,10 +983,19 @@ export default function InvoicesMasterPage() {
       outstandingBalance,
       overdueReceivables,
       efficiency,
-      unbilledTbbAmount,
-      unbilledTbbCount: unbilledTbbDeliveredItems.length,
+      unbilledTbbAmount: unbilledTotalReadyAmount,
+      unbilledTbbCount: unbilledTotalReadyCount,
+      unbilledDocketsAmount,
+      unbilledDocketsCount: unbilledDeliveredDockets.length,
+      unbilledPlacementsAmount,
+      unbilledPlacementsCount: unbilledDeliveredPlacements.length,
+      unbilledTotalReadyAmount,
+      unbilledTotalReadyCount,
       unbilledTotalCount: scopedUnbilledConsignments.length,
-      unbilledTotalAmount,
+      unbilledTotalAmount: scopedUnbilledConsignments.reduce(
+        (sum, c) => sum + parseFloat(c.total_amount || c.freight_amount || 0),
+        0
+      ),
     };
   }, [invoices, scopedUnbilledConsignments]);
 
@@ -1045,6 +1076,12 @@ export default function InvoicesMasterPage() {
 
       if (!match) return false;
 
+      // Load Type Filter (PTL vs FTL vs FTL Placement)
+      if (loadTypeFilter !== 'ALL') {
+        const iType = getInvoiceLoadType(inv);
+        if (iType !== loadTypeFilter) return false;
+      }
+
       const isTbb =
         inv.docket_type === 'TBB' ||
         (Array.isArray(inv.docket_types) && inv.docket_types.includes('TBB')) ||
@@ -1054,7 +1091,7 @@ export default function InvoicesMasterPage() {
       if (statusFilter === 'OTHER') return !isTbb;
       return true;
     });
-  }, [branchScopedInvoices, search, statusFilter, paymentClearanceFilter]);
+  }, [branchScopedInvoices, search, statusFilter, loadTypeFilter, paymentClearanceFilter]);
 
   // Overall clearance stats for the dropdown badges
   const clearanceStats = useMemo(() => {
@@ -1090,6 +1127,10 @@ export default function InvoicesMasterPage() {
     const tbbList = activeInvoices.filter(isTbbInv);
     const otherList = activeInvoices.filter((i) => !isTbbInv(i));
 
+    const ptlList = activeInvoices.filter((i) => getInvoiceLoadType(i) === 'PTL');
+    const ftlList = activeInvoices.filter((i) => getInvoiceLoadType(i) === 'FTL');
+    const placementList = activeInvoices.filter((i) => getInvoiceLoadType(i) === 'FTL_PLACEMENT');
+
     const paidList = nonCancelledInvoices.filter(isInvoiceCleared);
     const pendingList = nonCancelledInvoices.filter(isInvoicePending);
     const overdueList = pendingList.filter((inv) => inv.due_date && inv.due_date < todayStr);
@@ -1103,6 +1144,14 @@ export default function InvoicesMasterPage() {
       tbbAmount: sumTotal(tbbList),
       other: otherList.length,
       otherAmount: sumTotal(otherList),
+
+      // Load Type breakdown
+      ptl: ptlList.length,
+      ptlAmount: sumTotal(ptlList),
+      ftl: ftlList.length,
+      ftlAmount: sumTotal(ftlList),
+      placement: placementList.length,
+      placementAmount: sumTotal(placementList),
 
       // Global invoice stats for KPI Cards
       totalActive: nonCancelledInvoices.length,
@@ -1470,8 +1519,8 @@ export default function InvoicesMasterPage() {
         collectFreightForm.paymentMethod === 'CASH'
           ? 'Cash receipt / voucher number is required'
           : collectFreightForm.paymentMethod === 'CHEQUE'
-          ? 'Cheque number is required'
-          : 'Payment UTR / Reference number is required',
+            ? 'Cheque number is required'
+            : 'Payment UTR / Reference number is required',
         'error'
       );
       return;
@@ -1598,10 +1647,10 @@ export default function InvoicesMasterPage() {
         paymentMethod === 'CHEQUE'
           ? 'Cheque Number'
           : paymentMethod === 'UPI'
-          ? 'UPI Reference / Transaction ID'
-          : paymentMethod === 'CASH'
-          ? 'Cash Receipt / Voucher Number'
-          : 'Bank Reference / UTR Number';
+            ? 'UPI Reference / Transaction ID'
+            : paymentMethod === 'CASH'
+              ? 'Cash Receipt / Voucher Number'
+              : 'Bank Reference / UTR Number';
       showToast(`Please enter ${refName}`, 'error');
       return;
     }
@@ -1802,6 +1851,47 @@ export default function InvoicesMasterPage() {
       )
     },
     {
+      key: 'invoice_load_type',
+      label: 'Invoice Type',
+      width: 175,
+      minWidth: 155,
+      sortable: true,
+      render: (val, row) => {
+        const type = getInvoiceLoadType(row);
+        if (type === 'FTL_PLACEMENT') {
+          return (
+            <div className="flex flex-col gap-0.5">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-purple-500/15 text-purple-600 dark:text-purple-300 border border-purple-500/30 whitespace-nowrap">
+                <Truck className="w-3.5 h-3.5 text-purple-500 shrink-0" />
+                <span>FTL (Placement)</span>
+              </span>
+              <span className="text-[10px] text-purple-500/80 font-mono">Dedicated Contract</span>
+            </div>
+          );
+        }
+        if (type === 'FTL') {
+          return (
+            <div className="flex flex-col gap-0.5">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-cyan-500/15 text-cyan-600 dark:text-cyan-300 border border-cyan-500/30 whitespace-nowrap">
+                <Truck className="w-3.5 h-3.5 text-cyan-500 shrink-0" />
+                <span>FTL Dedicated</span>
+              </span>
+              <span className="text-[10px] text-cyan-500/80 font-mono">Full Truck Load</span>
+            </div>
+          );
+        }
+        return (
+          <div className="flex flex-col gap-0.5">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-500/15 text-amber-600 dark:text-amber-300 border border-amber-500/30 whitespace-nowrap">
+              <Layers className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+              <span>PTL Sundry</span>
+            </span>
+            <span className="text-[10px] text-amber-500/80 font-mono">Part Truck Load</span>
+          </div>
+        );
+      }
+    },
+    {
       key: 'dockets',
       label: `${termSingular} # & Type`,
       width: 220,
@@ -1827,10 +1917,10 @@ export default function InvoicesMasterPage() {
               const tone = uType === 'PAID'
                 ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
                 : uType === 'TO_PAY'
-                ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30'
-                : uType === 'TBB'
-                ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30'
-                : 'bg-purple-500/15 text-purple-600 dark:text-purple-400 border-purple-500/30';
+                  ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30'
+                  : uType === 'TBB'
+                    ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30'
+                    : 'bg-purple-500/15 text-purple-600 dark:text-purple-400 border-purple-500/30';
               return (
                 <span key={idx} className={`text-[10px] px-2 py-0.5 rounded-md font-bold uppercase tracking-wider border shrink-0 ${tone}`}>
                   {fType}
@@ -1964,9 +2054,8 @@ export default function InvoicesMasterPage() {
         return (
           <div className="space-y-0.5">
             <div className="flex items-center space-x-1.5">
-              <span className={`font-mono text-xs font-semibold ${
-                isOverdue ? 'text-rose-600 dark:text-rose-400 font-bold' : isCancelled ? 'text-slate-400 line-through' : 'text-slate-800 dark:text-slate-200'
-              }`}>
+              <span className={`font-mono text-xs font-semibold ${isOverdue ? 'text-rose-600 dark:text-rose-400 font-bold' : isCancelled ? 'text-slate-400 line-through' : 'text-slate-800 dark:text-slate-200'
+                }`}>
                 {val}
               </span>
               {!isCancelled && !isPaid && canEdit && (
@@ -2075,17 +2164,16 @@ export default function InvoicesMasterPage() {
         }
 
         return (
-          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-            tone === 'emerald'
+          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${tone === 'emerald'
               ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 border-emerald-500/30'
               : tone === 'rose'
-              ? 'bg-rose-500/15 text-rose-600 dark:text-rose-300 border-rose-500/30'
-              : tone === 'cyan'
-              ? 'bg-cyan-500/15 text-cyan-600 dark:text-cyan-300 border-cyan-500/30'
-              : tone === 'slate'
-              ? 'bg-slate-500/15 text-slate-500 dark:text-slate-400 border-slate-500/30'
-              : 'bg-amber-500/15 text-amber-600 dark:text-amber-300 border-amber-500/30'
-          }`}>
+                ? 'bg-rose-500/15 text-rose-600 dark:text-rose-300 border-rose-500/30'
+                : tone === 'cyan'
+                  ? 'bg-cyan-500/15 text-cyan-600 dark:text-cyan-300 border-cyan-500/30'
+                  : tone === 'slate'
+                    ? 'bg-slate-500/15 text-slate-500 dark:text-slate-400 border-slate-500/30'
+                    : 'bg-amber-500/15 text-amber-600 dark:text-amber-300 border-amber-500/30'
+            }`}>
             {label}
           </span>
         );
@@ -2295,13 +2383,12 @@ export default function InvoicesMasterPage() {
       sortable: true,
       align: 'center',
       render: (val) => (
-        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-          val === 'TBB'
+        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${val === 'TBB'
             ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400 border-purple-500/30'
             : val === 'PAID'
-            ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
-            : 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30'
-        }`}>
+              ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
+              : 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30'
+          }`}>
           {val === 'TBB' ? '⭐ TBB' : val || 'TO_PAY'}
         </span>
       )
@@ -2337,15 +2424,14 @@ export default function InvoicesMasterPage() {
 
         return (
           <div className="flex flex-col items-center gap-1">
-            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-              badgeTone === 'purple'
+            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${badgeTone === 'purple'
                 ? 'bg-purple-500/15 text-purple-600 dark:text-purple-300 border-purple-500/30'
                 : badgeTone === 'emerald'
-                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 border-emerald-500/30'
-                : badgeTone === 'amber'
-                ? 'bg-amber-500/15 text-amber-600 dark:text-amber-300 border-amber-500/30'
-                : 'bg-blue-500/15 text-blue-600 dark:text-blue-300 border-blue-500/30'
-            }`}>
+                  ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 border-emerald-500/30'
+                  : badgeTone === 'amber'
+                    ? 'bg-amber-500/15 text-amber-600 dark:text-amber-300 border-amber-500/30'
+                    : 'bg-blue-500/15 text-blue-600 dark:text-blue-300 border-blue-500/30'
+              }`}>
               {badgeText}
             </span>
             {isTbb && isDelivered ? (
@@ -2417,7 +2503,8 @@ export default function InvoicesMasterPage() {
       {/* ======================================================== */}
       {/* GLOBAL PRINT STYLES FOR CRISP FULL-PAGE A4 GST INVOICES  */}
       {/* ======================================================== */}
-      <style dangerouslySetInnerHTML={{ __html: `
+      <style dangerouslySetInnerHTML={{
+        __html: `
         @media print {
           @page {
             size: A4 portrait;
@@ -2485,24 +2572,22 @@ export default function InvoicesMasterPage() {
       {/* ======================================================== */}
       <div
         id="screen-app-layout"
-        className={`flex min-h-screen transition-colors duration-300 ${
-          isDark ? 'bg-[#06080F] text-slate-100' : 'bg-[#F4F6FB] text-slate-900'
-        } font-sans`}
+        className={`flex min-h-screen transition-colors duration-300 ${isDark ? 'bg-[#06080F] text-slate-100' : 'bg-[#F4F6FB] text-slate-900'
+          } font-sans`}
       >
         <Sidebar />
         <div className="flex-1 flex flex-col min-w-0">
           <Navbar />
 
           <main className="flex-1 p-3.5 sm:p-5 lg:p-6 xl:p-8 space-y-4 sm:space-y-5 lg:space-y-6 w-full max-w-full">
-            
+
             {/* Header Action Bar: 80% Heading & 20% Corner Actions */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
               <div className="w-full sm:w-[75%] lg:w-[80%] min-w-0">
                 <div className="flex items-center space-x-2.5">
                   <Receipt className="w-5 h-5 sm:w-6 sm:h-6 text-cyan-400 shrink-0" />
-                  <h1 className={`text-base sm:text-lg lg:text-xl xl:text-2xl font-black tracking-tight whitespace-nowrap ${
-                    isDark ? 'text-white' : 'text-slate-900'
-                  }`}>
+                  <h1 className={`text-base sm:text-lg lg:text-xl xl:text-2xl font-black tracking-tight whitespace-nowrap ${isDark ? 'text-white' : 'text-slate-900'
+                    }`}>
                     GST Freight Billing & Invoices
                   </h1>
                 </div>
@@ -2515,11 +2600,10 @@ export default function InvoicesMasterPage() {
                 {canExport && (
                   <button
                     onClick={handleExportGstr1}
-                    className={`flex items-center space-x-1 px-2.5 sm:px-3 py-2 rounded-xl border text-xs font-bold transition-all shrink-0 whitespace-nowrap cursor-pointer ${
-                      isDark
+                    className={`flex items-center space-x-1 px-2.5 sm:px-3 py-2 rounded-xl border text-xs font-bold transition-all shrink-0 whitespace-nowrap cursor-pointer ${isDark
                         ? 'bg-slate-900/80 border-slate-800 text-slate-300 hover:text-white hover:border-cyan-500'
                         : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-xs'
-                    }`}
+                      }`}
                     title="Export official GSTR-1 Outward B2B Supply Sheet"
                   >
                     <Download className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
@@ -2536,10 +2620,10 @@ export default function InvoicesMasterPage() {
                       setIsGenerateModalOpen(true);
                     }}
                     className="flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 transition-all active:scale-95 shrink-0 whitespace-nowrap cursor-pointer"
-                    title="Consolidate multiple delivered dockets into a single monthly invoice for corporate clients"
+                    title={isOnlyFTL ? "Generate commercial freight tax invoice" : "Consolidate multiple delivered dockets into a single monthly invoice for corporate clients"}
                   >
-                    <Layers className="w-4 h-4 shrink-0" />
-                    <span>+ Batch Invoice</span>
+                    {isOnlyFTL ? <Receipt className="w-4 h-4 shrink-0" /> : <Layers className="w-4 h-4 shrink-0" />}
+                    <span>{isOnlyFTL ? '+ Generate Invoice' : '+ Batch Invoice'}</span>
                   </button>
                 )}
               </div>
@@ -2547,11 +2631,10 @@ export default function InvoicesMasterPage() {
 
             {/* Feedback Toast */}
             {toastMessage && (
-              <div className={`p-3 rounded-xl border text-xs font-semibold flex items-center space-x-2.5 shadow-md animate-in fade-in ${
-                toastMessage.type === 'error'
+              <div className={`p-3 rounded-xl border text-xs font-semibold flex items-center space-x-2.5 shadow-md animate-in fade-in ${toastMessage.type === 'error'
                   ? 'bg-rose-500/10 border-rose-500/30 text-rose-500 dark:text-rose-400'
                   : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
-              }`}>
+                }`}>
                 {toastMessage.type === 'error' ? <AlertCircle className="w-4 h-4 shrink-0" /> : <CheckCircle2 className="w-4 h-4 shrink-0" />}
                 <span>{toastMessage.text}</span>
               </div>
@@ -2562,9 +2645,8 @@ export default function InvoicesMasterPage() {
               {/* Card 1: Total Invoiced */}
               <div
                 onClick={() => setActiveTab('INVOICES')}
-                className={`p-3 sm:p-3.5 lg:p-4 rounded-2xl border cursor-pointer transition-all hover:scale-[1.01] ${
-                  activeTab === 'INVOICES' ? 'ring-2 ring-blue-500/40' : ''
-                } ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}
+                className={`p-3 sm:p-3.5 lg:p-4 rounded-2xl border cursor-pointer transition-all hover:scale-[1.01] ${activeTab === 'INVOICES' ? 'ring-2 ring-blue-500/40' : ''
+                  } ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}
               >
                 <div className="text-[11px] font-semibold text-slate-400 mb-0.5 sm:mb-1">Total Invoiced</div>
                 <div className="text-lg sm:text-xl lg:text-2xl font-black text-slate-900 dark:text-white font-mono">
@@ -2575,23 +2657,45 @@ export default function InvoicesMasterPage() {
                 </div>
               </div>
 
-              {/* Card 2: Unbilled TBB Dockets */}
+              {/* Card 2: Unbilled Freight Pipeline (FTL Placement Trips & TBB Dockets) */}
               <div
-                onClick={() => setIsGenerateModalOpen(true)}
+                onClick={() => {
+                  if (kpis.unbilledPlacementsCount > 0 && kpis.unbilledDocketsCount === 0) {
+                    window.location.href = '/trips';
+                  } else {
+                    setIsGenerateModalOpen(true);
+                  }
+                }}
                 className={`p-3 sm:p-3.5 lg:p-4 rounded-2xl border cursor-pointer transition-all hover:scale-[1.01] ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}
-                title="Delivered TBB consignments waiting for invoice generation"
+                title={
+                  kpis.unbilledPlacementsCount > 0 && kpis.unbilledDocketsCount === 0
+                    ? "Completed FTL vehicle placement trips awaiting invoice generation in Trips"
+                    : "Delivered freight awaiting invoice generation"
+                }
               >
                 <div className="text-[11px] font-semibold text-purple-600 dark:text-purple-400 mb-0.5 sm:mb-1 flex items-center justify-between">
-                  <span>Unbilled TBB Dockets</span>
-                  {kpis.unbilledTbbCount > 0 && (
+                  <span>
+                    {kpis.unbilledPlacementsCount > 0 && kpis.unbilledDocketsCount === 0
+                      ? 'Unbilled FTL Placements'
+                      : kpis.unbilledDocketsCount > 0 && kpis.unbilledPlacementsCount === 0
+                        ? 'Unbilled TBB Dockets'
+                        : 'Unbilled Freight Pipeline'}
+                  </span>
+                  {(kpis.unbilledPlacementsCount > 0 || kpis.unbilledDocketsCount > 0) && (
                     <span className="w-2 h-2 rounded-full bg-purple-500 animate-ping" />
                   )}
                 </div>
                 <div className="text-lg sm:text-xl lg:text-2xl font-black text-purple-600 dark:text-purple-400 font-mono">
-                  ₹ {kpis.unbilledTbbAmount.toLocaleString('en-IN')}
+                  ₹ {kpis.unbilledTotalReadyAmount.toLocaleString('en-IN')}
                 </div>
                 <div className="text-[10px] text-purple-500/80 mt-0.5 sm:mt-1 truncate">
-                  {kpis.unbilledTbbCount > 0 ? `${kpis.unbilledTbbCount} Delivered Ready to Bill` : '0 Dockets Awaiting Bill'}
+                  {kpis.unbilledPlacementsCount > 0 && kpis.unbilledDocketsCount === 0
+                    ? `${kpis.unbilledPlacementsCount} FTL Trip Ready to Bill (in Trips ➔)`
+                    : kpis.unbilledDocketsCount > 0 && kpis.unbilledPlacementsCount === 0
+                      ? `${kpis.unbilledDocketsCount} Delivered Ready to Bill`
+                      : kpis.unbilledTotalReadyCount > 0
+                        ? `${kpis.unbilledPlacementsCount} FTL Trips • ${kpis.unbilledDocketsCount} Dockets`
+                        : '0 Pending Billing'}
                 </div>
               </div>
 
@@ -2610,9 +2714,8 @@ export default function InvoicesMasterPage() {
                   setActiveTab('INVOICES');
                   setPaymentClearanceFilter('PENDING');
                 }}
-                className={`p-3 sm:p-3.5 lg:p-4 rounded-2xl border cursor-pointer transition-all hover:scale-[1.01] ${
-                  isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'
-                }`}
+                className={`p-3 sm:p-3.5 lg:p-4 rounded-2xl border cursor-pointer transition-all hover:scale-[1.01] ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'
+                  }`}
               >
                 <div className="text-[11px] font-semibold text-slate-400 mb-0.5 sm:mb-1">Outstanding Balance</div>
                 <div className="text-lg sm:text-xl lg:text-2xl font-black text-cyan-500 dark:text-cyan-400 font-mono">
@@ -2628,9 +2731,8 @@ export default function InvoicesMasterPage() {
                 onClick={() => {
                   setActiveTab('INVOICES');
                 }}
-                className={`p-3 sm:p-3.5 lg:p-4 rounded-2xl border cursor-pointer transition-all hover:scale-[1.01] ${
-                  isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'
-                }`}
+                className={`p-3 sm:p-3.5 lg:p-4 rounded-2xl border cursor-pointer transition-all hover:scale-[1.01] ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'
+                  }`}
               >
                 <div className="text-[11px] font-semibold text-slate-400 mb-0.5 sm:mb-1">Overdue Receivables</div>
                 <div className={`text-lg sm:text-xl lg:text-2xl font-black font-mono ${kpis.overdueReceivables > 0 ? 'text-rose-500 dark:text-rose-400' : 'text-slate-400'}`}>
@@ -2700,250 +2802,337 @@ export default function InvoicesMasterPage() {
                   />
                 )}
 
-                <Link
-                  href="/deliveries"
-                  className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all shrink-0 whitespace-nowrap ${
-                    isDark
-                      ? 'bg-slate-900/60 border-slate-800 text-slate-300 hover:text-white hover:bg-slate-800'
-                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-xs'
-                  }`}
-                  title="Go to Deliveries & POD to bill individual delivered dockets"
-                >
-                  <Truck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                  <span>Deliveries & POD</span>
-                  {kpis.unbilledTbbCount > 0 && (
-                    <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/20 font-mono">
-                      {kpis.unbilledTbbCount} Ready
+                {!isOnlyFTL && (
+                  <Link
+                    href="/deliveries"
+                    className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all shrink-0 whitespace-nowrap ${isDark
+                        ? 'bg-slate-900/60 border-slate-800 text-slate-300 hover:text-white hover:bg-slate-800'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-xs'
+                      }`}
+                    title="Go to Deliveries & POD to bill individual delivered dockets"
+                  >
+                    <Truck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                    <span>Deliveries & POD</span>
+                    {kpis.unbilledDocketsCount > 0 && (
+                      <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/20 font-mono">
+                        {kpis.unbilledDocketsCount} Ready
+                      </span>
+                    )}
+                  </Link>
+                )}
+
+                {kpis.unbilledPlacementsCount > 0 && (
+                  <Link
+                    href="/trips"
+                    className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all shrink-0 whitespace-nowrap ${isDark
+                        ? 'bg-purple-950/40 border-purple-800 text-purple-300 hover:text-white hover:bg-purple-900/50'
+                        : 'bg-purple-50 border-purple-200 text-purple-700 hover:bg-purple-100 shadow-xs'
+                      }`}
+                    title="View completed FTL vehicle placement trips and generate freight invoice in Trips"
+                  >
+                    <Truck className="w-3.5 h-3.5 text-purple-500 shrink-0" />
+                    <span>FTL Placements</span>
+                    <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-purple-500/20 text-purple-600 dark:text-purple-400 border border-purple-500/30 font-mono">
+                      {kpis.unbilledPlacementsCount} Ready
                     </span>
-                  )}
-                </Link>
+                  </Link>
+                )}
               </div>
             </div>
 
-            {/* TAB CONTENT: 1. TAX INVOICES TABLE */}
-            {activeTab === 'INVOICES' && (
-              invoices.length === 0 && !isLoading ? (
-                <div className={`p-8 sm:p-10 rounded-2xl border text-center space-y-3.5 ${
-                  isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'
+            {/* 1. TAX INVOICES REGISTER & EMPTY STATE */}
+            {invoices.length === 0 && !isLoading ? (
+              <div className={`p-8 sm:p-10 rounded-2xl border text-center space-y-4 ${isDark ? 'bg-[#0B1020]/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'
                 }`}>
-                  <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 text-cyan-500 flex items-center justify-center mx-auto">
-                    <Receipt className="w-6 h-6" />
-                  </div>
-                  <div className="max-w-md mx-auto space-y-1">
-                    <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                      No Freight Invoices Found in Database
-                    </h3>
-                    <p className="text-xs text-slate-400">
-                      {unbilledCounts.tbbAll > 0 ? (
-                        <span>
-                          You have <strong className="text-purple-400">{unbilledCounts.tbbReady} delivered TBB {termPlural.toLowerCase()} (₹{unbilledCounts.tbbReadyAmount.toLocaleString('en-IN')})</strong> ready for GST tax invoice generation.
-                        </span>
-                      ) : (
-                        <span>
-                          No invoices have been generated yet. When you book consignments with payment mode <strong className="text-slate-300">TBB (To Be Billed)</strong>, deliver them, and click Generate Invoice, they will appear here with delivery branch details.
-                        </span>
-                      )}
+                <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 text-cyan-500 flex items-center justify-center mx-auto">
+                  <Receipt className="w-6 h-6" />
+                </div>
+                <div className="max-w-xl mx-auto space-y-1.5">
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                    No Freight Invoices Found in Database
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Issue and track commercial GST freight tax invoices across all logistics and transport operations:
+                  </p>
+                </div>
+
+                {/* Operational Transport Streams */}
+                <div className={`grid grid-cols-1 ${isOnlyFTL ? 'sm:grid-cols-2' : 'sm:grid-cols-3'} gap-3 max-w-2xl mx-auto text-left text-xs pt-1`}>
+                  {!isOnlyFTL && (
+                    <div className={`p-3.5 rounded-xl border ${isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-amber-50/50 border-amber-100'
+                      }`}>
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <Layers className="w-4 h-4 text-amber-500 shrink-0" />
+                        <span className="font-bold text-slate-900 dark:text-white">PTL (Part Truck Load)</span>
+                      </div>
+                      <p className="text-[11px] text-slate-400">
+                        Consolidated sundry/bilty consignments delivered and billed on monthly credit terms (TBB).
+                      </p>
+                    </div>
+                  )}
+
+                  <div className={`p-3.5 rounded-xl border ${isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-cyan-50/50 border-cyan-100'
+                    }`}>
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <Truck className="w-4 h-4 text-cyan-500 shrink-0" />
+                      <span className="font-bold text-slate-900 dark:text-white">FTL (Full Truck Load)</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400">
+                      Single consignor full-truck direct bookings billed per bilty contract.
                     </p>
                   </div>
-                  <div className="flex items-center justify-center gap-3">
-                    {unbilledCounts.tbbAll > 0 && (
-                      <button
-                        onClick={() => {
-                          setActiveTab('UNBILLED');
-                          setUnbilledFilter('TBB_READY');
-                        }}
-                        className={`px-4 py-2.5 rounded-xl border text-xs font-bold transition-all ${
-                          isDark
-                            ? 'bg-purple-950/40 border-purple-800 text-purple-300 hover:text-white'
-                            : 'bg-purple-50 border-purple-200 text-purple-700 hover:bg-purple-100'
-                        }`}
-                      >
-                        View Unbilled TBB ({unbilledCounts.tbbReady} Ready)
-                      </button>
-                    )}
-                    <button
-                      onClick={() => setIsGenerateModalOpen(true)}
-                      className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 inline-flex items-center space-x-1.5 active:scale-95 transition-all"
-                    >
-                      <Plus className="w-4 h-4" />
-                      <span>Generate First Invoice</span>
-                    </button>
+
+                  <div className={`p-3.5 rounded-xl border ${isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-purple-50/50 border-purple-100'
+                    }`}>
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <Truck className="w-4 h-4 text-purple-500 shrink-0" />
+                      <span className="font-bold text-slate-900 dark:text-white">FTL (Vehicle Placement)</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400">
+                      Dedicated vehicle hire contract trips. Generated directly from settled trips or billing.
+                    </p>
                   </div>
                 </div>
-              ) : (
-                <DataTable
-                  columns={columns}
-                  data={filteredInvoices}
-                  loading={isLoading}
-                  pageSizeOptions={[10, 15, 25, 50, 100]}
-                  searchable={true}
-                  searchPlaceholder={`Search by Invoice #, Customer, ${termSingular} #, Type (TBB, To Pay, Paid), GSTIN...`}
-                  searchQuery={search}
-                  onSearchChange={setSearch}
-                  filtersSlot={
-                    <div className="flex flex-wrap items-center gap-2 text-xs font-bold">
-                      <button
-                        onClick={() => setStatusFilter('TBB')}
-                        className={`px-3.5 py-1.5 rounded-xl transition-all cursor-pointer ${
-                          statusFilter === 'TBB'
-                            ? 'bg-purple-600 text-white shadow-sm'
-                            : isDark ? 'bg-slate-800 text-slate-400 hover:text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+
+                <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                  <Link
+                    href="/trips"
+                    className={`px-4 py-2.5 rounded-xl border text-xs font-bold transition-all flex items-center gap-1.5 ${isDark
+                        ? 'bg-purple-950/40 border-purple-800 text-purple-300 hover:text-white'
+                        : 'bg-purple-50 border-purple-200 text-purple-700 hover:bg-purple-100'
+                      }`}
+                  >
+                    <Truck className="w-3.5 h-3.5 text-purple-400" />
+                    <span>Bill FTL Vehicle Placements in Trips ➔</span>
+                  </Link>
+
+                  {unbilledCounts.tbbAll > 0 && (
+                    <button
+                      onClick={() => {
+                        setIsGenerateModalOpen(true);
+                      }}
+                      className={`px-4 py-2.5 rounded-xl border text-xs font-bold transition-all ${isDark
+                          ? 'bg-purple-950/40 border-purple-800 text-purple-300 hover:text-white'
+                          : 'bg-purple-50 border-purple-200 text-purple-700 hover:bg-purple-100'
                         }`}
-                      >
-                        TBB Invoices ({invoiceCounts.tbb} • ₹{invoiceCounts.tbbAmount.toLocaleString('en-IN')})
-                      </button>
-                      <button
-                        onClick={() => setStatusFilter('OTHER')}
-                        className={`px-3.5 py-1.5 rounded-xl transition-all cursor-pointer ${
-                          statusFilter === 'OTHER'
-                            ? 'bg-emerald-600 text-white shadow-sm'
-                            : isDark ? 'bg-slate-800 text-slate-400 hover:text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                    >
+                      View Unbilled ({unbilledCounts.tbbReady} Ready)
+                    </button>
+                  )}
+
+                  <button
+                    onClick={() => setIsGenerateModalOpen(true)}
+                    className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 inline-flex items-center space-x-1.5 active:scale-95 transition-all"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>{isOnlyFTL ? 'Generate Freight Invoice' : 'Generate Batch / PTL Invoice'}</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <DataTable
+                columns={columns}
+                data={filteredInvoices}
+                loading={isLoading}
+                pageSizeOptions={[10, 15, 25, 50, 100]}
+                searchable={true}
+                searchPlaceholder={`Search by Invoice #, Customer, ${termSingular} #, Type (TBB, To Pay, Paid), GSTIN...`}
+                searchQuery={search}
+                onSearchChange={setSearch}
+                filtersSlot={
+                  <div className="flex flex-wrap items-center gap-2 text-xs font-bold">
+                    {/* Operational Load Type Filter Chips */}
+                    <button
+                      onClick={() => setLoadTypeFilter('ALL')}
+                      className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${loadTypeFilter === 'ALL'
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : isDark ? 'bg-slate-800 text-slate-400 hover:text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
                         }`}
-                      >
-                        Other Invoices (Paid / To-Pay) ({invoiceCounts.other} • ₹{invoiceCounts.otherAmount.toLocaleString('en-IN')})
-                      </button>
+                    >
+                      All Types ({invoiceCounts.all})
+                    </button>
+
+                    {!isOnlyFTL && (
                       <button
-                        onClick={() => setStatusFilter('ALL')}
-                        className={`px-3.5 py-1.5 rounded-xl transition-all cursor-pointer ${
-                          statusFilter === 'ALL'
-                            ? 'bg-blue-600 text-white shadow-sm'
+                        onClick={() => setLoadTypeFilter('PTL')}
+                        className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 ${loadTypeFilter === 'PTL'
+                            ? 'bg-amber-600 text-white shadow-sm'
                             : isDark ? 'bg-slate-800 text-slate-400 hover:text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
-                        }`}
+                          }`}
+                        title="Filter by Part Truck Load (Sundry Consignments)"
                       >
-                        All Invoices ({invoiceCounts.all} • ₹{invoiceCounts.allAmount.toLocaleString('en-IN')})
+                        <Layers className="w-3.5 h-3.5" />
+                        <span>PTL Sundry ({invoiceCounts.ptl || 0})</span>
                       </button>
-                    </div>
-                  }
-                  headerFiltersSlot={
-                    <div className="relative" ref={clearanceDropdownRef}>
-                      <button
-                        type="button"
-                        onClick={() => setIsClearanceDropdownOpen(!isClearanceDropdownOpen)}
-                        className={`flex items-center space-x-2 px-3.5 py-2 rounded-2xl border text-xs font-bold transition-all active:scale-95 cursor-pointer shadow-xs select-none ${
-                          paymentClearanceFilter === 'PENDING'
-                            ? 'bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20'
-                            : paymentClearanceFilter === 'CLEARED'
+                    )}
+
+                    {!isOnlyPTL && (
+                      <>
+                        <button
+                          onClick={() => setLoadTypeFilter('FTL')}
+                          className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 ${loadTypeFilter === 'FTL'
+                              ? 'bg-cyan-600 text-white shadow-sm'
+                              : isDark ? 'bg-slate-800 text-slate-400 hover:text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                            }`}
+                          title="Filter by Full Truck Load (Dedicated Consignments)"
+                        >
+                          <Truck className="w-3.5 h-3.5" />
+                          <span>FTL Dedicated ({invoiceCounts.ftl || 0})</span>
+                        </button>
+
+                        <button
+                          onClick={() => setLoadTypeFilter('FTL_PLACEMENT')}
+                          className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 ${loadTypeFilter === 'FTL_PLACEMENT'
+                              ? 'bg-purple-600 text-white shadow-sm'
+                              : isDark ? 'bg-slate-800 text-slate-400 hover:text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                            }`}
+                          title="Filter by Dedicated FTL Vehicle Placement Contract Trips"
+                        >
+                          <Truck className="w-3.5 h-3.5 text-purple-400" />
+                          <span>FTL Placement ({invoiceCounts.placement || 0})</span>
+                        </button>
+                      </>
+                    )}
+
+                    <div className="h-4 w-px bg-slate-300 dark:bg-slate-700 mx-1 hidden sm:block" />
+
+                    {/* Payment Mode Filters */}
+                    <button
+                      onClick={() => setStatusFilter(statusFilter === 'TBB' ? 'ALL' : 'TBB')}
+                      className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${statusFilter === 'TBB'
+                          ? 'bg-purple-700 text-white shadow-sm'
+                          : isDark ? 'bg-slate-800/80 text-slate-400 hover:text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
+                    >
+                      TBB Only ({invoiceCounts.tbb})
+                    </button>
+                  </div>
+                }
+                headerFiltersSlot={
+                  <div className="relative" ref={clearanceDropdownRef}>
+                    <button
+                      type="button"
+                      onClick={() => setIsClearanceDropdownOpen(!isClearanceDropdownOpen)}
+                      className={`flex items-center space-x-2 px-3.5 py-2 rounded-2xl border text-xs font-bold transition-all active:scale-95 cursor-pointer shadow-xs select-none ${paymentClearanceFilter === 'PENDING'
+                          ? 'bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20'
+                          : paymentClearanceFilter === 'CLEARED'
                             ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20'
                             : isDark
-                            ? 'bg-slate-900/90 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
-                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                              ? 'bg-slate-900/90 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
+                              : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
                         }`}
-                        title="Filter invoices by payment clearance status"
-                      >
-                        <div className="flex items-center space-x-1.5">
-                          {paymentClearanceFilter === 'PENDING' ? (
-                            <Clock className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                          ) : paymentClearanceFilter === 'CLEARED' ? (
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                          ) : (
-                            <Layers className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-                          )}
-                          <span>
-                            {paymentClearanceFilter === 'PENDING'
-                              ? `Pending (${clearanceStats.pendingCount})`
-                              : paymentClearanceFilter === 'CLEARED'
+                      title="Filter invoices by payment clearance status"
+                    >
+                      <div className="flex items-center space-x-1.5">
+                        {paymentClearanceFilter === 'PENDING' ? (
+                          <Clock className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                        ) : paymentClearanceFilter === 'CLEARED' ? (
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                        ) : (
+                          <Layers className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                        )}
+                        <span>
+                          {paymentClearanceFilter === 'PENDING'
+                            ? `Pending (${clearanceStats.pendingCount})`
+                            : paymentClearanceFilter === 'CLEARED'
                               ? `Cleared (${clearanceStats.clearedCount})`
                               : `All (${clearanceStats.totalCount})`}
-                          </span>
-                        </div>
-                        <ChevronDown className="w-3.5 h-3.5 opacity-60 ml-0.5 shrink-0" />
-                      </button>
+                        </span>
+                      </div>
+                      <ChevronDown className="w-3.5 h-3.5 opacity-60 ml-0.5 shrink-0" />
+                    </button>
 
-                      {isClearanceDropdownOpen && (
-                        <div className={`absolute right-0 mt-1.5 w-64 rounded-2xl border shadow-xl z-30 p-1.5 overflow-hidden animate-in fade-in duration-150 ${
-                          isDark ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
+                    {isClearanceDropdownOpen && (
+                      <div className={`absolute right-0 mt-1.5 w-64 rounded-2xl border shadow-xl z-30 p-1.5 overflow-hidden animate-in fade-in duration-150 ${isDark ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
                         }`}>
-                          <div className="px-2.5 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                            Payment Clearance Status
-                          </div>
-
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setPaymentClearanceFilter('PENDING');
-                              setIsClearanceDropdownOpen(false);
-                            }}
-                            className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-left text-xs transition-all cursor-pointer ${
-                              paymentClearanceFilter === 'PENDING'
-                                ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 font-bold border border-amber-500/30'
-                                : isDark
-                                ? 'hover:bg-slate-800 text-slate-300'
-                                : 'hover:bg-slate-100 text-slate-700'
-                            }`}
-                          >
-                            <div className="flex items-center space-x-2">
-                              <Clock className="w-4 h-4 text-amber-500 shrink-0" />
-                              <div>
-                                <div className="font-bold">Pending Payment</div>
-                                <div className="text-[10px] text-slate-400 font-normal">Payment uncleared / open</div>
-                              </div>
-                            </div>
-                            <span className="text-[11px] px-2 py-0.5 rounded-full font-mono font-bold bg-amber-500/20 text-amber-600 dark:text-amber-400">
-                              {clearanceStats.pendingCount}
-                            </span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setPaymentClearanceFilter('CLEARED');
-                              setIsClearanceDropdownOpen(false);
-                            }}
-                            className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-left text-xs transition-all cursor-pointer mt-1 ${
-                              paymentClearanceFilter === 'CLEARED'
-                                ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-bold border border-emerald-500/30'
-                                : isDark
-                                ? 'hover:bg-slate-800 text-slate-300'
-                                : 'hover:bg-slate-100 text-slate-700'
-                            }`}
-                          >
-                            <div className="flex items-center space-x-2">
-                              <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                              <div>
-                                <div className="font-bold">Complete / Cleared</div>
-                                <div className="text-[10px] text-slate-400 font-normal">Fully settled & reconciled</div>
-                              </div>
-                            </div>
-                            <span className="text-[11px] px-2 py-0.5 rounded-full font-mono font-bold bg-emerald-500/20 text-emerald-600 dark:text-emerald-400">
-                              {clearanceStats.clearedCount}
-                            </span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setPaymentClearanceFilter('ALL');
-                              setIsClearanceDropdownOpen(false);
-                            }}
-                            className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-left text-xs transition-all cursor-pointer mt-1 ${
-                              paymentClearanceFilter === 'ALL'
-                                ? 'bg-blue-500/15 text-blue-700 dark:text-blue-300 font-bold border border-blue-500/30'
-                                : isDark
-                                ? 'hover:bg-slate-800 text-slate-300'
-                                : 'hover:bg-slate-100 text-slate-700'
-                            }`}
-                          >
-                            <div className="flex items-center space-x-2">
-                              <Layers className="w-4 h-4 text-blue-500 shrink-0" />
-                              <div>
-                                <div className="font-bold">All Invoices</div>
-                                <div className="text-[10px] text-slate-400 font-normal">Both pending & cleared</div>
-                              </div>
-                            </div>
-                            <span className="text-[11px] px-2 py-0.5 rounded-full font-mono font-bold bg-slate-500/15 text-slate-400">
-                              {clearanceStats.totalCount}
-                            </span>
-                          </button>
+                        <div className="px-2.5 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                          Payment Clearance Status
                         </div>
-                      )}
-                    </div>
-                  }
-                  exportable={true}
-                  exportFileName="GST_Invoices_Register"
-                  emptyMessage="No invoices found matching criteria."
-                />
-              )
-            )}
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPaymentClearanceFilter('PENDING');
+                            setIsClearanceDropdownOpen(false);
+                          }}
+                          className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-left text-xs transition-all cursor-pointer ${paymentClearanceFilter === 'PENDING'
+                              ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 font-bold border border-amber-500/30'
+                              : isDark
+                                ? 'hover:bg-slate-800 text-slate-300'
+                                : 'hover:bg-slate-100 text-slate-700'
+                            }`}
+                        >
+                          <div className="flex items-center space-x-2">
+                            <Clock className="w-4 h-4 text-amber-500 shrink-0" />
+                            <div>
+                              <div className="font-bold">Pending Payment</div>
+                              <div className="text-[10px] text-slate-400 font-normal">Payment uncleared / open</div>
+                            </div>
+                          </div>
+                          <span className="text-[11px] px-2 py-0.5 rounded-full font-mono font-bold bg-amber-500/20 text-amber-600 dark:text-amber-400">
+                            {clearanceStats.pendingCount}
+                          </span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPaymentClearanceFilter('CLEARED');
+                            setIsClearanceDropdownOpen(false);
+                          }}
+                          className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-left text-xs transition-all cursor-pointer mt-1 ${paymentClearanceFilter === 'CLEARED'
+                              ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-bold border border-emerald-500/30'
+                              : isDark
+                                ? 'hover:bg-slate-800 text-slate-300'
+                                : 'hover:bg-slate-100 text-slate-700'
+                            }`}
+                        >
+                          <div className="flex items-center space-x-2">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                            <div>
+                              <div className="font-bold">Complete / Cleared</div>
+                              <div className="text-[10px] text-slate-400 font-normal">Fully settled & reconciled</div>
+                            </div>
+                          </div>
+                          <span className="text-[11px] px-2 py-0.5 rounded-full font-mono font-bold bg-emerald-500/20 text-emerald-600 dark:text-emerald-400">
+                            {clearanceStats.clearedCount}
+                          </span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPaymentClearanceFilter('ALL');
+                            setIsClearanceDropdownOpen(false);
+                          }}
+                          className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-left text-xs transition-all cursor-pointer mt-1 ${paymentClearanceFilter === 'ALL'
+                              ? 'bg-blue-500/15 text-blue-700 dark:text-blue-300 font-bold border border-blue-500/30'
+                              : isDark
+                                ? 'hover:bg-slate-800 text-slate-300'
+                                : 'hover:bg-slate-100 text-slate-700'
+                            }`}
+                        >
+                          <div className="flex items-center space-x-2">
+                            <Layers className="w-4 h-4 text-blue-500 shrink-0" />
+                            <div>
+                              <div className="font-bold">All Invoices</div>
+                              <div className="text-[10px] text-slate-400 font-normal">Both pending & cleared</div>
+                            </div>
+                          </div>
+                          <span className="text-[11px] px-2 py-0.5 rounded-full font-mono font-bold bg-slate-500/15 text-slate-400">
+                            {clearanceStats.totalCount}
+                          </span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                }
+                exportable={true}
+                exportFileName="GST_Invoices_Register"
+                emptyMessage="No invoices found matching criteria."
+              />
+            )
+            }
 
             {/* Quick Actions Strip (Customer Ledger & TDS Reconciliation) */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
@@ -2986,7 +3175,7 @@ export default function InvoicesMasterPage() {
         <div className="invoice-print-dialog fixed inset-0 z-50 overflow-y-auto flex min-h-full items-center justify-center p-4 sm:p-6 print:p-0">
           <div className="fixed inset-0 bg-black/75 backdrop-blur-sm no-print" onClick={() => setPrintModalInvoice(null)} />
           <div className="invoice-print-card relative w-full max-w-4xl my-auto max-h-[95vh] overflow-y-auto rounded-3xl bg-white text-slate-900 p-6 sm:p-8 shadow-2xl z-10 space-y-5">
-            
+
             {/* Top Action Toolbar (Hidden during print) */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 no-print">
               <div className="flex items-center space-x-2">
@@ -3031,7 +3220,7 @@ export default function InvoicesMasterPage() {
 
             {/* PRINTABLE GST TAX INVOICE SHEET (DYNAMIC FROM SETTINGS) */}
             <div id="invoice-printable-sheet" className="space-y-4 bg-white text-slate-900">
-              
+
               {/* Header: Transporter Profile from Settings */}
               <div className="flex justify-between items-start border-b border-slate-300 pb-3">
                 <div>
@@ -3211,7 +3400,7 @@ export default function InvoicesMasterPage() {
                     [Digitally Signed & Verified]
                   </div>
                   <div className="border-t border-slate-400 pt-1 text-slate-900 text-xs">
-                    For {transporterDetails.businessName}<br/>
+                    For {transporterDetails.businessName}<br />
                     <span className="text-[10px] font-normal text-slate-500">Authorized Signatory</span>
                   </div>
                 </div>
@@ -3230,7 +3419,7 @@ export default function InvoicesMasterPage() {
         <div className="no-print fixed inset-0 z-50 overflow-y-auto flex min-h-full items-center justify-center p-3 sm:p-6">
           <div className="fixed inset-0 bg-black/75 backdrop-blur-sm transition-opacity" onClick={() => setIsGenerateModalOpen(false)} />
           <div className="relative w-full max-w-4xl lg:max-w-5xl my-auto max-h-[92vh] overflow-y-auto rounded-3xl bg-white dark:bg-[#0A0E1A] border border-slate-200 dark:border-slate-800 p-6 sm:p-7 shadow-2xl z-10 text-slate-900 dark:text-white space-y-6">
-            
+
             {/* Modal Header */}
             <div className="flex items-center justify-between pb-4 border-b border-slate-200 dark:border-slate-800">
               <div className="flex items-center space-x-3">
@@ -3244,8 +3433,8 @@ export default function InvoicesMasterPage() {
                   </p>
                 </div>
               </div>
-              <button 
-                onClick={() => setIsGenerateModalOpen(false)} 
+              <button
+                onClick={() => setIsGenerateModalOpen(false)}
                 className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/80 transition-colors"
               >
                 <X className="w-5 h-5" />
@@ -3253,7 +3442,7 @@ export default function InvoicesMasterPage() {
             </div>
 
             <form onSubmit={handleGenerateInvoice} className="space-y-5 text-xs">
-              
+
               {/* Step 1: Customer (Party) Selection & Terms Card */}
               <div className="p-4 sm:p-5 rounded-2xl bg-slate-50/80 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 space-y-3.5">
                 <div className="flex items-center justify-between text-xs pb-1">
@@ -3312,8 +3501,8 @@ export default function InvoicesMasterPage() {
                             : 0;
                           const selectedAmt = isCurrentParty
                             ? custUnbilled
-                                .filter((ub) => selectedLrIds.includes(ub.id))
-                                .reduce((sum, ub) => sum + parseFloat(ub.total_amount || ub.freight_amount || 0), 0)
+                              .filter((ub) => selectedLrIds.includes(ub.id))
+                              .reduce((sum, ub) => sum + parseFloat(ub.total_amount || ub.freight_amount || 0), 0)
                             : 0;
 
                           return {
@@ -3386,11 +3575,10 @@ export default function InvoicesMasterPage() {
                         <Truck className="w-4 h-4 text-cyan-500" />
                         <span>Select Dockets to Include in this Invoice</span>
                       </span>
-                      <span className={`px-2 py-0.5 rounded-full font-bold text-[10.5px] ${
-                        selectedLrIds.length > 0
+                      <span className={`px-2 py-0.5 rounded-full font-bold text-[10.5px] ${selectedLrIds.length > 0
                           ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
                           : 'bg-slate-200 dark:bg-slate-800 text-slate-500'
-                      }`}>
+                        }`}>
                         {selectedLrIds.length} of {customerUnbilledAll.length} Selected
                       </span>
                     </div>
@@ -3400,22 +3588,20 @@ export default function InvoicesMasterPage() {
                       <button
                         type="button"
                         onClick={() => setWizardPaymentFilter('ALL')}
-                        className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all ${
-                          wizardPaymentFilter === 'ALL'
+                        className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all ${wizardPaymentFilter === 'ALL'
                             ? 'bg-blue-600 text-white shadow-xs'
                             : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-                        }`}
+                          }`}
                       >
                         All ({wizardPaymentCounts.all})
                       </button>
                       <button
                         type="button"
                         onClick={() => setWizardPaymentFilter('TBB')}
-                        className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all ${
-                          wizardPaymentFilter === 'TBB'
+                        className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all ${wizardPaymentFilter === 'TBB'
                             ? 'bg-purple-600 text-white shadow-xs'
                             : 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 hover:bg-purple-500/20'
-                        }`}
+                          }`}
                         title="To Be Billed - Recommended for corporate credit billing"
                       >
                         ⭐ TBB - Credit ({wizardPaymentCounts.tbb})
@@ -3423,11 +3609,10 @@ export default function InvoicesMasterPage() {
                       <button
                         type="button"
                         onClick={() => setWizardPaymentFilter('TO_PAY')}
-                        className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all ${
-                          wizardPaymentFilter === 'TO_PAY'
+                        className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all ${wizardPaymentFilter === 'TO_PAY'
                             ? 'bg-amber-600 text-white shadow-xs'
                             : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 hover:bg-amber-500/20'
-                        }`}
+                          }`}
                         title="To-Pay - Paid by Consignee upon delivery at destination branch"
                       >
                         To-Pay ({wizardPaymentCounts.to_pay})
@@ -3435,11 +3620,10 @@ export default function InvoicesMasterPage() {
                       <button
                         type="button"
                         onClick={() => setWizardPaymentFilter('PAID')}
-                        className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all ${
-                          wizardPaymentFilter === 'PAID'
+                        className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all ${wizardPaymentFilter === 'PAID'
                             ? 'bg-emerald-600 text-white shadow-xs'
                             : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20'
-                        }`}
+                          }`}
                         title="Paid - Paid in advance at booking counter"
                       >
                         Paid Upfront ({wizardPaymentCounts.paid})
@@ -3470,11 +3654,10 @@ export default function InvoicesMasterPage() {
                             setSelectedLrIds(Array.from(new Set([...selectedLrIds, ...currentFilteredIds])));
                           }
                         }}
-                        className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center space-x-1.5 border transition-all ${
-                          unbilledForCustomer.map((c) => c.id).every((id) => selectedLrIds.includes(id))
+                        className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center space-x-1.5 border transition-all ${unbilledForCustomer.map((c) => c.id).every((id) => selectedLrIds.includes(id))
                             ? 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:bg-slate-200'
                             : 'bg-blue-600 text-white border-blue-600 hover:bg-blue-500 shadow-xs'
-                        }`}
+                          }`}
                       >
                         {unbilledForCustomer.map((c) => c.id).every((id) => selectedLrIds.includes(id)) ? (
                           <>
@@ -3501,12 +3684,12 @@ export default function InvoicesMasterPage() {
                         {onlyDeliveredPod
                           ? `No dockets with completed POD & delivery found for ${currentSelectedCustomer?.name || 'this customer'}.`
                           : wizardPaymentFilter === 'TBB'
-                          ? `No unbilled TBB (To Be Billed) ${termPlural.toLowerCase()} found for ${currentSelectedCustomer?.name || 'this customer'}.`
-                          : wizardPaymentFilter === 'TO_PAY'
-                          ? `No To-Pay ${termPlural.toLowerCase()} found for ${currentSelectedCustomer?.name || 'this customer'}.`
-                          : wizardPaymentFilter === 'PAID'
-                          ? `No Paid ${termPlural.toLowerCase()} found for ${currentSelectedCustomer?.name || 'this customer'}.`
-                          : `No unbilled ${termPlural.toLowerCase()} found for ${currentSelectedCustomer?.name || 'this customer'}.`}
+                            ? `No unbilled TBB (To Be Billed) ${termPlural.toLowerCase()} found for ${currentSelectedCustomer?.name || 'this customer'}.`
+                            : wizardPaymentFilter === 'TO_PAY'
+                              ? `No To-Pay ${termPlural.toLowerCase()} found for ${currentSelectedCustomer?.name || 'this customer'}.`
+                              : wizardPaymentFilter === 'PAID'
+                                ? `No Paid ${termPlural.toLowerCase()} found for ${currentSelectedCustomer?.name || 'this customer'}.`
+                                : `No unbilled ${termPlural.toLowerCase()} found for ${currentSelectedCustomer?.name || 'this customer'}.`}
                       </p>
                       <p className="text-[11px] text-slate-400">
                         {onlyDeliveredPod
@@ -3537,15 +3720,14 @@ export default function InvoicesMasterPage() {
                               setSelectedLrIds([...selectedLrIds, lr.id]);
                             }
                           }}
-                          className={`p-3.5 flex items-start sm:items-center justify-between cursor-pointer transition-all ${
-                            isChecked ? 'bg-cyan-500/10 dark:bg-cyan-950/30' : 'hover:bg-slate-100/80 dark:hover:bg-slate-900/50'
-                          }`}
+                          className={`p-3.5 flex items-start sm:items-center justify-between cursor-pointer transition-all ${isChecked ? 'bg-cyan-500/10 dark:bg-cyan-950/30' : 'hover:bg-slate-100/80 dark:hover:bg-slate-900/50'
+                            }`}
                         >
                           <div className="flex items-start sm:items-center space-x-3.5">
                             <input
                               type="checkbox"
                               checked={isChecked}
-                              onChange={() => {}}
+                              onChange={() => { }}
                               className="mt-1 sm:mt-0 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500 w-4 h-4 shrink-0"
                             />
                             <div className="space-y-1">
@@ -3555,28 +3737,26 @@ export default function InvoicesMasterPage() {
                                   {termSingular === 'Docket' ? (lr.docket_number || lr.lr_number) : (lr.lr_number || lr.docket_number)}
                                 </span>
                                 <BuiltyTypeBadge docket={lr} />
-                                
+
                                 {/* Payment Mode Badge */}
-                                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${
-                                  lr.payment_type === 'TBB'
+                                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${lr.payment_type === 'TBB'
                                     ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400 border-purple-500/30'
                                     : lr.payment_type === 'PAID'
-                                    ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
-                                    : 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30'
-                                }`}>
+                                      ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
+                                      : 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30'
+                                  }`}>
                                   {lr.payment_type === 'TBB' ? '⭐ TBB (Credit)' : lr.payment_type || 'TO_PAY'}
                                 </span>
 
                                 {/* Delivery Status Badge */}
-                                <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold border ${
-                                  isDelivered
+                                <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold border ${isDelivered
                                     ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
                                     : lr.status === 'OUT_FOR_DELIVERY'
-                                    ? 'bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 border-cyan-500/30'
-                                    : lr.status === 'IN_TRANSIT'
-                                    ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30'
-                                    : 'bg-slate-500/15 text-slate-600 dark:text-slate-400 border-slate-500/30'
-                                }`}>
+                                      ? 'bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 border-cyan-500/30'
+                                      : lr.status === 'IN_TRANSIT'
+                                        ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30'
+                                        : 'bg-slate-500/15 text-slate-600 dark:text-slate-400 border-slate-500/30'
+                                  }`}>
                                   {isDelivered ? '✓ Delivered & POD Uploaded' : lr.delivery_status_label || lr.status || 'Booked'}
                                 </span>
                               </div>
@@ -3674,7 +3854,7 @@ export default function InvoicesMasterPage() {
 
               {/* Step 3: Granular Docket Charges Breakdown & Taxes */}
               <div className="p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/60 space-y-4">
-                
+
                 {/* Visual Charges Breakdown Card from Selected Dockets */}
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-xs font-bold text-slate-800 dark:text-slate-200">
@@ -3704,9 +3884,8 @@ export default function InvoicesMasterPage() {
                           </span>
                         )}
                       </div>
-                      <span className={`font-mono font-bold text-sm mt-0.5 block ${
-                        wizardCalculations.docketsLoading > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-700 dark:text-slate-300'
-                      }`}>
+                      <span className={`font-mono font-bold text-sm mt-0.5 block ${wizardCalculations.docketsLoading > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-700 dark:text-slate-300'
+                        }`}>
                         ₹ {wizardCalculations.docketsLoading.toLocaleString('en-IN')}
                       </span>
                     </div>
@@ -3720,9 +3899,8 @@ export default function InvoicesMasterPage() {
                           </span>
                         )}
                       </div>
-                      <span className={`font-mono font-bold text-sm mt-0.5 block ${
-                        wizardCalculations.docketsDoorDelivery > 0 ? 'text-blue-600 dark:text-blue-400' : 'text-slate-700 dark:text-slate-300'
-                      }`}>
+                      <span className={`font-mono font-bold text-sm mt-0.5 block ${wizardCalculations.docketsDoorDelivery > 0 ? 'text-blue-600 dark:text-blue-400' : 'text-slate-700 dark:text-slate-300'
+                        }`}>
                         ₹ {wizardCalculations.docketsDoorDelivery.toLocaleString('en-IN')}
                       </span>
                     </div>
@@ -3736,9 +3914,8 @@ export default function InvoicesMasterPage() {
                           </span>
                         )}
                       </div>
-                      <span className={`font-mono font-bold text-sm mt-0.5 block ${
-                        (wizardCalculations.docketsUnloading + wizardCalculations.docketsOther + wizardCalculations.docketsHandling) > 0 ? 'text-purple-600 dark:text-purple-400' : 'text-slate-700 dark:text-slate-300'
-                      }`}>
+                      <span className={`font-mono font-bold text-sm mt-0.5 block ${(wizardCalculations.docketsUnloading + wizardCalculations.docketsOther + wizardCalculations.docketsHandling) > 0 ? 'text-purple-600 dark:text-purple-400' : 'text-slate-700 dark:text-slate-300'
+                        }`}>
                         ₹ {(wizardCalculations.docketsUnloading + wizardCalculations.docketsOther + wizardCalculations.docketsHandling).toLocaleString('en-IN')}
                       </span>
                     </div>
@@ -3759,7 +3936,7 @@ export default function InvoicesMasterPage() {
                       className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 font-mono text-xs focus:border-cyan-400 focus:outline-none"
                     />
                     <p className="text-[10px] text-slate-400 leading-tight">
-                      {wizardCalculations.totalDocketSurcharges > 0 
+                      {wizardCalculations.totalDocketSurcharges > 0
                         ? `Docket charges (₹${wizardCalculations.totalDocketSurcharges.toLocaleString('en-IN')}) are already included above.`
                         : 'Optional extra halting or unforeseen invoice charges.'}
                     </p>
@@ -3833,9 +4010,8 @@ export default function InvoicesMasterPage() {
 
                   <div className="p-3 rounded-xl bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800">
                     <span className="text-slate-400 block text-[10.5px] font-medium">Net Credit Due</span>
-                    <span className={`font-mono font-black text-sm mt-0.5 block ${
-                      wizardCalculations.creditDueAmount > 0 ? 'text-rose-500' : 'text-slate-400'
-                    }`}>
+                    <span className={`font-mono font-black text-sm mt-0.5 block ${wizardCalculations.creditDueAmount > 0 ? 'text-rose-500' : 'text-slate-400'
+                      }`}>
                       ₹ {wizardCalculations.creditDueAmount.toLocaleString('en-IN')}
                     </span>
                     {wizardCalculations.creditDueAmount > 0 && (
@@ -3880,7 +4056,7 @@ export default function InvoicesMasterPage() {
         <div className="no-print fixed inset-0 z-50 overflow-y-auto flex min-h-full items-center justify-center p-4 sm:p-6">
           <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setPaymentModalInvoice(null)} />
           <div className="relative w-full max-w-md my-auto max-h-[90vh] overflow-y-auto rounded-3xl bg-white dark:bg-[#0A0E1A] border border-slate-200 dark:border-slate-800 p-6 shadow-2xl z-10 text-slate-900 dark:text-white space-y-4">
-            
+
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
               <div className="flex items-center space-x-2">
                 <CreditCard className="w-5 h-5 text-emerald-500" />
@@ -4001,8 +4177,8 @@ export default function InvoicesMasterPage() {
                     {paymentMethod === 'CHEQUE'
                       ? 'Issuing Bank Name'
                       : paymentMethod === 'CASH'
-                      ? 'Cash Counter / Branch'
-                      : 'Bank Name'}
+                        ? 'Cash Counter / Branch'
+                        : 'Bank Name'}
                   </label>
                   <input
                     type="text"
@@ -4012,8 +4188,8 @@ export default function InvoicesMasterPage() {
                       paymentMethod === 'CHEQUE'
                         ? 'e.g. HDFC / SBI / ICICI Bank'
                         : paymentMethod === 'CASH'
-                        ? 'e.g. Booking Branch Counter'
-                        : 'e.g. HDFC Bank'
+                          ? 'e.g. Booking Branch Counter'
+                          : 'e.g. HDFC Bank'
                     }
                     className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white text-xs focus:border-cyan-400 focus:outline-none"
                   />
@@ -4025,14 +4201,14 @@ export default function InvoicesMasterPage() {
                   {paymentMethod === 'CHEQUE'
                     ? 'Cheque Number'
                     : paymentMethod === 'UPI'
-                    ? 'UPI Reference / Transaction ID'
-                    : paymentMethod === 'CASH'
-                    ? 'Cash Receipt / Voucher Number'
-                    : paymentMethod === 'IMPS'
-                    ? 'IMPS Reference / UTR Number'
-                    : paymentMethod === 'RTGS'
-                    ? 'RTGS / UTR Number'
-                    : 'Bank Reference / UTR Number'}{' '}
+                      ? 'UPI Reference / Transaction ID'
+                      : paymentMethod === 'CASH'
+                        ? 'Cash Receipt / Voucher Number'
+                        : paymentMethod === 'IMPS'
+                          ? 'IMPS Reference / UTR Number'
+                          : paymentMethod === 'RTGS'
+                            ? 'RTGS / UTR Number'
+                            : 'Bank Reference / UTR Number'}{' '}
                   <span className="text-red-500 font-bold">*</span>
                 </label>
                 <input
@@ -4043,10 +4219,10 @@ export default function InvoicesMasterPage() {
                     paymentMethod === 'CHEQUE'
                       ? 'e.g. 000123 / 6-digit Cheque No.'
                       : paymentMethod === 'UPI'
-                      ? 'e.g. UPI Ref / 12-digit UTR'
-                      : paymentMethod === 'CASH'
-                      ? 'e.g. CR-4521 / Voucher No.'
-                      : 'e.g. UTR879654210 / Bank Ref #'
+                        ? 'e.g. UPI Ref / 12-digit UTR'
+                        : paymentMethod === 'CASH'
+                          ? 'e.g. CR-4521 / Voucher No.'
+                          : 'e.g. UTR879654210 / Bank Ref #'
                   }
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white text-xs font-mono focus:border-cyan-400 focus:outline-none"
                 />
@@ -4080,7 +4256,7 @@ export default function InvoicesMasterPage() {
         <div className="no-print fixed inset-0 z-50 overflow-y-auto flex min-h-full items-center justify-center p-4 sm:p-6">
           <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setIsLedgerModalOpen(false)} />
           <div className="relative w-full max-w-2xl my-auto max-h-[90vh] overflow-y-auto rounded-3xl bg-white dark:bg-[#0A0E1A] border border-slate-200 dark:border-slate-800 p-6 shadow-2xl z-10 text-slate-900 dark:text-white space-y-4">
-            
+
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
               <div className="flex items-center space-x-2">
                 <FileText className="w-5 h-5 text-cyan-400" />
@@ -4166,7 +4342,7 @@ export default function InvoicesMasterPage() {
         <div className="no-print fixed inset-0 z-50 overflow-y-auto flex min-h-full items-center justify-center p-4 sm:p-6">
           <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setIsTdsModalOpen(false)} />
           <div className="relative w-full max-w-2xl my-auto max-h-[90vh] overflow-y-auto rounded-3xl bg-white dark:bg-[#0A0E1A] border border-slate-200 dark:border-slate-800 p-6 shadow-2xl z-10 text-slate-900 dark:text-white space-y-4">
-            
+
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
               <div className="flex items-center space-x-2">
                 <ShieldCheck className="w-5 h-5 text-blue-500" />
@@ -4206,7 +4382,7 @@ export default function InvoicesMasterPage() {
         <div className="no-print fixed inset-0 z-50 overflow-y-auto flex min-h-full items-center justify-center p-4 sm:p-6">
           <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setEditDueDateModalInvoice(null)} />
           <div className="relative w-full max-w-md my-auto max-h-[90vh] overflow-y-auto rounded-3xl bg-white dark:bg-[#0A0E1A] border border-slate-200 dark:border-slate-800 p-6 shadow-2xl z-10 text-slate-900 dark:text-white space-y-4">
-            
+
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
               <div className="flex items-center space-x-2">
                 <Calendar className="w-5 h-5 text-cyan-400" />
@@ -4280,7 +4456,7 @@ export default function InvoicesMasterPage() {
         <div className="no-print fixed inset-0 z-50 overflow-y-auto flex min-h-full items-center justify-center p-4 sm:p-6">
           <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setCancelModalInvoice(null)} />
           <div className="relative w-full max-w-md my-auto max-h-[90vh] overflow-y-auto rounded-3xl bg-white dark:bg-[#0A0E1A] border border-rose-500/30 p-6 shadow-2xl z-10 text-slate-900 dark:text-white space-y-4">
-            
+
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
               <div className="flex items-center space-x-2">
                 <RotateCcw className="w-5 h-5 text-rose-500" />
@@ -4340,7 +4516,7 @@ export default function InvoicesMasterPage() {
         <div className="no-print fixed inset-0 z-50 overflow-y-auto flex min-h-full items-center justify-center p-4 sm:p-6">
           <div className="fixed inset-0 bg-black/75 backdrop-blur-sm" onClick={() => !isProcessingAction && setCollectFreightModalDocket(null)} />
           <div className="relative w-full max-w-lg my-auto max-h-[92vh] overflow-y-auto rounded-3xl bg-white dark:bg-[#0A0E1A] border border-emerald-500/30 p-6 sm:p-7 shadow-2xl z-10 text-slate-900 dark:text-white space-y-5">
-            
+
             {/* Header */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
               <div className="flex items-center space-x-3">
@@ -4354,8 +4530,8 @@ export default function InvoicesMasterPage() {
                   </p>
                 </div>
               </div>
-              <button 
-                onClick={() => !isProcessingAction && setCollectFreightModalDocket(null)} 
+              <button
+                onClick={() => !isProcessingAction && setCollectFreightModalDocket(null)}
                 className="text-slate-400 hover:text-slate-600 dark:hover:text-white"
               >
                 <X className="w-5 h-5" />
@@ -4363,7 +4539,7 @@ export default function InvoicesMasterPage() {
             </div>
 
             <form onSubmit={handleConfirmCollectFreight} className="space-y-4 text-xs">
-              
+
               {/* Docket & Consignee Summary Card */}
               <div className="p-4 rounded-2xl bg-emerald-500/5 dark:bg-emerald-950/20 border border-emerald-500/20 space-y-2.5">
                 <div className="flex justify-between items-start">
@@ -4390,8 +4566,8 @@ export default function InvoicesMasterPage() {
                     <span className="text-slate-500 dark:text-slate-400 block">Paying Party (Consignee):</span>
                     <strong className="text-slate-900 dark:text-white">
                       {(typeof collectFreightModalDocket.consignee === 'object' ? collectFreightModalDocket.consignee?.name : collectFreightModalDocket.consignee) ||
-                       (typeof collectFreightModalDocket.customer === 'object' ? collectFreightModalDocket.customer?.name : collectFreightModalDocket.customer) ||
-                       'Consignee'}
+                        (typeof collectFreightModalDocket.customer === 'object' ? collectFreightModalDocket.customer?.name : collectFreightModalDocket.customer) ||
+                        'Consignee'}
                     </strong>
                   </div>
                   <div>
@@ -4413,11 +4589,10 @@ export default function InvoicesMasterPage() {
                         key={mode}
                         type="button"
                         onClick={() => setCollectFreightForm({ ...collectFreightForm, paymentMethod: mode })}
-                        className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all ${
-                          collectFreightForm.paymentMethod === mode
+                        className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all ${collectFreightForm.paymentMethod === mode
                             ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
                             : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100'
-                        }`}
+                          }`}
                       >
                         {mode === 'CASH' ? '💵 Cash' : mode === 'UPI' ? '📱 UPI / QR' : mode === 'CHEQUE' ? '🏦 Cheque' : '🏛️ Bank/NEFT'}
                       </button>
@@ -4444,10 +4619,10 @@ export default function InvoicesMasterPage() {
                       {collectFreightForm.paymentMethod === 'CASH'
                         ? 'Cash Receipt / Voucher #'
                         : collectFreightForm.paymentMethod === 'CHEQUE'
-                        ? 'Cheque Number'
-                        : collectFreightForm.paymentMethod === 'UPI'
-                        ? 'UPI UTR / Reference No.'
-                        : 'Bank Transaction / UTR No.'}{' '}
+                          ? 'Cheque Number'
+                          : collectFreightForm.paymentMethod === 'UPI'
+                            ? 'UPI UTR / Reference No.'
+                            : 'Bank Transaction / UTR No.'}{' '}
                       <span className="text-rose-500 font-bold">*</span>
                     </label>
                     <input
@@ -4458,10 +4633,10 @@ export default function InvoicesMasterPage() {
                         collectFreightForm.paymentMethod === 'CASH'
                           ? 'e.g. CR-00123 / Cash Slip #'
                           : collectFreightForm.paymentMethod === 'CHEQUE'
-                          ? 'e.g. CHQ-489102'
-                          : collectFreightForm.paymentMethod === 'UPI'
-                          ? 'e.g. 329012394812 (12-digit UTR)'
-                          : 'e.g. HDFC98230129'
+                            ? 'e.g. CHQ-489102'
+                            : collectFreightForm.paymentMethod === 'UPI'
+                              ? 'e.g. 329012394812 (12-digit UTR)'
+                              : 'e.g. HDFC98230129'
                       }
                       className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-xs font-mono focus:border-emerald-500 focus:outline-none"
                       required
@@ -4503,15 +4678,14 @@ export default function InvoicesMasterPage() {
                     !collectFreightForm.paymentRef?.trim() ||
                     !collectFreightForm.remarks?.trim()
                   }
-                  className={`px-5 py-2.5 rounded-xl font-bold text-xs flex items-center space-x-2 transition-all ${
-                    !collectFreightForm.paymentMethod ||
-                    !collectFreightForm.paymentDate?.trim() ||
-                    !collectFreightForm.paymentRef?.trim() ||
-                    !collectFreightForm.remarks?.trim() ||
-                    isProcessingAction
+                  className={`px-5 py-2.5 rounded-xl font-bold text-xs flex items-center space-x-2 transition-all ${!collectFreightForm.paymentMethod ||
+                      !collectFreightForm.paymentDate?.trim() ||
+                      !collectFreightForm.paymentRef?.trim() ||
+                      !collectFreightForm.remarks?.trim() ||
+                      isProcessingAction
                       ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed opacity-60'
                       : 'bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white shadow-md shadow-emerald-600/30'
-                  }`}
+                    }`}
                   title={
                     !collectFreightForm.paymentRef?.trim() || !collectFreightForm.remarks?.trim()
                       ? 'Please fill all mandatory fields (*) to activate button'
@@ -4535,7 +4709,7 @@ export default function InvoicesMasterPage() {
         <div className="no-print fixed inset-0 z-50 overflow-y-auto flex min-h-full items-center justify-center p-4 sm:p-6">
           <div className="fixed inset-0 bg-black/75 backdrop-blur-sm" onClick={() => !isProcessingAction && setQuickBillModalDocket(null)} />
           <div className="relative w-full max-w-lg my-auto max-h-[92vh] overflow-y-auto rounded-3xl bg-white dark:bg-[#0A0E1A] border border-blue-500/30 p-6 sm:p-7 shadow-2xl z-10 text-slate-900 dark:text-white space-y-5">
-            
+
             {/* Header */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
               <div className="flex items-center space-x-3">
@@ -4549,8 +4723,8 @@ export default function InvoicesMasterPage() {
                   </p>
                 </div>
               </div>
-              <button 
-                onClick={() => !isProcessingAction && setQuickBillModalDocket(null)} 
+              <button
+                onClick={() => !isProcessingAction && setQuickBillModalDocket(null)}
                 className="text-slate-400 hover:text-slate-600 dark:hover:text-white"
               >
                 <X className="w-5 h-5" />
@@ -4558,7 +4732,7 @@ export default function InvoicesMasterPage() {
             </div>
 
             <form onSubmit={handleConfirmQuickBill} className="space-y-4 text-xs">
-              
+
               {/* Docket Summary */}
               <div className="p-4 rounded-2xl bg-blue-500/5 dark:bg-blue-950/20 border border-blue-500/20 space-y-2.5">
                 <div className="flex justify-between items-start">
@@ -4585,8 +4759,8 @@ export default function InvoicesMasterPage() {
                     <span className="text-slate-500 dark:text-slate-400 block">Billed Party (Shipper):</span>
                     <strong className="text-slate-900 dark:text-white">
                       {(typeof quickBillModalDocket.consignor === 'object' ? quickBillModalDocket.consignor?.name : quickBillModalDocket.consignor) ||
-                       (typeof quickBillModalDocket.customer === 'object' ? quickBillModalDocket.customer?.name : quickBillModalDocket.customer) ||
-                       'Shipper'}
+                        (typeof quickBillModalDocket.customer === 'object' ? quickBillModalDocket.customer?.name : quickBillModalDocket.customer) ||
+                        'Shipper'}
                     </strong>
                     <span className="text-[10px] font-mono text-slate-400 block">GSTIN: {quickBillModalDocket.customer_gstin || 'URP'}</span>
                   </div>
@@ -4663,7 +4837,7 @@ export default function InvoicesMasterPage() {
         <div className="no-print fixed inset-0 z-50 overflow-y-auto flex min-h-full items-center justify-center p-4 sm:p-6">
           <div className="fixed inset-0 bg-black/75 backdrop-blur-sm" onClick={() => setPodModalDocket(null)} />
           <div className="relative w-full max-w-lg my-auto max-h-[92vh] overflow-y-auto rounded-3xl bg-white dark:bg-[#0A0E1A] border border-purple-500/30 p-6 sm:p-7 shadow-2xl z-10 text-slate-900 dark:text-white space-y-5">
-            
+
             {/* Header */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
               <div className="flex items-center space-x-3">
@@ -4677,8 +4851,8 @@ export default function InvoicesMasterPage() {
                   </p>
                 </div>
               </div>
-              <button 
-                onClick={() => setPodModalDocket(null)} 
+              <button
+                onClick={() => setPodModalDocket(null)}
                 className="text-slate-400 hover:text-slate-600 dark:hover:text-white"
               >
                 <X className="w-5 h-5" />
@@ -4692,9 +4866,9 @@ export default function InvoicesMasterPage() {
                   <span className="text-slate-400">Consignee Receiver:</span>
                   <strong className="text-slate-900 dark:text-white">
                     {podModalDocket.pod_receiver ||
-                     (typeof podModalDocket.consignee === 'object' ? podModalDocket.consignee?.name : podModalDocket.consignee) ||
-                     (typeof podModalDocket.customer === 'object' ? podModalDocket.customer?.name : podModalDocket.customer) ||
-                     'Receiver'}
+                      (typeof podModalDocket.consignee === 'object' ? podModalDocket.consignee?.name : podModalDocket.consignee) ||
+                      (typeof podModalDocket.customer === 'object' ? podModalDocket.customer?.name : podModalDocket.customer) ||
+                      'Receiver'}
                   </strong>
                 </div>
                 <div className="flex justify-between items-center text-[11px]">
@@ -4752,11 +4926,10 @@ export default function InvoicesMasterPage() {
                       openQuickBillModal(row);
                     }
                   }}
-                  className={`px-5 py-2 rounded-xl font-bold text-xs text-white shadow-md flex items-center space-x-1.5 ${
-                    podModalDocket.payment_type === 'TO_PAY'
+                  className={`px-5 py-2 rounded-xl font-bold text-xs text-white shadow-md flex items-center space-x-1.5 ${podModalDocket.payment_type === 'TO_PAY'
                       ? 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/30'
                       : 'bg-blue-600 hover:bg-blue-500 shadow-blue-600/30'
-                  }`}
+                    }`}
                 >
                   {podModalDocket.payment_type === 'TO_PAY' ? (
                     <>

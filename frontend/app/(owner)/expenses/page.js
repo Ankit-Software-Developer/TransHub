@@ -333,6 +333,13 @@ export default function ExpensesPage() {
   const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [paymentModeFilter, setPaymentModeFilter] = useState('ALL');
   const [ownershipFilter, setOwnershipFilter] = useState('ALL');
+  const [settlementStatusFilter, setSettlementStatusFilter] = useState('ALL');
+
+  // Settlement Status Filter Options for Trip-Wise Expenses (Pending vs Cleared / Settled)
+  const settlementStatusOptions = useMemo(() => [
+    { value: 'PENDING', label: 'Pending Settlement' },
+    { value: 'SETTLED', label: 'Settled / Cleared' },
+  ], []);
 
   // Fleet Ownership Filter Options
   const ownershipOptions = useMemo(() => [
@@ -563,7 +570,6 @@ export default function ExpensesPage() {
       if (fromDate) baseParams.push(`from_date=${fromDate}`);
       if (toDate) baseParams.push(`to_date=${toDate}`);
       if (search) baseParams.push(`search=${encodeURIComponent(search.trim())}`);
-      if (paymentModeFilter !== 'ALL') baseParams.push(`payment_method=${paymentModeFilter}`);
 
       baseParams.push(`page=${page}`);
       baseParams.push(`limit=${pageSize}`);
@@ -573,6 +579,7 @@ export default function ExpensesPage() {
       if (activeTab === TAB_BRANCH_OVERHEADS) {
         baseParams.push('expense_type=BRANCH_OVERHEAD');
         if (categoryFilter !== 'ALL') baseParams.push(`category_id=${categoryFilter}`);
+        if (paymentModeFilter !== 'ALL') baseParams.push(`payment_method=${paymentModeFilter}`);
         const url = `/expenses?${baseParams.join('&')}`;
         const res = await api.get(url);
         if (res.data?.success) {
@@ -582,6 +589,7 @@ export default function ExpensesPage() {
       } else {
         // TAB_OPERATIONAL: Unified Trip-Wise Ledger
         if (ownershipFilter !== 'ALL') baseParams.push(`ownership=${ownershipFilter}`);
+        if (settlementStatusFilter !== 'ALL') baseParams.push(`settlement_status=${settlementStatusFilter}`);
         const url = `/expenses/trip-wise?${baseParams.join('&')}`;
         const res = await api.get(url);
         if (res.data?.success) {
@@ -598,7 +606,7 @@ export default function ExpensesPage() {
       setTableLoading(false);
       setLoading(false);
     }
-  }, [activeTab, effectiveBranchParam, fromDate, toDate, search, paymentModeFilter, categoryFilter, ownershipFilter, page, pageSize, sortBy, sortOrder]);
+  }, [activeTab, effectiveBranchParam, fromDate, toDate, search, paymentModeFilter, categoryFilter, ownershipFilter, settlementStatusFilter, page, pageSize, sortBy, sortOrder]);
 
   // Trigger data fetches on tab or scope change
   useEffect(() => {
@@ -614,6 +622,7 @@ export default function ExpensesPage() {
     setCategoryFilter('ALL');
     setPaymentModeFilter('ALL');
     setOwnershipFilter('ALL');
+    setSettlementStatusFilter('ALL');
     setTotalCount(0);
     setExpenses([]);
     setTripWiseExpenses([]);
@@ -1544,6 +1553,7 @@ export default function ExpensesPage() {
         minWidth: 135,
         render: (val, row) => {
           const adv = Number(row.driver_advance_total || 0);
+          const bhatta = Number(row.driver_bhatta_total || 0);
           const count = (row.advances || []).length;
           return (
             <div className="flex flex-col">
@@ -1551,7 +1561,9 @@ export default function ExpensesPage() {
                 ₹{adv.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
               </span>
               <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400 mt-0.5">
-                {count > 0 ? `${count} advance slip${count > 1 ? 's' : ''}` : 'No advance logged'}
+                {bhatta > 0
+                  ? `+ ₹${bhatta.toLocaleString('en-IN', { maximumFractionDigits: 0 })} Bhatta`
+                  : (count > 0 ? `${count} advance slip${count > 1 ? 's' : ''}` : 'No advance logged')}
               </span>
             </div>
           );
@@ -1610,13 +1622,14 @@ export default function ExpensesPage() {
         minWidth: 135,
         render: (val, row) => {
           const total = Number(row.total_operational_spend || 0);
+          const hasBhatta = Number(row.driver_bhatta_total || 0) > 0;
           return (
             <div className="flex flex-col">
               <span className="font-mono font-black text-xs text-rose-700 dark:text-rose-400">
                 ₹{total.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
               </span>
               <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400">
-                Bhatta + Fuel + Tolls
+                {hasBhatta ? 'Fuel + Bhatta + Tolls' : 'Bhatta + Fuel + Tolls'}
               </span>
             </div>
           );
@@ -1626,25 +1639,25 @@ export default function ExpensesPage() {
         key: 'profit_loss',
         header: 'Freight Revenue & P&L',
         sortable: false,
-        width: 195,
-        minWidth: 180,
+        width: 175,
+        minWidth: 155,
         render: (val, row) => {
           const rev = Number(row.gross_revenue || 0);
           const pnl = Number(row.net_profit_loss || 0);
           const isProf = pnl >= 0;
           return (
-            <div className="flex flex-col">
-              <div className="flex items-center justify-between text-[11px] mb-0.5">
-                <span className="text-slate-600 dark:text-slate-400 font-bold">Rev:</span>
-                <span className="font-mono font-black text-slate-900 dark:text-slate-100">
+            <div className="flex flex-col items-start">
+              <div className="flex items-center gap-1.5 text-xs mb-1">
+                <span className="text-slate-500 dark:text-slate-400 font-semibold text-[11px]">Rev:</span>
+                <span className="font-mono font-black text-xs text-slate-900 dark:text-white">
                   ₹{rev.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                 </span>
               </div>
               <span
-                className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black border font-mono whitespace-nowrap ${
+                className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border font-mono whitespace-nowrap shadow-2xs ${
                   isProf
-                    ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800'
-                    : 'bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300 border-rose-300 dark:border-rose-800'
+                    ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800'
+                    : 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border-rose-300 dark:border-rose-800'
                 }`}
               >
                 {isProf ? '+' : '-'}₹{Math.abs(pnl).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
@@ -1674,7 +1687,7 @@ export default function ExpensesPage() {
                 title="Log fuel, bhatta, or running cost for this trip"
               >
                 <Plus className="w-3 h-3" />
-                <span>+ Cost</span>
+                <span>Cost</span>
               </button>
               <button
                 type="button"
@@ -2080,6 +2093,22 @@ export default function ExpensesPage() {
                   />
                 )}
 
+                {/* Settlement Status Filter for Trip-Wise Expenses (Pending vs Cleared / Settled) */}
+                {activeTab === TAB_OPERATIONAL && (
+                  <CustomFilterDropdown
+                    value={settlementStatusFilter}
+                    onChange={(val) => {
+                      setSettlementStatusFilter(val);
+                      setPage(1);
+                    }}
+                    options={settlementStatusOptions}
+                    allLabel="All Settlement Statuses"
+                    icon={CheckCircle2}
+                    searchable={false}
+                    isDark={isDark}
+                  />
+                )}
+
                 {/* Custom Category Filter Popover for Overheads */}
                 {activeTab === TAB_BRANCH_OVERHEADS && (
                   <CustomFilterDropdown
@@ -2096,19 +2125,21 @@ export default function ExpensesPage() {
                   />
                 )}
 
-                {/* Custom Payment Mode Filter Popover */}
-                <CustomFilterDropdown
-                  value={paymentModeFilter}
-                  onChange={(val) => {
-                    setPaymentModeFilter(val);
-                    setPage(1);
-                  }}
-                  options={paymentModeOptions}
-                  allLabel="All Payment Modes"
-                  icon={CreditCard}
-                  searchable={false}
-                  isDark={isDark}
-                />
+                {/* Custom Payment Mode Filter Popover (For Branch Overheads) */}
+                {activeTab === TAB_BRANCH_OVERHEADS && (
+                  <CustomFilterDropdown
+                    value={paymentModeFilter}
+                    onChange={(val) => {
+                      setPaymentModeFilter(val);
+                      setPage(1);
+                    }}
+                    options={paymentModeOptions}
+                    allLabel="All Payment Modes"
+                    icon={CreditCard}
+                    searchable={false}
+                    isDark={isDark}
+                  />
+                )}
               </div>
             }
             exportFilename={currentTableConfig.exportFilename}
