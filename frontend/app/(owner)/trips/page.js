@@ -12,6 +12,8 @@ import { useTheme } from '../../../components/ThemeProvider';
 import { usePermissions } from '../../../hooks/usePermissions';
 import Modal from '../../../components/ui/Modal';
 import CameraCaptureModal from '../../../components/ui/CameraCaptureModal';
+import CitySearchInput from '../../../components/ui/CitySearchInput';
+import ExpenseCategorySelect from '../../../components/ui/ExpenseCategorySelect';
 import {
   Truck,
   MapPin,
@@ -405,8 +407,9 @@ export default function TripsPage() {
   const [tripToInvoice, setTripToInvoice] = useState(null);
   const [tripInvoiceDate, setTripInvoiceDate] = useState(new Date().toISOString().slice(0, 10));
   const [tripInvoiceCreditDays, setTripInvoiceCreditDays] = useState(30);
-  const [tripInvoiceTaxRate, setTripInvoiceTaxRate] = useState(5.0);
-  const [tripInvoiceIsRcm, setTripInvoiceIsRcm] = useState(false);
+  const [tripInvoiceTaxRate, setTripInvoiceTaxRate] = useState(0);
+  const [tripInvoiceIsRcm, setTripInvoiceIsRcm] = useState(true);
+  const [tripInvoiceExtraChargeName, setTripInvoiceExtraChargeName] = useState('Detention Charges');
   const [tripInvoiceExtraCharges, setTripInvoiceExtraCharges] = useState(0);
   const [tripInvoiceRemarks, setTripInvoiceRemarks] = useState('');
   const [isSubmittingTripInvoice, setIsSubmittingTripInvoice] = useState(false);
@@ -433,7 +436,8 @@ export default function TripsPage() {
       const lower = exp.remarks.toLowerCase();
       if (lower.includes('diesel') || lower.includes('fuel')) return 'Fuel & Diesel';
       if (lower.includes('toll') || lower.includes('fastag')) return 'Toll & FASTag';
-      if (lower.includes('hamali') || lower.includes('loading')) return 'Loading & Hamali';
+      if (lower.includes('unloading')) return 'Unloading Charge';
+      if (lower.includes('hamali') || lower.includes('loading')) return 'Loading Charge';
       if (lower.includes('repair') || lower.includes('puncture') || lower.includes('tyre')) return 'Vehicle Maintenance';
     }
     return 'Highway Expense';
@@ -470,6 +474,7 @@ export default function TripsPage() {
     origin_city: '',
     destination_city: '',
     vehicle_mode: 'FLEET', // 'FLEET' | 'CUSTOM'
+    custom_ownership: 'MARKET', // 'MARKET' | 'OWN'
     vehicle_id: '',
     driver_id: '',
     custom_vehicle_number: '',
@@ -1172,6 +1177,20 @@ export default function TripsPage() {
   };
 
   const handleSettle = async (tripId) => {
+    if (!selectedTrip) return;
+    const currentTrip = selectedTrip;
+    const ownership = (currentTrip?.vehicle?.ownership || 'OWN').toUpperCase();
+    const isMarketOrAttached = ownership === 'MARKET' || ownership === 'ATTACHED';
+    const totalFreight = parseFloat(currentTrip.contract_amount || currentTrip.expected_revenue || 0);
+    const advanceRecv = parseFloat(currentTrip.advance_received || 0);
+    const maxPending = Math.max(0, totalFreight - advanceRecv);
+    const parsedVehicleCharge = parseFloat(settleVehicleCharge || currentTrip?.vehicle_charge || 0);
+
+    if (isMarketOrAttached && maxPending > 0 && parsedVehicleCharge > maxPending) {
+      alert(`Vehicle Charge (₹${parsedVehicleCharge.toLocaleString('en-IN')}) cannot exceed the client pending receivable amount of ₹${maxPending.toLocaleString('en-IN')}.`);
+      return;
+    }
+
     setSettling(true);
     try {
       const res = await api.post('/expenses/settle', {
@@ -1296,8 +1315,9 @@ export default function TripsPage() {
     setTripToInvoice(trip);
     setTripInvoiceDate(new Date().toISOString().slice(0, 10));
     setTripInvoiceCreditDays(trip.customer?.credit_days || 30);
-    setTripInvoiceTaxRate(5.0);
-    setTripInvoiceIsRcm(false);
+    setTripInvoiceTaxRate(0);
+    setTripInvoiceIsRcm(true);
+    setTripInvoiceExtraChargeName('Detention Charges');
     setTripInvoiceExtraCharges(0);
     setTripInvoiceRemarks(`Dedicated FTL Placement #${trip.trip_number} (${trip.origin_city} to ${trip.destination_city})`);
     setTripInvoiceSuccessData(null);
@@ -1309,6 +1329,7 @@ export default function TripsPage() {
     if (!tripToInvoice) return;
     setIsSubmittingTripInvoice(true);
     try {
+      const extraAmt = parseFloat(tripInvoiceExtraCharges) || 0;
       const payload = {
         trip_id: tripToInvoice.id,
         customer_id: tripToInvoice.customer_id || undefined,
@@ -1316,7 +1337,8 @@ export default function TripsPage() {
         credit_days: parseInt(tripInvoiceCreditDays, 10) || 30,
         tax_rate: tripInvoiceIsRcm ? 0 : (parseFloat(tripInvoiceTaxRate) || 0),
         is_rcm: Boolean(tripInvoiceIsRcm),
-        extra_charges: parseFloat(tripInvoiceExtraCharges) || 0,
+        extra_charges: extraAmt,
+        extra_charges_name: extraAmt > 0 ? (tripInvoiceExtraChargeName?.trim() || 'Extra Charges') : undefined,
         remarks: tripInvoiceRemarks,
       };
 
@@ -1560,7 +1582,7 @@ export default function TripsPage() {
           vehicle_type: vType,
           truck_size_feet: feetVal,
           capacity_ton: capacityTon,
-          ownership: 'MARKET',
+          ownership: directHireForm.custom_ownership || 'MARKET',
           driver_name: driverName,
           driver_phone: cleanDriverPhone,
           current_odometer: odoVal,
@@ -1631,7 +1653,7 @@ export default function TripsPage() {
           vehicle_type: vType,
           truck_size_feet: feetVal,
           capacity_ton: capacityTon,
-          ownership: 'MARKET',
+          ownership: directHireForm.custom_ownership || 'MARKET',
           driver_name: driverName,
           driver_phone: cleanDriverPhone,
           current_odometer: odoVal,
@@ -2712,7 +2734,10 @@ export default function TripsPage() {
                       : (selectedTrip.vehicle_charge || 0)
                   ) || 0;
 
-                  const grossRev = parseFloat(selectedTrip.expected_revenue || 0);
+                  const grossRev = parseFloat(selectedTrip.contract_amount || selectedTrip.expected_revenue || 0);
+                  const advanceFromParty = parseFloat(selectedTrip.advance_received || 0);
+                  const maxPendingAmount = Math.max(0, grossRev - advanceFromParty);
+                  const isVehicleChargeExceeded = isMarketOrAttached && maxPendingAmount > 0 && parsedVehicleCharge > maxPendingAmount;
 
                   // Calculation for MARKET / ATTACHED:
                   // Net Payable to Vendor/Market Owner = Agreed Vehicle Charge - (Disbursed Advance + Company Paid Highway Expenses)
@@ -3000,7 +3025,9 @@ export default function TripsPage() {
                       {/* Section: Vehicle Charge Adjustment for MARKET / ATTACHED */}
                       {isMarketOrAttached && (
                         <div className={`p-4 rounded-xl border ${
-                          isDark ? 'bg-purple-950/20 border-purple-800/40' : 'bg-purple-50/60 border-purple-200'
+                          isVehicleChargeExceeded
+                            ? 'bg-rose-500/10 border-rose-500/40'
+                            : isDark ? 'bg-purple-950/20 border-purple-800/40' : 'bg-purple-50/60 border-purple-200'
                         }`}>
                           <div className="flex items-center justify-between mb-2">
                             <div className="flex items-center gap-2">
@@ -3018,16 +3045,54 @@ export default function TripsPage() {
                             <input
                               type="number"
                               min="0"
+                              max={maxPendingAmount > 0 ? maxPendingAmount : undefined}
                               value={settleVehicleCharge}
                               onChange={(e) => setSettleVehicleCharge(e.target.value)}
                               placeholder="e.g. 25000"
                               className={`w-full pl-7 pr-3 py-2 rounded-xl text-xs font-mono font-bold border focus:outline-none transition-colors ${
-                                isDark
+                                isVehicleChargeExceeded
+                                  ? 'bg-rose-500/10 border-rose-500 text-rose-600 focus:border-rose-600'
+                                  : isDark
                                   ? 'bg-slate-900 border-purple-800/60 text-white focus:border-purple-400'
                                   : 'bg-white border-purple-300 text-slate-900 focus:border-purple-500'
                               }`}
                             />
                           </div>
+
+                          {maxPendingAmount > 0 && (
+                            <div className="flex items-center justify-between text-[11px] mt-1.5">
+                              <span className="text-slate-500 dark:text-slate-400">
+                                Max Pending Receivable: <strong className="font-mono text-amber-600 dark:text-amber-400">₹{maxPendingAmount.toLocaleString('en-IN')}</strong>
+                              </span>
+                              {isVehicleChargeExceeded ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setSettleVehicleCharge(String(maxPendingAmount))}
+                                  className="text-[10px] font-bold text-rose-600 dark:text-rose-400 hover:underline cursor-pointer"
+                                >
+                                  Cap to Max (₹{maxPendingAmount.toLocaleString('en-IN')})
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => setSettleVehicleCharge(String(maxPendingAmount))}
+                                  className="text-[10px] font-bold text-purple-600 dark:text-purple-400 hover:underline cursor-pointer"
+                                >
+                                  Fill Max (₹{maxPendingAmount.toLocaleString('en-IN')})
+                                </button>
+                              )}
+                            </div>
+                          )}
+
+                          {isVehicleChargeExceeded && (
+                            <div className="mt-2.5 p-2 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-500 text-xs font-semibold flex items-center gap-2">
+                              <AlertTriangle className="w-4 h-4 shrink-0" />
+                              <span>
+                                Vehicle charge cannot exceed the pending receivable amount of ₹{maxPendingAmount.toLocaleString('en-IN')}.
+                              </span>
+                            </div>
+                          )}
+
                           <p className="text-[10px] text-slate-400 mt-1.5">
                             Agreed vehicle hire freight. Disbursed advances (₹{totalAdv.toLocaleString('en-IN')}) and company-paid diesel/toll slips (₹{totalExp.toLocaleString('en-IN')}) are deducted automatically.
                           </p>
@@ -3081,22 +3146,12 @@ export default function TripsPage() {
                                 <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
                                   Category <span className="text-red-500 font-bold ml-0.5">*</span>
                                 </label>
-                                <select
+                                <ExpenseCategorySelect
                                   value={settleNewExpCategory}
-                                  onChange={(e) => setSettleNewExpCategory(e.target.value)}
-                                  className={`w-full px-2.5 py-1.5 rounded-lg text-xs font-semibold border focus:outline-none ${
-                                    isDark ? 'bg-slate-900 border-slate-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
-                                  }`}
-                                >
-                                  <option value="Fuel & Diesel">Fuel & Diesel</option>
-                                  <option value="Toll & Fastag">Toll & FASTag</option>
-                                  <option value="Loading & Hamali">Loading & Hamali</option>
-                                  <option value="Unloading Charges">Unloading Charges</option>
-                                  <option value="Vehicle Maintenance & Spares">Vehicle Maintenance</option>
-                                  <option value="Police / RTO / Challan">Police / RTO / Challan</option>
-                                  <option value="Tyre & Punctures">Tyre & Punctures</option>
-                                  <option value="Miscellaneous">Miscellaneous</option>
-                                </select>
+                                  onChange={(val) => setSettleNewExpCategory(val)}
+                                  isMarket={isMarketOrAttached}
+                                  isDark={isDark}
+                                />
                               </div>
 
                               <div>
@@ -3283,6 +3338,11 @@ export default function TripsPage() {
                       : (selectedTrip.vehicle_charge || 0)
                   ) || 0;
 
+                  const grossRev = parseFloat(selectedTrip.contract_amount || selectedTrip.expected_revenue || 0);
+                  const advanceFromParty = parseFloat(selectedTrip.advance_received || 0);
+                  const maxPendingAmount = Math.max(0, grossRev - advanceFromParty);
+                  const isVehicleChargeExceeded = isMarketOrAttached && maxPendingAmount > 0 && parsedVehicleCharge > maxPendingAmount;
+
                   const netVendorBalance = parsedVehicleCharge - (totalAdv + totalExp);
                   const isVendorPayable = netVendorBalance > 0;
                   const isVendorRecover = netVendorBalance < 0;
@@ -3299,7 +3359,11 @@ export default function TripsPage() {
                     }`}>
                       <div className="text-xs">
                         <span className="text-slate-400">Final Decision: </span>
-                        {isMarketOrAttached ? (
+                        {isVehicleChargeExceeded ? (
+                          <span className="font-bold text-rose-500">
+                            Exceeds Pending Limit (Max ₹{maxPendingAmount.toLocaleString('en-IN')})
+                          </span>
+                        ) : isMarketOrAttached ? (
                           isVendorPayable ? (
                             <span className="font-bold text-emerald-600 dark:text-emerald-400">
                               Pay {ownership === 'MARKET' ? 'Market Owner' : 'Vendor'} ₹{absVendorBalance.toLocaleString('en-IN')}
@@ -3387,14 +3451,23 @@ export default function TripsPage() {
 
                         <button
                           type="button"
-                          disabled={settling}
+                          disabled={settling || isVehicleChargeExceeded}
                           onClick={() => handleSettle(selectedTrip.id)}
-                          className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold shadow-md shadow-emerald-600/25 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 active:scale-95"
+                          className={`px-5 py-2.5 rounded-xl text-white text-xs font-bold transition-all flex items-center gap-1.5 active:scale-95 ${
+                            isVehicleChargeExceeded
+                              ? 'bg-slate-400 dark:bg-slate-700 text-slate-200 cursor-not-allowed opacity-60'
+                              : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 shadow-md shadow-emerald-600/25 cursor-pointer disabled:opacity-50'
+                          }`}
                         >
                           {settling ? (
                             <>
                               <div className="w-3.5 h-3.5 rounded-full border-2 border-white border-t-transparent animate-spin" />
                               <span>Settling Trip...</span>
+                            </>
+                          ) : isVehicleChargeExceeded ? (
+                            <>
+                              <AlertTriangle className="w-3.5 h-3.5" />
+                              <span>Exceeds Pending Limit (Max ₹{maxPendingAmount.toLocaleString('en-IN')})</span>
                             </>
                           ) : (
                             <>
@@ -3645,11 +3718,100 @@ export default function TripsPage() {
                               </div>
                             </div>
 
+                          </div>
+
+                          {/* Extra Charges Section: Name / Reason & Amount */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-0.5">
+                            <div>
+                              <div className="flex items-center justify-between mb-1">
+                                <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                                  Extra Charge Name / Reason
+                                </label>
+                                <span className="text-[10px] text-slate-400">e.g. Detention / Toll</span>
+                              </div>
+                              <input
+                                type="text"
+                                list="invoice-extra-charge-presets"
+                                value={tripInvoiceExtraChargeName}
+                                onChange={(e) => setTripInvoiceExtraChargeName(e.target.value)}
+                                placeholder="Enter charge name (e.g. Detention, Toll)"
+                                className={`w-full px-3 py-2 rounded-xl border text-xs outline-none ${
+                                  isDark ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'
+                                }`}
+                              />
+                              <datalist id="invoice-extra-charge-presets">
+                                <option value="Detention Charges" />
+                                <option value="Halting Charges" />
+                                <option value="Loading / Unloading" />
+                                <option value="Toll & Green Tax" />
+                                <option value="Multi-point Delivery" />
+                                <option value="Weighbridge / Kanta Charges" />
+                              </datalist>
+                              <div className="flex flex-wrap gap-1 mt-1.5">
+                                {['Detention', 'Loading/Unloading', 'Toll Charges', 'Halting'].map((preset) => (
+                                  <button
+                                    key={preset}
+                                    type="button"
+                                    onClick={() => setTripInvoiceExtraChargeName(preset)}
+                                    className={`text-[10px] px-2 py-0.5 rounded-md border transition-all cursor-pointer ${
+                                      tripInvoiceExtraChargeName === preset
+                                        ? 'bg-blue-50 border-blue-400 text-blue-600 font-semibold dark:bg-blue-950/60 dark:border-blue-700 dark:text-blue-300'
+                                        : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400'
+                                    }`}
+                                  >
+                                    {preset}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+
+                            <div>
+                              <div className="flex items-center justify-between mb-1">
+                                <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                                  Extra Charge Amount
+                                </label>
+                                <span className="text-[10px] font-mono text-slate-400">
+                                  {extra > 0 ? `+ ₹${extra.toLocaleString('en-IN')}` : '₹0'}
+                                </span>
+                              </div>
+                              <input
+                                type="number"
+                                min="0"
+                                step="any"
+                                value={tripInvoiceExtraCharges}
+                                onChange={(e) => setTripInvoiceExtraCharges(e.target.value)}
+                                placeholder="₹0"
+                                className={`w-full px-3 py-2 rounded-xl border text-xs outline-none font-mono ${
+                                  isDark ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'
+                                }`}
+                              />
+                              <p className="text-[10px] text-slate-400 mt-1.5">
+                                Added to taxable freight before calculating GST.
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Next Line: GST Tax Slab & Calculated GST Tax Amount */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-0.5">
                             <div>
                               <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 block mb-1">
                                 GST Tax Slab (GTA Freight)
                               </label>
                               <div className="grid grid-cols-2 gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setTripInvoiceIsRcm(true);
+                                    setTripInvoiceTaxRate(0);
+                                  }}
+                                  className={`py-1.5 px-2 rounded-lg border text-xs font-bold transition-all cursor-pointer ${
+                                    tripInvoiceIsRcm
+                                      ? 'bg-blue-600 text-white border-blue-600'
+                                      : isDark ? 'border-slate-800 text-slate-400 hover:text-white' : 'border-slate-200 text-slate-600 hover:bg-slate-100'
+                                  }`}
+                                >
+                                  0% GST (RCM)
+                                </button>
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -3664,38 +3826,33 @@ export default function TripsPage() {
                                 >
                                   5% Forward GST
                                 </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setTripInvoiceIsRcm(true);
-                                    setTripInvoiceTaxRate(0);
-                                  }}
-                                  className={`py-1.5 px-2 rounded-lg border text-xs font-bold transition-all cursor-pointer ${
-                                    tripInvoiceIsRcm
-                                      ? 'bg-purple-600 text-white border-purple-600'
-                                      : isDark ? 'border-slate-800 text-slate-400 hover:text-white' : 'border-slate-200 text-slate-600 hover:bg-slate-100'
-                                  }`}
-                                >
-                                  0% GST (RCM)
-                                </button>
                               </div>
                             </div>
 
                             <div>
                               <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 block mb-1">
-                                Extra Charges (Detention / Toll / Loading)
+                                Calculated GST & Tax Treatment
                               </label>
-                              <input
-                                type="number"
-                                min="0"
-                                step="any"
-                                value={tripInvoiceExtraCharges}
-                                onChange={(e) => setTripInvoiceExtraCharges(e.target.value)}
-                                placeholder="₹0"
-                                className={`w-full px-3 py-2 rounded-xl border text-xs outline-none font-mono ${
-                                  isDark ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'
-                                }`}
-                              />
+                              <div className={`px-3 py-2 rounded-xl border text-xs flex items-center justify-between font-mono ${
+                                isDark ? 'bg-slate-900 border-slate-700' : 'bg-slate-50 border-slate-200'
+                              }`}>
+                                <div className="text-[11px] font-sans truncate mr-2">
+                                  {tripInvoiceIsRcm ? (
+                                    <span className="text-slate-500 dark:text-slate-400">
+                                      Reverse Charge (0% GST - Paid by Client)
+                                    </span>
+                                  ) : (
+                                    <span className="text-blue-600 dark:text-blue-400 font-semibold">
+                                      5% Forward GST (2.5% CGST + 2.5% SGST)
+                                    </span>
+                                  )}
+                                </div>
+                                <span className={`text-xs font-black shrink-0 ${
+                                  taxAmt > 0 ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400'
+                                }`}>
+                                  +₹{taxAmt.toLocaleString('en-IN')}
+                                </span>
+                              </div>
                             </div>
                           </div>
 
@@ -3713,21 +3870,46 @@ export default function TripsPage() {
                             />
                           </div>
 
-                          {/* Live Calculation Bar */}
-                          <div className={`p-3 rounded-xl border flex items-center justify-between text-xs font-mono ${
+                          {/* Live Calculation Bar with Full Formula Breakdown */}
+                          <div className={`p-3.5 rounded-xl border space-y-2 text-xs font-mono ${
                             isDark ? 'bg-slate-900/80 border-slate-800' : 'bg-slate-50 border-slate-200'
                           }`}>
-                            <div>
-                              <span className="text-[10px] text-slate-400 block font-sans">Total Invoiced:</span>
-                              <span className="font-bold text-slate-800 dark:text-slate-200">₹{totalInv.toLocaleString('en-IN')}</span>
+                            <div className="flex flex-wrap items-center justify-between text-[11px] pb-2 border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 font-sans">
+                              <div className="flex flex-wrap items-center gap-1.5 font-mono">
+                                <span>Freight: ₹{contractAmt.toLocaleString('en-IN')}</span>
+                                {extra > 0 && (
+                                  <span className="text-amber-600 dark:text-amber-400 font-semibold">
+                                    + {tripInvoiceExtraChargeName || 'Extra'}: ₹{extra.toLocaleString('en-IN')}
+                                  </span>
+                                )}
+                                {taxAmt > 0 ? (
+                                  <span className="text-blue-600 dark:text-blue-400 font-semibold">
+                                    + 5% GST: ₹{taxAmt.toLocaleString('en-IN')}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-400">
+                                    + 0% GST (RCM)
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[10px] font-sans font-medium text-slate-400">
+                                Total Taxable: ₹{taxable.toLocaleString('en-IN')}
+                              </span>
                             </div>
-                            <div>
-                              <span className="text-[10px] text-slate-400 block font-sans">Advance Received:</span>
-                              <span className="font-bold text-emerald-600 dark:text-emerald-400">-₹{advRec.toLocaleString('en-IN')}</span>
-                            </div>
-                            <div className="text-right">
-                              <span className="text-[10px] text-blue-500 block font-sans font-bold">Client Net Outstanding:</span>
-                              <span className="text-base font-black text-blue-600 dark:text-blue-400">₹{balDue.toLocaleString('en-IN')}</span>
+
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <span className="text-[10px] text-slate-400 block font-sans">Total Invoiced:</span>
+                                <span className="font-bold text-slate-800 dark:text-slate-200">₹{totalInv.toLocaleString('en-IN')}</span>
+                              </div>
+                              <div>
+                                <span className="text-[10px] text-slate-400 block font-sans">Advance Received:</span>
+                                <span className="font-bold text-emerald-600 dark:text-emerald-400">-₹{advRec.toLocaleString('en-IN')}</span>
+                              </div>
+                              <div className="text-right">
+                                <span className="text-[10px] text-blue-500 block font-sans font-bold">Client Net Outstanding:</span>
+                                <span className="text-base font-black text-blue-600 dark:text-blue-400">₹{balDue.toLocaleString('en-IN')}</span>
+                              </div>
                             </div>
                           </div>
 
@@ -4376,6 +4558,28 @@ export default function TripsPage() {
                     <span className="font-mono font-bold text-blue-600 dark:text-cyan-400 truncate">
                       {advExpTrip.vehicle?.vehicle_number || 'Unassigned'}
                     </span>
+                    {(() => {
+                      const own = (advExpTrip.vehicle?.ownership || advExpTrip.vehicle_ownership || 'OWN').toUpperCase();
+                      if (own === 'MARKET') {
+                        return (
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-purple-500/20 text-purple-600 dark:text-purple-400 border border-purple-500/30">
+                            Market Truck
+                          </span>
+                        );
+                      }
+                      if (own === 'ATTACHED') {
+                        return (
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                            Attached Truck
+                          </span>
+                        );
+                      }
+                      return (
+                        <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30">
+                          Own Fleet
+                        </span>
+                      );
+                    })()}
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-slate-400">Current Advance:</span>
@@ -4418,7 +4622,7 @@ export default function TripsPage() {
                       }`}
                     >
                       <Banknote className="w-3.5 h-3.5" />
-                      Disburse Driver Advance
+                      Give Driver Advance
                     </button>
                   </div>
                 </div>
@@ -4436,7 +4640,7 @@ export default function TripsPage() {
                       <div className="grid grid-cols-2 gap-3">
                         <div>
                           <label className={`block text-xs font-semibold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                            Disbursed Amount (₹) <span className="text-red-500 font-bold ml-0.5">*</span>
+                            Advance Amount (₹) <span className="text-red-500 font-bold ml-0.5">*</span>
                           </label>
                           <div className="relative">
                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">₹</span>
@@ -4458,7 +4662,7 @@ export default function TripsPage() {
 
                         <div>
                           <label className={`block text-xs font-semibold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                            Disbursal Mode
+                            Payment Mode
                           </label>
                           <select
                             value={advMode}
@@ -4497,30 +4701,24 @@ export default function TripsPage() {
                   ) : (
                     <>
                       <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className={`block text-xs font-semibold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                            Expense Category <span className="text-red-500 font-bold ml-0.5">*</span>
-                          </label>
-                          <select
-                            value={expCategory}
-                            onChange={(e) => setExpCategory(e.target.value)}
-                            className={`w-full px-3 py-2 rounded-xl text-xs border focus:outline-none transition-colors ${
-                              isDark
-                                ? 'bg-slate-900 border-slate-700 text-white focus:border-blue-400'
-                                : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
-                            }`}
-                          >
-                            <option value="Fuel & Diesel">Fuel & Diesel</option>
-                            <option value="Toll & Fastag">Toll & FASTag</option>
-                            <option value="Driver Daily Allowance">Driver Daily Allowance / Bhatta</option>
-                            <option value="Loading & Hamali">Loading & Hamali</option>
-                            <option value="Unloading Charges">Unloading Charges</option>
-                            <option value="Vehicle Maintenance & Spares">Vehicle Maintenance & Spares</option>
-                            <option value="Police / RTO / Challan">Police / RTO / Challan</option>
-                            <option value="Tyre & Punctures">Tyre & Punctures</option>
-                            <option value="Miscellaneous">Miscellaneous</option>
-                          </select>
-                        </div>
+                        {(() => {
+                          const own = (advExpTrip?.vehicle?.ownership || advExpTrip?.vehicle_ownership || 'OWN').toUpperCase();
+                          const isMarket = own === 'MARKET' || own === 'ATTACHED';
+
+                          return (
+                            <div>
+                              <label className={`block text-xs font-semibold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                                Expense Category <span className="text-red-500 font-bold ml-0.5">*</span>
+                              </label>
+                              <ExpenseCategorySelect
+                                value={expCategory}
+                                onChange={(val) => setExpCategory(val)}
+                                isMarket={isMarket}
+                                isDark={isDark}
+                              />
+                            </div>
+                          );
+                        })()}
 
                         <div>
                           <label className={`block text-xs font-semibold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
@@ -4611,7 +4809,7 @@ export default function TripsPage() {
                           <span>Saving...</span>
                         </>
                       ) : advExpType === 'ADVANCE' ? (
-                        <span>Disburse Advance</span>
+                        <span>Give Advance</span>
                       ) : (
                         <span>Save Expense</span>
                       )}
@@ -6023,48 +6221,30 @@ export default function TripsPage() {
                           </div>
 
                           <div>
-                            <label
-                              className={`block text-xs font-semibold mb-1 ${
-                                isDark ? 'text-slate-300' : 'text-slate-700'
-                              }`}
-                            >
-                              Origin Loading City <span className="text-red-500 font-bold ml-0.5">*</span>
-                            </label>
-                            <input
-                              type="text"
+                            <CitySearchInput
+                              label="Origin Loading City"
                               required
-                              placeholder="e.g. Jaipur Yard"
+                              placeholder="e.g. Jaipur Yard / Bhiwandi"
                               value={directHireForm.origin_city}
-                              onChange={(e) => setDirectHireForm((prev) => ({ ...prev, origin_city: e.target.value }))}
-                              className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-hidden ${
-                                isDark
-                                  ? 'bg-slate-900 border-slate-700 text-white focus:border-indigo-500'
-                                  : 'bg-white border-slate-200 text-slate-900 focus:border-indigo-600'
-                              }`}
+                              onChange={(cityName) => setDirectHireForm((prev) => ({ ...prev, origin_city: cityName }))}
+                              branches={branchesList}
+                              customers={customersList}
+                              isDark={isDark}
+                              accentColor="indigo"
                             />
                           </div>
 
                           <div>
-                            <label
-                              className={`block text-xs font-semibold mb-1 ${
-                                isDark ? 'text-slate-300' : 'text-slate-700'
-                              }`}
-                            >
-                              Destination Delivery Site / City <span className="text-red-500 font-bold ml-0.5">*</span>
-                            </label>
-                            <input
-                              type="text"
+                            <CitySearchInput
+                              label="Destination Delivery Site / City"
                               required
                               placeholder="e.g. Mumbai Nhava Sheva / Surat GIDC"
                               value={directHireForm.destination_city}
-                              onChange={(e) =>
-                                setDirectHireForm((prev) => ({ ...prev, destination_city: e.target.value }))
-                              }
-                              className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-bold focus:outline-hidden ${
-                                isDark
-                                  ? 'bg-slate-900 border-slate-700 text-white focus:border-indigo-500'
-                                  : 'bg-white border-slate-200 text-slate-900 focus:border-indigo-600'
-                              }`}
+                              onChange={(cityName) => setDirectHireForm((prev) => ({ ...prev, destination_city: cityName }))}
+                              branches={branchesList}
+                              customers={customersList}
+                              isDark={isDark}
+                              accentColor="indigo"
                             />
                           </div>
                         </div>
@@ -6120,7 +6300,7 @@ export default function TripsPage() {
                                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                               }`}
                             >
-                              <span>+ Market / Outside Truck</span>
+                              <span>+ Custom / Outside Truck</span>
                             </button>
                           </div>
                         </div>
@@ -6167,7 +6347,7 @@ export default function TripsPage() {
                                 searchable={true}
                                 searchPlaceholder="Search truck plate or body type..."
                                 bottomAction={{
-                                  label: '+ Enter Custom / Market Truck...',
+                                  label: '+ Enter Custom Vehicle (Own or Market)...',
                                   icon: Plus,
                                   onClick: () =>
                                     setDirectHireForm((prev) => ({ ...prev, vehicle_mode: 'CUSTOM' })),
@@ -6239,8 +6419,95 @@ export default function TripsPage() {
                             </div>
                           </div>
                         ) : (
-                          /* Custom / Market Vehicle & Driver Inputs */
+                          /* Custom / Outside Vehicle & Driver Inputs */
                           <div className="space-y-4">
+                            {/* Ownership Choice: Company Own Vehicle vs Market Truck */}
+                            <div className={`p-3.5 rounded-2xl border transition-all ${
+                              isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200'
+                            }`}>
+                              <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+                                <div>
+                                  <label className={`block text-xs font-bold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
+                                    Vehicle Ownership Type <span className="text-red-500 font-bold ml-0.5">*</span>
+                                  </label>
+                                  <p className="text-[10px] text-slate-400">
+                                    Is this custom vehicle company-owned fleet or hired from outside market?
+                                  </p>
+                                </div>
+                                <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${
+                                  directHireForm.custom_ownership === 'OWN'
+                                    ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-600 dark:text-cyan-400'
+                                    : 'bg-purple-500/10 border-purple-500/30 text-purple-600 dark:text-purple-400'
+                                }`}>
+                                  {directHireForm.custom_ownership === 'OWN' ? '🏢 Company Fleet Vehicle' : '🚚 Market Outside Truck'}
+                                </span>
+                              </div>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                <button
+                                  type="button"
+                                  onClick={() => setDirectHireForm((prev) => ({ ...prev, custom_ownership: 'OWN' }))}
+                                  className={`py-2 px-3.5 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center justify-between ${
+                                    directHireForm.custom_ownership === 'OWN'
+                                      ? 'bg-cyan-600 text-white border-cyan-600 shadow-md shadow-cyan-600/20'
+                                      : isDark
+                                      ? 'bg-slate-800/60 border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800'
+                                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100 shadow-xs'
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-2.5">
+                                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
+                                      directHireForm.custom_ownership === 'OWN' ? 'bg-white/20 text-white' : 'bg-cyan-500/10 text-cyan-600'
+                                    }`}>
+                                      <Building2 className="w-4 h-4" />
+                                    </div>
+                                    <div className="text-left">
+                                      <div className="font-bold">Company Own Vehicle</div>
+                                      <div className={`text-[10px] font-normal ${
+                                        directHireForm.custom_ownership === 'OWN' ? 'text-cyan-100' : 'text-slate-400'
+                                      }`}>
+                                        Internal fleet truck (Driver bhatta applies)
+                                      </div>
+                                    </div>
+                                  </div>
+                                  {directHireForm.custom_ownership === 'OWN' && (
+                                    <Check className="w-4 h-4 text-white shrink-0" />
+                                  )}
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => setDirectHireForm((prev) => ({ ...prev, custom_ownership: 'MARKET' }))}
+                                  className={`py-2 px-3.5 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center justify-between ${
+                                    directHireForm.custom_ownership === 'MARKET'
+                                      ? 'bg-purple-600 text-white border-purple-600 shadow-md shadow-purple-600/20'
+                                      : isDark
+                                      ? 'bg-slate-800/60 border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800'
+                                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100 shadow-xs'
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-2.5">
+                                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
+                                      directHireForm.custom_ownership === 'MARKET' ? 'bg-white/20 text-white' : 'bg-purple-500/10 text-purple-600'
+                                    }`}>
+                                      <Truck className="w-4 h-4" />
+                                    </div>
+                                    <div className="text-left">
+                                      <div className="font-bold">Market / Outside Truck</div>
+                                      <div className={`text-[10px] font-normal ${
+                                        directHireForm.custom_ownership === 'MARKET' ? 'text-purple-100' : 'text-slate-400'
+                                      }`}>
+                                        Outside hire (Vehicle charge debit applies)
+                                      </div>
+                                    </div>
+                                  </div>
+                                  {directHireForm.custom_ownership === 'MARKET' && (
+                                    <Check className="w-4 h-4 text-white shrink-0" />
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+
                             {/* Vehicle Specs Header */}
                             <div className="flex items-center justify-between text-xs pt-0.5">
                               <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
@@ -6263,7 +6530,9 @@ export default function TripsPage() {
                                   <span>← Back to Presets</span>
                                 </button>
                               ) : (
-                                <span className="text-[10px] text-slate-400">Market hire or new vehicle</span>
+                                <span className="text-[10px] text-slate-400">
+                                  {directHireForm.custom_ownership === 'OWN' ? 'Company Fleet Addition' : 'Market Outside Hire'}
+                                </span>
                               )}
                             </div>
 
@@ -6579,8 +6848,20 @@ export default function TripsPage() {
                                 <Truck className="w-4 h-4" />
                                 <span>Vehicle Deployment Preview</span>
                               </span>
-                              <span className="font-mono text-[10px] px-2.5 py-0.5 rounded-full font-bold bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 border border-indigo-500/30">
-                                {isCustomMode ? 'MARKET HIRE • AUTO-REGISTERED' : `${veh?.ownership || 'OWN'} FLEET`}
+                              <span className={`font-mono text-[10px] px-2.5 py-0.5 rounded-full font-bold border ${
+                                isCustomMode
+                                  ? directHireForm.custom_ownership === 'OWN'
+                                    ? 'bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 border-cyan-500/30'
+                                    : 'bg-purple-500/20 text-purple-700 dark:text-purple-300 border-purple-500/30'
+                                  : veh?.ownership === 'MARKET'
+                                  ? 'bg-purple-500/20 text-purple-700 dark:text-purple-300 border-purple-500/30'
+                                  : 'bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 border-cyan-500/30'
+                              }`}>
+                                {isCustomMode
+                                  ? directHireForm.custom_ownership === 'OWN'
+                                    ? 'COMPANY OWN VEHICLE • AUTO-SAVED'
+                                    : 'MARKET HIRE • AUTO-REGISTERED'
+                                  : `${veh?.ownership || 'OWN'} FLEET`}
                               </span>
                             </div>
                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">

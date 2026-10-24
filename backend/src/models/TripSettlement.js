@@ -53,6 +53,26 @@ module.exports = (sequelize) => {
       type: DataTypes.STRING(20),
       defaultValue: 'OWN',
     },
+    hire_pricing_mode: {
+      type: DataTypes.STRING(20),
+      defaultValue: 'FIXED',
+    },
+    hire_rate_per_km: {
+      type: DataTypes.DECIMAL(10, 2),
+      defaultValue: 0.00,
+    },
+    start_odometer: {
+      type: DataTypes.INTEGER,
+      defaultValue: 0,
+    },
+    end_odometer: {
+      type: DataTypes.INTEGER,
+      defaultValue: 0,
+    },
+    total_run_km: {
+      type: DataTypes.INTEGER,
+      defaultValue: 0,
+    },
     net_payable_to_vendor: {
       type: DataTypes.DECIMAL(12, 2),
       defaultValue: 0.00,

@@ -142,6 +142,21 @@ module.exports = (sequelize) => {
       defaultValue: 0.00,
       comment: 'Agreed Vehicle / Hire Charge for MARKET or ATTACHED vehicle',
     },
+    hire_pricing_mode: {
+      type: DataTypes.STRING(20),
+      defaultValue: 'FIXED',
+      comment: 'FIXED (lump sum) or PER_KM (meter/odometer rate)',
+    },
+    hire_rate_per_km: {
+      type: DataTypes.DECIMAL(10, 2),
+      defaultValue: 0.00,
+      comment: 'Agreed hire rate per KM when hire_pricing_mode is PER_KM',
+    },
+    hire_estimated_km: {
+      type: DataTypes.INTEGER,
+      defaultValue: 0,
+      comment: 'Estimated distance in KM for Per KM hire',
+    },
     total_expenses: {
       type: DataTypes.DECIMAL(12, 2),
       defaultValue: 0.00,

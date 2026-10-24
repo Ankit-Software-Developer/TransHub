@@ -63,6 +63,34 @@ const initMasterDatabase = async () => {
       // Ignored
     }
 
+    // Ensure hire pricing columns exist in trips table
+    try {
+      await sequelize.query("ALTER TABLE trips ADD COLUMN hire_pricing_mode VARCHAR(20) DEFAULT 'FIXED';");
+    } catch (e) {}
+    try {
+      await sequelize.query("ALTER TABLE trips ADD COLUMN hire_rate_per_km DECIMAL(10, 2) DEFAULT 0.00;");
+    } catch (e) {}
+    try {
+      await sequelize.query("ALTER TABLE trips ADD COLUMN hire_estimated_km INT DEFAULT 0;");
+    } catch (e) {}
+
+    // Ensure hire pricing and odometer columns exist in trip_settlements table
+    try {
+      await sequelize.query("ALTER TABLE trip_settlements ADD COLUMN hire_pricing_mode VARCHAR(20) DEFAULT 'FIXED';");
+    } catch (e) {}
+    try {
+      await sequelize.query("ALTER TABLE trip_settlements ADD COLUMN hire_rate_per_km DECIMAL(10, 2) DEFAULT 0.00;");
+    } catch (e) {}
+    try {
+      await sequelize.query("ALTER TABLE trip_settlements ADD COLUMN start_odometer INT DEFAULT 0;");
+    } catch (e) {}
+    try {
+      await sequelize.query("ALTER TABLE trip_settlements ADD COLUMN end_odometer INT DEFAULT 0;");
+    } catch (e) {}
+    try {
+      await sequelize.query("ALTER TABLE trip_settlements ADD COLUMN total_run_km INT DEFAULT 0;");
+    } catch (e) {}
+
     // Ensure extra staff/KYC columns are dropped from master users table
     const extraStaffColumns = [
       'staff_code',

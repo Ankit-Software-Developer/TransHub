@@ -1007,6 +1007,7 @@ const createInvoice = async (req, res) => {
       tax_rate = 5.0,
       is_rcm = false,
       extra_charges = 0,
+      extra_charges_name,
       branch_id,
       remarks,
     } = req.body;
@@ -1134,12 +1135,15 @@ const createInvoice = async (req, res) => {
         created_by: req.user.id,
       }, { transaction });
 
+      const extraLabel = (extra_charges_name && String(extra_charges_name).trim()) ? String(extra_charges_name).trim() : 'Extra Charges';
+      const extraNote = extra > 0 ? ` [${extraLabel}: ₹${extra}]` : '';
+
       await InvoiceItem.create({
         invoice_id: invoice.id,
         consignment_id: null,
         lr_number: tripRecord.party_ref_number || tripRecord.trip_number,
         booking_date: tripRecord.trip_date,
-        description: `Dedicated FTL Vehicle Placement - ${tripRecord.vehicle?.vehicle_number || 'Truck'} (${tripRecord.origin_city} to ${tripRecord.destination_city})${tripRecord.goods_description ? ` [${tripRecord.goods_description}]` : ''}`,
+        description: `Dedicated FTL Vehicle Placement - ${tripRecord.vehicle?.vehicle_number || 'Truck'} (${tripRecord.origin_city} to ${tripRecord.destination_city})${tripRecord.goods_description ? ` [${tripRecord.goods_description}]` : ''}${extraNote}`,
         origin_city: tripRecord.origin_city,
         destination_city: tripRecord.destination_city,
         packages_count: tripRecord.total_packages || 1,
@@ -1170,7 +1174,7 @@ const createInvoice = async (req, res) => {
           entry_type: 'INVOICE',
           reference_id: invoice.id,
           reference_number: invoice.invoice_number,
-          description: `Freight Tax Invoice for FTL Placement Trip #${tripRecord.trip_number} (Contract: ₹${contractFreight}, Less Advance: ₹${prepaidAmount}, Balance Due: ₹${balanceAmount})`,
+          description: `Freight Tax Invoice for FTL Placement Trip #${tripRecord.trip_number} (Contract: ₹${contractFreight}${extra > 0 ? `, ${extraLabel}: ₹${extra}` : ''}, Less Advance: ₹${prepaidAmount}, Balance Due: ₹${balanceAmount})`,
           debit_amount: balanceAmount,
           credit_amount: 0.00,
           running_balance: newBalance,
