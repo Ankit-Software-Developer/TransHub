@@ -32,6 +32,7 @@ import {
   Clock,
   Settings as SettingsIcon,
   Menu,
+  ShieldCheck,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -71,7 +72,7 @@ const INITIAL_NOTIFICATIONS = [
 export default function Navbar() {
   const router = useRouter();
   const { user, logout } = useAuth();
-  const { isAdmin } = usePermissions();
+  const { isAdmin, isSuperAdmin } = usePermissions();
   const { activeBranch, setActiveBranch, dateFilter, setDateFilter, toggleSearchModal, isFleetCommsOpen, toggleFleetComms, toggleMobileSidebar } = useStore();
   const { theme } = useTheme();
   const [showProfileMenu, setShowProfileMenu] = useState(false);
@@ -83,9 +84,25 @@ export default function Navbar() {
   const profileMenuRef = useRef(null);
   const alertsDropdownRef = useRef(null);
 
+  const storeUser = useStore((state) => state.user);
+  const effectiveUser = storeUser || user;
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    const handleUpdate = () => setTick((t) => t + 1);
+    if (typeof window !== 'undefined') {
+      window.addEventListener('transporter_mode_updated', handleUpdate);
+      window.addEventListener('storage', handleUpdate);
+      return () => {
+        window.removeEventListener('transporter_mode_updated', handleUpdate);
+        window.removeEventListener('storage', handleUpdate);
+      };
+    }
+  }, []);
+
   const [branchInfo, setBranchInfo] = useState({
-    code: user?.branchCode || user?.branch_code || user?.branch?.branch_code || (activeBranch?.code && activeBranch.code !== 'ALL' ? activeBranch.code : ''),
-    name: user?.branchName || user?.branch_name || user?.branch?.branch_name || (activeBranch?.name && activeBranch.name !== 'All Branches' ? activeBranch.name : ''),
+    code: effectiveUser?.branchCode || effectiveUser?.branch_code || effectiveUser?.branch?.branch_code || (activeBranch?.code && activeBranch.code !== 'ALL' ? activeBranch.code : ''),
+    name: effectiveUser?.branchName || effectiveUser?.branch_name || effectiveUser?.branch?.branch_name || (activeBranch?.name && activeBranch.name !== 'All Branches' ? activeBranch.name : ''),
   });
 
   useEffect(() => {
@@ -187,8 +204,8 @@ export default function Navbar() {
     setNotifications((prev) => prev.filter((n) => n.id !== id));
   };
 
-  const sub = user?.subscription || (typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('transporter_subscription') || 'null') : null);
-  const rawCode = (sub?.planCode || user?.planCode || 'PRO').toUpperCase();
+  const sub = effectiveUser?.subscription || (typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('transporter_subscription') || 'null') : null);
+  const rawCode = (sub?.planCode || effectiveUser?.planCode || 'PRO').toUpperCase();
   const isTrial = Boolean(sub?.isTrial || rawCode.includes('TRIAL') || sub?.status === 'TRIAL');
 
   let baseTier = 'Pro';
@@ -250,6 +267,17 @@ export default function Navbar() {
               {user?.businessName || user?.organizationName || 'TransHub'}
             </span>
           </div>
+
+          {isSuperAdmin && (
+            <Link
+              href="/super-admin/dashboard"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-amber-500/15 border border-amber-500/35 text-amber-400 hover:bg-amber-500/25 text-xs font-bold transition-all shadow-xs shrink-0"
+              title="Switch to SaaS Platform Control Tower"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
+              <span className="hidden sm:inline">SaaS Control Tower</span>
+            </Link>
+          )}
         </div>
 
         {/* Vertical Separation Line */}
@@ -635,6 +663,17 @@ export default function Navbar() {
                   >
                     <SettingsIcon className="w-4 h-4 text-slate-400 shrink-0" />
                     <span>Account Settings</span>
+                  </Link>
+                )}
+
+                {(isSuperAdmin || user?.role === 'SUPER_ADMIN' || user?.roles?.includes('SUPER_ADMIN')) && (
+                  <Link
+                    href="/super-admin/dashboard"
+                    onClick={() => setShowProfileMenu(false)}
+                    className="flex items-center space-x-2.5 px-3 py-2 rounded-xl text-xs font-bold transition-all bg-amber-500/15 text-amber-400 hover:bg-amber-500/25 border border-amber-500/30"
+                  >
+                    <ShieldCheck className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span>SaaS Control Tower</span>
                   </Link>
                 )}
 

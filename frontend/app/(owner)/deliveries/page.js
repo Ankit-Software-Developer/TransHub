@@ -3,8 +3,10 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import api from '../../../services/api';
 import { useTerminology } from '../../../hooks/useTerminology';
+import { useOperationsType } from '../../../hooks/useOperationsType';
 import Sidebar from '../../../components/layout/Sidebar';
 import Navbar from '../../../components/layout/Navbar';
 import DataTable from '../../../components/ui/DataTable';
@@ -67,6 +69,7 @@ export default function DeliveriesPage() {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
   const { isAdmin, canEdit, canExport, canEditDelivery } = usePermissions();
+  const { isFleetSupplier, isDirectCarrier } = useOperationsType();
   const user = useStore((state) => state.user);
   const activeBranch = useStore((state) => state.activeBranch);
 
@@ -1443,6 +1446,49 @@ export default function DeliveriesPage() {
     return cols;
   }, [activeTab, consignments, selectedDocketIds, term, isDark]);
 
+  if (isFleetSupplier || isDirectCarrier) {
+    return (
+      <div className={`flex min-h-screen transition-colors duration-300 ${isDark ? 'bg-[#06080F] text-slate-100' : 'bg-[#F4F6FB] text-slate-900'} font-sans`}>
+        <Sidebar />
+        <div className="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto">
+          <Navbar />
+          <main className="flex-1 flex items-center justify-center p-6">
+            <div className={`max-w-lg w-full p-8 rounded-3xl border text-center shadow-xl ${
+              isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'
+            }`}>
+              <div className="w-16 h-16 rounded-2xl bg-emerald-500/15 text-emerald-500 mx-auto flex items-center justify-center mb-5 border border-emerald-500/25">
+                <PackageCheck className="w-8 h-8" />
+              </div>
+              <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 mb-3 inline-block">
+                {isFleetSupplier ? 'FTL • Fleet Supplier Mode' : 'FTL • Direct Shipper Mode'}
+              </span>
+              <h2 className="text-xl font-bold mb-2">Delivery & POD Not Applicable</h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed mb-6">
+                In <strong>{isFleetSupplier ? 'FTL • Fleet Supplier / Vendor Provider' : 'FTL • Direct Shipper Carrier'}</strong> mode, operations operate on point-to-point full truckload trip assignments. Godown hub counter handovers and local delivery run sheets (DRS) are not utilized. Trip execution is tracked under <strong>Trips</strong>.
+              </p>
+              <div className="flex items-center justify-center gap-3">
+                <Link
+                  href="/trips"
+                  className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all shadow-md shadow-blue-600/30"
+                >
+                  Go to Trips
+                </Link>
+                <Link
+                  href="/dashboard"
+                  className={`px-5 py-2.5 rounded-xl border text-xs font-bold transition-all ${
+                    isDark ? 'border-slate-800 bg-slate-900 hover:bg-slate-800 text-slate-300' : 'border-slate-200 bg-white hover:bg-slate-100 text-slate-700'
+                  }`}
+                >
+                  Return to Dashboard
+                </Link>
+              </div>
+            </div>
+          </main>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={`flex min-h-screen transition-colors duration-300 ${isDark ? 'bg-[#06080F] text-slate-100' : 'bg-[#F4F6FB] text-slate-900'
       } font-sans`}>
@@ -2691,7 +2737,7 @@ export default function DeliveriesPage() {
                       Fleet Delivery Run Sheet • Doorstep Dispatched Run
                     </p>
                     <p className="text-xs text-slate-600 font-semibold mt-0.5">
-                      Destination Branch: {currentBranch?.branch_name || user?.branchName || 'Hub'} ({currentBranch?.branch_code || 'HUB'})
+                      Destination Branch: {currentBranch?.branch_name || user?.branchName || 'Head Office'} ({currentBranch?.branch_code || 'HQ'})
                     </p>
                   </div>
                   <div className="text-right">

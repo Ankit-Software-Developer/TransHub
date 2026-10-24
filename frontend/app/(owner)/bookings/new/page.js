@@ -5,6 +5,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import api from '../../../../services/api';
 import { useTerminology } from '../../../../hooks/useTerminology';
+import { useOperationsType } from '../../../../hooks/useOperationsType';
 import { useStore } from '../../../../store/useStore';
 import Sidebar from '../../../../components/layout/Sidebar';
 import Navbar from '../../../../components/layout/Navbar';
@@ -24,7 +25,14 @@ import Link from 'next/link';
 export default function NewBookingPage() {
   const router = useRouter();
   const { term } = useTerminology();
+  const { allowsBookings } = useOperationsType();
   const activeBranch = useStore((state) => state.activeBranch);
+
+  useEffect(() => {
+    if (!allowsBookings) {
+      router.replace('/trips');
+    }
+  }, [allowsBookings, router]);
 
   const [branches, setBranches] = useState([]);
   const [customers, setCustomers] = useState([]);

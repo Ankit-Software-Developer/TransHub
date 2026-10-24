@@ -7,6 +7,7 @@ import Navbar from '../../../components/layout/Navbar';
 import LoadingState from '../../../components/ui/LoadingState';
 import { useTheme } from '../../../components/ThemeProvider';
 import { usePermissions } from '../../../hooks/usePermissions';
+import { useOperationsType } from '../../../hooks/useOperationsType';
 import api from '../../../services/api';
 import Modal from '../../../components/ui/Modal';
 import {
@@ -40,6 +41,7 @@ export default function BranchesPage() {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
   const { canCreateBranch, canEditBranch, canDeleteBranch, canViewBranch, isAdmin } = usePermissions();
+  const { allowsMultiBranchHubs, isFleetSupplier, isDirectCarrier } = useOperationsType();
 
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -238,7 +240,7 @@ export default function BranchesPage() {
       branch_name: branch.branch_name || '',
       branch_code: branch.branch_code || '',
       facility_type: facilityType,
-      is_hub: branch.is_hub ?? (facilityType === 'HUB' || facilityType === 'HEAD_OFFICE'),
+      is_hub: isHO ? false : (branch.is_hub ?? facilityType === 'HUB'),
       is_head_office: isHO,
       city: branch.city || '',
       state: branch.state || '',
@@ -329,7 +331,7 @@ export default function BranchesPage() {
       const payload = {
         ...formData,
         is_head_office: isHO,
-        is_hub: isHO ? true : formData.facility_type === 'HUB',
+        is_hub: isHO ? false : formData.facility_type === 'HUB',
       };
       if (editingBranch) {
         const res = await api.put(`/branches/${editingBranch.id}`, payload);
@@ -421,6 +423,51 @@ export default function BranchesPage() {
               <p className="text-xs text-slate-400">
                 You do not have permission to view Branches & Logistics Hubs. Please contact your organization administrator.
               </p>
+            </div>
+          </main>
+        </div>
+      </div>
+    );
+  }
+
+  if (!allowsMultiBranchHubs) {
+    return (
+      <div className={`flex min-h-screen transition-colors duration-300 ${
+        isDark ? 'bg-[#06080F] text-slate-100' : 'bg-[#F4F6FB] text-slate-900'
+      } font-sans`}>
+        <Sidebar />
+        <div className="flex-1 flex flex-col min-w-0">
+          <Navbar />
+          <main className="flex-1 flex items-center justify-center p-6">
+            <div className={`max-w-lg w-full p-8 rounded-3xl border text-center shadow-xl ${
+              isDark ? 'bg-[#0B1020] border-slate-800' : 'bg-white border-slate-200'
+            }`}>
+              <div className="w-16 h-16 rounded-2xl bg-indigo-500/15 text-indigo-500 mx-auto flex items-center justify-center mb-5 border border-indigo-500/25">
+                <Building2 className="w-8 h-8" />
+              </div>
+              <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 mb-3 inline-block">
+                Single Head Office HQ Mode
+              </span>
+              <h2 className="text-xl font-bold mb-2">Centralized Head Office Operations</h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed mb-6">
+                Your transport workspace is operating under <strong>{isFleetSupplier ? 'FTL • Fleet Supplier / Vendor Provider' : 'FTL • Direct Shipper Carrier'}</strong> mode. In this mode, all dispatches, vehicle placement slips, and driver billing operate exclusively through your centralized <strong>Head Office (HQ)</strong>. Multi-branch hubs are not required.
+              </p>
+              <div className="flex items-center justify-center gap-3">
+                <Link
+                  href="/dashboard"
+                  className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all shadow-md shadow-blue-600/30"
+                >
+                  Return to Dashboard
+                </Link>
+                <Link
+                  href="/settings"
+                  className={`px-5 py-2.5 rounded-xl border text-xs font-bold transition-all ${
+                    isDark ? 'border-slate-800 bg-slate-900 hover:bg-slate-800 text-slate-300' : 'border-slate-200 bg-white hover:bg-slate-100 text-slate-700'
+                  }`}
+                >
+                  Manage HQ Profile
+                </Link>
+              </div>
             </div>
           </main>
         </div>

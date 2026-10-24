@@ -58,7 +58,7 @@ const initMasterDatabase = async () => {
 
     // Auto-mark existing Head Office branches
     try {
-      await sequelize.query("UPDATE branches SET is_head_office = 1 WHERE (is_head_office IS NULL OR is_head_office = 0) AND (branch_code = 'BHQ' OR branch_code = 'HQ' OR branch_code LIKE '%HQ' OR LOWER(branch_name) LIKE '%head office%');");
+      await sequelize.query("UPDATE branches SET is_head_office = 1, is_hub = 0 WHERE (branch_code = 'BHQ' OR branch_code = 'HQ' OR branch_code LIKE '%HQ' OR LOWER(branch_name) LIKE '%head office%');");
     } catch (colErr) {
       // Ignored
     }

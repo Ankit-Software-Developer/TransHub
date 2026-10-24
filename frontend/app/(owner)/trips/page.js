@@ -2,6 +2,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import api from '../../../services/api';
 import Sidebar from '../../../components/layout/Sidebar';
 import Navbar from '../../../components/layout/Navbar';
@@ -54,9 +55,9 @@ import { useStore } from '../../../store/useStore';
 import { useOperationsType } from '../../../hooks/useOperationsType';
 
 /**
-/**
  * Enterprise Custom Popover Select for Modal Forms
  * Replaces native HTML <select> with modern, searchable, styled popovers
+ * Renders via React Portal directly into document.body so it NEVER gets clipped by modal overflow!
  */
 function ModalCustomSelect({
   value,
@@ -74,22 +75,59 @@ function ModalCustomSelect({
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [coords, setCoords] = useState({ top: 0, left: 0, width: 0, openUp: false });
   const dropdownRef = useRef(null);
+  const menuRef = useRef(null);
   const searchInputRef = useRef(null);
+
+  const updatePosition = () => {
+    if (dropdownRef.current) {
+      const rect = dropdownRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const spaceAbove = rect.top;
+      // If there's less than 240px below, but more space above, open upwards
+      const openUp = spaceBelow < 240 && spaceAbove > spaceBelow;
+
+      setCoords({
+        top: openUp ? undefined : rect.bottom + 6,
+        bottom: openUp ? window.innerHeight - rect.top + 6 : undefined,
+        left: Math.max(8, rect.left),
+        width: Math.min(rect.width, window.innerWidth - 16),
+        openUp,
+      });
+    }
+  };
 
   useEffect(() => {
     function handleClickOutside(e) {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(e.target) &&
+        menuRef.current &&
+        !menuRef.current.contains(e.target)
+      ) {
         setIsOpen(false);
       }
     }
     if (isOpen) {
+      updatePosition();
       document.addEventListener('mousedown', handleClickOutside);
       if (searchable && searchInputRef.current) {
         setTimeout(() => searchInputRef.current?.focus(), 60);
       }
+
+      const handleReposition = () => {
+        updatePosition();
+      };
+      window.addEventListener('resize', handleReposition);
+      window.addEventListener('scroll', handleReposition, true);
+
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+        window.removeEventListener('resize', handleReposition);
+        window.removeEventListener('scroll', handleReposition, true);
+      };
     }
-    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen, searchable]);
 
   useEffect(() => {
@@ -125,6 +163,9 @@ function ModalCustomSelect({
         type="button"
         onClick={(e) => {
           e.stopPropagation();
+          if (!isOpen) {
+            updatePosition();
+          }
           setIsOpen(!isOpen);
           setSearchQuery('');
         }}
@@ -176,14 +217,24 @@ function ModalCustomSelect({
         />
       </button>
 
-      {/* Floating Popover Menu */}
-      {isOpen && (
+      {/* Floating Popover Menu mounted to document.body via Portal to break free from any overflow-hidden / overflow-y-auto clipping */}
+      {isOpen && typeof document !== 'undefined' && createPortal(
         <div
-          className={`absolute left-0 right-0 mt-1.5 z-[100] rounded-2xl border shadow-2xl overflow-hidden backdrop-blur-md animate-in fade-in zoom-in-95 duration-100 ${
+          ref={menuRef}
+          style={{
+            position: 'fixed',
+            top: coords.top !== undefined ? `${coords.top}px` : 'auto',
+            bottom: coords.bottom !== undefined ? `${coords.bottom}px` : 'auto',
+            left: `${coords.left}px`,
+            width: `${coords.width}px`,
+            zIndex: 100005,
+          }}
+          className={`rounded-2xl border shadow-2xl overflow-hidden backdrop-blur-md animate-in fade-in zoom-in-95 duration-100 ${
             isDark
-              ? 'bg-[#0B1020] border-slate-700/80 text-slate-200 divide-slate-800/80 shadow-black/80 ring-1 ring-white/10'
-              : 'bg-white border-slate-200 text-slate-800 divide-slate-100 shadow-slate-900/20 ring-1 ring-black/5'
+              ? 'bg-[#0B1020] border-slate-700/80 text-slate-200 divide-slate-800/80 shadow-black/90 ring-1 ring-white/10'
+              : 'bg-white border-slate-200 text-slate-800 divide-slate-100 shadow-slate-900/25 ring-1 ring-black/5'
           }`}
+          onClick={(e) => e.stopPropagation()}
         >
           {/* Search Header if searchable */}
           {searchable && (
@@ -306,7 +357,8 @@ function ModalCustomSelect({
               </button>
             </div>
           )}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
@@ -320,7 +372,7 @@ export default function TripsPage() {
   const user = useStore((state) => state.user);
   const activeBranch = useStore((state) => state.activeBranch);
   const userBranchId = user?.branchId || user?.branch_id || user?.branch?.id || user?.assigned_branch_id || null;
-  const { isOnlyFTL, isOnlyPTL, isBoth } = useOperationsType();
+  const { isOnlyFTL, isOnlyPTL, isBoth, isFleetSupplier, isDirectCarrier, isCompleteFTL } = useOperationsType();
 
   const [trips, setTrips] = useState([]);
   const [totalRecords, setTotalRecords] = useState(0);
@@ -488,7 +540,7 @@ export default function TripsPage() {
   // Quick Advance & Expense Disbursal Modal State
   const [advExpModalOpen, setAdvExpModalOpen] = useState(false);
   const [advExpTrip, setAdvExpTrip] = useState(null);
-  const [advExpType, setAdvExpType] = useState('ADVANCE'); // 'ADVANCE' | 'EXPENSE'
+  const [advExpType, setAdvExpType] = useState('EXPENSE'); // 'EXPENSE' | 'ADVANCE'
   const [advAmount, setAdvAmount] = useState('');
   const [advMode, setAdvMode] = useState('CASH');
   const [advRemarks, setAdvRemarks] = useState('');
@@ -1347,7 +1399,7 @@ export default function TripsPage() {
     }
   };
 
-  const handleOpenAddAdvanceOrExp = (trip, defaultType = 'ADVANCE') => {
+  const handleOpenAddAdvanceOrExp = (trip, defaultType = 'EXPENSE') => {
     setAdvExpTrip(trip);
     setAdvExpType(defaultType);
     setAdvAmount('');
@@ -2401,8 +2453,8 @@ export default function TripsPage() {
                 </button>
               )}
 
-              {/* 2. FTL Dedicated Dispatch: Available for FTL Only (Direct Point-to-Point Truck Allocation) */}
-              {isOnlyFTL && (
+              {/* 2. FTL Dedicated Dispatch: Available strictly for FTL Full Service Enterprise (Hidden in FTL Vendor & FTL Direct Carrier) */}
+              {isCompleteFTL && !isFleetSupplier && !isDirectCarrier && (
                 <Link
                   href="/load-planning"
                   className="flex items-center space-x-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white px-3.5 py-2 rounded-xl text-xs font-bold shadow-md shadow-purple-500/20 transition-all active:scale-95 cursor-pointer shrink-0"
@@ -4346,18 +4398,6 @@ export default function TripsPage() {
                   }`}>
                     <button
                       type="button"
-                      onClick={() => setAdvExpType('ADVANCE')}
-                      className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
-                        advExpType === 'ADVANCE'
-                          ? (isDark ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-blue-600 shadow-sm')
-                          : (isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900')
-                      }`}
-                    >
-                      <Banknote className="w-3.5 h-3.5" />
-                      Disburse Driver Advance
-                    </button>
-                    <button
-                      type="button"
                       onClick={() => setAdvExpType('EXPENSE')}
                       className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
                         advExpType === 'EXPENSE'
@@ -4367,6 +4407,18 @@ export default function TripsPage() {
                     >
                       <Receipt className="w-3.5 h-3.5" />
                       Log Trip Expense (Fuel/Toll)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAdvExpType('ADVANCE')}
+                      className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                        advExpType === 'ADVANCE'
+                          ? (isDark ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-blue-600 shadow-sm')
+                          : (isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900')
+                      }`}
+                    >
+                      <Banknote className="w-3.5 h-3.5" />
+                      Disburse Driver Advance
                     </button>
                   </div>
                 </div>
@@ -5615,7 +5667,7 @@ export default function TripsPage() {
 
               {/* Wizard Content */}
               <form onSubmit={handleCreateDirectHire} className="flex flex-col flex-1 overflow-hidden">
-                <div className="p-6 space-y-4 overflow-y-auto min-h-[460px] pb-32 max-h-[calc(92vh-175px)]">
+                <div className="p-6 space-y-4 overflow-y-auto min-h-[360px] max-h-[calc(92vh-175px)]">
                   {directHireError && (
                     <div className="p-3 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs font-semibold flex items-center gap-2 animate-in fade-in">
                       <AlertTriangle className="w-4 h-4 shrink-0" />
@@ -5759,7 +5811,7 @@ export default function TripsPage() {
                               <input
                                 type="text"
                                 required
-                                placeholder="e.g. VRL Logistics / Sharma Roadways / Local Factory"
+                                placeholder="e.g. Associated Roadways / Regional Logistics / ABC Factory"
                                 value={directHireForm.hiring_party_name}
                                 onChange={(e) =>
                                   setDirectHireForm((prev) => ({ ...prev, hiring_party_name: e.target.value }))

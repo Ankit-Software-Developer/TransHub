@@ -10,6 +10,7 @@ router.use(authenticate, tenantResolver);
 router.get('/profile', organizationController.getOrganizationProfile);
 router.patch('/profile', organizationController.updateOrganizationProfile);
 router.put('/profile', organizationController.updateOrganizationProfile);
+router.post('/upgrade-plan', organizationController.upgradePlan);
 router.patch('/terminology', organizationController.updateTerminology);
 router.get('/branches', organizationController.listBranches);
 router.get('/docket-series', organizationController.getDocketSeries);

@@ -9,6 +9,7 @@ import { ShieldAlert, ArrowLeft } from 'lucide-react';
 import LoadingScreen from '../../components/ui/LoadingScreen';
 
 import api from '../../services/api';
+import SupportImpersonationBanner from '../../components/layout/SupportImpersonationBanner';
 
 export default function OwnerRouteGuardLayout({ children }) {
   const router = useRouter();
@@ -17,6 +18,7 @@ export default function OwnerRouteGuardLayout({ children }) {
   const { canAccessRoute } = usePermissions();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isChecking, setIsChecking] = useState(true);
+  const profileSyncedRef = React.useRef(false);
 
   useEffect(() => {
     const checkAuthentication = () => {
@@ -32,19 +34,45 @@ export default function OwnerRouteGuardLayout({ children }) {
         }
 
         const parsedUser = JSON.parse(storedUserStr);
-        if (!user) {
+        if (!useStore.getState().user) {
           setUser(parsedUser);
         }
 
         setIsAuthenticated(true);
 
-        // Fetch fresh organization profile to sync active document terminology
-        api.get('/organizations/profile').then((res) => {
-          if (res.data?.success && res.data.data?.document_terminology) {
-            const term = res.data.data.document_terminology;
-            setTerminology(term);
-          }
-        }).catch(() => {});
+        // Fetch fresh organization profile once to sync active document terminology and operations mode
+        if (!profileSyncedRef.current) {
+          profileSyncedRef.current = true;
+          api.get('/organizations/profile').then((res) => {
+            if (res.data?.success && res.data.data) {
+              const org = res.data.data;
+              if (org.document_terminology) {
+                setTerminology(org.document_terminology);
+              }
+              const tType = org.settings?.transporterType || org.settings?.transporter_type || 'FTL';
+              const plan = (org.settings?.registered_plan || 'BASIC').toUpperCase();
+              const defaultSub = plan === 'BASIC' ? 'FLEET_SUPPLIER' : 'COMPLETE_FTL';
+              const tSubType = org.settings?.transporterSubType || org.settings?.transporter_subtype || (tType === 'FTL' ? defaultSub : null);
+              if (tType) {
+                const currentUser = useStore.getState().user;
+                if (currentUser) {
+                  useStore.getState().setUser({
+                    ...currentUser,
+                    organization: org,
+                    transporterType: tType,
+                    transporterSubType: tSubType,
+                  });
+                }
+                useStore.getState().setTransporterType(tType, tSubType);
+                if (typeof window !== 'undefined') {
+                  window.dispatchEvent(new CustomEvent('transporter_mode_updated', {
+                    detail: { transporterType: tType, transporterSubType: tSubType }
+                  }));
+                }
+              }
+            }
+          }).catch(() => {});
+        }
       } catch (err) {
         localStorage.removeItem('transporter_access_token');
         localStorage.removeItem('transporter_refresh_token');
@@ -57,7 +85,7 @@ export default function OwnerRouteGuardLayout({ children }) {
     };
 
     checkAuthentication();
-  }, [pathname, router, setUser, user]);
+  }, [pathname, router, setUser]);
 
   if (isChecking || !isAuthenticated) {
     return (
@@ -94,5 +122,10 @@ export default function OwnerRouteGuardLayout({ children }) {
     );
   }
 
-  return <>{children}</>;
+  return (
+    <>
+      <SupportImpersonationBanner />
+      {children}
+    </>
+  );
 }

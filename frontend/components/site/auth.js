@@ -110,7 +110,12 @@ export function AuthShowcase({ eyebrow, title, accent, subtitle, chips, testimon
   );
 }
 
-export function AuthLayout({ header, showcase, children }) {
+export function AuthLayout({ header, showcase, children, formWidth = 'normal' }) {
+  const gridLayout =
+    formWidth === 'wide'
+      ? 'lg:grid-cols-[minmax(0,1fr)_minmax(460px,560px)] lg:gap-12 lg:py-5 xl:grid-cols-[minmax(0,1fr)_580px] 2xl:grid-cols-[minmax(0,1fr)_620px] xl:gap-16'
+      : 'lg:grid-cols-[minmax(0,1fr)_minmax(400px,480px)] lg:gap-12 lg:py-5 xl:grid-cols-[minmax(0,1fr)_500px] xl:gap-16';
+
   return (
     <div
       className="relative isolate flex min-h-[100dvh] flex-col bg-[#F9FBFD] text-[#0A1630] antialiased selection:bg-[#0564D1] selection:text-white lg:h-[100dvh] lg:overflow-hidden dark:bg-[#070C18] dark:text-slate-100"
@@ -141,7 +146,7 @@ export function AuthLayout({ header, showcase, children }) {
         {/* Full width: the form keeps a comfortable fixed width and the
             showcase takes all the remaining space. */}
         <div
-          className={`${CONTAINER} grid items-center gap-10 py-6 lg:grid-cols-[minmax(0,1fr)_minmax(400px,480px)] lg:gap-12 lg:py-5 xl:grid-cols-[minmax(0,1fr)_500px] xl:gap-16`}
+          className={`${CONTAINER} grid items-center gap-10 py-6 ${gridLayout}`}
         >
           <div className="hidden min-w-0 lg:block">
             <AuthShowcase {...showcase} />
@@ -159,9 +164,10 @@ export function AuthLayout({ header, showcase, children }) {
 
 /** Frosted-glass form card: translucent fill, a strong backdrop blur so the
  *  photo behind it turns into soft colour, a light edge and a top highlight. */
-export function AuthCard({ children }) {
+export function AuthCard({ children, className = '', maxWidth = 'default' }) {
+  const maxW = maxWidth === 'wide' ? 'max-w-[560px]' : 'max-w-[480px]';
   return (
-    <div className="relative mx-auto w-full max-w-[480px] overflow-hidden rounded-xl border border-white/70 bg-white/55 p-6 shadow-[0_30px_60px_-30px_rgba(10,35,80,0.6),inset_0_1px_0_rgba(255,255,255,0.8)] backdrop-blur-2xl backdrop-saturate-150 sm:px-7 lg:max-w-none dark:border-white/15 dark:bg-[#0D1729]/55 dark:shadow-[0_30px_60px_-30px_rgba(0,0,0,0.85),inset_0_1px_0_rgba(255,255,255,0.08)]">
+    <div className={`relative mx-auto w-full ${maxW} overflow-hidden rounded-xl border border-white/70 bg-white/55 p-6 shadow-[0_30px_60px_-30px_rgba(10,35,80,0.6),inset_0_1px_0_rgba(255,255,255,0.8)] backdrop-blur-2xl backdrop-saturate-150 sm:px-7 lg:max-w-none dark:border-white/15 dark:bg-[#0D1729]/55 dark:shadow-[0_30px_60px_-30px_rgba(0,0,0,0.85),inset_0_1px_0_rgba(255,255,255,0.08)] ${className}`}>
       {/* Glass sheen */}
       <div
         className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/60 via-white/10 to-white/0 dark:from-white/[0.08] dark:via-white/[0.02] dark:to-transparent"

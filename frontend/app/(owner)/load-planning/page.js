@@ -9,7 +9,7 @@ import Sidebar from '../../../components/layout/Sidebar';
 import Navbar from '../../../components/layout/Navbar';
 import { useTheme } from '../../../components/ThemeProvider';
 import { usePermissions } from '../../../hooks/usePermissions';
-import { useOperationsType } from '../../../hooks/useOperationsType';
+import { useOperationsType, isHeadOfficeBranch } from '../../../hooks/useOperationsType';
 import { useStore } from '../../../store/useStore';
 import BranchFilterDropdown from '../../../components/ui/BranchFilterDropdown';
 import api from '../../../services/api';
@@ -3283,8 +3283,8 @@ export default function LoadPlanningPage() {
                     >
                       {branches.map((b) => (
                         <option key={b.id} value={b.id} className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>
-                          [{b.branch_code || 'CODE'}] {b.branch_name} {b.is_hub ? '(Hub)' : ''} • {b.city}{b.pincode ? ` (${b.pincode})` : ''}
-                          {b.id === loginBranchId ? ' (Login Hub)' : ''}
+                          [{b.branch_code || 'CODE'}] {b.branch_name} {isHeadOfficeBranch(b) ? '(HQ)' : b.is_hub ? '(Hub)' : ''} • {b.city}{b.pincode ? ` (${b.pincode})` : ''}
+                          {b.id === loginBranchId ? (isHeadOfficeBranch(b) ? ' (Login HQ)' : ' (Login Hub)') : ''}
                         </option>
                       ))}
                     </select>
@@ -3325,7 +3325,7 @@ export default function LoadPlanningPage() {
                       </option>
                       {branches.filter((b) => b.id !== modalOriginBranchId).map((b) => (
                         <option key={b.id} value={b.id} className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>
-                          [{b.branch_code || 'CODE'}] {b.branch_name} {b.is_hub ? '(Hub)' : ''} • {b.city}{b.pincode ? ` (${b.pincode})` : ''}
+                          [{b.branch_code || 'CODE'}] {b.branch_name} {isHeadOfficeBranch(b) ? '(HQ)' : b.is_hub ? '(Hub)' : ''} • {b.city}{b.pincode ? ` (${b.pincode})` : ''}
                         </option>
                       ))}
                     </select>

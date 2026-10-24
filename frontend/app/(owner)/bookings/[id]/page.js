@@ -5,6 +5,7 @@ import React, { useState, useEffect, Suspense } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import api from '../../../../services/api';
 import { useTerminology } from '../../../../hooks/useTerminology';
+import { useOperationsType } from '../../../../hooks/useOperationsType';
 import Sidebar from '../../../../components/layout/Sidebar';
 import Navbar from '../../../../components/layout/Navbar';
 import Badge from '../../../../components/ui/Badge';
@@ -31,6 +32,7 @@ function ConsignmentDetailContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { term } = useTerminology();
+  const { allowsBookings } = useOperationsType();
 
   const [consignment, setConsignment] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -104,11 +106,11 @@ function ConsignmentDetailContent() {
       {/* Top Bar */}
       <div className="flex items-center justify-between mb-4">
         <button
-          onClick={() => router.push('/bookings')}
+          onClick={() => router.push(allowsBookings ? '/bookings' : '/trips')}
           className="flex items-center space-x-1 text-sm font-semibold text-slate-500 hover:text-slate-800 transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
-          <span>Back to {term}s</span>
+          <span>{allowsBookings ? `Back to ${term}s` : 'Back to Trips'}</span>
         </button>
 
         <button

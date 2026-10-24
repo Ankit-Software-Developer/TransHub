@@ -5,6 +5,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import api from '../../../services/api';
 import { useStore } from '../../../store/useStore';
 import { useTerminology } from '../../../hooks/useTerminology';
+import { useOperationsType } from '../../../hooks/useOperationsType';
 import { useTheme } from '../../../components/ThemeProvider';
 import Sidebar from '../../../components/layout/Sidebar';
 import Navbar from '../../../components/layout/Navbar';
@@ -19,6 +20,7 @@ import {
   Save,
   CheckCircle2,
   AlertCircle,
+  Info,
   Upload,
   Eye,
   EyeOff,
@@ -248,6 +250,7 @@ function VehicleLiveLocationCell({ latitude, longitude, lastLocationName, headin
 export default function SettingsPage() {
   const { user, setUser, terminology, setTerminology, setTransporterType } = useStore();
   const { term } = useTerminology();
+  const { allowsBookings, isFleetSupplier, isDirectCarrier, modeLongLabel } = useOperationsType();
   const { theme, toggleTheme } = useTheme();
   const isDark = theme === 'dark';
   const { isAdmin, canManageSettings, canManageRoles } = usePermissions();
@@ -259,6 +262,7 @@ export default function SettingsPage() {
 
   // Operations Mode State (FTL, PTL, BOTH)
   const [selectedTransporterType, setSelectedTransporterType] = useState('BOTH');
+  const [selectedTransporterSubType, setSelectedTransporterSubType] = useState('FLEET_SUPPLIER');
   const [isSavingTransporterType, setIsSavingTransporterType] = useState(false);
 
   // Tabs scroll & navigation management
@@ -308,38 +312,329 @@ export default function SettingsPage() {
     if (user?.transporterType) {
       setSelectedTransporterType(user.transporterType);
     }
-  }, [user?.transporterType]);
+    if (user?.transporterSubType) {
+      setSelectedTransporterSubType(user.transporterSubType);
+    }
+  }, [user?.transporterType, user?.transporterSubType]);
 
-  const handleSaveTransporterType = async (typeToSave) => {
+  // Plan Ranks & Mode Subscription Requirements
+  const PLAN_RANKS = useMemo(() => ({ BASIC: 1, PRO: 2, ENTERPRISE: 3 }), []);
+
+  // Current user subscription resolution
+  const sub = user?.subscription || (typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('transporter_subscription') || 'null') : null);
+  const rawPlanCode = (
+    sub?.planCode || 
+    sub?.plan_code || 
+    user?.planCode || 
+    user?.subscription?.planCode || 
+    user?.organization?.settings?.registered_plan || 
+    'BASIC'
+  ).toUpperCase();
+  
+  const currentPlanCode = rawPlanCode === 'TRIAL' 
+    ? ((user?.organization?.settings?.registered_plan || user?.registered_plan || 'BASIC').toUpperCase())
+    : (rawPlanCode.includes('ENTERPRISE') ? 'ENTERPRISE' : rawPlanCode.includes('PRO') ? 'PRO' : 'BASIC');
+  
+  const currentRank = PLAN_RANKS[currentPlanCode] || 1;
+
+  const getModeRequirement = useCallback((type, subType) => {
+    if (type === 'BOTH') {
+      return { 
+        plan: 'ENTERPRISE', 
+        rank: 3, 
+        priceMonthly: 2000,
+        priceAnnual: 19200,
+        priceStr: '₹2,000/mo', 
+        name: 'Enterprise Plan', 
+        label: 'Both (FTL + PTL) Complete Suite',
+        features: [
+          'Full-spectrum operations: Direct point-to-point FTL + Consolidated PTL manifests',
+          'Consignment Hub Manifests & 3D Vehicle Load Planning',
+          'Unlimited branches & unlimited team members',
+          '999,999 LR dockets / month with instant e-way bill generation',
+          'Dedicated account manager & 24/7 priority customer support',
+        ]
+      };
+    }
+    if (type === 'PTL') {
+      return { 
+        plan: 'PRO', 
+        rank: 2, 
+        priceMonthly: 1000,
+        priceAnnual: 9600,
+        priceStr: '₹1,000/mo', 
+        name: 'Pro Plan', 
+        label: 'Part Truckload (PTL / Sundry)',
+        features: [
+          'Consolidated hub manifests, parcel sorting & sundry operations',
+          '3D truck load planning & branch inward unload sheets',
+          'Up to 5 company branches & 25 team members',
+          '10,000 LR dockets / month with automated customer tracking',
+          'POD digital clearance & multi-stop manifest settlement',
+        ]
+      };
+    }
+    if (type === 'FTL') {
+      if (subType === 'COMPLETE_FTL') {
+        return { 
+          plan: 'PRO', 
+          rank: 2, 
+          priceMonthly: 1000,
+          priceAnnual: 9600,
+          priceStr: '₹1,000/mo', 
+          name: 'Pro Plan', 
+          label: 'Full-Service Enterprise FTL',
+          features: [
+            'Dual fleet management: Own fleet + Hired market vehicles',
+            'Full truckload dockets with package line items',
+            'Lorry Hire Memo (LHR) & trip advance slips',
+            'Up to 5 company branches & 25 team members',
+            'Vendor margin settlement & corporate customer billing',
+          ]
+        };
+      }
+      return { 
+        plan: 'BASIC', 
+        rank: 1, 
+        priceMonthly: 500,
+        priceAnnual: 4800,
+        priceStr: '₹500/mo', 
+        name: 'Basic Plan', 
+        label: subType === 'DIRECT_CARRIER' ? 'Direct Shipper Carrier' : 'Fleet Supplier / Vendor',
+        features: [
+          'Point-to-point dedicated vehicle trips',
+          'Driver advances & trip expense tracking',
+          'Single branch & up to 5 team members',
+          '1,000 LR dockets / month',
+        ]
+      };
+    }
+    return { 
+      plan: 'BASIC', 
+      rank: 1, 
+      priceMonthly: 500, 
+      priceAnnual: 4800, 
+      priceStr: '₹500/mo', 
+      name: 'Basic Plan', 
+      label: 'Basic FTL', 
+      features: [] 
+    };
+  }, []);
+
+  // Upgrade Plan Modal State
+  const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
+  const [upgradeTarget, setUpgradeTarget] = useState(null);
+  const [isUpgradingPlan, setIsUpgradingPlan] = useState(false);
+  const [upgradeCycle, setUpgradeCycle] = useState('MONTHLY');
+
+  const handleSelectTransporterType = (type) => {
+    const targetSubType = type === 'FTL' ? selectedTransporterSubType : null;
+    const req = getModeRequirement(type, targetSubType);
+    if (req.rank > currentRank) {
+      setUpgradeTarget({ type, subType: targetSubType, req });
+      setUpgradeModalOpen(true);
+      return;
+    }
+    setSelectedTransporterType(type);
+  };
+
+  const handleSelectTransporterSubType = (subType) => {
+    const req = getModeRequirement('FTL', subType);
+    if (req.rank > currentRank) {
+      setUpgradeTarget({ type: 'FTL', subType, req });
+      setUpgradeModalOpen(true);
+      return;
+    }
+    setSelectedTransporterSubType(subType);
+  };
+
+  const handleSaveTransporterType = async (typeToSave, subTypeToSave) => {
     const targetType = typeToSave || selectedTransporterType;
+    const targetSubType = subTypeToSave || selectedTransporterSubType;
+
+    const req = getModeRequirement(targetType, targetSubType);
+    if (req.rank > currentRank) {
+      setUpgradeTarget({ type: targetType, subType: targetSubType, req });
+      setUpgradeModalOpen(true);
+      return;
+    }
+
     setIsSavingTransporterType(true);
-    setErrorMsg('');
-    setSuccessMsg('');
     try {
-      const res = await api.patch('/organizations/profile', {
+      const payload = {
         transporterType: targetType,
-      });
+      };
+      if (targetType === 'FTL') {
+        payload.transporterSubType = targetSubType;
+      }
+      const res = await api.patch('/organizations/profile', payload);
       if (res.data?.success) {
         setSelectedTransporterType(targetType);
-        if (setTransporterType) setTransporterType(targetType);
+        if (targetType === 'FTL') {
+          setSelectedTransporterSubType(targetSubType);
+        }
+        const activeSubType = targetType === 'FTL' ? targetSubType : null;
+        if (setTransporterType) setTransporterType(targetType, activeSubType);
+
+        // Reactively update user in store and localStorage
+        if (user) {
+          const updatedUser = {
+            ...user,
+            transporterType: targetType,
+            transporter_type: targetType,
+            transporterSubType: activeSubType,
+            transporter_sub_type: activeSubType,
+            organization: user.organization ? {
+              ...user.organization,
+              settings: {
+                ...(user.organization.settings || {}),
+                transporterType: targetType,
+                transporter_type: targetType,
+                transporterSubType: activeSubType,
+                transporter_subtype: activeSubType,
+              },
+            } : user.organization,
+          };
+          setUser(updatedUser);
+        }
+
         try {
           const stored = localStorage.getItem('transporter_user');
           if (stored) {
             const parsed = JSON.parse(stored);
             parsed.transporterType = targetType;
+            parsed.transporterSubType = activeSubType;
+            if (parsed.organization?.settings) {
+              parsed.organization.settings.transporterType = targetType;
+              parsed.organization.settings.transporterSubType = activeSubType;
+            }
             localStorage.setItem('transporter_user', JSON.stringify(parsed));
           }
         } catch (e) {}
 
-        const label = targetType === 'FTL' ? 'Full Truckload (FTL)' : targetType === 'PTL' ? 'Part Truckload (PTL)' : 'Hybrid (FTL + PTL)';
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('transporter_mode_updated', {
+            detail: { transporterType: targetType, transporterSubType: activeSubType }
+          }));
+        }
+
+        const subLabel = targetSubType === 'FLEET_SUPPLIER'
+          ? ' • Fleet Supplier / Vendor'
+          : targetSubType === 'DIRECT_CARRIER'
+          ? ' • Direct Shipper Carrier'
+          : ' • Full-Service Enterprise Carrier';
+        const label = targetType === 'FTL' ? `Full Truckload (FTL${subLabel})` : targetType === 'PTL' ? 'Part Truckload (PTL)' : 'Hybrid (FTL + PTL)';
         triggerSuccess(`Operations Mode updated to ${label}! Navigation and workflows have updated automatically.`);
       } else {
         triggerError(res.data?.message || 'Failed to update operations mode.');
       }
     } catch (err) {
-      triggerError(err.response?.data?.message || 'Failed to update operations mode.');
+      const errorData = err.response?.data?.data;
+      if (err.response?.status === 403 && errorData?.upgradeRequired) {
+        setUpgradeTarget({
+          type: targetType,
+          subType: targetSubType,
+          req: {
+            plan: errorData.requiredPlan,
+            rank: errorData.requiredRank,
+            priceStr: errorData.requiredPrice,
+            priceMonthly: errorData.requiredPlan === 'ENTERPRISE' ? 2000 : 1000,
+            priceAnnual: errorData.requiredPlan === 'ENTERPRISE' ? 19200 : 9600,
+            name: `${errorData.requiredPlan} Plan`,
+            label: errorData.targetMode,
+            features: getModeRequirement(targetType, targetSubType).features,
+          },
+        });
+        setUpgradeModalOpen(true);
+      } else {
+        triggerError(err.response?.data?.message || 'Failed to update operations mode.');
+      }
     } finally {
       setIsSavingTransporterType(false);
+    }
+  };
+
+  const handleConfirmPlanUpgrade = async () => {
+    if (!upgradeTarget) return;
+    setIsUpgradingPlan(true);
+    try {
+      const res = await api.post('/organizations/upgrade-plan', {
+        plan_code: upgradeTarget.req.plan,
+        billing_cycle: upgradeCycle,
+        transporterType: upgradeTarget.type,
+        transporterSubType: upgradeTarget.subType,
+      });
+
+      if (res.data?.success) {
+        const data = res.data.data;
+        const newType = data.transporterType || upgradeTarget.type;
+        const newSubType = newType === 'FTL' ? (data.transporterSubType || upgradeTarget.subType) : null;
+
+        setSelectedTransporterType(newType);
+        if (newType === 'FTL' && newSubType) {
+          setSelectedTransporterSubType(newSubType);
+        }
+        if (setTransporterType) {
+          setTransporterType(newType, newSubType);
+        }
+
+        // Update user state & localStorage
+        if (user) {
+          const updatedUser = {
+            ...user,
+            transporterType: newType,
+            transporter_type: newType,
+            transporterSubType: newSubType,
+            transporter_sub_type: newSubType,
+            planCode: data.subscription?.planCode || upgradeTarget.req.plan,
+            subscription: {
+              ...(user.subscription || {}),
+              planCode: data.subscription?.planCode || upgradeTarget.req.plan,
+              planName: data.subscription?.planName || upgradeTarget.req.name,
+              amount: data.subscription?.amount,
+              billingCycle: data.subscription?.billingCycle || upgradeCycle,
+              status: data.subscription?.status || 'ACTIVE',
+            },
+            organization: user.organization ? {
+              ...user.organization,
+              settings: {
+                ...(user.organization.settings || {}),
+                registered_plan: data.subscription?.planCode || upgradeTarget.req.plan,
+                transporterType: newType,
+                transporter_type: newType,
+                transporterSubType: newSubType,
+                transporter_subtype: newSubType,
+              },
+            } : user.organization,
+          };
+          setUser(updatedUser);
+          try {
+            localStorage.setItem('transporter_user', JSON.stringify(updatedUser));
+            if (data.subscription) {
+              localStorage.setItem('transporter_subscription', JSON.stringify(data.subscription));
+            }
+          } catch (e) {}
+        }
+
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('transporter_mode_updated', {
+            detail: {
+              transporterType: newType,
+              transporterSubType: newSubType,
+              planCode: data.subscription?.planCode || upgradeTarget.req.plan,
+            }
+          }));
+        }
+
+        setUpgradeModalOpen(false);
+        triggerSuccess(`🎉 Successfully upgraded to ${upgradeTarget.req.name}! Operations mode switched to ${upgradeTarget.req.label}.`);
+      } else {
+        triggerError(res.data?.message || 'Failed to upgrade plan.');
+      }
+    } catch (err) {
+      triggerError(err.response?.data?.message || 'Plan upgrade failed. Please contact support.');
+    } finally {
+      setIsUpgradingPlan(false);
     }
   };
 
@@ -1745,7 +2040,7 @@ export default function SettingsPage() {
                 }`}>
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-5 border-b border-slate-200 dark:border-slate-800 mb-6 gap-3">
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <Route className="w-5 h-5 text-cyan-500" />
                         <h2 className="text-base font-bold">Transport Operations Mode</h2>
                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase border ${
@@ -1755,18 +2050,27 @@ export default function SettingsPage() {
                             ? 'bg-amber-500/15 text-amber-600 dark:text-amber-300 border-amber-500/30'
                             : 'bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border-cyan-500/30'
                         }`}>
-                          Current: {selectedTransporterType === 'FTL' ? 'FTL Dedicated' : selectedTransporterType === 'PTL' ? 'PTL Parcel Hub' : 'Hybrid FTL + PTL'}
+                          Current: {selectedTransporterType === 'FTL'
+                            ? (selectedTransporterSubType === 'FLEET_SUPPLIER'
+                                ? 'FTL • Fleet Supplier / Vendor'
+                                : selectedTransporterSubType === 'DIRECT_CARRIER'
+                                ? 'FTL • Direct Shipper Carrier'
+                                : 'FTL • Full-Service Enterprise Carrier')
+                            : selectedTransporterType === 'PTL' ? 'PTL Parcel Hub' : 'Hybrid FTL + PTL'}
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase border bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30">
+                          Active Plan: {currentPlanCode} Tier ({currentRank === 3 ? '₹2,000/mo' : currentRank === 2 ? '₹1,000/mo' : '₹500/mo'})
                         </span>
                       </div>
                       <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                        Select whether your company handles dedicated point-to-point Full Truckloads (FTL), consolidated hub Part Truckloads (PTL), or both. Workflows and sidebar menus automatically adapt.
+                        Select whether your company handles dedicated point-to-point Full Truckloads (FTL), consolidated hub Part Truckloads (PTL), or both. Upgraded plans unlock higher operational modes.
                       </p>
                     </div>
 
                     <button
                       type="button"
                       disabled={isSavingTransporterType}
-                      onClick={() => handleSaveTransporterType(selectedTransporterType)}
+                      onClick={() => handleSaveTransporterType(selectedTransporterType, selectedTransporterSubType)}
                       className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-600/30 transition-all cursor-pointer disabled:opacity-50 shrink-0 self-start sm:self-auto"
                     >
                       {isSavingTransporterType ? (
@@ -1787,17 +2091,17 @@ export default function SettingsPage() {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                     {/* FTL Card */}
                     <div
-                      onClick={() => setSelectedTransporterType('FTL')}
+                      onClick={() => handleSelectTransporterType('FTL')}
                       className={`relative p-5 rounded-2xl border-2 transition-all cursor-pointer ${
                         selectedTransporterType === 'FTL'
-                          ? 'border-purple-500 bg-purple-500/10 shadow-lg shadow-purple-500/10'
+                          ? 'border-purple-500 bg-purple-500/10 shadow-lg shadow-purple-500/10 ring-2 ring-purple-500/20'
                           : isDark
                           ? 'border-slate-800 bg-slate-900/40 hover:border-slate-700'
                           : 'border-slate-200 bg-slate-50/60 hover:border-slate-300'
                       }`}
                     >
                       {selectedTransporterType === 'FTL' && (
-                        <div className="absolute top-3 right-3 w-5 h-5 rounded-full bg-purple-500 text-white flex items-center justify-center">
+                        <div className="absolute top-3 right-3 w-5 h-5 rounded-full bg-purple-500 text-white flex items-center justify-center shadow-xs">
                           <Check className="w-3 h-3 stroke-[3]" />
                         </div>
                       )}
@@ -1828,24 +2132,39 @@ export default function SettingsPage() {
                           <span>Hides Load & Unload Planning</span>
                         </div>
                       </div>
+
+                      <div className="mt-3.5 pt-2.5 border-t border-slate-200/60 dark:border-slate-800 flex items-center justify-between text-[11px]">
+                        <span className="font-bold text-slate-500 dark:text-slate-400">From ₹500/mo</span>
+                        <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+                          Basic Tier Included
+                        </span>
+                      </div>
                     </div>
 
                     {/* PTL Card */}
                     <div
-                      onClick={() => setSelectedTransporterType('PTL')}
+                      onClick={() => handleSelectTransporterType('PTL')}
                       className={`relative p-5 rounded-2xl border-2 transition-all cursor-pointer ${
                         selectedTransporterType === 'PTL'
-                          ? 'border-amber-500 bg-amber-500/10 shadow-lg shadow-amber-500/10'
+                          ? 'border-amber-500 bg-amber-500/10 shadow-lg shadow-amber-500/10 ring-2 ring-amber-500/20'
                           : isDark
                           ? 'border-slate-800 bg-slate-900/40 hover:border-slate-700'
                           : 'border-slate-200 bg-slate-50/60 hover:border-slate-300'
-                      }`}
+                      } ${currentRank < 2 ? 'hover:border-amber-500/60' : ''}`}
                     >
                       {selectedTransporterType === 'PTL' && (
-                        <div className="absolute top-3 right-3 w-5 h-5 rounded-full bg-amber-500 text-white flex items-center justify-center">
+                        <div className="absolute top-3 right-3 w-5 h-5 rounded-full bg-amber-500 text-white flex items-center justify-center shadow-xs">
                           <Check className="w-3 h-3 stroke-[3]" />
                         </div>
                       )}
+
+                      {currentRank < 2 && (
+                        <div className="absolute top-3 right-3 flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40">
+                          <Lock className="w-3 h-3 text-amber-500" />
+                          <span>Pro Required</span>
+                        </div>
+                      )}
+
                       <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center mb-3">
                         <Boxes className="w-5 h-5" />
                       </div>
@@ -1873,24 +2192,45 @@ export default function SettingsPage() {
                           <span>Multi-Consignment Hub Manifests</span>
                         </div>
                       </div>
+
+                      <div className="mt-3.5 pt-2.5 border-t border-slate-200/60 dark:border-slate-800 flex items-center justify-between text-[11px]">
+                        <span className="font-bold text-amber-600 dark:text-amber-400">₹1,000/mo (Pro Plan)</span>
+                        {currentRank < 2 ? (
+                          <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase px-2 py-0.5 rounded-lg bg-amber-500 text-white shadow-xs">
+                            <Crown className="w-3 h-3" /> Upgrade
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+                            Unlocked
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     {/* BOTH Card */}
                     <div
-                      onClick={() => setSelectedTransporterType('BOTH')}
+                      onClick={() => handleSelectTransporterType('BOTH')}
                       className={`relative p-5 rounded-2xl border-2 transition-all cursor-pointer ${
                         selectedTransporterType === 'BOTH'
-                          ? 'border-cyan-500 bg-cyan-500/10 shadow-lg shadow-cyan-500/10'
+                          ? 'border-cyan-500 bg-cyan-500/10 shadow-lg shadow-cyan-500/10 ring-2 ring-cyan-500/20'
                           : isDark
                           ? 'border-slate-800 bg-slate-900/40 hover:border-slate-700'
                           : 'border-slate-200 bg-slate-50/60 hover:border-slate-300'
-                      }`}
+                      } ${currentRank < 3 ? 'hover:border-cyan-500/60' : ''}`}
                     >
                       {selectedTransporterType === 'BOTH' && (
-                        <div className="absolute top-3 right-3 w-5 h-5 rounded-full bg-cyan-500 text-white flex items-center justify-center">
+                        <div className="absolute top-3 right-3 w-5 h-5 rounded-full bg-cyan-500 text-white flex items-center justify-center shadow-xs">
                           <Check className="w-3 h-3 stroke-[3]" />
                         </div>
                       )}
+
+                      {currentRank < 3 && (
+                        <div className="absolute top-3 right-3 flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 border border-cyan-500/40">
+                          <Lock className="w-3 h-3 text-cyan-500" />
+                          <span>Enterprise Required</span>
+                        </div>
+                      )}
+
                       <div className="w-10 h-10 rounded-xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center mb-3">
                         <Zap className="w-5 h-5" />
                       </div>
@@ -1918,8 +2258,262 @@ export default function SettingsPage() {
                           <span>Flexible Booking Type Switcher</span>
                         </div>
                       </div>
+
+                      <div className="mt-3.5 pt-2.5 border-t border-slate-200/60 dark:border-slate-800 flex items-center justify-between text-[11px]">
+                        <span className="font-bold text-cyan-600 dark:text-cyan-400">₹2,000/mo (Enterprise)</span>
+                        {currentRank < 3 ? (
+                          <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase px-2 py-0.5 rounded-lg bg-cyan-600 text-white shadow-xs">
+                            <Crown className="w-3 h-3" /> Upgrade
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+                            Unlocked
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
+
+                  {/* FTL Sub-Category Selector (Visible when FTL is active) */}
+                  {selectedTransporterType === 'FTL' && (
+                    <div className={`p-5 sm:p-6 rounded-2xl border mb-6 transition-all ${
+                      isDark ? 'bg-purple-950/20 border-purple-800/40' : 'bg-purple-50/70 border-purple-200'
+                    }`}>
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3.5 border-b border-purple-200/60 dark:border-purple-800/60 mb-4 gap-2">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="w-2.5 h-2.5 rounded-full bg-purple-500 animate-pulse" />
+                            <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider">
+                              FTL Operating Sub-Category
+                            </h3>
+                          </div>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                            Select how your vehicles are deployed — whether providing vehicles to other transporters as a vendor or serving direct corporate shippers.
+                          </p>
+                        </div>
+                        <span className="text-[10px] font-extrabold px-2.5 py-1 rounded-full bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-500/30 self-start sm:self-auto uppercase">
+                          {selectedTransporterSubType === 'FLEET_SUPPLIER'
+                            ? 'Mode: Fleet Supplier / Vendor'
+                            : selectedTransporterSubType === 'DIRECT_CARRIER'
+                            ? 'Mode: Direct Shipper Carrier'
+                            : 'Mode: Full-Service Enterprise FTL'}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                        {/* Sub-Category 1: Fleet Supplier / Vendor Provider */}
+                        <div
+                          onClick={() => handleSelectTransporterSubType('FLEET_SUPPLIER')}
+                          className={`relative p-5 rounded-2xl border-2 transition-all cursor-pointer ${
+                            selectedTransporterSubType === 'FLEET_SUPPLIER'
+                              ? 'border-purple-500 bg-purple-500/15 shadow-lg shadow-purple-500/15 ring-2 ring-purple-500/20'
+                              : isDark
+                              ? 'border-slate-800 bg-slate-900/60 hover:border-slate-700'
+                              : 'border-slate-200 bg-white hover:border-slate-300'
+                          }`}
+                        >
+                          {selectedTransporterSubType === 'FLEET_SUPPLIER' && (
+                            <div className="absolute top-3.5 right-3.5 w-5 h-5 rounded-full bg-purple-500 text-white flex items-center justify-center shadow-xs">
+                              <Check className="w-3 h-3 stroke-[3]" />
+                            </div>
+                          )}
+
+                          <div className="flex items-start gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center shrink-0 mt-0.5">
+                              <Users className="w-5 h-5" />
+                            </div>
+                            <div className="min-w-0 pr-6">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <h4 className="font-bold text-sm text-slate-900 dark:text-white">
+                                  Fleet Supplier / Vendor
+                                </h4>
+                                <span className="px-1.5 py-0.2 rounded text-[9px] font-black uppercase bg-purple-500/25 text-purple-700 dark:text-purple-300">
+                                  गाड़ी सप्लायर
+                                </span>
+                              </div>
+                              <p className="text-[11px] font-bold text-purple-600 dark:text-purple-400 mt-1">
+                                Client: Other Transport Companies, Fleets & Logistics Aggregators
+                              </p>
+                              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">
+                                Supplying owned/attached fleet on hire/trip contract to principal transporters.
+                              </p>
+
+                              <div className="mt-3.5 pt-3 border-t border-slate-200/60 dark:border-slate-800 space-y-1.5 text-[11px]">
+                                <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                                  <Check className="w-3.5 h-3.5 shrink-0" />
+                                  <span>Vehicle hire & placement slips</span>
+                                </div>
+                                <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                                  <Check className="w-3.5 h-3.5 shrink-0" />
+                                  <span>Driver advances (Diesel + Fastag + Cash)</span>
+                                </div>
+                                <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                                  <Check className="w-3.5 h-3.5 shrink-0" />
+                                  <span>Vendor freight billing to hiring transporter</span>
+                                </div>
+                                <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                                  <Check className="w-3.5 h-3.5 shrink-0" />
+                                  <span>POD clearance with hiring transporter</span>
+                                </div>
+                              </div>
+
+                              <div className="mt-3 pt-2.5 border-t border-slate-200/60 dark:border-slate-800 flex items-center justify-between text-[11px]">
+                                <span className="font-bold text-purple-600 dark:text-purple-400">₹500/mo</span>
+                                <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+                                  Basic Tier
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Sub-Category 2: Direct Shipper Carrier */}
+                        <div
+                          onClick={() => handleSelectTransporterSubType('DIRECT_CARRIER')}
+                          className={`relative p-5 rounded-2xl border-2 transition-all cursor-pointer ${
+                            selectedTransporterSubType === 'DIRECT_CARRIER'
+                              ? 'border-indigo-500 bg-indigo-500/15 shadow-lg shadow-indigo-500/15 ring-2 ring-indigo-500/20'
+                              : isDark
+                              ? 'border-slate-800 bg-slate-900/60 hover:border-slate-700'
+                              : 'border-slate-200 bg-white hover:border-slate-300'
+                          }`}
+                        >
+                          {selectedTransporterSubType === 'DIRECT_CARRIER' && (
+                            <div className="absolute top-3.5 right-3.5 w-5 h-5 rounded-full bg-indigo-500 text-white flex items-center justify-center shadow-xs">
+                              <Check className="w-3 h-3 stroke-[3]" />
+                            </div>
+                          )}
+
+                          <div className="flex items-start gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center shrink-0 mt-0.5">
+                              <Building2 className="w-5 h-5" />
+                            </div>
+                            <div className="min-w-0 pr-6">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <h4 className="font-bold text-sm text-slate-900 dark:text-white">
+                                  Direct Shipper Carrier
+                                </h4>
+                                <span className="px-1.5 py-0.2 rounded text-[9px] font-black uppercase bg-indigo-500/25 text-indigo-700 dark:text-indigo-300">
+                                  डायरेक्ट पार्टी लोडिंग
+                                </span>
+                              </div>
+                              <p className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 mt-1">
+                                Client: Direct Manufacturers, Factories, Corporate Traders
+                              </p>
+                              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">
+                                Booking freight directly from factories with direct consignor-to-consignee bilties.
+                              </p>
+
+                              <div className="mt-3.5 pt-3 border-t border-slate-200/60 dark:border-slate-800 space-y-1.5 text-[11px]">
+                                <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                                  <Check className="w-3.5 h-3.5 shrink-0" />
+                                  <span>Direct Consignor-to-Consignee Bilties (LR)</span>
+                                </div>
+                                <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                                  <Check className="w-3.5 h-3.5 shrink-0" />
+                                  <span>Customer rate contracts per ton / trip</span>
+                                </div>
+                                <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                                  <Check className="w-3.5 h-3.5 shrink-0" />
+                                  <span>E-Way bill & destination factory delivery</span>
+                                </div>
+                                <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                                  <Check className="w-3.5 h-3.5 shrink-0" />
+                                  <span>Dedicated point-to-point dispatch</span>
+                                </div>
+                              </div>
+
+                              <div className="mt-3 pt-2.5 border-t border-slate-200/60 dark:border-slate-800 flex items-center justify-between text-[11px]">
+                                <span className="font-bold text-indigo-600 dark:text-indigo-400">₹500/mo</span>
+                                <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+                                  Basic Tier
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Sub-Category 3: Full-Service Enterprise FTL Carrier */}
+                        <div
+                          onClick={() => handleSelectTransporterSubType('COMPLETE_FTL')}
+                          className={`relative p-5 rounded-2xl border-2 transition-all cursor-pointer ${
+                            selectedTransporterSubType === 'COMPLETE_FTL'
+                              ? 'border-cyan-500 bg-cyan-500/15 shadow-lg shadow-cyan-500/15 ring-2 ring-cyan-500/20'
+                              : isDark
+                              ? 'border-slate-800 bg-slate-900/60 hover:border-slate-700'
+                              : 'border-slate-200 bg-white hover:border-slate-300'
+                          } ${currentRank < 2 ? 'hover:border-cyan-500/60' : ''}`}
+                        >
+                          {selectedTransporterSubType === 'COMPLETE_FTL' && (
+                            <div className="absolute top-3.5 right-3.5 w-5 h-5 rounded-full bg-cyan-500 text-white flex items-center justify-center shadow-xs">
+                              <Check className="w-3 h-3 stroke-[3]" />
+                            </div>
+                          )}
+
+                          {currentRank < 2 && (
+                            <div className="absolute top-3.5 right-3.5 flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 border border-cyan-500/40">
+                              <Lock className="w-3 h-3 text-cyan-500" />
+                              <span>Pro Required</span>
+                            </div>
+                          )}
+
+                          <div className="flex items-start gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center shrink-0 mt-0.5">
+                              <Compass className="w-5 h-5" />
+                            </div>
+                            <div className="min-w-0 pr-6">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <h4 className="font-bold text-sm text-slate-900 dark:text-white">
+                                  Full-Service Enterprise FTL
+                                </h4>
+                                <span className="px-1.5 py-0.2 rounded text-[9px] font-black uppercase bg-cyan-500/25 text-cyan-700 dark:text-cyan-300">
+                                  Dockets + Market Fleet
+                                </span>
+                              </div>
+                              <p className="text-[11px] font-bold text-cyan-600 dark:text-cyan-400 mt-1">
+                                Client: Corporate Shippers + Market Hired Trucks
+                              </p>
+                              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">
+                                Complete FTL suite: Customer dockets with packages, dispatch via own or hired trucks.
+                              </p>
+
+                              <div className="mt-3.5 pt-3 border-t border-slate-200/60 dark:border-slate-800 space-y-1.5 text-[11px]">
+                                <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                                  <Check className="w-3.5 h-3.5 shrink-0" />
+                                  <span>Customer full truckload dockets with package details</span>
+                                </div>
+                                <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                                  <Check className="w-3.5 h-3.5 shrink-0" />
+                                  <span>Dual Fleet: Own Fleet + Hired Market Trucks</span>
+                                </div>
+                                <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                                  <Check className="w-3.5 h-3.5 shrink-0" />
+                                  <span>Lorry Hire Memo (LHR) & trip advance slips</span>
+                                </div>
+                                <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                                  <Check className="w-3.5 h-3.5 shrink-0" />
+                                  <span>Customer Invoicing + Vendor Hire margin settlement</span>
+                                </div>
+                              </div>
+
+                              <div className="mt-3 pt-2.5 border-t border-slate-200/60 dark:border-slate-800 flex items-center justify-between text-[11px]">
+                                <span className="font-bold text-cyan-600 dark:text-cyan-400">₹1,000/mo (Pro Plan)</span>
+                                {currentRank < 2 ? (
+                                  <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase px-2 py-0.5 rounded-lg bg-cyan-600 text-white shadow-xs">
+                                    <Crown className="w-3 h-3" /> Upgrade
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+                                    Unlocked
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Operational impact explanation box */}
                   <div className={`p-4 rounded-2xl border text-xs leading-relaxed ${
@@ -1930,9 +2524,19 @@ export default function SettingsPage() {
                       <span>How this affects your team and platform navigation:</span>
                     </div>
                     {selectedTransporterType === 'FTL' ? (
-                      <p>
-                        When set to <strong>Full Truckload (FTL)</strong>, the navigation menu hides parcel consolidation features like <em>Load Planning</em> and <em>Unload Planning</em>. Booking forms will default to dedicated full truckloads, keeping workflows straightforward for direct freight dispatch.
-                      </p>
+                      selectedTransporterSubType === 'FLEET_SUPPLIER' ? (
+                        <p>
+                          Configured for <strong>FTL • Fleet Supplier / Vendor Provider</strong>: Centralized single Head Office (HQ) operations. <em>Branches & Hubs</em> and <em>Load/Unload Planning</em> are hidden to keep your workflow streamlined on vehicle placement slips, driver advances (diesel + Fastag + cash), vendor billing to hiring transporters, and POD clearance.
+                        </p>
+                      ) : selectedTransporterSubType === 'DIRECT_CARRIER' ? (
+                        <p>
+                          Configured for <strong>FTL • Direct Shipper Carrier</strong>: Centralized single Head Office (HQ) operations. <em>Branches & Hubs</em> and <em>Load/Unload Planning</em> are hidden. Operations center around direct corporate customer bookings, consignor-to-consignee bilties (LR), rate contracts per ton/trip, and direct customer invoice billing.
+                        </p>
+                      ) : (
+                        <p>
+                          Configured for <strong>FTL • Full-Service Enterprise Carrier</strong>: Complete full-truckload freight brokerage and carrier suite. Enables multi-branch & hub operations, full-truck customer consignments with formal LR dockets, and dispatch via own vehicles or hired market trucks with Lorry Hire Memo (LHR) management.
+                        </p>
+                      )
                     ) : selectedTransporterType === 'PTL' ? (
                       <p>
                         When set to <strong>Part Truckload (PTL)</strong>, your operations center around booking sundry parcels, consolidating them into vehicle loading sheets (<em>Load Planning</em>), and receiving/deconsolidating them at branches (<em>Unload Planning</em>).
@@ -1945,6 +2549,167 @@ export default function SettingsPage() {
                   </div>
                 </div>
               )}
+
+              {/* Plan Upgrade Modal */}
+              <Modal
+                isOpen={upgradeModalOpen}
+                onClose={() => !isUpgradingPlan && setUpgradeModalOpen(false)}
+                backdropClassName="bg-black/80 backdrop-blur-md"
+                className="w-full max-w-xl mx-auto"
+              >
+                <div className={`p-6 sm:p-7 rounded-3xl border shadow-2xl relative overflow-hidden ${
+                  isDark ? 'bg-[#0E1526] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
+                }`}>
+                  {/* Decorative background glow */}
+                  <div className="absolute -top-24 -right-24 w-60 h-60 bg-gradient-to-br from-blue-500/20 to-purple-500/20 rounded-full blur-3xl pointer-events-none" />
+
+                  {/* Close button */}
+                  <button
+                    type="button"
+                    disabled={isUpgradingPlan}
+                    onClick={() => setUpgradeModalOpen(false)}
+                    className="absolute top-5 right-5 p-2 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center shadow-lg shadow-blue-500/30">
+                      <Crown className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-amber-500/15 text-amber-500 border border-amber-500/30">
+                        <Lock className="w-3 h-3" /> Subscription Upgrade Required
+                      </div>
+                      <h3 className="text-lg font-black tracking-tight mt-1">
+                        Upgrade to {upgradeTarget?.req?.name || 'Higher Plan'}
+                      </h3>
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed mb-5">
+                    The operations mode <strong className="text-slate-900 dark:text-white">{upgradeTarget?.req?.label || 'Selected Mode'}</strong> requires features available exclusively on the <span className="font-bold text-blue-500 dark:text-blue-400">{upgradeTarget?.req?.name}</span> ({upgradeTarget?.req?.priceStr}). Your workspace is currently on the <span className="font-bold text-slate-700 dark:text-slate-300">{currentPlanCode} Tier</span>.
+                  </p>
+
+                  {/* Comparison pill */}
+                  <div className={`p-4 rounded-2xl border mb-5 flex items-center justify-between gap-4 ${
+                    isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200'
+                  }`}>
+                    <div>
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block">Current Plan</span>
+                      <span className="text-sm font-extrabold text-slate-700 dark:text-slate-300">
+                        {currentPlanCode} Tier
+                      </span>
+                      <span className="text-[11px] text-slate-500 block">
+                        {currentRank === 1 ? '₹500/mo' : currentRank === 2 ? '₹1,000/mo' : '₹2,000/mo'}
+                      </span>
+                    </div>
+
+                    <div className="w-8 h-8 rounded-full bg-blue-500/10 text-blue-500 flex items-center justify-center shrink-0">
+                      <ArrowRight className="w-4 h-4" />
+                    </div>
+
+                    <div className="text-right">
+                      <span className="text-[10px] uppercase font-bold text-blue-500 block">Required Plan</span>
+                      <span className="text-sm font-extrabold text-blue-600 dark:text-blue-400">
+                        {upgradeTarget?.req?.name}
+                      </span>
+                      <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 block">
+                        {upgradeCycle === 'ANNUAL' 
+                          ? `₹${(upgradeTarget?.req?.priceAnnual || 0).toLocaleString('en-IN')}/year (Save 20%)` 
+                          : `${upgradeTarget?.req?.priceStr || '₹1,000/mo'}`}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Billing Cycle Selector */}
+                  <div className="mb-5">
+                    <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-2">
+                      Select Billing Cycle:
+                    </label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setUpgradeCycle('MONTHLY')}
+                        className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                          upgradeCycle === 'MONTHLY'
+                            ? 'border-blue-500 bg-blue-500/10 ring-2 ring-blue-500/20'
+                            : isDark ? 'border-slate-800 hover:border-slate-700' : 'border-slate-200 hover:border-slate-300'
+                        }`}
+                      >
+                        <div className="font-bold text-xs">Monthly Billing</div>
+                        <div className="text-[11px] font-extrabold text-blue-600 dark:text-blue-400 mt-0.5">
+                          {upgradeTarget?.req?.priceStr || '₹1,000/mo'}
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setUpgradeCycle('ANNUAL')}
+                        className={`relative p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                          upgradeCycle === 'ANNUAL'
+                            ? 'border-blue-500 bg-blue-500/10 ring-2 ring-blue-500/20'
+                            : isDark ? 'border-slate-800 hover:border-slate-700' : 'border-slate-200 hover:border-slate-300'
+                        }`}
+                      >
+                        <span className="absolute -top-2 right-2 px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-emerald-500 text-white shadow-xs">
+                          Save 20%
+                        </span>
+                        <div className="font-bold text-xs">Annual Billing</div>
+                        <div className="text-[11px] font-extrabold text-emerald-600 dark:text-emerald-400 mt-0.5">
+                          ₹{(upgradeTarget?.req?.priceAnnual || 0).toLocaleString('en-IN')}/year
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Unlocked Features List */}
+                  <div className="mb-6">
+                    <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-2.5">
+                      Included with {upgradeTarget?.req?.name}:
+                    </span>
+                    <div className="space-y-2">
+                      {upgradeTarget?.req?.features?.map((feat, idx) => (
+                        <div key={idx} className="flex items-start gap-2 text-xs text-slate-700 dark:text-slate-300">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                          <span>{feat}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200 dark:border-slate-800">
+                    <button
+                      type="button"
+                      disabled={isUpgradingPlan}
+                      onClick={() => setUpgradeModalOpen(false)}
+                      className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={isUpgradingPlan}
+                      onClick={handleConfirmPlanUpgrade}
+                      className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-extrabold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-lg shadow-blue-600/30 transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      {isUpgradingPlan ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          <span>Upgrading Subscription…</span>
+                        </>
+                      ) : (
+                        <>
+                          <Zap className="w-4 h-4" />
+                          <span>Upgrade to {upgradeTarget?.req?.name} & Activate Mode</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </Modal>
 
               {/* TAB 3: COMPANY BRANDING & LOGO */}
               {activeTab === 'branding' && (
@@ -3370,157 +4135,173 @@ export default function SettingsPage() {
                     </p>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
-                    {terminologyOptions.map((opt) => {
-                      const isSelected = selectedTerm === opt;
-                      return (
-                        <div
-                          key={opt}
-                          onClick={() => handleSaveTerminology(opt)}
-                          className={`p-4 rounded-2xl border cursor-pointer transition-all flex items-center justify-between ${
-                            isSelected
-                              ? isDark
-                                ? 'bg-blue-950/40 border-cyan-400 shadow-md shadow-cyan-950/20'
-                                : 'bg-blue-50/80 border-blue-500 shadow-sm'
-                              : isDark
-                              ? 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
-                              : 'bg-white border-slate-200 hover:bg-slate-50'
-                          }`}
-                        >
-                          <div>
-                            <div className={`text-sm font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{opt}</div>
-                            <span className="text-[10px] text-slate-400">
-                              {opt === 'Bilty' ? 'Hindi Belt (North & Central)' : opt === 'LR' ? 'Lorry Receipt (Pan-India)' : opt === 'GR' ? 'Goods Receipt (West)' : 'Standard Format'}
-                            </span>
-                          </div>
+                  {allowsBookings ? (
+                    <>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+                        {terminologyOptions.map((opt) => {
+                          const isSelected = selectedTerm === opt;
+                          return (
+                            <div
+                              key={opt}
+                              onClick={() => handleSaveTerminology(opt)}
+                              className={`p-4 rounded-2xl border cursor-pointer transition-all flex items-center justify-between ${
+                                isSelected
+                                  ? isDark
+                                    ? 'bg-blue-950/40 border-cyan-400 shadow-md shadow-cyan-950/20'
+                                    : 'bg-blue-50/80 border-blue-500 shadow-sm'
+                                  : isDark
+                                  ? 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
+                                  : 'bg-white border-slate-200 hover:bg-slate-50'
+                              }`}
+                            >
+                              <div>
+                                <div className={`text-sm font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{opt}</div>
+                                <span className="text-[10px] text-slate-400">
+                                  {opt === 'Bilty' ? 'Hindi Belt (North & Central)' : opt === 'LR' ? 'Lorry Receipt (Pan-India)' : opt === 'GR' ? 'Goods Receipt (West)' : 'Standard Format'}
+                                </span>
+                              </div>
 
-                          {isSelected && (
-                            <CheckCircle2 className="w-5 h-5 text-blue-600 dark:text-cyan-400" />
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  <div className={`p-4 rounded-2xl border text-xs space-y-1.5 ${
-                    isDark ? 'bg-slate-900/40 border-slate-800 text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-600'
-                  }`}>
-                    <div className="font-bold text-slate-700 dark:text-slate-200">Current Application Impact:</div>
-                    <p>
-                      Buttons will read <span className="font-bold text-blue-600 dark:text-cyan-400">"New {selectedTerm}"</span>, tables will show <span className="font-bold text-blue-600 dark:text-cyan-400">"{selectedTerm} Number"</span>, and printed delivery dockets will bear <span className="font-bold text-blue-600 dark:text-cyan-400">"{selectedTerm.toUpperCase()}"</span>.
-                    </p>
-                  </div>
-
-                  {/* DOCKET / BILTY AUTO-NUMBER SERIES CONFIGURATION */}
-                  <div className="pt-6 border-t border-slate-200 dark:border-slate-800 mt-6">
-                    <div className="pb-3 mb-4">
-                      <h3 className="text-sm font-bold flex items-center gap-2">
-                        <Sparkles className="w-4 h-4 text-cyan-400" />
-                        <span>Auto-Generated {selectedTerm} / Docket Number Series</span>
-                      </h3>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                        Configure how new dockets and consignment numbers are auto-generated. Default is 3-letter company code followed by a sequential number (minimum 6 digits).
-                      </p>
-                    </div>
-
-                    <form onSubmit={handleSaveDocketSeries} className="space-y-4">
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        {/* Prefix */}
-                        <div className="space-y-1.5">
-                          <label className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                            Series Prefix (e.g. BAL, DWB) *
-                          </label>
-                          <input
-                            type="text"
-                            required
-                            maxLength={8}
-                            value={docketSeries.prefix}
-                            onChange={(e) => setDocketSeries({ ...docketSeries, prefix: e.target.value.toUpperCase() })}
-                            placeholder="e.g. BAL, DWB"
-                            className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono font-bold uppercase focus:outline-none transition-colors ${
-                              isDark
-                                ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
-                                : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
-                            }`}
-                          />
-                          <span className="text-[10px] text-slate-400">3-character code (e.g. {tenantSuggestedPrefix} for {tenantOrgName || 'Your Fleet'})</span>
-                        </div>
-
-                        {/* Starting / Next Number */}
-                        <div className="space-y-1.5">
-                          <label className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                            Starting / Next Number *
-                          </label>
-                          <input
-                            type="number"
-                            required
-                            min={1}
-                            value={docketSeries.startingNumber}
-                            onChange={(e) => setDocketSeries({ ...docketSeries, startingNumber: parseInt(e.target.value, 10) || 1 })}
-                            placeholder="1"
-                            className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono font-bold focus:outline-none transition-colors ${
-                              isDark
-                                ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
-                                : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
-                            }`}
-                          />
-                          <span className="text-[10px] text-slate-400">First docket starts at this number (e.g. 1)</span>
-                        </div>
-
-                        {/* Sequence Length / Digits */}
-                        <div className="space-y-1.5">
-                          <label className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                            Minimum Digits Padding *
-                          </label>
-                          <input
-                            type="number"
-                            required
-                            min={6}
-                            max={10}
-                            value={docketSeries.sequenceLength}
-                            onChange={(e) => setDocketSeries({ ...docketSeries, sequenceLength: parseInt(e.target.value, 10) || 6 })}
-                            placeholder="6"
-                            className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono font-bold focus:outline-none transition-colors ${
-                              isDark
-                                ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
-                                : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
-                            }`}
-                          />
-                          <span className="text-[10px] text-slate-400">6 digits produces 000001, 000002...</span>
-                        </div>
+                              {isSelected && (
+                                <CheckCircle2 className="w-5 h-5 text-blue-600 dark:text-cyan-400" />
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
 
-                      {/* Live Output Preview Card */}
-                      <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
-                        isDark ? 'bg-cyan-500/10 border-cyan-500/30' : 'bg-blue-50 border-blue-200'
+                      <div className={`p-4 rounded-2xl border text-xs space-y-1.5 ${
+                        isDark ? 'bg-slate-900/40 border-slate-800 text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-600'
                       }`}>
-                        <div>
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
-                            LIVE NEXT DOCKET NUMBER PREVIEW
-                          </span>
-                          <div className="font-mono text-xl font-black text-blue-600 dark:text-cyan-400 mt-0.5">
-                            {docketSeries.prefix || 'BAL'}{String(docketSeries.startingNumber || 1).padStart(docketSeries.sequenceLength || 6, '0')}
-                          </div>
-                          <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                            Next consignment will be assigned this number automatically. Subsequent dockets increment by 1.
-                          </span>
+                        <div className="font-bold text-slate-700 dark:text-slate-200">Current Application Impact:</div>
+                        <p>
+                          Buttons will read <span className="font-bold text-blue-600 dark:text-cyan-400">"New {selectedTerm}"</span>, tables will show <span className="font-bold text-blue-600 dark:text-cyan-400">"{selectedTerm} Number"</span>, and printed delivery dockets will bear <span className="font-bold text-blue-600 dark:text-cyan-400">"{selectedTerm.toUpperCase()}"</span>.
+                        </p>
+                      </div>
+
+                      {/* DOCKET / BILTY AUTO-NUMBER SERIES CONFIGURATION */}
+                      <div className="pt-6 border-t border-slate-200 dark:border-slate-800 mt-6">
+                        <div className="pb-3 mb-4">
+                          <h3 className="text-sm font-bold flex items-center gap-2">
+                            <Sparkles className="w-4 h-4 text-cyan-400" />
+                            <span>Auto-Generated {selectedTerm} / Docket Number Series</span>
+                          </h3>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                            Configure how new dockets and consignment numbers are auto-generated. Default is 3-letter company code followed by a sequential number (minimum 6 digits).
+                          </p>
                         </div>
 
-                        {canManageSettings ? (
-                          <button
-                            type="submit"
-                            disabled={isSavingDocketSeries}
-                            className="flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md cursor-pointer transition-all disabled:opacity-50 shrink-0"
-                          >
-                            <Save className="w-4 h-4" />
-                            <span>{isSavingDocketSeries ? 'Saving...' : 'Save Series Format'}</span>
-                          </button>
-                        ) : (
-                          <span className="text-xs font-semibold text-slate-400 italic">View only mode</span>
-                        )}
+                        <form onSubmit={handleSaveDocketSeries} className="space-y-4">
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            {/* Prefix */}
+                            <div className="space-y-1.5">
+                              <label className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                                Series Prefix (e.g. BAL, DWB) *
+                              </label>
+                              <input
+                                type="text"
+                                required
+                                maxLength={8}
+                                value={docketSeries.prefix}
+                                onChange={(e) => setDocketSeries({ ...docketSeries, prefix: e.target.value.toUpperCase() })}
+                                placeholder="e.g. BAL, DWB"
+                                className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono font-bold uppercase focus:outline-none transition-colors ${
+                                  isDark
+                                    ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                                    : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                                }`}
+                              />
+                              <span className="text-[10px] text-slate-400">3-character code (e.g. {tenantSuggestedPrefix} for {tenantOrgName || 'Your Fleet'})</span>
+                            </div>
+
+                            {/* Starting / Next Number */}
+                            <div className="space-y-1.5">
+                              <label className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                                Starting / Next Number *
+                              </label>
+                              <input
+                                type="number"
+                                required
+                                min={1}
+                                value={docketSeries.startingNumber}
+                                onChange={(e) => setDocketSeries({ ...docketSeries, startingNumber: parseInt(e.target.value, 10) || 1 })}
+                                placeholder="1"
+                                className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono font-bold focus:outline-none transition-colors ${
+                                  isDark
+                                    ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                                    : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                                }`}
+                              />
+                              <span className="text-[10px] text-slate-400">First docket starts at this number (e.g. 1)</span>
+                            </div>
+
+                            {/* Sequence Length / Digits */}
+                            <div className="space-y-1.5">
+                              <label className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                                Minimum Digits Padding *
+                              </label>
+                              <input
+                                type="number"
+                                required
+                                min={6}
+                                max={10}
+                                value={docketSeries.sequenceLength}
+                                onChange={(e) => setDocketSeries({ ...docketSeries, sequenceLength: parseInt(e.target.value, 10) || 6 })}
+                                placeholder="6"
+                                className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono font-bold focus:outline-none transition-colors ${
+                                  isDark
+                                    ? 'border-slate-800 bg-slate-900/80 text-white focus:border-cyan-400'
+                                    : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-blue-500 focus:bg-white'
+                                }`}
+                              />
+                              <span className="text-[10px] text-slate-400">6 digits produces 000001, 000002...</span>
+                            </div>
+                          </div>
+
+                          {/* Live Output Preview Card */}
+                          <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                            isDark ? 'bg-cyan-500/10 border-cyan-500/30' : 'bg-blue-50 border-blue-200'
+                          }`}>
+                            <div>
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                                LIVE NEXT DOCKET NUMBER PREVIEW
+                              </span>
+                              <div className="font-mono text-xl font-black text-blue-600 dark:text-cyan-400 mt-0.5">
+                                {docketSeries.prefix || 'BAL'}{String(docketSeries.startingNumber || 1).padStart(docketSeries.sequenceLength || 6, '0')}
+                              </div>
+                              <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                                Next consignment will be assigned this number automatically. Subsequent dockets increment by 1.
+                              </span>
+                            </div>
+
+                            {canManageSettings ? (
+                              <button
+                                type="submit"
+                                disabled={isSavingDocketSeries}
+                                className="flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md cursor-pointer transition-all disabled:opacity-50 shrink-0"
+                              >
+                                <Save className="w-4 h-4" />
+                                <span>{isSavingDocketSeries ? 'Saving...' : 'Save Series Format'}</span>
+                              </button>
+                            ) : (
+                              <span className="text-xs font-semibold text-slate-400 italic">View only mode</span>
+                            )}
+                          </div>
+                        </form>
                       </div>
-                    </form>
-                  </div>
+                    </>
+                  ) : (
+                    <div className={`p-4 rounded-2xl border mb-6 flex items-start gap-3 ${
+                      isDark ? 'bg-indigo-950/20 border-indigo-800/40 text-indigo-300' : 'bg-indigo-50/80 border-indigo-200 text-indigo-900'
+                    }`}>
+                      <Info className="w-5 h-5 shrink-0 mt-0.5 text-indigo-500" />
+                      <div className="text-xs space-y-1">
+                        <div className="font-bold">Docket & Bilty Terminology Not Applicable in {modeLongLabel}</div>
+                        <p className="leading-relaxed text-slate-600 dark:text-slate-400">
+                          In this mode, operations are based on direct vehicle trip assignment to {isFleetSupplier ? 'other transport companies / fleet aggregators' : 'direct corporate shippers & factories'} via <span className="font-semibold text-indigo-600 dark:text-indigo-400">Trips</span>. Consignment bilties/dockets are hidden and not required. You can configure your <span className="font-semibold">Trip & Dispatch Number Series</span> below.
+                        </p>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Trip Number Series Section */}
                   <div className={`mt-8 pt-6 border-t ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>

@@ -12,6 +12,7 @@ import BranchFilterDropdown from '../../../components/ui/BranchFilterDropdown';
 import { useTheme } from '../../../components/ThemeProvider';
 import { useStore } from '../../../store/useStore';
 import { usePermissions } from '../../../hooks/usePermissions';
+import { useOperationsType } from '../../../hooks/useOperationsType';
 import api from '../../../services/api';
 import {
   Compass,
@@ -71,6 +72,10 @@ export default function ControlTowerPage() {
   const user = useStore((state) => state.user);
   const activeBranch = useStore((state) => state.activeBranch);
   const { isAdmin, isBranchManager } = usePermissions();
+  const { isFleetSupplier, isDirectCarrier, allowsMultiBranchHubs } = useOperationsType();
+  const isDirectOrVendorMode = isFleetSupplier || isDirectCarrier || !allowsMultiBranchHubs;
+
+  const stripHub = (str) => isDirectOrVendorMode ? String(str || '').replace(/\bhub\b/gi, '').replace(/\s+/g, ' ').trim() : String(str || '').trim();
 
   const userBranchId = user?.branchId || user?.branch_id || user?.branch?.id || user?.assigned_branch_id || null;
   const isRestrictedBranchUser = useMemo(() => {
@@ -246,8 +251,10 @@ export default function ControlTowerPage() {
         seenTripIds.add(matchingTrip.id);
         if (matchingTrip.trip_number) seenTripIds.add(matchingTrip.trip_number);
 
-        const oCity = matchingTrip.origin_city || matchingTrip.originBranch?.city || matchingTrip.originBranch?.branch_name || 'Origin Hub';
-        const dCity = matchingTrip.destination_city || matchingTrip.destBranch?.city || matchingTrip.destBranch?.branch_name || 'Destination Hub';
+        const rawOCity = matchingTrip.origin_city || matchingTrip.originBranch?.city || matchingTrip.originBranch?.branch_name || 'Origin';
+        const rawDCity = matchingTrip.destination_city || matchingTrip.destBranch?.city || matchingTrip.destBranch?.branch_name || 'Destination';
+        const oCity = stripHub(rawOCity);
+        const dCity = stripHub(rawDCity);
         const dName = matchingTrip.driver?.name || matchingTrip.driver_name || tv.driver?.name || 'Driver In-charge';
         const dPhone = matchingTrip.driver?.phone || matchingTrip.driver_phone || tv.driver?.phone || '+91 98000 00000';
         const isTransit = ['IN_TRANSIT', 'RUNNING', 'DISPATCHED'].includes((matchingTrip.status || '').toUpperCase());
@@ -374,8 +381,10 @@ export default function ControlTowerPage() {
       if (norm) seenPlates.add(norm);
       seenTripIds.add(t.id || tripId);
 
-      const oCity = t.origin_city || t.originBranch?.city || t.originBranch?.branch_name || 'Origin';
-      const dCity = t.destination_city || t.destBranch?.city || t.destBranch?.branch_name || oCity;
+      const rawOCity = t.origin_city || t.originBranch?.city || t.originBranch?.branch_name || 'Origin';
+      const rawDCity = t.destination_city || t.destBranch?.city || t.destBranch?.branch_name || rawOCity;
+      const oCity = stripHub(rawOCity);
+      const dCity = stripHub(rawDCity);
       const isTransit = ['IN_TRANSIT', 'RUNNING', 'DISPATCHED', 'READY'].includes(status) || (oCity !== dCity);
       const isPlacement = t.trip_mode === 'DIRECT_VEHICLE_HIRE';
       const dName = t.driver?.name || t.driver_name || (t.hiring_party_name ? `${t.hiring_party_name} (Hiring Party)` : 'Assigned Pilot');

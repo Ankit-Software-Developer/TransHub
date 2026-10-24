@@ -11,14 +11,73 @@ export const useStore = create((set) => ({
   isMobileSidebarOpen: false,
   theme: typeof window !== 'undefined' && localStorage.getItem('transporter_theme') === 'dark' ? 'dark' : 'light', // 'dark' or 'light'
 
-  setUser: (user) => set({
-    user,
-    terminology: (typeof window !== 'undefined' && localStorage.getItem('transporter_terminology')) || user?.documentTerminology || user?.document_terminology || 'Bilty',
-  }),
+  setUser: (user) => {
+    const enrichedUser = user ? {
+      ...user,
+      transporterType: user.transporterType || user.transporter_type || user.organization?.settings?.transporterType || user.organization?.settings?.transporter_type || 'FTL',
+      transporterSubType: user.transporterSubType !== undefined
+        ? user.transporterSubType
+        : (user.transporter_sub_type !== undefined
+            ? user.transporter_sub_type
+            : (user.organization?.settings?.transporterSubType || user.organization?.settings?.transporter_subtype || ((user?.subscription?.planCode === 'BASIC' || user?.organization?.settings?.registered_plan === 'BASIC') ? 'FLEET_SUPPLIER' : undefined))),
+      organization: user.organization ? {
+        ...user.organization,
+        settings: {
+          ...(user.organization.settings || {}),
+          transporterType: user.transporterType || user.transporter_type || user.organization?.settings?.transporterType || 'FTL',
+          transporterSubType: user.transporterSubType !== undefined
+            ? user.transporterSubType
+            : (user.organization?.settings?.transporterSubType || ((user?.subscription?.planCode === 'BASIC' || user?.organization?.settings?.registered_plan === 'BASIC') ? 'FLEET_SUPPLIER' : undefined)),
+        },
+      } : user.organization,
+    } : user;
 
-  setTransporterType: (transporterType) => set((state) => ({
-    user: state.user ? { ...state.user, transporterType } : state.user,
-  })),
+    if (typeof window !== 'undefined' && enrichedUser) {
+      try {
+        localStorage.setItem('transporter_user', JSON.stringify(enrichedUser));
+      } catch (e) {}
+    }
+
+    return set({
+      user: enrichedUser,
+      terminology: (typeof window !== 'undefined' && localStorage.getItem('transporter_terminology')) || user?.documentTerminology || user?.document_terminology || 'Bilty',
+    });
+  },
+
+  setTransporterType: (transporterType, transporterSubType) => set((state) => {
+    if (
+      state.user &&
+      state.user.transporterType === transporterType &&
+      state.user.transporterSubType === transporterSubType
+    ) {
+      return state;
+    }
+    const updatedUser = state.user ? {
+      ...state.user,
+      transporterType,
+      transporter_type: transporterType,
+      transporterSubType: transporterSubType !== undefined ? transporterSubType : state.user.transporterSubType,
+      transporter_sub_type: transporterSubType !== undefined ? transporterSubType : state.user.transporter_sub_type,
+      organization: state.user.organization ? {
+        ...state.user.organization,
+        settings: {
+          ...(state.user.organization.settings || {}),
+          transporterType,
+          transporter_type: transporterType,
+          transporterSubType: transporterSubType !== undefined ? transporterSubType : state.user.organization?.settings?.transporterSubType,
+          transporter_subtype: transporterSubType !== undefined ? transporterSubType : state.user.organization?.settings?.transporter_subtype,
+        },
+      } : state.user.organization,
+    } : state.user;
+
+    if (typeof window !== 'undefined' && updatedUser) {
+      try {
+        localStorage.setItem('transporter_user', JSON.stringify(updatedUser));
+      } catch (e) {}
+    }
+
+    return { user: updatedUser };
+  }),
 
   setActiveBranch: (branch) => set({ activeBranch: branch }),
   setDateFilter: (filter) => set({ dateFilter: filter }),
@@ -28,7 +87,10 @@ export const useStore = create((set) => ({
         localStorage.setItem('transporter_terminology', term);
       } catch (e) {}
     }
-    set({ terminology: term });
+    set((state) => {
+      if (state.terminology === term) return state;
+      return { terminology: term };
+    });
   },
   toggleSearchModal: () => set((state) => ({ isSearchModalOpen: !state.isSearchModalOpen })),
   setSearchModalOpen: (open) => set({ isSearchModalOpen: open }),

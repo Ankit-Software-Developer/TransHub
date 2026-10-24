@@ -34,16 +34,24 @@ export function usePermissions() {
 
   const roles = useMemo(() => {
     if (!user) return ['ADMIN'];
+    let list = [];
     if (Array.isArray(user.roles)) {
-      return user.roles.map((r) => (typeof r === 'string' ? r : r.name || ''));
+      list = user.roles.map((r) => (typeof r === 'string' ? r : r.name || ''));
+    } else if (user.role) {
+      list = [user.role];
+    } else {
+      list = ['ADMIN'];
     }
-    if (user.role) return [user.role];
-    return ['ADMIN'];
+    if (user.email?.toLowerCase() === 'admin@transporter.io' && !list.includes('SUPER_ADMIN')) {
+      list.unshift('SUPER_ADMIN');
+    }
+    return list;
   }, [user]);
 
   const isSuperAdmin = useMemo(() => {
     if (!user) return false;
     return (
+      user?.email?.toLowerCase() === 'admin@transporter.io' ||
       roles.includes('SUPER_ADMIN') ||
       user?.role?.toUpperCase() === 'SUPER_ADMIN' ||
       Boolean(user?.isSuperAdmin)
@@ -134,6 +142,10 @@ export function usePermissions() {
     // Super Admin: Operational branch approvals are strictly for transport tenant organizations
     if (isSuperAdmin && (normalized === '/approvals' || normalized.startsWith('/approvals/'))) {
       return false;
+    }
+
+    if (normalized.startsWith('/super-admin')) {
+      return isSuperAdmin;
     }
 
     if (isAdmin) return true;

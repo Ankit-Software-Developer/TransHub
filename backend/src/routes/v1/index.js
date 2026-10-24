@@ -24,9 +24,11 @@ const reportRoutes = require('./reportRoutes');
 const supportRoutes = require('./supportRoutes');
 const branchCashClosureRoutes = require('./branchCashClosureRoutes');
 const paymentRoutes = require('./paymentRoutes');
+const superAdminRoutes = require('./superAdminRoutes');
 
 router.use('/auth', authRoutes);
 router.use('/dashboard', dashboardRoutes);
+router.use('/super-admin', superAdminRoutes);
 router.use('/bookings', bookingRoutes);
 router.use('/consignments', bookingRoutes); // Aliased for flexible API access
 router.use('/branches', branchRoutes);

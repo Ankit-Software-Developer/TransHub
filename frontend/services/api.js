@@ -38,6 +38,16 @@ api.interceptors.request.use((config) => {
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+
+    // Support Impersonation Mode: Attach x-tenant-id if SuperAdmin is inspecting a specific transporter
+    const impersonateTenantId = localStorage.getItem('superadmin_impersonate_tenant_id');
+    const impersonateOrgId = localStorage.getItem('superadmin_impersonate_org_id');
+    if (impersonateTenantId) {
+      config.headers['x-tenant-id'] = impersonateTenantId;
+    }
+    if (impersonateOrgId) {
+      config.headers['x-organization-id'] = impersonateOrgId;
+    }
   }
   return config;
 }, (error) => Promise.reject(error));

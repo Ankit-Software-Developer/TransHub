@@ -2394,7 +2394,7 @@ export default function ExpensesPage() {
                         >
                           {(isAdmin ? branchList : (branchList.filter(b => String(b.id) === String(userBranchId)).length > 0 ? branchList.filter(b => String(b.id) === String(userBranchId)) : branchList)).map((b) => (
                             <option key={b.id} value={b.id} className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>
-                              {b.name} ({b.code || 'HUB'})
+                              {b.name} ({b.code || (b.is_head_office ? 'HQ' : 'BRANCH')})
                             </option>
                           ))}
                         </select>

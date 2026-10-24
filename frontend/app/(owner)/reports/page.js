@@ -4425,7 +4425,7 @@ export default function ReportsPage() {
                         >
                           {branches.map((b) => (
                             <option key={b.id} value={b.id} className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>
-                              {b.name || b.branch_name} ({b.code || b.branch_code || 'HUB'})
+                              {b.name || b.branch_name} ({b.code || b.branch_code || (b.is_head_office ? 'HQ' : 'BRANCH')})
                             </option>
                           ))}
                         </select>

@@ -157,6 +157,30 @@ const createBranch = async (req, res) => {
 
     const isHeadOfficeFlag = is_head_office === true || is_head_office === 'true' || is_head_office === 1 || finalCode === 'HQ' || finalCode === 'BHQ' || /head\s*office/i.test(branch_name);
 
+    // Single-Branch HQ Plan Guard (FTL Fleet Supplier & Direct Carrier are strictly limited to 1 Centralized Head Office)
+    const OrganizationModel = req.tenantDb?.Organization || defaultModels.Organization;
+    if (OrganizationModel) {
+      const org = await OrganizationModel.findByPk(req.tenant.organizationId);
+      const settings = org?.settings || {};
+      const tType = String(settings.transporterType || settings.transporter_type || 'FTL').toUpperCase().trim();
+      const tSubType = String(settings.transporterSubType || settings.transporter_subtype || 'FLEET_SUPPLIER').toUpperCase().trim();
+      const isSingleHQMode = tType === 'FTL' && (tSubType === 'FLEET_SUPPLIER' || tSubType === 'DIRECT_CARRIER');
+
+      if (isSingleHQMode) {
+        const branchCount = await Branch.count({
+          where: { organization_id: req.tenant.organizationId },
+        });
+        if (branchCount >= 1) {
+          return errorResponse(
+            res,
+            'Branch creation restricted: Your workspace is on the Single Head Office plan (FTL Fleet Supplier / Direct Carrier) where all transport activities operate through 1 Centralized Head Office branch. To create multiple branches and transshipment hubs, please upgrade to Full-Service Enterprise FTL or Pro/Enterprise plan.',
+            { upgradeRequired: true },
+            403
+          );
+        }
+      }
+    }
+
     const branch = await Branch.create({
       tenant_id: req.tenant.tenantId,
       organization_id: req.tenant.organizationId,
@@ -169,7 +193,7 @@ const createBranch = async (req, res) => {
       state: state.trim(),
       pincode: pincode ? pincode.trim() : null,
       is_head_office: isHeadOfficeFlag,
-      is_hub: isHeadOfficeFlag ? true : (is_hub === true || is_hub === 'true' || is_hub === 1),
+      is_hub: isHeadOfficeFlag ? false : (is_hub === true || is_hub === 'true' || is_hub === 1),
       is_active: is_active !== false && is_active !== 'false',
       max_customer_credit_limit: parsedBranchCap,
     });
@@ -265,7 +289,7 @@ const updateBranch = async (req, res) => {
     if (is_head_office !== undefined) {
       branch.is_head_office = is_head_office === true || is_head_office === 'true' || is_head_office === 1;
       if (branch.is_head_office) {
-        branch.is_hub = true;
+        branch.is_hub = false;
       }
     }
     if (is_hub !== undefined && !branch.is_head_office) {

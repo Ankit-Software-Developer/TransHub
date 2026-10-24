@@ -1,5 +1,5 @@
 // src/controllers/organizationController.js
-const { Organization, Branch } = require('../models');
+const { Organization, Branch, SaaSSubscription, SaaSPlan, Tenant } = require('../models');
 const { successResponse, errorResponse } = require('../utils/apiResponse');
 
 const getOrganizationProfile = async (req, res) => {
@@ -306,6 +306,7 @@ const updateOrganizationProfile = async (req, res) => {
       upiId,
       themeColor,
       transporterType,
+      transporterSubType,
       settings: customSettings,
     } = req.body;
 
@@ -316,6 +317,87 @@ const updateOrganizationProfile = async (req, res) => {
     }
 
     const currentSettings = org.settings || {};
+    // Verify Plan Tier Permission for Operation Mode Changes
+    if (transporterType !== undefined || transporterSubType !== undefined) {
+      const targetType = transporterType
+        ? String(transporterType).toUpperCase().trim()
+        : (currentSettings.transporterType || currentSettings.transporter_type || 'BOTH');
+      const targetSubType = transporterSubType
+        ? String(transporterSubType).toUpperCase().trim()
+        : (currentSettings.transporterSubType || currentSettings.transporter_subtype || 'FLEET_SUPPLIER');
+
+      let requiredPlan = 'BASIC';
+      let requiredRank = 1;
+      let requiredPrice = '₹500/mo';
+      let targetLabel = 'Basic FTL';
+
+      if (targetType === 'BOTH') {
+        requiredPlan = 'ENTERPRISE';
+        requiredRank = 3;
+        requiredPrice = '₹2,000/mo';
+        targetLabel = 'Both (FTL + PTL) Complete Suite';
+      } else if (targetType === 'PTL') {
+        requiredPlan = 'PRO';
+        requiredRank = 2;
+        requiredPrice = '₹1,000/mo';
+        targetLabel = 'Part Truckload (PTL / Sundry)';
+      } else if (targetType === 'FTL') {
+        if (targetSubType === 'COMPLETE_FTL') {
+          requiredPlan = 'PRO';
+          requiredRank = 2;
+          requiredPrice = '₹1,000/mo';
+          targetLabel = 'Full-Service Enterprise FTL';
+        } else {
+          requiredPlan = 'BASIC';
+          requiredRank = 1;
+          requiredPrice = '₹500/mo';
+          targetLabel = targetSubType === 'DIRECT_CARRIER' ? 'Direct Shipper Carrier' : 'Fleet Supplier / Vendor';
+        }
+      }
+
+      let currentPlanCode = 'BASIC';
+      try {
+        const sub = await SaaSSubscription.findOne({
+          where: { tenant_id: req.tenant.tenantId },
+          order: [['created_at', 'DESC']],
+        });
+        if (sub) {
+          const plan = await SaaSPlan.findByPk(sub.plan_id);
+          if (plan?.plan_code) {
+            currentPlanCode = plan.plan_code.toUpperCase();
+          }
+        }
+      } catch (_) {}
+
+      if (currentPlanCode === 'TRIAL') {
+        currentPlanCode = (currentSettings.registered_plan || 'BASIC').toUpperCase();
+      }
+
+      const PLAN_RANKS = { BASIC: 1, PRO: 2, ENTERPRISE: 3 };
+      const currentRank = PLAN_RANKS[currentPlanCode] || 1;
+
+      const isSuperAdmin =
+        req.userRoles?.includes('SUPER_ADMIN') ||
+        req.user?.email?.toLowerCase() === 'admin@transporter.io';
+
+      if (!isSuperAdmin && requiredRank > currentRank) {
+        return errorResponse(
+          res,
+          `Plan upgrade required: Switching to ${targetLabel} requires the ${requiredPlan} plan (${requiredPrice}). Your workspace is currently on the ${currentPlanCode} tier. Please upgrade your subscription to switch operations mode.`,
+          {
+            upgradeRequired: true,
+            requiredPlan,
+            requiredRank,
+            requiredPrice,
+            currentPlan: currentPlanCode,
+            currentRank,
+            targetMode: targetLabel,
+          },
+          403
+        );
+      }
+    }
+
     const updatedSettings = {
       ...currentSettings,
       ...(customSettings || {}),
@@ -331,7 +413,20 @@ const updateOrganizationProfile = async (req, res) => {
       ...(pan !== undefined ? { pan: (pan || '').trim().toUpperCase() } : {}),
       ...(themeColor !== undefined ? { themeColor } : {}),
       ...(transporterType !== undefined && ['FTL', 'PTL', 'BOTH'].includes(String(transporterType).toUpperCase().trim())
-        ? { transporterType: String(transporterType).toUpperCase().trim() }
+        ? {
+            transporterType: String(transporterType).toUpperCase().trim(),
+            transporter_type: String(transporterType).toUpperCase().trim(),
+            ...(String(transporterType).toUpperCase().trim() !== 'FTL' ? {
+              transporterSubType: null,
+              transporter_subtype: null,
+            } : {}),
+          }
+        : {}),
+      ...(String(transporterType || currentSettings.transporterType || 'FTL').toUpperCase().trim() === 'FTL' && transporterSubType !== undefined && ['FLEET_SUPPLIER', 'DIRECT_CARRIER', 'COMPLETE_FTL'].includes(String(transporterSubType).toUpperCase().trim())
+        ? {
+            transporterSubType: String(transporterSubType).toUpperCase().trim(),
+            transporter_subtype: String(transporterSubType).toUpperCase().trim(),
+          }
         : {}),
     };
 
@@ -370,9 +465,129 @@ const updateOrganizationProfile = async (req, res) => {
   }
 };
 
+/**
+ * Transporter Admin: Upgrade Subscription Plan & Activate Operations Mode
+ */
+const upgradePlan = async (req, res) => {
+  try {
+    const { plan_code, billing_cycle = 'MONTHLY', transporterType, transporterSubType } = req.body;
+
+    if (!plan_code) {
+      return errorResponse(res, 'Target plan_code is required (e.g. PRO or ENTERPRISE)', null, 400);
+    }
+
+    const plan = await SaaSPlan.findOne({
+      where: { plan_code: String(plan_code).toUpperCase().trim() },
+    });
+    if (!plan) {
+      return errorResponse(res, `Plan '${plan_code}' not found`, null, 404);
+    }
+
+    const tenantId = req.tenant.tenantId;
+    const organizationId = req.tenant.organizationId;
+
+    let sub = await SaaSSubscription.findOne({
+      where: { tenant_id: tenantId },
+      order: [['created_at', 'DESC']],
+    });
+
+    const cycle = String(billing_cycle).toUpperCase() === 'ANNUAL' ? 'ANNUAL' : 'MONTHLY';
+    const amount = cycle === 'ANNUAL' ? plan.price_annual : plan.price_monthly;
+
+    if (sub) {
+      sub.plan_id = plan.id;
+      sub.billing_cycle = cycle;
+      sub.amount = amount;
+      sub.status = 'ACTIVE';
+      await sub.save();
+    } else {
+      const now = new Date();
+      const periodEnd = new Date(now);
+      periodEnd.setDate(periodEnd.getDate() + (cycle === 'ANNUAL' ? 365 : 30));
+
+      sub = await SaaSSubscription.create({
+        tenant_id: tenantId,
+        organization_id: organizationId,
+        plan_id: plan.id,
+        billing_cycle: cycle,
+        amount,
+        status: 'ACTIVE',
+        current_period_start: now.toISOString().split('T')[0],
+        current_period_end: periodEnd.toISOString().split('T')[0],
+      });
+    }
+
+    // Update Organization settings in master and tenant DBs
+    const targetType = transporterType ? String(transporterType).toUpperCase().trim() : undefined;
+    const targetSubType = transporterSubType ? String(transporterSubType).toUpperCase().trim() : undefined;
+
+    const OrganizationModel = req.tenantDb?.Organization || Organization;
+    const org = await OrganizationModel.findByPk(organizationId);
+
+    if (org) {
+      const prevSettings = typeof org.settings === 'object' && org.settings !== null ? { ...org.settings } : {};
+      prevSettings.registered_plan = plan.plan_code;
+      if (targetType) {
+        prevSettings.transporterType = targetType;
+        prevSettings.transporter_type = targetType;
+      }
+      if (targetSubType) {
+        prevSettings.transporterSubType = targetType === 'FTL' ? targetSubType : null;
+        prevSettings.transporter_subtype = targetType === 'FTL' ? targetSubType : null;
+      } else if (targetType && targetType !== 'FTL') {
+        prevSettings.transporterSubType = null;
+        prevSettings.transporter_subtype = null;
+      }
+      org.settings = prevSettings;
+      await org.save();
+    }
+
+    // Also update in master DB Organization if distinct
+    if (Organization && Organization !== OrganizationModel) {
+      try {
+        const masterOrg = await Organization.findByPk(organizationId);
+        if (masterOrg) {
+          const mPrev = typeof masterOrg.settings === 'object' && masterOrg.settings !== null ? { ...masterOrg.settings } : {};
+          mPrev.registered_plan = plan.plan_code;
+          if (targetType) {
+            mPrev.transporterType = targetType;
+            mPrev.transporter_type = targetType;
+          }
+          if (targetSubType) {
+            mPrev.transporterSubType = targetType === 'FTL' ? targetSubType : null;
+            mPrev.transporter_subtype = targetType === 'FTL' ? targetSubType : null;
+          } else if (targetType && targetType !== 'FTL') {
+            mPrev.transporterSubType = null;
+            mPrev.transporter_subtype = null;
+          }
+          masterOrg.settings = mPrev;
+          await masterOrg.save();
+        }
+      } catch (_) {}
+    }
+
+    return successResponse(res, `Successfully upgraded to ${plan.name}! Operations mode updated.`, {
+      subscription: {
+        id: sub.id,
+        planCode: plan.plan_code,
+        planName: plan.name,
+        amount: sub.amount,
+        billingCycle: sub.billing_cycle,
+        status: sub.status,
+      },
+      transporterType: targetType || org?.settings?.transporterType || 'BOTH',
+      transporterSubType: targetSubType || org?.settings?.transporterSubType || null,
+    });
+  } catch (error) {
+    console.error('upgradePlan error:', error);
+    return errorResponse(res, error.message || 'Failed to upgrade plan', null, 500);
+  }
+};
+
 module.exports = {
   getOrganizationProfile,
   updateOrganizationProfile,
+  upgradePlan,
   updateTerminology,
   listBranches,
   getDocketSeries,

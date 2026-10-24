@@ -4,6 +4,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Building2, ChevronDown, Check, Search, X, MapPin } from 'lucide-react';
 import { useTheme } from '../ThemeProvider';
+import { useOperationsType, isHeadOfficeBranch } from '../../hooks/useOperationsType';
 
 export default function BranchFilterDropdown({
   selectedBranchId = 'ALL',
@@ -23,6 +24,12 @@ export default function BranchFilterDropdown({
 }) {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
+  const { allowsMultiBranchHubs } = useOperationsType();
+
+  // In Single HQ modes (FTL Fleet Supplier & FTL Direct Carrier), hide branch filter dropdown across every screen
+  if (!allowsMultiBranchHubs) {
+    return null;
+  }
 
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -322,11 +329,15 @@ export default function BranchFilterDropdown({
                         <span className="font-bold truncate">
                           {b.branch_name || b.name}
                         </span>
-                        {b.is_hub && (
+                        {isHeadOfficeBranch(b) ? (
+                          <span className="text-[9px] px-1 py-0.2 rounded font-bold bg-purple-500/20 text-purple-400 border border-purple-500/30 shrink-0">
+                            HQ
+                          </span>
+                        ) : b.is_hub ? (
                           <span className="text-[9px] px-1 py-0.2 rounded font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 shrink-0">
                             HUB
                           </span>
-                        )}
+                        ) : null}
                       </div>
                       <div className="text-[10px] text-slate-400 font-mono flex items-center gap-1 truncate">
                         {b.branch_code && <span>[{b.branch_code}]</span>}

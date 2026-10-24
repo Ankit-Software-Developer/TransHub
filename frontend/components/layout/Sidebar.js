@@ -45,7 +45,7 @@ export default function Sidebar() {
   const { isMobileSidebarOpen, setMobileSidebarOpen } = useStore();
   const { theme } = useTheme();
   const { isAdmin, isSuperAdmin, isBranchAssistant, isBA, isAuditor, canAccessRoute, canViewAudit, hasRole, hasPermission } = usePermissions();
-  const { isOnlyFTL, isOnlyPTL, isBoth, transporterType } = useOperationsType();
+  const { isOnlyFTL, isOnlyPTL, isBoth, transporterType, isFleetSupplier, isDirectCarrier, isCompleteFTL, modeBadgeText, modeLongLabel, modeBadgeColor, allowsMultiBranchHubs, allowsBookings } = useOperationsType();
   const [collapsed, setCollapsed] = useState(false);
   const [pendingApprovals, setPendingApprovals] = useState(0);
   const [pendingTickets, setPendingTickets] = useState(0);
@@ -95,7 +95,7 @@ export default function Sidebar() {
       isSubscribed = false;
       clearInterval(timer);
     };
-  }, [user]);
+  }, [user?.id]);
 
   const navItems = isBA ? [
     { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
@@ -115,6 +115,7 @@ export default function Sidebar() {
     { label: 'Reports', href: '/reports', icon: BarChart3 },
     { label: 'Support & Helpdesk', href: '/support', icon: LifeBuoy, badge: pendingTickets },
   ] : [
+    ...(isSuperAdmin ? [{ label: 'SaaS Control Tower', href: '/super-admin/dashboard', icon: ShieldCheck, isSuperAdminItem: true }] : []),
     { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     { label: 'Control Tower', href: '/control-tower', icon: Compass },
     { label: 'Branches & Hubs', href: '/branches', icon: Warehouse },
@@ -122,8 +123,8 @@ export default function Sidebar() {
     { label: 'Customers', href: '/customers', icon: Users },
     { label: 'Staff & Team', href: '/staff', icon: UserCheck },
     { label: plural || 'Bilties', href: '/bookings', icon: FileText },
-    { label: 'Trips', href: '/trips', icon: Route },
     { label: 'Load Planning', href: '/load-planning', icon: Boxes },
+    { label: 'Trips', href: '/trips', icon: Route },
     { label: 'Unload Planning', href: '/unload-planning', icon: PackageCheck },
     { label: 'Deliveries & POD', href: '/deliveries', icon: CheckCircle2 },
     { label: 'Invoices', href: '/billing/invoices', icon: Receipt },
@@ -134,6 +135,90 @@ export default function Sidebar() {
     { label: 'Support & Helpdesk', href: '/support', icon: LifeBuoy, badge: pendingTickets },
     { label: 'Settings', href: '/settings', icon: Settings },
   ];
+
+  const getNavLabel = (item) => {
+    if (item.href === '/bookings') {
+      if (isCompleteFTL) return 'Dockets';
+      if (isOnlyPTL) return 'Parcel Bilties';
+      return plural || 'Bilties';
+    }
+    if (item.href === '/load-planning') {
+      if (isCompleteFTL) return 'Loading Planning';
+      return 'Load Planning';
+    }
+    if (item.href === '/unload-planning') {
+      if (isCompleteFTL) return 'Un Loading Planning';
+      return 'Unload Planning';
+    }
+    if (item.href === '/customers') {
+      return 'Customers';
+    }
+    if (item.href === '/trips') {
+      if (isOnlyPTL) return 'Linehaul Trips';
+      if (isOnlyFTL) return 'Trip';
+      return 'Trips';
+    }
+    if (item.href === '/deliveries') {
+      return 'Delivery & POD';
+    }
+    if (item.href === '/billing/invoices') {
+      if (isFleetSupplier || isDirectCarrier) return 'Vendor Freight Bills';
+      return 'Invoices';
+    }
+    return item.label;
+  };
+
+  const isNavItemVisible = (item) => {
+    // Exact screen lists per FTL sub-mode
+    if (isFleetSupplier || isDirectCarrier) {
+      const allowedRoutes = [
+        '/super-admin/dashboard',
+        '/dashboard',
+        '/control-tower',
+        '/fleet',
+        '/customers',
+        '/staff',
+        '/trips',
+        '/billing/invoices',
+        '/expenses',
+        '/reports',
+        '/support',
+        '/settings',
+      ];
+      if (!allowedRoutes.includes(item.href)) return false;
+    } else if (isCompleteFTL) {
+      const allowedRoutes = [
+        '/super-admin/dashboard',
+        '/dashboard',
+        '/control-tower',
+        '/fleet',
+        '/customers',
+        '/staff',
+        '/bookings',
+        '/load-planning',
+        '/trips',
+        '/unload-planning',
+        '/deliveries',
+        '/billing/invoices',
+        '/expenses',
+        '/reports',
+        '/approvals',
+        '/audit-logs',
+        '/support',
+        '/settings',
+      ];
+      if (!allowedRoutes.includes(item.href)) return false;
+    } else {
+      // PTL or Hybrid (BOTH)
+      if (item.href === '/branches' && !allowsMultiBranchHubs) {
+        return false;
+      }
+      if (item.href === '/bookings' && !allowsBookings) {
+        return false;
+      }
+    }
+    return canAccessRoute(item.href);
+  };
 
   return (
     <>
@@ -222,15 +307,15 @@ export default function Sidebar() {
                 <div className="flex items-center gap-1.5 mt-1">
                   <span
                     className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-bold tracking-wider uppercase border shadow-2xs transition-colors shrink-0 ${
-                      isOnlyFTL
-                        ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200/90 dark:border-indigo-800/60'
-                        : isOnlyPTL
-                        ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-200/90 dark:border-amber-800/60'
-                        : 'bg-cyan-50 dark:bg-cyan-950/60 text-cyan-700 dark:text-cyan-300 border-cyan-200/90 dark:border-cyan-800/60'
+                      modeBadgeColor
                     }`}
                     title={
                       isOnlyFTL
-                        ? 'Full Truckload Operations (FTL)'
+                        ? (isFleetSupplier
+                            ? 'FTL Fleet Supplier / Transporter Vendor'
+                            : isDirectCarrier
+                            ? 'FTL Direct Shipper Carrier'
+                            : 'FTL Full-Service Enterprise Carrier')
                         : isOnlyPTL
                         ? 'Part Truckload Operations (PTL)'
                         : 'Hybrid Operations (FTL + PTL)'
@@ -244,7 +329,7 @@ export default function Sidebar() {
                         isOnlyFTL ? 'bg-indigo-600 dark:bg-indigo-400' : isOnlyPTL ? 'bg-amber-500 dark:bg-amber-400' : 'bg-cyan-600 dark:bg-cyan-400'
                       }`} />
                     </span>
-                    <span>{isOnlyFTL ? 'FTL' : isOnlyPTL ? 'PTL' : 'FTL • PTL'}</span>
+                    <span>{modeBadgeText}</span>
                   </span>
 
                   <span className={`text-[10px] font-semibold tracking-wider uppercase truncate ${
@@ -275,16 +360,11 @@ export default function Sidebar() {
       {/* Navigation List */}
       <nav className="flex-1 px-2 lg:px-2.5 xl:px-3 py-4 space-y-1 overflow-y-auto">
         {navItems
-          .filter((item) => {
-            if (isOnlyFTL && item.href === '/unload-planning') {
-              return false;
-            }
-            return canAccessRoute(item.href);
-          })
+          .filter(isNavItemVisible)
           .map((item) => {
           const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href));
-          const Icon = (item.href === '/load-planning' && isOnlyFTL) ? Truck : item.icon;
-          const displayLabel = (item.href === '/load-planning' && isOnlyFTL) ? 'Dedicated Dispatch' : item.label;
+          const Icon = item.icon;
+          const displayLabel = getNavLabel(item);
 
           return (
             <Link
@@ -298,13 +378,15 @@ export default function Sidebar() {
               } ${
                 isActive
                   ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30'
+                  : item.isSuperAdminItem
+                  ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30 hover:bg-amber-500/25 hover:text-amber-300 shadow-xs'
                   : isDark
                   ? 'text-slate-400 hover:text-white hover:bg-slate-800/60'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
               }`}
             >
               <Icon className={`w-4 h-4 shrink-0 transition-colors ${
-                isActive ? 'text-white' : isDark ? 'text-slate-400 group-hover:text-cyan-400' : 'text-slate-500 group-hover:text-blue-600'
+                isActive ? 'text-white' : item.isSuperAdminItem ? 'text-amber-400 group-hover:text-amber-300' : isDark ? 'text-slate-400 group-hover:text-cyan-400' : 'text-slate-500 group-hover:text-blue-600'
               }`} />
               {!collapsed && <span className="truncate flex-1 hidden lg:inline text-xs">{displayLabel}</span>}
               {item.badge > 0 && (
@@ -429,17 +511,13 @@ export default function Sidebar() {
               <div className="flex items-center gap-1.5 mt-0.5">
                 <span
                   className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider uppercase border shrink-0 ${
-                    isOnlyFTL
-                      ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200/90 dark:border-indigo-800/60'
-                      : isOnlyPTL
-                      ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-200/90 dark:border-amber-800/60'
-                      : 'bg-cyan-50 dark:bg-cyan-950/60 text-cyan-700 dark:text-cyan-300 border-cyan-200/90 dark:border-cyan-800/60'
+                    modeBadgeColor
                   }`}
                 >
                   <span className={`w-1 h-1 rounded-full ${
                     isOnlyFTL ? 'bg-indigo-500' : isOnlyPTL ? 'bg-amber-500' : 'bg-cyan-500'
                   }`} />
-                  <span>{isOnlyFTL ? 'FTL' : isOnlyPTL ? 'PTL' : 'FTL • PTL'}</span>
+                  <span>{modeBadgeText}</span>
                 </span>
                 <span className="text-[10px] text-slate-400 truncate">
                   {user?.tagline || 'Logistics'}
@@ -465,16 +543,11 @@ export default function Sidebar() {
         {/* Mobile Navigation List */}
         <nav className="flex-1 px-3 py-3 space-y-1 overflow-y-auto">
           {navItems
-            .filter((item) => {
-              if (isOnlyFTL && item.href === '/unload-planning') {
-                return false;
-              }
-              return canAccessRoute(item.href);
-            })
+            .filter(isNavItemVisible)
             .map((item) => {
               const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href));
-              const Icon = (item.href === '/load-planning' && isOnlyFTL) ? Truck : item.icon;
-              const displayLabel = (item.href === '/load-planning' && isOnlyFTL) ? 'Dedicated Dispatch' : item.label;
+              const Icon = item.icon;
+              const displayLabel = getNavLabel(item);
 
               return (
                 <Link
@@ -484,13 +557,15 @@ export default function Sidebar() {
                   className={`flex items-center px-3.5 py-2.5 space-x-3 rounded-xl text-xs font-semibold transition-all ${
                     isActive
                       ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30'
+                      : item.isSuperAdminItem
+                      ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30 hover:bg-amber-500/25'
                       : isDark
                       ? 'text-slate-400 hover:text-white hover:bg-slate-800/60'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                   }`}
                 >
                   <Icon className={`w-4 h-4 shrink-0 transition-colors ${
-                    isActive ? 'text-white' : isDark ? 'text-slate-400' : 'text-slate-500'
+                    isActive ? 'text-white' : item.isSuperAdminItem ? 'text-amber-400' : isDark ? 'text-slate-400' : 'text-slate-500'
                   }`} />
                   <span className="truncate flex-1">{displayLabel}</span>
                   {item.badge > 0 && (

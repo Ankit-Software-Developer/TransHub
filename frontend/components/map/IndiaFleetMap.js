@@ -3,6 +3,7 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Truck, Navigation, Activity, Maximize2, ZoomIn, ZoomOut, RotateCcw, MapPin } from 'lucide-react';
+import { useOperationsType } from '../../hooks/useOperationsType';
 
 // // Coordinates for major Indian logistics transport hubs & junction cities
 const HUB_COORDINATES = {
@@ -187,8 +188,20 @@ const INDIA_BOUNDS = [
   [36.0, 97.5]   // Northeast coordinates (above Kashmir, east of Arunachal)
 ];
 
+// Format origin / destination names based on transport mode:
+// FTL Vendor and Direct Shipper modes operate point-to-point without hubs, so "Hub" keyword is stripped.
+export const formatLocationName = (cityName, isDirectOrVendor = false) => {
+  if (!cityName) return '';
+  if (isDirectOrVendor) {
+    return String(cityName).replace(/\bhub\b/gi, '').replace(/\s+/g, ' ').trim();
+  }
+  const cleaned = String(cityName).replace(/\s+/g, ' ').trim();
+  if (/hub$/i.test(cleaned)) return cleaned;
+  return `${cleaned} Hub`;
+};
+
 // Helper to compute waypoints, current position, and start/current/next points
-function getTripRouteData(trip) {
+function getTripRouteData(trip, isDirectOrVendor = false) {
   const realLat = parseFloat(trip?.latitude || trip?.last_latitude || trip?.vehicle?.last_latitude);
   const realLng = parseFloat(trip?.longitude || trip?.last_longitude || trip?.vehicle?.last_longitude);
   const hasRealGps = !isNaN(realLat) && !isNaN(realLng) && realLat > 0 && realLng > 0;
@@ -199,8 +212,10 @@ function getTripRouteData(trip) {
     : (trip?.last_ignition !== undefined ? Boolean(trip.last_ignition) : (liveSpeed > 0));
 
   const locName = trip?.last_location_name || trip?.currentLocation || trip?.location || (hasRealGps ? 'Live Telematics' : 'Yard Depot');
-  const oCity = trip?.originCity || trip?.origin_city || trip?.originBranch?.city || trip?.origin || trip?.branchCity || (hasRealGps ? locName : 'Delhi');
-  const dCity = trip?.destCity || trip?.destination_city || trip?.destBranch?.city || trip?.destination || oCity;
+  const rawOCity = trip?.originCity || trip?.origin_city || trip?.originBranch?.city || trip?.origin || trip?.branchCity || (hasRealGps ? locName : 'Delhi');
+  const rawDCity = trip?.destCity || trip?.destination_city || trip?.destBranch?.city || trip?.destination || rawOCity;
+  const oCity = isDirectOrVendor ? formatLocationName(rawOCity, true) : rawOCity;
+  const dCity = isDirectOrVendor ? formatLocationName(rawDCity, true) : rawDCity;
 
   const defaultGpsCoords = hasRealGps ? [realLat, realLng] : [28.6139, 77.2090];
   const originCoords = getCityCoords(oCity, defaultGpsCoords);
@@ -368,6 +383,9 @@ export default function IndiaFleetMap({
   onOpenModal,
   isModal = false
 }) {
+  const { isFleetSupplier, isDirectCarrier, allowsMultiBranchHubs } = useOperationsType();
+  const isDirectOrVendorMode = isFleetSupplier || isDirectCarrier || !allowsMultiBranchHubs;
+
   const mapContainerRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const geoJsonLayerRef = useRef(null);
@@ -547,7 +565,7 @@ export default function IndiaFleetMap({
       // If NO vehicle is selected or no vehicles exist, do NOT highlight any state.
       let activeStateNames = [];
       if (selectedTrip) {
-        const routeData = getTripRouteData(selectedTrip);
+        const routeData = getTripRouteData(selectedTrip, isDirectOrVendorMode);
         if (routeData.isStationary) {
           let foundState = null;
           if (routeData.currentLocation) {
@@ -653,7 +671,7 @@ export default function IndiaFleetMap({
       // When a vehicle is selected: HIGHLIGHT that vehicle corridor, and render other active trips dimmed
       // When NO vehicle is selected: Show ALL active started trips with their corridors!
       validFleet.forEach((veh) => {
-        const vData = getTripRouteData(veh);
+        const vData = getTripRouteData(veh, isDirectOrVendorMode);
         const vId = veh.vehicleNumber || veh.vehicle?.vehicle_number || veh.id || 'FLEET';
         const isCurrentSelected = Boolean(selVehicleId && (vId === selVehicleId || veh.id === selectedTrip?.id));
         const isOtherWhenSelected = Boolean(selVehicleId && !isCurrentSelected);
@@ -707,7 +725,8 @@ export default function IndiaFleetMap({
             }).addTo(routeLayer);
           }
 
-          // Point A: START PIN (Where to start - Origin Hub)
+          // Point A: START PIN (Where to start - Origin)
+          const startLabel = formatLocationName(vData.originCity, isDirectOrVendorMode);
           const startHtml = `
             <div class="flex items-center gap-1 -translate-x-1/2 -translate-y-1/2 cursor-pointer group pointer-events-auto ${isOtherWhenSelected ? 'opacity-40 hover:opacity-100' : 'opacity-100'} transition-opacity">
               <div class="flex items-center gap-1.5 px-2 py-0.5 rounded-lg ${
@@ -716,7 +735,7 @@ export default function IndiaFleetMap({
                   : (isDark ? 'bg-slate-900/90 border border-emerald-500/50 text-emerald-400' : 'bg-white/95 border border-emerald-300 text-emerald-700 shadow-xs')
               } text-[10px] font-bold whitespace-nowrap transition-transform group-hover:scale-110">
                 <span class="w-2 h-2 rounded-full bg-emerald-400 ${isCurrentSelected ? 'animate-ping' : ''}"></span>
-                <span>${vData.originCity} Hub</span>
+                <span>${startLabel}</span>
               </div>
             </div>
           `;
@@ -727,7 +746,7 @@ export default function IndiaFleetMap({
             <div class="p-2 rounded-xl ${isDark ? 'bg-[#0d1527] border border-emerald-500/70 text-white' : 'bg-white border border-emerald-600/60 text-slate-900'} shadow-xl text-[10px] min-w-[130px] max-w-[170px] pointer-events-none text-left">
               <div class="flex items-center gap-1.5 font-bold text-[9.5px] ${isDark ? 'text-emerald-400' : 'text-emerald-700'} pb-1 border-b ${isDark ? 'border-slate-800' : 'border-slate-100'}">
                 <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
-                <span class="truncate">Start: ${vData.originCity} Hub</span>
+                <span class="truncate">Start: ${startLabel}</span>
               </div>
               <div class="text-[9px] mt-1 ${isDark ? 'text-slate-300' : 'text-slate-600'} truncate">
                 Truck: <b class="font-mono ${isDark ? 'text-white' : 'text-slate-900'}">${vId}</b>
@@ -807,7 +826,8 @@ export default function IndiaFleetMap({
             if (onSelectTrip) onSelectTrip(isCurrentSelected ? null : veh);
           });
 
-          // Point C: DESTINATION PIN (Where to going - Destination Hub)
+          // Point C: DESTINATION PIN (Where to going - Destination)
+          const destLabel = formatLocationName(vData.destCity, isDirectOrVendorMode);
           const nextHtml = `
             <div class="flex items-center gap-1 -translate-x-1/2 -translate-y-1/2 cursor-pointer group pointer-events-auto ${isOtherWhenSelected ? 'opacity-40 hover:opacity-100' : 'opacity-100'} transition-opacity">
               <div class="flex items-center gap-1.5 px-2 py-0.5 rounded-lg ${
@@ -816,7 +836,7 @@ export default function IndiaFleetMap({
                   : (isDark ? 'bg-slate-900/90 border border-rose-500/50 text-rose-400' : 'bg-white/95 border border-rose-300 text-rose-700 shadow-xs')
               } text-[10px] font-bold whitespace-nowrap transition-transform group-hover:scale-110">
                 <span class="w-2 h-2 rounded-full bg-rose-500 ${isCurrentSelected ? 'animate-ping' : ''}"></span>
-                <span>${vData.destCity} Hub</span>
+                <span>${destLabel}</span>
               </div>
             </div>
           `;
@@ -827,7 +847,7 @@ export default function IndiaFleetMap({
             <div class="p-2 rounded-xl ${isDark ? 'bg-[#0d1527] border border-rose-500/70 text-white' : 'bg-white border border-rose-600/60 text-slate-900'} shadow-xl text-[10px] min-w-[130px] max-w-[170px] pointer-events-none text-left">
               <div class="flex items-center gap-1.5 font-bold text-[9.5px] ${isDark ? 'text-rose-400' : 'text-rose-700'} pb-1 border-b ${isDark ? 'border-slate-800' : 'border-slate-100'}">
                 <span class="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0"></span>
-                <span class="truncate">Dest: ${vData.destCity} Hub</span>
+                <span class="truncate">Dest: ${destLabel}</span>
               </div>
               <div class="text-[9px] mt-1 ${isDark ? 'text-slate-300' : 'text-slate-600'} truncate">
                 ETA: <b class="${isDark ? 'text-white' : 'text-slate-900'}">${veh.eta || 'Scheduled'}</b>
@@ -898,7 +918,7 @@ export default function IndiaFleetMap({
       if (selectedTripChanged) {
         userHasInteractedRef.current = false;
         if (selectedTrip) {
-          const selRoute = getTripRouteData(selectedTrip);
+          const selRoute = getTripRouteData(selectedTrip, isDirectOrVendorMode);
           if (!selRoute.isStationary) {
             map.fitBounds([selRoute.originCoords, selRoute.truckCoords, selRoute.destCoords], {
               padding: isModal ? [50, 50] : [40, 40],
@@ -971,7 +991,7 @@ export default function IndiaFleetMap({
 
   const handleFocusVehicle = () => {
     if (mapInstanceRef.current && selectedTrip) {
-      const vData = getTripRouteData(selectedTrip);
+      const vData = getTripRouteData(selectedTrip, isDirectOrVendorMode);
       mapInstanceRef.current.flyTo(vData.truckCoords, 8, { duration: 1.2 });
     }
   };
@@ -1062,7 +1082,7 @@ export default function IndiaFleetMap({
               }`}>
                 <div className="flex items-center gap-1.5 text-emerald-500 shrink-0">
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                  <span className="truncate max-w-[90px] sm:max-w-none">{selectedTrip.originCity || selectedTrip.branchCity || 'Origin'} Hub</span>
+                  <span className="truncate max-w-[90px] sm:max-w-none">{formatLocationName(selectedTrip.originCity || selectedTrip.branchCity || 'Origin', isDirectOrVendorMode)}</span>
                 </div>
 
                 <span className={`shrink-0 ${isDark ? 'text-slate-600' : 'text-slate-300'}`}>➔</span>
@@ -1079,7 +1099,7 @@ export default function IndiaFleetMap({
 
                 <div className="flex items-center gap-1.5 text-rose-500 shrink-0">
                   <span className="w-2 h-2 rounded-full bg-rose-500"></span>
-                  <span className="truncate max-w-[90px] sm:max-w-none">{selectedTrip.destCity || selectedTrip.originCity || 'Destination'} Hub</span>
+                  <span className="truncate max-w-[90px] sm:max-w-none">{formatLocationName(selectedTrip.destCity || selectedTrip.originCity || 'Destination', isDirectOrVendorMode)}</span>
                 </div>
 
                 {selectedTrip.speed && (
@@ -1122,7 +1142,7 @@ export default function IndiaFleetMap({
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
               <span className="font-bold text-emerald-400">{activeTripsCount} Active Trips On Map</span>
               <span className="text-slate-500">•</span>
-              <span className="truncate">Showing Start Hub ➔ Truck ➔ Destination (Select to highlight)</span>
+              <span className="truncate">{isDirectOrVendorMode ? 'Showing Loading Site ➔ Truck ➔ Delivery Site (Select to highlight)' : 'Showing Start Hub ➔ Truck ➔ Destination (Select to highlight)'}</span>
             </div>
           )}
           {selectedTrip && (

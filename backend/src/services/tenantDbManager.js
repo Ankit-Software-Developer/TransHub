@@ -169,7 +169,7 @@ const applyEssentialPatches = async (sequelize) => {
     'ALTER TABLE trip_settlements ADD COLUMN net_payable_to_vendor DECIMAL(12, 2) DEFAULT 0.00;',
     'ALTER TABLE trip_settlements ADD COLUMN profit_margin DECIMAL(12, 2) DEFAULT 0.00;',
     "ALTER TABLE trip_settlements MODIFY COLUMN settlement_type VARCHAR(50) DEFAULT 'BALANCED';",
-    "UPDATE branches SET is_head_office = 1 WHERE (is_head_office IS NULL OR is_head_office = 0) AND (branch_code = 'BHQ' OR branch_code = 'HQ' OR branch_code LIKE '%HQ' OR LOWER(branch_name) LIKE '%head office%');",
+    "UPDATE branches SET is_head_office = 1, is_hub = 0 WHERE (branch_code = 'BHQ' OR branch_code = 'HQ' OR branch_code LIKE '%HQ' OR LOWER(branch_name) LIKE '%head office%');",
     `CREATE TABLE IF NOT EXISTS gps_location_logs (
       id BIGINT AUTO_INCREMENT PRIMARY KEY,
       tenant_id VARCHAR(36) NOT NULL,

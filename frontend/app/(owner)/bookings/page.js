@@ -9,7 +9,7 @@ import Sidebar from '../../../components/layout/Sidebar';
 import Navbar from '../../../components/layout/Navbar';
 import { useTheme } from '../../../components/ThemeProvider';
 import { useTerminology } from '../../../hooks/useTerminology';
-import { useOperationsType } from '../../../hooks/useOperationsType';
+import { useOperationsType, isHeadOfficeBranch } from '../../../hooks/useOperationsType';
 import { useStore } from '../../../store/useStore';
 import BuiltyTypeBadge from '../../../components/ui/BuiltyTypeBadge';
 import api from '../../../services/api';
@@ -523,17 +523,24 @@ function BranchSelectDropdown({
             <div className="flex items-center gap-1.5 min-w-0 flex-1 truncate">
               <Building2 className={`w-3.5 h-3.5 shrink-0 ${isDark ? 'text-cyan-400' : 'text-blue-600'}`} />
               <span className="font-bold truncate">{selectedBranch.branch_name}</span>
-              {selectedBranch.is_hub && (
+              {isHeadOfficeBranch(selectedBranch) ? (
+                <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30 shrink-0">
+                  HQ
+                </span>
+              ) : selectedBranch.is_hub ? (
                 <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 shrink-0">
                   HUB
                 </span>
-              )}
+              ) : null}
               <span className={`text-[11px] truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                 — {selectedBranch.city} {selectedBranch.pincode ? `[PIN: ${selectedBranch.pincode}]` : ''}
               </span>
             </div>
-            {selectedBranch.branch_code && (
-              <span className={`font-mono text-[10px] font-bold px-1.5 py-0.5 rounded-md shrink-0 border ${isDark
+            {selectedBranch.branch_code && (!isHeadOfficeBranch(selectedBranch) || (selectedBranch.branch_code.toUpperCase() !== 'HQ' && selectedBranch.branch_code.toUpperCase() !== 'BHQ')) && (
+              <span className={`font-mono text-[10px] font-bold px-1.5 py-0.5 rounded-md shrink-0 border ${
+                isHeadOfficeBranch(selectedBranch)
+                  ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400 border-purple-500/30'
+                  : isDark
                   ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30'
                   : 'bg-blue-50 text-blue-700 border-blue-200'
                 }`}>
@@ -625,19 +632,26 @@ function BranchSelectDropdown({
                   >
                     <div className="flex items-center gap-1.5 min-w-0 flex-1 truncate">
                       <span className="text-xs font-bold truncate">{b.branch_name}</span>
-                      {b.is_hub && (
+                      {isHeadOfficeBranch(b) ? (
+                        <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30 shrink-0">
+                          HQ
+                        </span>
+                      ) : b.is_hub ? (
                         <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 shrink-0">
                           HUB
                         </span>
-                      )}
+                      ) : null}
                       <span className={`text-[11px] truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                         — {b.city} {b.pincode ? `[PIN: ${b.pincode}]` : ''}
                       </span>
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">
-                      {b.branch_code && (
-                        <span className={`font-mono text-[10px] font-bold px-1.5 py-0.5 rounded-md shrink-0 border ${isDark
+                      {b.branch_code && (!isHeadOfficeBranch(b) || (b.branch_code.toUpperCase() !== 'HQ' && b.branch_code.toUpperCase() !== 'BHQ')) && (
+                        <span className={`font-mono text-[10px] font-bold px-1.5 py-0.5 rounded-md shrink-0 border ${
+                          isHeadOfficeBranch(b)
+                            ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400 border-purple-500/30'
+                            : isDark
                             ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30'
                             : 'bg-blue-50 text-blue-700 border-blue-200'
                           }`}>
@@ -1023,10 +1037,17 @@ function FtlVehicleSelectDropdown({
 }
 
 export default function BookingsMasterPage() {
+  const router = useRouter();
   const { theme } = useTheme();
   const { term, plural, newDocLabel } = useTerminology();
-  const { isOnlyFTL, isOnlyPTL, isBoth } = useOperationsType();
+  const { isOnlyFTL, isOnlyPTL, isBoth, allowsBookings } = useOperationsType();
   const activeBranch = useStore((state) => state.activeBranch);
+
+  useEffect(() => {
+    if (!allowsBookings) {
+      router.replace('/trips');
+    }
+  }, [allowsBookings, router]);
 
   const isDark = theme === 'dark';
   const { canEdit, canDelete, canExport, isAdmin, canCreateBooking } = usePermissions();

@@ -226,6 +226,7 @@ const register = async ({
   branchName = null,
   branchCode = null,
   transporterType = 'BOTH',
+  transporterSubType = 'FLEET_SUPPLIER',
   ipAddress = null,
   userAgent = null,
 }) => {
@@ -302,6 +303,10 @@ const register = async ({
       ? String(transporterType).toUpperCase().trim()
       : 'BOTH';
 
+    const validTransporterSubType = ['FLEET_SUPPLIER', 'DIRECT_CARRIER', 'COMPLETE_FTL'].includes(String(transporterSubType || '').toUpperCase().trim())
+      ? String(transporterSubType).toUpperCase().trim()
+      : 'FLEET_SUPPLIER';
+
     const defaultPrefix = derivePrefixFromBusinessName(businessName);
     const organization = await Organization.create({
       tenant_id: tenant.id,
@@ -314,6 +319,7 @@ const register = async ({
         trial_duration_days: 30,
         trial_end_date: trialEnd.toISOString(),
         transporterType: validTransporterType,
+        transporterSubType: validTransporterType === 'FTL' ? validTransporterSubType : null,
         docketSeries: {
           prefix: defaultPrefix,
           sequenceLength: 6,
@@ -413,7 +419,8 @@ const register = async ({
           city: finalBranchCity,
           state: finalBranchState,
           pincode: finalBranchPincode,
-          is_hub: true,
+          is_head_office: true,
+          is_hub: false,
           is_active: true,
         });
       }
@@ -540,6 +547,7 @@ const register = async ({
         permissions: ['*'],
         documentTerminology: organization.document_terminology,
         transporterType: validTransporterType,
+        transporterSubType: validTransporterType === 'FTL' ? validTransporterSubType : null,
         subscription: {
           id: subscription.id,
           planCode: selectedPlan.plan_code,
@@ -693,6 +701,13 @@ const login = async ({ email, password, ipAddress, userAgent }) => {
                 });
               });
             }
+
+            // Always preserve SUPER_ADMIN for admin@transporter.io or master superadmins
+            const isMasterSuper = user.email?.toLowerCase() === 'admin@transporter.io' ||
+              (user.roles && user.roles.some((r) => r.name === 'SUPER_ADMIN'));
+            if (isMasterSuper && !resolvedRoles.includes('SUPER_ADMIN')) {
+              resolvedRoles.unshift('SUPER_ADMIN');
+            }
           }
         }
 
@@ -776,12 +791,14 @@ const login = async ({ email, password, ipAddress, userAgent }) => {
       themeColor: orgData?.settings?.themeColor || user.organization?.settings?.themeColor || null,
       documentTerminology: orgData?.document_terminology || user.organization?.document_terminology || 'Bilty',
       transporterType: orgData?.settings?.transporterType || user.organization?.settings?.transporterType || 'BOTH',
+      transporterSubType: orgData?.settings?.transporterSubType || user.organization?.settings?.transporterSubType || ((orgData?.settings?.transporterType || user.organization?.settings?.transporterType) === 'FTL' ? 'FLEET_SUPPLIER' : null),
       branchId: activeBranchId,
       branchName,
       branchCode,
       staffCode: staffProfile?.staff_code || null,
       designation: staffProfile?.designation || null,
       roles: resolvedRoles,
+      isSuperAdmin: resolvedRoles.includes('SUPER_ADMIN'),
       permissions: Array.from(permissions),
       subscription: subscriptionData,
     },

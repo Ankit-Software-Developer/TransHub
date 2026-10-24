@@ -7,6 +7,7 @@ import Navbar from '../../../components/layout/Navbar';
 import { useStore } from '../../../store/useStore';
 import { useTheme } from '../../../components/ThemeProvider';
 import { usePermissions } from '../../../hooks/usePermissions';
+import { isHeadOfficeBranch } from '../../../hooks/useOperationsType';
 import approvalService from '../../../services/approvalService';
 import api from '../../../services/api';
 import Modal from '../../../components/ui/Modal';
@@ -955,11 +956,15 @@ export default function ApprovalsPage() {
                             <div className="text-[10px] text-slate-500 flex items-center gap-1">
                               <Building2 className="w-3 h-3 text-slate-400" />
                               <span>{req.branch?.branch_name || 'Main Branch'}</span>
-                              {req.branch?.is_hub && (
+                              {isHeadOfficeBranch(req.branch) ? (
                                 <span className="px-1 py-0.2 rounded text-[9px] bg-purple-500/10 text-purple-500 font-bold">
+                                  HQ
+                                </span>
+                              ) : req.branch?.is_hub ? (
+                                <span className="px-1 py-0.2 rounded text-[9px] bg-amber-500/10 text-amber-500 font-bold">
                                   HUB
                                 </span>
-                              )}
+                              ) : null}
                             </div>
                           </td>
 
@@ -1172,7 +1177,7 @@ export default function ApprovalsPage() {
                     <p className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Originating Branch</p>
                     <p className="text-xs font-bold mt-0.5">
                       {selectedRequest.branch?.branch_name || 'Main Branch'}
-                      {selectedRequest.branch?.is_hub ? ' (Transshipment Hub)' : ''}
+                      {isHeadOfficeBranch(selectedRequest.branch) ? ' (Head Office HQ)' : selectedRequest.branch?.is_hub ? ' (Transshipment Hub)' : ''}
                     </p>
                     <p className="text-[11px] text-slate-400">{selectedRequest.branch?.city || ''}</p>
                   </div>
@@ -1790,7 +1795,7 @@ export default function ApprovalsPage() {
                           <option value="">Select Branch / Station</option>
                           {branches.map((b) => (
                             <option key={b.id} value={b.id}>
-                              {b.branch_name} {b.is_hub ? '(Hub)' : ''}
+                              {b.branch_name} {isHeadOfficeBranch(b) ? '(HQ)' : b.is_hub ? '(Hub)' : ''}
                             </option>
                           ))}
                         </select>

@@ -8,6 +8,7 @@ import Navbar from '../../../components/layout/Navbar';
 import DataTable from '../../../components/ui/DataTable';
 import BranchFilterDropdown from '../../../components/ui/BranchFilterDropdown';
 import { usePermissions } from '../../../hooks/usePermissions';
+import { useOperationsType, isHeadOfficeBranch } from '../../../hooks/useOperationsType';
 import { useTheme } from '../../../components/ThemeProvider';
 import { useStore } from '../../../store/useStore';
 import Modal from '../../../components/ui/Modal';
@@ -34,19 +35,41 @@ import {
   Compass,
   ShieldCheck,
   Filter,
+  Lock,
 } from 'lucide-react';
 
 function ServingBranchDropdown({
-  label = "Designated Serving Branch / Hub",
+  label,
   selectedBranchId,
   onSelectBranch,
   branches = [],
   bestMatch = null,
   isDark,
+  disabled = false,
 }) {
+  const { allowsMultiBranchHubs } = useOperationsType();
+  const isSwitchable = allowsMultiBranchHubs && !disabled;
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const dropdownRef = useRef(null);
+
+  // Centralized Head Office (HQ) branch
+  const hqBranch = useMemo(() => {
+    return branches.find((b) => isHeadOfficeBranch(b)) || branches[0] || null;
+  }, [branches]);
+
+  const effectiveSelectedBranchId = !isSwitchable
+    ? (hqBranch?.id || selectedBranchId || branches[0]?.id)
+    : (selectedBranchId || hqBranch?.id || branches[0]?.id);
+
+  const displayLabel = label || (!allowsMultiBranchHubs ? "Designated Serving Branch / HQ" : "Designated Serving Branch / Hub");
+
+  // Keep parent form synced with HQ branch when non-switchable
+  useEffect(() => {
+    if (!isSwitchable && hqBranch?.id && selectedBranchId !== hqBranch.id) {
+      onSelectBranch?.(hqBranch.id);
+    }
+  }, [isSwitchable, hqBranch, selectedBranchId, onSelectBranch]);
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -63,8 +86,11 @@ function ServingBranchDropdown({
   }, [isOpen]);
 
   const selectedBranch = useMemo(() => {
+    if (!isSwitchable) {
+      return hqBranch || branches.find((b) => b.id === effectiveSelectedBranchId) || branches[0] || null;
+    }
     return branches.find((b) => b.id === selectedBranchId) || null;
-  }, [branches, selectedBranchId]);
+  }, [branches, selectedBranchId, effectiveSelectedBranchId, isSwitchable, hqBranch]);
 
   const filteredBranches = useMemo(() => {
     if (!query.trim()) return branches;
@@ -79,14 +105,15 @@ function ServingBranchDropdown({
   }, [branches, query]);
 
   const isRecommendedDifferent = bestMatch && bestMatch.branch && bestMatch.branch.id !== selectedBranchId;
+  const isSelectedHO = selectedBranch ? isHeadOfficeBranch(selectedBranch) : false;
 
   return (
     <div className={`space-y-1.5 relative ${isOpen ? 'z-50' : 'z-10'}`} ref={dropdownRef}>
       <div className="flex items-center justify-between mb-0.5">
-        <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-          {label}
+        <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+          <span>{displayLabel}</span>
         </label>
-        {bestMatch && (
+        {isSwitchable && bestMatch && (
           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-cyan-400 border border-blue-500/30 flex items-center gap-1">
             <Sparkles className="w-3 h-3 text-cyan-400" />
             <span>Recommended ({bestMatch.normalizedScore || 95}% Match)</span>
@@ -94,8 +121,8 @@ function ServingBranchDropdown({
         )}
       </div>
 
-      {/* Recommended Switch Banner if different */}
-      {isRecommendedDifferent && (
+      {/* Recommended Switch Banner if different (Only in multi-branch switchable mode) */}
+      {isSwitchable && isRecommendedDifferent && (
         <div className={`p-1.5 px-2.5 rounded-lg border flex items-center justify-between gap-2 text-xs transition-all ${
           isDark ? 'bg-cyan-950/20 border-cyan-800/40 text-cyan-200' : 'bg-blue-50 border-blue-200 text-blue-900'
         }`}>
@@ -115,51 +142,83 @@ function ServingBranchDropdown({
         </div>
       )}
 
-      {/* Dropdown Trigger Button */}
-      <button
-        type="button"
-        onClick={() => setIsOpen((prev) => !prev)}
-        className={`w-full rounded-xl px-3 py-2 text-xs font-semibold border flex items-center justify-between transition-all cursor-pointer text-left ${
-          isDark
-            ? 'bg-slate-900/90 border-slate-800 text-white hover:border-slate-700'
-            : 'bg-slate-50 border-slate-300 text-slate-900 hover:border-slate-400'
-        } ${isOpen ? 'ring-2 ring-blue-500/40 border-blue-500' : ''}`}
-      >
-        {selectedBranch ? (
-          <div className="flex items-center gap-1.5 min-w-0 flex-1 mr-2 text-xs truncate">
-            <Building2 className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-            <span className="font-bold truncate">{selectedBranch.branch_name}</span>
-            {selectedBranch.is_hub && (
-              <span className="text-[9px] px-1.5 py-0.2 rounded font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 shrink-0">
-                HUB
+      {/* Dropdown Trigger Button (switchable) or Non-switchable Fixed Box */}
+      {isSwitchable ? (
+        <button
+          type="button"
+          onClick={() => setIsOpen((prev) => !prev)}
+          className={`w-full rounded-xl px-3 py-2 text-xs font-semibold border flex items-center justify-between transition-all cursor-pointer text-left ${
+            isDark
+              ? 'bg-slate-900/90 border-slate-800 text-white hover:border-slate-700'
+              : 'bg-slate-50 border-slate-300 text-slate-900 hover:border-slate-400'
+          } ${isOpen ? 'ring-2 ring-blue-500/40 border-blue-500' : ''}`}
+        >
+          {selectedBranch ? (
+            <div className="flex items-center gap-1.5 min-w-0 flex-1 mr-2 text-xs truncate">
+              <Building2 className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+              <span className="font-bold truncate">{selectedBranch.branch_name}</span>
+              {isSelectedHO ? (
+                <span className="text-[9px] px-1.5 py-0.2 rounded font-bold bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30 shrink-0">
+                  HQ
+                </span>
+              ) : selectedBranch.is_hub ? (
+                <span className="text-[9px] px-1.5 py-0.2 rounded font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 shrink-0">
+                  HUB
+                </span>
+              ) : null}
+              <span className={`text-[11px] truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                — {selectedBranch.city} {selectedBranch.pincode ? `[${selectedBranch.pincode}]` : ''}
               </span>
-            )}
-            <span className={`text-[11px] truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-              — {selectedBranch.city} {selectedBranch.pincode ? `[${selectedBranch.pincode}]` : ''}
-            </span>
-            {selectedBranch.branch_code && (
-              <span className={`font-mono text-[10px] font-bold px-1.5 py-0.2 rounded shrink-0 ${
-                selectedBranch.is_hub
-                  ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30'
-                  : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
-              }`}>
-                [{selectedBranch.branch_code}]
+              {selectedBranch.branch_code && (!isSelectedHO || (selectedBranch.branch_code.toUpperCase() !== 'HQ' && selectedBranch.branch_code.toUpperCase() !== 'BHQ')) && (
+                <span className={`font-mono text-[10px] font-bold px-1.5 py-0.2 rounded shrink-0 ${
+                  isSelectedHO
+                    ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30'
+                    : selectedBranch.is_hub
+                    ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30'
+                    : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                }`}>
+                  [{selectedBranch.branch_code}]
+                </span>
+              )}
+              {bestMatch?.branch?.id === selectedBranch.id && (
+                <span className="text-[9px] px-1.5 py-0.2 rounded font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 shrink-0">
+                  ⭐ Nearest
+                </span>
+              )}
+            </div>
+          ) : (
+            <span className="text-slate-400 text-xs">-- Auto-Select / Unassigned Serving Branch --</span>
+          )}
+          <ChevronDown className={`w-3.5 h-3.5 text-slate-400 shrink-0 transition-transform ${isOpen ? 'rotate-180 text-blue-500' : ''}`} />
+        </button>
+      ) : (
+        <div
+          title="In this mode, all accounts are serviced exclusively by your primary registration Head Office (HQ) and cannot be switched."
+          className={`w-full rounded-xl px-3 py-2 text-xs font-semibold border flex items-center justify-between transition-all select-none cursor-default ${
+            isDark
+              ? 'bg-slate-900/60 border-slate-800/80 text-slate-200'
+              : 'bg-slate-100/80 border-slate-200 text-slate-800'
+          }`}
+        >
+          {selectedBranch ? (
+            <div className="flex items-center gap-1.5 min-w-0 flex-1 text-xs truncate">
+              <Building2 className="w-3.5 h-3.5 text-purple-500 shrink-0" />
+              <span className="font-bold truncate">{selectedBranch.branch_name}</span>
+              <span className="text-[9px] px-1.5 py-0.2 rounded font-bold bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30 shrink-0">
+                HQ
               </span>
-            )}
-            {bestMatch?.branch?.id === selectedBranch.id && (
-              <span className="text-[9px] px-1.5 py-0.2 rounded font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 shrink-0">
-                ⭐ Nearest
+              <span className={`text-[11px] truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                — {selectedBranch.city} {selectedBranch.pincode ? `[${selectedBranch.pincode}]` : ''}
               </span>
-            )}
-          </div>
-        ) : (
-          <span className="text-slate-400 text-xs">-- Auto-Select / Unassigned Serving Branch --</span>
-        )}
-        <ChevronDown className={`w-3.5 h-3.5 text-slate-400 shrink-0 transition-transform ${isOpen ? 'rotate-180 text-blue-500' : ''}`} />
-      </button>
+            </div>
+          ) : (
+            <span className="text-slate-400 text-xs">Head Office (Central HQ)</span>
+          )}
+        </div>
+      )}
 
-      {/* Dropdown Menu Popup - Opens DOWNWARDS with High Z-Index */}
-      {isOpen && (
+      {/* Dropdown Menu Popup - Opens DOWNWARDS with High Z-Index (Only when switchable) */}
+      {isOpen && isSwitchable && (
         <div className={`absolute left-0 right-0 top-full mt-1.5 z-[9999] rounded-xl border shadow-2xl overflow-hidden backdrop-blur-md transition-all ${
           isDark
             ? 'bg-slate-900 border-slate-700 text-white shadow-cyan-950/40'
@@ -223,20 +282,26 @@ function ServingBranchDropdown({
               >
                 <div className="flex items-center gap-1.5 min-w-0 flex-1 truncate">
                   <span className="text-xs font-bold truncate">{bestMatch.branch.branch_name}</span>
-                  {bestMatch.branch.is_hub && (
+                  {isHeadOfficeBranch(bestMatch.branch) ? (
+                    <span className="text-[9px] px-1.5 py-0.2 rounded font-bold bg-purple-500/20 text-purple-400 border border-purple-500/30 shrink-0">
+                      HQ
+                    </span>
+                  ) : bestMatch.branch.is_hub ? (
                     <span className="text-[9px] px-1.5 py-0.2 rounded font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 shrink-0">
                       HUB
                     </span>
-                  )}
+                  ) : null}
                   <span className={`text-[11px] truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                     — {bestMatch.branch.city} {bestMatch.branch.pincode ? `[${bestMatch.branch.pincode}]` : ''}
                   </span>
                   <span className="text-[9px] px-1.5 py-0.2 rounded font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 shrink-0">
                     ⭐ Recommended Match
                   </span>
-                  {bestMatch.branch.branch_code && (
+                  {bestMatch.branch.branch_code && (!isHeadOfficeBranch(bestMatch.branch) || (bestMatch.branch.branch_code.toUpperCase() !== 'HQ' && bestMatch.branch.branch_code.toUpperCase() !== 'BHQ')) && (
                     <span className={`font-mono text-[10px] font-bold px-1.5 py-0.2 rounded shrink-0 ${
-                      bestMatch.branch.is_hub
+                      isHeadOfficeBranch(bestMatch.branch)
+                        ? 'bg-purple-500/15 text-purple-400 border border-purple-500/30'
+                        : bestMatch.branch.is_hub
                         ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30'
                         : 'bg-cyan-500/20 text-cyan-400'
                     }`}>
@@ -255,6 +320,7 @@ function ServingBranchDropdown({
               .filter(b => !bestMatch || b.id !== bestMatch.branch?.id)
               .map((b) => {
                 const isSelected = selectedBranchId === b.id;
+                const isHO = isHeadOfficeBranch(b);
                 return (
                   <div
                     key={b.id}
@@ -270,17 +336,23 @@ function ServingBranchDropdown({
                   >
                     <div className="flex items-center gap-1.5 min-w-0 flex-1 truncate">
                       <span className="text-xs font-semibold truncate">{b.branch_name}</span>
-                      {b.is_hub && (
+                      {isHO ? (
+                        <span className="text-[9px] px-1.5 py-0.2 rounded font-bold bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30 shrink-0">
+                          HQ
+                        </span>
+                      ) : b.is_hub ? (
                         <span className="text-[9px] px-1.5 py-0.2 rounded font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 shrink-0">
                           HUB
                         </span>
-                      )}
+                      ) : null}
                       <span className={`text-[11px] truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                         — {b.city} {b.pincode ? `[${b.pincode}]` : ''}
                       </span>
-                      {b.branch_code && (
+                      {b.branch_code && (!isHO || (b.branch_code.toUpperCase() !== 'HQ' && b.branch_code.toUpperCase() !== 'BHQ')) && (
                         <span className={`font-mono text-[10px] font-bold px-1.5 py-0.2 rounded shrink-0 ${
-                          b.is_hub
+                          isHO
+                            ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30'
+                            : b.is_hub
                             ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30'
                             : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
                         }`}>
@@ -308,6 +380,7 @@ function ServingBranchDropdown({
 }
 
 export default function CustomersPage() {
+  const { allowsMultiBranchHubs } = useOperationsType();
   const { theme } = useTheme();
   const isDark = theme === 'dark';
   const {
@@ -338,6 +411,11 @@ export default function CustomersPage() {
 
   // Branches for smart logistics routing
   const [branches, setBranches] = useState([]);
+
+  // Centralized Head Office (HQ) branch for single-branch modes
+  const hqBranch = useMemo(() => {
+    return branches.find((b) => isHeadOfficeBranch(b)) || branches[0] || null;
+  }, [branches]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [phoneError, setPhoneError] = useState('');
   const [pincodeError, setPincodeError] = useState('');
@@ -718,7 +796,9 @@ export default function CustomersPage() {
     try {
       const isTbb = formData.billing_type === 'TBB';
       const parsedLimit = isTbb ? parseFloat(formData.credit_limit || 0) : 0;
-      const targetBranchId = formData.branch_id || bestBranchMatch?.branch?.id;
+      const targetBranchId = !allowsMultiBranchHubs
+        ? (hqBranch?.id || branches[0]?.id || null)
+        : (formData.branch_id || bestBranchMatch?.branch?.id || null);
       const selectedBranch = branches.find(b => b.id === targetBranchId);
       const branchCap = selectedBranch?.max_customer_credit_limit ? parseFloat(selectedBranch.max_customer_credit_limit) : 1000000;
 
@@ -728,6 +808,7 @@ export default function CustomersPage() {
       }
       const payload = {
         ...formData,
+        branch_id: targetBranchId,
         credit_days: isTbb ? parseInt(formData.credit_days || 30, 10) : 0,
         credit_limit: parsedLimit,
       };
@@ -882,7 +963,9 @@ export default function CustomersPage() {
     try {
       const isTbb = editFormData.billing_type === 'TBB';
       const parsedLimit = isTbb ? parseFloat(editFormData.credit_limit || 0) : 0;
-      const targetBranchId = editFormData.branch_id || editBestBranchMatch?.branch?.id || editingCustomer?.branch_id;
+      const targetBranchId = !allowsMultiBranchHubs
+        ? (hqBranch?.id || branches[0]?.id || editingCustomer?.branch_id || null)
+        : (editFormData.branch_id || editBestBranchMatch?.branch?.id || editingCustomer?.branch_id || null);
       const selectedBranch = branches.find(b => b.id === targetBranchId);
       const branchCap = selectedBranch?.max_customer_credit_limit ? parseFloat(selectedBranch.max_customer_credit_limit) : 1000000;
 
@@ -893,6 +976,7 @@ export default function CustomersPage() {
       }
       const payload = {
         ...editFormData,
+        branch_id: targetBranchId,
         credit_days: isTbb ? parseInt(editFormData.credit_days || 30, 10) : 0,
         credit_limit: parsedLimit,
       };
@@ -1131,26 +1215,26 @@ export default function CustomersPage() {
       },
       {
         key: 'branch',
-        header: 'Serving Branch',
+        header: !allowsMultiBranchHubs ? 'Registration Branch' : 'Serving Branch',
         sortable: false,
         width: 165,
         minWidth: 145,
         exportValue: (row) => {
           const match = calculateBestBranch(row.pincode, row.city, branches);
-          const b = row.branch || match?.branch;
-          return b?.branch_name || 'Central Hub';
+          const b = row.branch || (!allowsMultiBranchHubs ? hqBranch : match?.branch);
+          return b?.branch_name || 'Head Office (HQ)';
         },
         render: (val, row) => {
           const match = calculateBestBranch(row.pincode, row.city, branches);
-          const b = row.branch || match?.branch;
+          const b = row.branch || (!allowsMultiBranchHubs ? hqBranch : match?.branch);
 
           if (!b) {
             return (
-              <span className="text-[10px] text-slate-400 italic">Central Hub</span>
+              <span className="text-[10px] text-slate-400 italic">Head Office (HQ)</span>
             );
           }
 
-          const isHO = b.is_head_office || b.branch_code === 'BHQ' || b.branch_code === 'HQ' || /head\s*office/i.test(b.branch_name);
+          const isHO = isHeadOfficeBranch(b);
 
           return (
             <div className="space-y-1">
@@ -1166,11 +1250,15 @@ export default function CustomersPage() {
               </span>
 
               <div className="flex items-center gap-1.5 text-[9px]">
-                {b.branch_code && (
+                {isHO ? (
+                  <span className="px-1.5 py-0.2 rounded font-bold text-[9px] border bg-purple-500/15 text-purple-600 dark:text-purple-400 border-purple-500/30">
+                    HQ
+                  </span>
+                ) : b.branch_code ? (
                   <span className="px-1.5 py-0.2 rounded font-mono font-bold text-[9px] border bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700">
                     {b.branch_code}
                   </span>
-                )}
+                ) : null}
                 {b.pincode && (
                   <span className="font-mono text-[9px] text-slate-400">
                     PIN: {b.pincode}
@@ -1284,7 +1372,7 @@ export default function CustomersPage() {
           ]
         : []),
     ],
-    [isDark, canEditCustomer, canDeleteCustomer, isAdmin, branches, userBranch]
+    [isDark, canEditCustomer, canDeleteCustomer, isAdmin, branches, userBranch, allowsMultiBranchHubs]
   );
 
   return (
@@ -1822,17 +1910,19 @@ export default function CustomersPage() {
                     </div>
                   </div>
 
-                  {/* Row 4: Serving Branch Selection + Smart Proximity Match */}
+                  {/* Row 4: Serving Branch Selection + Smart Proximity Match (Non-switchable in single-branch modes) */}
                   <ServingBranchDropdown
                     label="Designated Serving Branch / Hub"
-                    selectedBranchId={formData.branch_id}
+                    selectedBranchId={formData.branch_id || hqBranch?.id}
                     onSelectBranch={(branchId) => {
+                      if (!allowsMultiBranchHubs) return;
                       setFormData((prev) => ({ ...prev, branch_id: branchId }));
                       setIsManualBranchSelected(true);
                     }}
                     branches={branches}
-                    bestMatch={bestBranchMatch}
+                    bestMatch={allowsMultiBranchHubs ? bestBranchMatch : null}
                     isDark={isDark}
+                    disabled={!allowsMultiBranchHubs}
                   />
 
                   {/* Row 5: Billing Terms & TBB Contract Agreement */}
@@ -2348,17 +2438,19 @@ export default function CustomersPage() {
                     </div>
                   </div>
 
-                  {/* Row 4: Serving Branch Selection + Smart Proximity Match */}
+                  {/* Row 4: Serving Branch Selection + Smart Proximity Match (Edit - Non-switchable in single-branch modes) */}
                   <ServingBranchDropdown
                     label="Designated Serving Branch / Hub"
-                    selectedBranchId={editFormData.branch_id}
+                    selectedBranchId={editFormData.branch_id || hqBranch?.id}
                     onSelectBranch={(branchId) => {
+                      if (!allowsMultiBranchHubs) return;
                       setEditFormData((prev) => ({ ...prev, branch_id: branchId }));
                       setIsEditManualBranchSelected(true);
                     }}
                     branches={branches}
-                    bestMatch={editBestBranchMatch}
+                    bestMatch={allowsMultiBranchHubs ? editBestBranchMatch : null}
                     isDark={isDark}
+                    disabled={!allowsMultiBranchHubs}
                   />
 
                   {/* Row 5: Billing Terms & TBB Contract Agreement (Edit) */}

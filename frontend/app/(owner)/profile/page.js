@@ -42,7 +42,7 @@ export default function ProfilePage() {
   const { user, setUser } = useStore();
   const { theme } = useTheme();
   const isDark = theme === 'dark';
-  const { isAdmin } = usePermissions();
+  const { isAdmin, isSuperAdmin } = usePermissions();
   const { showToast } = useToast();
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isSavingPassword, setIsSavingPassword] = useState(false);
@@ -71,8 +71,15 @@ export default function ProfilePage() {
   // Sync profile details when user is loaded
   useEffect(() => {
     if (user) {
+      const isSuper = isSuperAdmin ||
+        user.email?.toLowerCase() === 'admin@transporter.io' ||
+        Boolean(user.isSuperAdmin) ||
+        user.roles?.includes('SUPER_ADMIN');
+
       const rawRole = user.roles?.[0];
-      const formattedRole = (!rawRole || rawRole === 'TRANSPORT_OWNER' || rawRole === 'Transport Owner' || rawRole === 'OWNER' || rawRole === 'SUPER_ADMIN')
+      const formattedRole = isSuper
+        ? 'Super Administrator'
+        : (!rawRole || rawRole === 'TRANSPORT_OWNER' || rawRole === 'Transport Owner' || rawRole === 'OWNER')
         ? 'Admin'
         : rawRole.replace(/_/g, ' ');
 
@@ -82,10 +89,12 @@ export default function ProfilePage() {
         email: user.email || '',
         phone: user.phone || '',
         roleName: formattedRole,
-        branchName: user.branchName || user.branch?.branch_name || 'All Branches (Enterprise Admin)',
+        branchName: isSuper
+          ? 'Global Platform Access (All Tenants & Hubs)'
+          : (user.branchName || user.branch?.branch_name || 'All Branches (Enterprise Admin)'),
       });
     }
-  }, [user]);
+  }, [user, isSuperAdmin]);
 
   // Flash feedback helpers using top-corner floating toasts with progress bar & pause-on-hover
   const triggerSuccess = (msg) => {
@@ -231,7 +240,11 @@ export default function ProfilePage() {
                     <h1 className="text-xl sm:text-2xl font-black tracking-tight">
                       {profileForm.firstName ? `${profileForm.firstName} ${profileForm.lastName || ''}`.trim() : 'Operator Profile'}
                     </h1>
-                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
+                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide border ${
+                      isSuperAdmin
+                        ? 'bg-amber-500/15 text-amber-400 border-amber-500/35 shadow-xs'
+                        : 'bg-cyan-500/15 text-cyan-400 border-cyan-500/30'
+                    }`}>
                       {profileForm.roleName}
                     </span>
                   </div>
@@ -270,9 +283,20 @@ export default function ProfilePage() {
                 </div>
               </div>
 
-              {/* Right: Shortcut to Company Settings (Admin only) */}
-              {isAdmin && (
-                <div className="flex items-center gap-3">
+              {/* Right: Shortcut to SaaS Control Tower (SuperAdmin) or Company Settings (Admin) */}
+              <div className="flex items-center gap-3 flex-wrap">
+                {isSuperAdmin && (
+                  <Link
+                    href="/super-admin/dashboard"
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-amber-500/40 text-xs font-bold transition-all shadow-md bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-amber-500/20 cursor-pointer"
+                  >
+                    <ShieldCheck className="w-4 h-4 text-slate-950" />
+                    <span>Open SaaS Control Tower</span>
+                    <ArrowRight className="w-3.5 h-3.5 text-slate-950" />
+                  </Link>
+                )}
+
+                {isAdmin && (
                   <Link
                     href="/settings"
                     className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border text-xs font-bold transition-all shadow-md ${
@@ -285,8 +309,8 @@ export default function ProfilePage() {
                     <span>Company Settings</span>
                     <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
                   </Link>
-                </div>
-              )}
+                )}
+              </div>
 
             </div>
           </div>

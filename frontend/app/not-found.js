@@ -132,7 +132,7 @@ export default function NotFound() {
           </span>
           <Radio className="w-3.5 h-3.5 text-rose-500" />
           <span className={isDark ? 'text-slate-300' : 'text-slate-700'}>
-            Status 404 • Waypoint Coordinates Lost
+            Status 404 • Page Not Found
           </span>
         </div>
 
@@ -177,13 +177,13 @@ export default function NotFound() {
         <h1 className={`text-2xl sm:text-3xl md:text-4xl font-black tracking-tight mt-6 ${
           isDark ? 'text-white' : 'text-slate-900'
         }`}>
-          Route Not Found in Transport Network
+          Page Not Found
         </h1>
 
         <p className={`text-xs sm:text-sm md:text-base mt-3 max-w-xl mx-auto leading-relaxed ${
           isDark ? 'text-slate-400' : 'text-slate-600 font-medium'
         }`}>
-          The hub page, consignment link, or telemetry coordinates you were heading to do not exist or have been rerouted to another terminal.
+          The page you are looking for doesn't exist, has been removed, or the link is incorrect.
         </p>
 
         {/* Quick Docket / Consignment Tracking Input */}

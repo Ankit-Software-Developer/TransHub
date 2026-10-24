@@ -155,8 +155,8 @@ export default function SupportPage() {
         id: user.branch.id || userBranchId,
         branch_name: user.branch.name || user.branch.branch_name || userBranchName || 'Assigned Branch',
         name: user.branch.name || user.branch.branch_name || userBranchName || 'Assigned Branch',
-        branch_code: user.branch.code || user.branch.branch_code || userBranchCode || 'HUB',
-        code: user.branch.code || user.branch.branch_code || userBranchCode || 'HUB',
+        branch_code: user.branch.code || user.branch.branch_code || userBranchCode || 'HQ',
+        code: user.branch.code || user.branch.branch_code || userBranchCode || 'HQ',
         city: user.branch.city || user?.city || '',
       };
     }
@@ -167,8 +167,8 @@ export default function SupportPage() {
       id: userBranchId || '1',
       branch_name: userBranchName || 'Assigned Branch',
       name: userBranchName || 'Assigned Branch',
-      branch_code: userBranchCode || 'HUB',
-      code: userBranchCode || 'HUB',
+      branch_code: userBranchCode || 'HQ',
+      code: userBranchCode || 'HQ',
       city: user?.city || '',
     };
   }, [branches, userBranchId, userBranchCode, userBranchName, activeBranch, user]);
@@ -353,7 +353,7 @@ export default function SupportPage() {
                     {!isAdmin && userBranchId && (
                       <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30 shrink-0">
                         <Building2 className="w-3.5 h-3.5" />
-                        <span>{activeLoginBranch?.branch_name || activeLoginBranch?.name || userBranchName}: {activeLoginBranch?.branch_code || activeLoginBranch?.code || userBranchCode || 'HUB'}</span>
+                        <span>{activeLoginBranch?.branch_name || activeLoginBranch?.name || userBranchName}: {activeLoginBranch?.branch_code || activeLoginBranch?.code || userBranchCode || 'HQ'}</span>
                         <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"></span>
                       </span>
                     )}
@@ -1018,7 +1018,7 @@ export default function SupportPage() {
                             </div>
 
                             <span className="font-mono font-bold text-[10.5px] uppercase tracking-wider px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-950/80 text-blue-700 dark:text-cyan-400 border border-blue-200 dark:border-blue-800 shrink-0 shadow-2xs">
-                              {activeLoginBranch?.branch_code || activeLoginBranch?.code || userBranchCode || 'HUB'}
+                              {activeLoginBranch?.branch_code || activeLoginBranch?.code || userBranchCode || 'HQ'}
                             </span>
                           </div>
 

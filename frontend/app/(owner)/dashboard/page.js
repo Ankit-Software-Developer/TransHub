@@ -11,6 +11,7 @@ import { useTheme } from '../../../components/ThemeProvider';
 import { useAuth } from '../../../hooks/useAuth';
 import { usePermissions } from '../../../hooks/usePermissions';
 import { useStore } from '../../../store/useStore';
+import { useOperationsType } from '../../../hooks/useOperationsType';
 import api from '../../../services/api';
 import {
   Building2,
@@ -67,6 +68,20 @@ const IndiaFleetMap = dynamic(
 export default function OwnerDashboard() {
   const { theme } = useTheme();
   const { user } = useAuth();
+  const {
+    isOnlyFTL,
+    isOnlyPTL,
+    isBoth,
+    transporterType,
+    isFleetSupplier,
+    isDirectCarrier,
+    isCompleteFTL,
+    modeLongLabel,
+    allowsMultiBranchHubs,
+    allowsBookings,
+    config: opConfig,
+    subConfig: opSubConfig,
+  } = useOperationsType();
   const [filterTab, setFilterTab] = useState('ALL');
   const [selectedTruck, setSelectedTruck] = useState(null);
   const [isMapModalOpen, setIsMapModalOpen] = useState(false);
@@ -124,7 +139,7 @@ export default function OwnerDashboard() {
 
   const isDark = theme === 'dark';
 
-  const { isAdmin } = usePermissions();
+  const { isAdmin, isSuperAdmin } = usePermissions();
   const storeUser = useStore((state) => state.user);
   const activeBranch = useStore((state) => state.activeBranch);
 
@@ -570,6 +585,52 @@ export default function OwnerDashboard() {
 
         <main className="flex-1 p-3.5 sm:p-5 lg:p-6 xl:p-8 space-y-4 sm:space-y-6 w-full max-w-full">
 
+          {/* SuperAdmin Platform Master Quick Switch Banner */}
+          {isSuperAdmin && (
+            <div className={`p-4 sm:p-5 rounded-2xl border transition-all shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4 ${
+              isDark
+                ? 'border-amber-500/40 bg-gradient-to-r from-amber-950/40 via-slate-900 to-[#0B1020]'
+                : 'border-amber-300 bg-gradient-to-r from-amber-50 via-white to-amber-50/50'
+            }`}>
+              <div className="flex items-center gap-3.5 min-w-0">
+                <div className="w-11 h-11 rounded-2xl bg-amber-500/20 text-amber-500 dark:text-amber-400 border border-amber-500/30 flex items-center justify-center shrink-0 shadow-sm">
+                  <ShieldCheck className="w-6 h-6" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[11px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400 bg-amber-500/15 px-2.5 py-0.5 rounded-full border border-amber-500/30">
+                      SaaS Platform Super Administrator
+                    </span>
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400 hidden sm:inline">Root Level System Privilege</span>
+                  </div>
+                  <p className="text-xs text-slate-700 dark:text-slate-300 mt-1 font-medium leading-relaxed">
+                    You are currently in local workspace <strong className="text-slate-900 dark:text-white font-bold">{user?.organizationName || 'Fleet Operations'}</strong>. Launch the SuperAdmin SaaS Control Tower to manage all onboarded transporters, subscriptions, and platform telemetry.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2.5 shrink-0">
+                <Link
+                  href="/super-admin/tenants"
+                  className={`px-3.5 py-2 rounded-xl border text-xs font-bold transition-all ${
+                    isDark
+                      ? 'border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-slate-200'
+                      : 'border-slate-300 bg-white hover:bg-slate-50 text-slate-700'
+                  }`}
+                >
+                  All Transporters
+                </Link>
+                <Link
+                  href="/super-admin/dashboard"
+                  className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black shadow-md shadow-amber-500/25 flex items-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <span>Open SaaS Control Tower</span>
+                  <ArrowRight className="w-4 h-4" />
+                </Link>
+              </div>
+            </div>
+          )}
+
           {/* Personalized Executive Greeting & Branch Scope Controls */}
           <div className="flex items-start sm:items-center justify-between gap-3 sm:gap-4 pb-2 border-b border-slate-200/50 dark:border-slate-800/50">
             <div className="min-w-0 flex-1">
@@ -578,6 +639,32 @@ export default function OwnerDashboard() {
                   }`}>
                   {greeting}, {ownerName}! 👋
                 </h1>
+
+                {/* Transporter Active Operations Movement Mode Badge */}
+                <span
+                  className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider border shadow-2xs shrink-0 ${
+                    isOnlyFTL
+                      ? 'bg-indigo-500/10 text-indigo-500 dark:text-indigo-400 border-indigo-500/30'
+                      : isOnlyPTL
+                      ? 'bg-amber-500/10 text-amber-500 dark:text-amber-400 border-amber-500/30'
+                      : 'bg-cyan-500/10 text-cyan-500 dark:text-cyan-400 border-cyan-500/30'
+                  }`}
+                  title={
+                    isOnlyFTL
+                      ? isFleetSupplier
+                        ? 'FTL Fleet Supplier / Transport Vendor Provider'
+                        : isDirectCarrier
+                        ? 'FTL Direct Shipper Carrier'
+                        : 'Full-Service Enterprise FTL Carrier'
+                      : isOnlyPTL
+                      ? 'Part Truckload (PTL) Hub Consolidated Manifest'
+                      : 'Hybrid Logistics (FTL Dedicated + PTL Consolidated)'
+                  }
+                >
+                  <span>{opConfig?.icon || '🔄'}</span>
+                  <span>{modeLongLabel}</span>
+                </span>
+
                 {/* Branch Scope Badge for non-admin or selected branch */}
                 {!isAdmin ? (
                   <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 shrink-0">
@@ -605,7 +692,7 @@ export default function OwnerDashboard() {
 
             {/* Scope Selector (for Admin) & Refresh Action: Column-wise on small screens, single row on wider screens */}
             <div className="flex flex-col sm:flex-row items-end sm:items-center gap-1.5 sm:gap-2.5 shrink-0">
-              {isAdmin && (
+              {isAdmin && allowsMultiBranchHubs && (
                 <BranchFilterDropdown
                   selectedBranchId={selectedBranchId}
                   onChange={(newBranchId) => setSelectedBranchId(newBranchId)}
@@ -738,57 +825,111 @@ export default function OwnerDashboard() {
                 </span>
               </Link>
 
-              {/* Step 2: Create Booking */}
-              <Link
-                href="/bookings"
-                className={`p-2.5 sm:p-3 rounded-2xl border transition-all flex items-center justify-between group ${isDark
-                    ? 'bg-blue-950/25 border-blue-500/20 hover:bg-blue-900/40 hover:border-cyan-400'
-                    : 'bg-blue-50/70 border-blue-200 hover:bg-blue-100 hover:border-blue-400'
-                  }`}
-              >
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-blue-600/30 group-hover:scale-105 transition-transform">
-                    <Plus className="w-4 h-4" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className={`text-xs font-bold truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                      Create Booking
+              {/* Step 2: Create Booking (if allowsBookings) OR Assign Vehicle / Trips (if basic FTL) */}
+              {allowsBookings ? (
+                <Link
+                  href="/bookings"
+                  className={`p-2.5 sm:p-3 rounded-2xl border transition-all flex items-center justify-between group ${isDark
+                      ? 'bg-blue-950/25 border-blue-500/20 hover:bg-blue-900/40 hover:border-cyan-400'
+                      : 'bg-blue-50/70 border-blue-200 hover:bg-blue-100 hover:border-blue-400'
+                    }`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-blue-600/30 group-hover:scale-105 transition-transform">
+                      <Plus className="w-4 h-4" />
                     </div>
-                    <div className={`text-[10px] truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                      Issue LR / Bilty
+                    <div className="min-w-0">
+                      <div className={`text-xs font-bold truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                        {isOnlyFTL ? 'FTL Bilty (LR)' : isOnlyPTL ? 'PTL Consignment' : 'Create Booking'}
+                      </div>
+                      <div className={`text-[10px] truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                        {isOnlyFTL ? 'Direct truckload LR' : isOnlyPTL ? 'Consolidated sundry' : 'Issue LR / Bilty'}
+                      </div>
                     </div>
                   </div>
-                </div>
-                <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30 shrink-0 ml-1.5">
-                  STEP 2
-                </span>
-              </Link>
+                  <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30 shrink-0 ml-1.5">
+                    STEP 2
+                  </span>
+                </Link>
+              ) : (
+                <Link
+                  href="/trips"
+                  className={`p-2.5 sm:p-3 rounded-2xl border transition-all flex items-center justify-between group ${isDark
+                      ? 'bg-blue-950/25 border-blue-500/20 hover:bg-blue-900/40 hover:border-cyan-400'
+                      : 'bg-blue-50/70 border-blue-200 hover:bg-blue-100 hover:border-blue-400'
+                    }`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-blue-600/30 group-hover:scale-105 transition-transform">
+                      <Send className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className={`text-xs font-bold truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                        {isFleetSupplier ? 'Assign Vehicle to Company' : 'Assign Vehicle to Customer'}
+                      </div>
+                      <div className={`text-[10px] truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                        {isFleetSupplier ? 'Place fleet to transporter' : 'Dispatch truck for loading'}
+                      </div>
+                    </div>
+                  </div>
+                  <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30 shrink-0 ml-1.5">
+                    STEP 2
+                  </span>
+                </Link>
+              )}
 
-              {/* Step 3: Trips & Movement */}
-              <Link
-                href="/trips"
-                className={`p-2.5 sm:p-3 rounded-2xl border transition-all flex items-center justify-between group ${isDark
-                    ? 'bg-purple-950/25 border-purple-500/20 hover:bg-purple-900/40 hover:border-purple-400'
-                    : 'bg-purple-50/70 border-purple-200 hover:bg-purple-100 hover:border-purple-400'
-                  }`}
-              >
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-8 h-8 rounded-xl bg-purple-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-purple-600/30 group-hover:scale-105 transition-transform">
-                    <Send className="w-4 h-4" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className={`text-xs font-bold truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                      Trips & Movement
+              {/* Step 3: Trips & Movement (if allowsBookings) OR Fleet Management (if basic FTL) */}
+              {allowsBookings ? (
+                <Link
+                  href="/trips"
+                  className={`p-2.5 sm:p-3 rounded-2xl border transition-all flex items-center justify-between group ${isDark
+                      ? 'bg-purple-950/25 border-purple-500/20 hover:bg-purple-900/40 hover:border-purple-400'
+                      : 'bg-purple-50/70 border-purple-200 hover:bg-purple-100 hover:border-purple-400'
+                    }`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-8 h-8 rounded-xl bg-purple-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-purple-600/30 group-hover:scale-105 transition-transform">
+                      <Send className="w-4 h-4" />
                     </div>
-                    <div className={`text-[10px] truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                      Fleet dispatch
+                    <div className="min-w-0">
+                      <div className={`text-xs font-bold truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                        {isOnlyFTL && isFleetSupplier ? 'Trip Hire & Advances' : isOnlyPTL ? 'Hub Manifest Trips' : 'Trips & Movement'}
+                      </div>
+                      <div className={`text-[10px] truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                        {isOnlyFTL ? 'Vehicle placement & memo' : isOnlyPTL ? 'Manifest dispatch' : 'Fleet dispatch'}
+                      </div>
                     </div>
                   </div>
-                </div>
-                <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30 shrink-0 ml-1.5">
-                  STEP 3
-                </span>
-              </Link>
+                  <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30 shrink-0 ml-1.5">
+                    STEP 3
+                  </span>
+                </Link>
+              ) : (
+                <Link
+                  href="/fleet"
+                  className={`p-2.5 sm:p-3 rounded-2xl border transition-all flex items-center justify-between group ${isDark
+                      ? 'bg-purple-950/25 border-purple-500/20 hover:bg-purple-900/40 hover:border-purple-400'
+                      : 'bg-purple-50/70 border-purple-200 hover:bg-purple-100 hover:border-purple-400'
+                    }`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-8 h-8 rounded-xl bg-purple-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-purple-600/30 group-hover:scale-105 transition-transform">
+                      <Truck className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className={`text-xs font-bold truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                        Fleet & Trucks
+                      </div>
+                      <div className={`text-[10px] truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                        Owned & attached vehicles
+                      </div>
+                    </div>
+                  </div>
+                  <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30 shrink-0 ml-1.5">
+                    STEP 3
+                  </span>
+                </Link>
+              )}
 
               {/* Step 4: Generate Report */}
               <Link

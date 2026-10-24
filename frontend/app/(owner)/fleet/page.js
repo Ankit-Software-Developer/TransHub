@@ -53,12 +53,14 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import DataTable from '../../../components/ui/DataTable';
 import { usePermissions } from '../../../hooks/usePermissions';
+import { useOperationsType, isHeadOfficeBranch } from '../../../hooks/useOperationsType';
 import VehicleTypeSelect from '../../../components/ui/VehicleTypeSelect';
 import VehicleStatusSelect from '../../../components/ui/VehicleStatusSelect';
 
 
 
 export default function FleetManagementPage() {
+  const { allowsMultiBranchHubs } = useOperationsType();
   const { theme } = useTheme();
   const isDark = theme === 'dark';
 
@@ -67,6 +69,12 @@ export default function FleetManagementPage() {
 
   const [vehicles, setVehicles] = useState([]);
   const [branches, setBranches] = useState([]);
+
+  // Centralized Head Office (HQ) branch for single-branch modes
+  const hqBranch = useMemo(() => {
+    return branches.find((b) => isHeadOfficeBranch(b)) || branches[0] || null;
+  }, [branches]);
+
   const [drivers, setDrivers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -149,6 +157,7 @@ export default function FleetManagementPage() {
     setDriverForm({
       ...initialDriverForm,
       driver_code: `DRV-${String(drivers.length + 1).padStart(3, '0')}`,
+      branch_id: hqBranch?.id || '',
     });
     setDriverCountryCode('+91');
     setDriverPhone('');
@@ -171,7 +180,7 @@ export default function FleetManagementPage() {
       license_number: driver.license_number || '',
       license_type: driver.license_type || 'Heavy Commercial (HMV)',
       license_expiry: driver.license_expiry || '',
-      branch_id: driver.branch_id || '',
+      branch_id: driver.branch_id || hqBranch?.id || '',
       address: driver.address || '',
       emergency_contact: driver.emergency_contact || '',
       salary_type: driver.salary_type || 'MONTHLY',
@@ -199,8 +208,13 @@ export default function FleetManagementPage() {
       setDriverFormError('');
 
       const finalPhone = `${driverCountryCode} ${driverPhone.trim()}`;
+      const assignedBranchId = allowsMultiBranchHubs
+        ? (driverForm.branch_id || null)
+        : (hqBranch?.id || branches[0]?.id || driverForm.branch_id || null);
+
       const payload = {
         ...driverForm,
+        branch_id: assignedBranchId,
         phone: finalPhone,
       };
 
@@ -437,7 +451,9 @@ export default function FleetManagementPage() {
         fastag_id: vehicleForm.fastag_id?.trim() || null,
         gps_device_id: vehicleForm.gps_device_id?.trim() || null,
         current_odometer: parseInt(vehicleForm.current_odometer, 10) || 0,
-        branch_id: vehicleForm.branch_id || (branches.length > 0 ? branches[0].id : null),
+        branch_id: allowsMultiBranchHubs
+          ? (vehicleForm.branch_id || (branches.length > 0 ? branches[0].id : null))
+          : (hqBranch?.id || branches[0]?.id || null),
         assigned_driver_id: vehicleForm.assigned_driver_id || null,
         chassis_number: vehicleForm.chassis_number?.trim() || null,
         engine_number: vehicleForm.engine_number?.trim() || null,
@@ -528,7 +544,9 @@ export default function FleetManagementPage() {
         fastag_id: editingVehicle.fastag_id?.trim() || null,
         gps_device_id: editingVehicle.gps_device_id?.trim() || null,
         current_odometer: parseInt(editingVehicle.current_odometer, 10) || 0,
-        branch_id: editingVehicle.branch_id || null,
+        branch_id: allowsMultiBranchHubs
+          ? (editingVehicle.branch_id || null)
+          : (hqBranch?.id || branches[0]?.id || editingVehicle.branch_id || null),
         assigned_driver_id: editingVehicle.assigned_driver_id || null,
         chassis_number: editingVehicle.chassis_number?.trim() || null,
         engine_number: editingVehicle.engine_number?.trim() || null,
@@ -1514,20 +1532,22 @@ export default function FleetManagementPage() {
                     <option value="INACTIVE">Inactive</option>
                   </select>
 
-                  <select
-                    value={driverBranchFilter}
-                    onChange={(e) => setDriverBranchFilter(e.target.value)}
-                    className={`px-3 py-2 rounded-xl text-xs font-semibold outline-hidden border cursor-pointer ${
-                      isDark ? 'bg-slate-900 border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'
-                    }`}
-                  >
-                    <option value="ALL">All Stations / Hubs</option>
-                    {branches.map((b) => (
-                      <option key={b.id} value={b.id}>
-                        {b.branch_name || b.name}
-                      </option>
-                    ))}
-                  </select>
+                  {allowsMultiBranchHubs && (
+                    <select
+                      value={driverBranchFilter}
+                      onChange={(e) => setDriverBranchFilter(e.target.value)}
+                      className={`px-3 py-2 rounded-xl text-xs font-semibold outline-hidden border cursor-pointer ${
+                        isDark ? 'bg-slate-900 border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'
+                      }`}
+                    >
+                      <option value="ALL">All Stations / Hubs</option>
+                      {branches.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.branch_name || b.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
               </div>
 
@@ -1544,7 +1564,7 @@ export default function FleetManagementPage() {
                         <th className="py-3 px-4">Driver Profile</th>
                         <th className="py-3 px-4">Contact</th>
                         <th className="py-3 px-4">Commercial License (DL)</th>
-                        <th className="py-3 px-4">Assigned Hub</th>
+                        {allowsMultiBranchHubs && <th className="py-3 px-4">Assigned Hub</th>}
                         <th className="py-3 px-4">Remuneration</th>
                         <th className="py-3 px-4">Status</th>
                         <th className="py-3 px-4 text-right">Actions</th>
@@ -1555,7 +1575,7 @@ export default function FleetManagementPage() {
                     }`}>
                       {filteredDrivers.length === 0 ? (
                         <tr>
-                          <td colSpan={7} className="py-12 text-center text-slate-500">
+                          <td colSpan={allowsMultiBranchHubs ? 7 : 6} className="py-12 text-center text-slate-500">
                             No commercial drivers match your search filters.
                           </td>
                         </tr>
@@ -1614,14 +1634,16 @@ export default function FleetManagementPage() {
                                 </div>
                               </td>
 
-                              <td className="py-3.5 px-4">
-                                <span className={`inline-flex items-center px-2 py-0.5 rounded-lg text-[11px] font-medium ${
-                                  isDark ? 'bg-slate-800 text-slate-300' : 'bg-slate-100 text-slate-700'
-                                }`}>
-                                  <Building className="w-3 h-3 mr-1 text-slate-400" />
-                                  {driver.branch?.branch_name || 'Unassigned Yard'}
-                                </span>
-                              </td>
+                              {allowsMultiBranchHubs && (
+                                <td className="py-3.5 px-4">
+                                  <span className={`inline-flex items-center px-2 py-0.5 rounded-lg text-[11px] font-medium ${
+                                    isDark ? 'bg-slate-800 text-slate-300' : 'bg-slate-100 text-slate-700'
+                                  }`}>
+                                    <Building className="w-3 h-3 mr-1 text-slate-400" />
+                                    {driver.branch?.branch_name || 'Unassigned Yard'}
+                                  </span>
+                                </td>
+                              )}
 
                               <td className="py-3.5 px-4">
                                 <div className="font-bold">
@@ -2344,29 +2366,31 @@ export default function FleetManagementPage() {
                         />
                       </div>
 
-                      <div>
-                        <label className={`block text-xs font-semibold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                          Home Branch Hub
-                        </label>
-                        <select
-                          value={vehicleForm.branch_id}
-                          onChange={(e) => setVehicleForm({ ...vehicleForm, branch_id: e.target.value })}
-                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
-                              ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
-                              : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
-                            }`}
-                        >
-                          {branches.length === 0 ? (
-                            <option value="">{branches.length === 0 ? 'No branches configured yet (Main Yard)' : 'Main Yard / Unassigned'}</option>
-                          ) : (
-                            branches.map((b) => (
-                              <option key={b.id} value={b.id}>
-                                [{b.branch_code || 'CODE'}] {b.branch_name} • {b.city}{b.pincode ? ` (${b.pincode})` : ''}
-                              </option>
-                            ))
-                          )}
-                        </select>
-                      </div>
+                      {allowsMultiBranchHubs && (
+                        <div>
+                          <label className={`block text-xs font-semibold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                            Home Branch Hub
+                          </label>
+                          <select
+                            value={vehicleForm.branch_id}
+                            onChange={(e) => setVehicleForm({ ...vehicleForm, branch_id: e.target.value })}
+                            className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
+                                ? 'bg-slate-900 border-slate-700 text-white focus:border-cyan-400'
+                                : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
+                              }`}
+                          >
+                            {branches.length === 0 ? (
+                              <option value="">{branches.length === 0 ? 'No branches configured yet (Main Yard)' : 'Main Yard / Unassigned'}</option>
+                            ) : (
+                              branches.map((b) => (
+                                <option key={b.id} value={b.id}>
+                                  [{b.branch_code || 'CODE'}] {b.branch_name} • {b.city}{b.pincode ? ` (${b.pincode})` : ''}
+                                </option>
+                              ))
+                            )}
+                          </select>
+                        </div>
+                      )}
 
                       <div>
                         <div className="flex items-center justify-between mb-1">
@@ -3088,26 +3112,28 @@ export default function FleetManagementPage() {
                         />
                       </div>
 
-                      <div>
-                        <label className={`block text-xs font-semibold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                          Home Branch Hub
-                        </label>
-                        <select
-                          value={editingVehicle.branch_id}
-                          onChange={(e) => setEditingVehicle({ ...editingVehicle, branch_id: e.target.value })}
-                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
-                              ? 'bg-slate-900 border-slate-700 text-white focus:border-amber-400'
-                              : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-amber-500'
-                            }`}
-                        >
-                          <option value="">{branches.length === 0 ? 'No branches configured yet (Main Yard)' : 'Main Yard / Unassigned'}</option>
-                          {branches.map((b) => (
-                            <option key={b.id} value={b.id}>
-                              [{b.branch_code || 'CODE'}] {b.branch_name} • {b.city}{b.pincode ? ` (${b.pincode})` : ''}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
+                      {allowsMultiBranchHubs && (
+                        <div>
+                          <label className={`block text-xs font-semibold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                            Home Branch Hub
+                          </label>
+                          <select
+                            value={editingVehicle.branch_id}
+                            onChange={(e) => setEditingVehicle({ ...editingVehicle, branch_id: e.target.value })}
+                            className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-colors ${isDark
+                                ? 'bg-slate-900 border-slate-700 text-white focus:border-amber-400'
+                                : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-amber-500'
+                              }`}
+                          >
+                            <option value="">{branches.length === 0 ? 'No branches configured yet (Main Yard)' : 'Main Yard / Unassigned'}</option>
+                            {branches.map((b) => (
+                              <option key={b.id} value={b.id}>
+                                [{b.branch_code || 'CODE'}] {b.branch_name} • {b.city}{b.pincode ? ` (${b.pincode})` : ''}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
 
                       <div>
                         <div className="flex items-center justify-between mb-1">
@@ -3670,24 +3696,26 @@ export default function FleetManagementPage() {
               </div>
 
               {/* Station Assignment & Remuneration */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-xs font-bold mb-1.5">Assigned Station / Hub</label>
-                  <select
-                    value={driverForm.branch_id}
-                    onChange={(e) => setDriverForm({ ...driverForm, branch_id: e.target.value })}
-                    className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-medium border outline-hidden cursor-pointer ${
-                      isDark ? 'bg-slate-900 border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'
-                    }`}
-                  >
-                    <option value="">Unassigned Yard</option>
-                    {branches.map((b) => (
-                      <option key={b.id} value={b.id}>
-                        {b.branch_name || b.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+              <div className={`grid grid-cols-1 ${allowsMultiBranchHubs ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-4`}>
+                {allowsMultiBranchHubs && (
+                  <div>
+                    <label className="block text-xs font-bold mb-1.5">Assigned Station / Hub</label>
+                    <select
+                      value={driverForm.branch_id}
+                      onChange={(e) => setDriverForm({ ...driverForm, branch_id: e.target.value })}
+                      className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-medium border outline-hidden cursor-pointer ${
+                        isDark ? 'bg-slate-900 border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'
+                      }`}
+                    >
+                      <option value="">Unassigned Yard</option>
+                      {branches.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.branch_name || b.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-xs font-bold mb-1.5">Salary Model</label>

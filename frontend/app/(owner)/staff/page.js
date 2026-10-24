@@ -42,6 +42,7 @@ import {
   ChevronDown
 } from 'lucide-react';
 import BranchFilterDropdown from '../../../components/ui/BranchFilterDropdown';
+import { useOperationsType } from '../../../hooks/useOperationsType';
 
 const COUNTRY_CODES = [
   { code: '+91', country: 'India', flag: '🇮🇳', short: 'IN' },
@@ -64,6 +65,7 @@ export default function StaffManagementPage() {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
   const { isAdmin, canManageUsers, canExport } = usePermissions();
+  const { allowsMultiBranchHubs } = useOperationsType();
 
   // Data states
   const [staffUsers, setStaffUsers] = useState([]);
@@ -925,7 +927,7 @@ export default function StaffManagementPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                   <div>
                     <label className={`block text-xs font-semibold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                      First Name *
+                      First Name <span className="text-red-500 font-bold ml-0.5">*</span>
                     </label>
                     <input
                       type="text"
@@ -986,7 +988,7 @@ export default function StaffManagementPage() {
 
                   <div>
                     <label className={`block text-xs font-semibold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                      Assigned Role & Permissions *
+                      Assigned Role & Permissions <span className="text-red-500 font-bold ml-0.5">*</span>
                     </label>
                     <select
                       required
@@ -1009,20 +1011,29 @@ export default function StaffManagementPage() {
                     <label className={`block text-xs font-semibold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
                       Assigned Station / Hub
                     </label>
-                    <select
-                      value={userForm.branch_id}
-                      onChange={(e) => setUserForm({ ...userForm, branch_id: e.target.value })}
-                      className={`w-full px-3.5 py-2 rounded-xl text-xs border focus:outline-none transition-all ${
-                        isDark ? 'bg-slate-950/80 border-slate-800 text-white focus:border-blue-500' : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
-                      }`}
-                    >
-                      <option value="">All Branches (Enterprise Head Office)</option>
-                      {branches.map((b) => (
-                        <option key={b.id} value={b.id}>
-                          [{b.branch_code || 'CODE'}] {b.branch_name} • {b.city}
-                        </option>
-                      ))}
-                    </select>
+                    {allowsMultiBranchHubs ? (
+                      <select
+                        value={userForm.branch_id}
+                        onChange={(e) => setUserForm({ ...userForm, branch_id: e.target.value })}
+                        className={`w-full px-3.5 py-2 rounded-xl text-xs border focus:outline-none transition-all ${
+                          isDark ? 'bg-slate-950/80 border-slate-800 text-white focus:border-blue-500' : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-500'
+                        }`}
+                      >
+                        <option value="">All Branches (Enterprise Head Office)</option>
+                        {branches.map((b) => (
+                          <option key={b.id} value={b.id}>
+                            [{b.branch_code || 'CODE'}] {b.branch_name} • {b.city}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div className={`px-3.5 py-2 rounded-xl text-xs font-semibold border flex items-center justify-between ${
+                        isDark ? 'bg-slate-900/60 border-slate-800 text-slate-300' : 'bg-slate-100 border-slate-200 text-slate-700'
+                      }`}>
+                        <span>Head Office (Centralized HQ)</span>
+                        <span className="text-[10px] uppercase font-bold text-indigo-500 dark:text-indigo-400">Single Branch</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1035,7 +1046,7 @@ export default function StaffManagementPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                   <div>
                     <label className={`block text-xs font-semibold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                      Login Email Address *
+                      Login Email Address <span className="text-red-500 font-bold ml-0.5">*</span>
                     </label>
                     <input
                       type="email"
@@ -1100,7 +1111,11 @@ export default function StaffManagementPage() {
                   <div className="sm:col-span-2">
                     <div className="flex items-center justify-between mb-1">
                       <label className={`block text-xs font-semibold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                        {editingUser ? 'Reset Password (Leave blank to keep existing)' : 'Account Password *'}
+                        {editingUser ? (
+                          'Reset Password (Leave blank to keep existing)'
+                        ) : (
+                          <>Account Password <span className="text-red-500 font-bold ml-0.5">*</span></>
+                        )}
                       </label>
                       <button
                         type="button"

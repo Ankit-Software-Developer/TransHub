@@ -1,6 +1,7 @@
 // src/services/gpsService.js
 const axios = require('axios');
 const { Op } = require('sequelize');
+const defaultModels = require('../models');
 const { resolveIndianLocation, resolveLocationAsync } = require('../utils/geoUtils');
 
 /**
@@ -432,9 +433,9 @@ const syncProviderVehicles = async (integration, tenantDb, options = {}) => {
   });
 
   // Also update tenant DB GpsIntegration record if separate
-  if (targetDb?.GpsIntegration && targetDb !== defaultModels) {
+  if (tenantDb?.GpsIntegration && tenantDb !== defaultModels) {
     try {
-      await targetDb.GpsIntegration.update({
+      await tenantDb.GpsIntegration.update({
         last_sync_at: now,
         last_sync_status: 'SUCCESS',
         last_error_message: null,
