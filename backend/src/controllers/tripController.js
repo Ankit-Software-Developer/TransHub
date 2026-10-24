@@ -1230,6 +1230,10 @@ const createDirectHireTrip = async (req, res) => {
       eway_bill_no,
       goods_description,
       start_odometer,
+      hire_pricing_mode = 'FIXED', // 'FIXED' or 'PER_KM'
+      hire_rate_per_km = 0,
+      hire_estimated_km = 0,
+      vehicle_charge = 0,
       remarks,
     } = req.body;
 
@@ -1258,6 +1262,31 @@ const createDirectHireTrip = async (req, res) => {
 
     if (!vehicle) {
       return errorResponse(res, 'Vehicle not found in fleet records', null, 404);
+    }
+
+    const isMarket = vehicle.ownership === 'MARKET' || vehicle.ownership === 'ATTACHED';
+    const isPerKm = isMarket && hire_pricing_mode === 'PER_KM';
+
+    const initialStartOdometer = start_odometer !== undefined && start_odometer !== '' && start_odometer !== null
+      ? parseInt(start_odometer, 10)
+      : (vehicle.current_odometer || 0);
+
+    // Strictly validate odometer and rate for PER_KM Market Truck Hire
+    if (isPerKm) {
+      if (!initialStartOdometer || initialStartOdometer <= 0) {
+        return errorResponse(res, 'Departure Odometer reading is strictly mandatory for Per-KM Market Truck Hire', null, 400);
+      }
+      if (!hire_rate_per_km || parseFloat(hire_rate_per_km) <= 0) {
+        return errorResponse(res, 'Agreed Rate Per KM must be greater than 0 for Per-KM Hire', null, 400);
+      }
+      if (!hire_estimated_km || parseInt(hire_estimated_km, 10) <= 0) {
+        return errorResponse(res, 'Estimated Route Distance (KM) is required for Per-KM Hire', null, 400);
+      }
+    }
+
+    let finalVehicleCharge = parseFloat(vehicle_charge) || 0;
+    if (isPerKm) {
+      finalVehicleCharge = Math.round(parseFloat(hire_rate_per_km) * parseInt(hire_estimated_km, 10) * 100) / 100;
     }
 
     // Resolve Origin Branch
@@ -1299,9 +1328,6 @@ const createDirectHireTrip = async (req, res) => {
     const parsedContractAmount = parseFloat(contract_amount) || 0;
     const parsedAdvanceReceived = parseFloat(advance_received) || 0;
     const parsedDriverAdvance = parseFloat(driver_advance) || 0;
-    const initialStartOdometer = start_odometer !== undefined && start_odometer !== '' && start_odometer !== null
-      ? parseInt(start_odometer, 10)
-      : (vehicle.current_odometer || 0);
 
     // Resolve Party Name
     let resolvedPartyName = hiring_party_name;
@@ -1344,6 +1370,10 @@ const createDirectHireTrip = async (req, res) => {
       advance_received: parsedAdvanceReceived,
       expected_revenue: parsedContractAmount,
       driver_advance: parsedDriverAdvance,
+      vehicle_charge: isMarket ? finalVehicleCharge : 0,
+      hire_pricing_mode: isPerKm ? 'PER_KM' : 'FIXED',
+      hire_rate_per_km: isPerKm ? (parseFloat(hire_rate_per_km) || 0) : 0,
+      hire_estimated_km: isPerKm ? (parseInt(hire_estimated_km, 10) || 0) : 0,
       trip_type: 'DIRECT',
       load_type: 'FTL',
       start_odometer: initialStartOdometer,

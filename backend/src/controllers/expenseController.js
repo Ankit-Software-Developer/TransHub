@@ -1165,7 +1165,15 @@ const settleTrip = async (req, res) => {
   const { Trip, Expense, DriverAdvance, TripSettlement, Vehicle } = req.tenantDb || defaultModels;
   const transaction = await db.transaction();
   try {
-    const { trip_id, driver_allowance = 0, vehicle_charge, remarks } = req.body;
+    const {
+      trip_id,
+      driver_allowance = 0,
+      vehicle_charge,
+      end_odometer,
+      hire_rate_per_km,
+      hire_pricing_mode,
+      remarks,
+    } = req.body;
     if (!trip_id) {
       return errorResponse(res, 'Trip ID is required for settlement', null, 400);
     }
@@ -1175,7 +1183,7 @@ const settleTrip = async (req, res) => {
       include: [
         { model: Expense, as: 'expenses' },
         { model: DriverAdvance, as: 'advances' },
-        ...(Vehicle ? [{ model: Vehicle, as: 'vehicle', attributes: ['id', 'vehicle_number', 'ownership'] }] : []),
+        ...(Vehicle ? [{ model: Vehicle, as: 'vehicle', attributes: ['id', 'vehicle_number', 'ownership', 'current_odometer'] }] : []),
       ],
       transaction,
     });
@@ -1213,6 +1221,7 @@ const settleTrip = async (req, res) => {
     const allowance = parseFloat(driver_allowance) || 0;
     const ownership = (trip.vehicle?.ownership || 'OWN').toUpperCase();
     const isVendorOrMarket = ownership === 'MARKET' || ownership === 'ATTACHED';
+    const isPerKm = isVendorOrMarket && (trip.hire_pricing_mode === 'PER_KM' || hire_pricing_mode === 'PER_KM');
 
     let balance = 0;
     let settlementType = 'BALANCED';
@@ -1220,8 +1229,43 @@ const settleTrip = async (req, res) => {
     let effectiveVehicleCharge = 0;
     let profitMargin = 0;
 
-    if (isVendorOrMarket) {
-      // Agreed Vehicle Hire Charge
+    const startOdo = parseInt(trip.start_odometer || 0, 10);
+    let endOdo = end_odometer !== undefined && end_odometer !== null && end_odometer !== ''
+      ? parseInt(end_odometer, 10)
+      : parseInt(trip.end_odometer || 0, 10);
+    let totalRunKm = 0;
+
+    if (isPerKm) {
+      // Odometer is strictly mandatory for Per KM Market Truck Hire
+      if (!endOdo || endOdo <= 0) {
+        await transaction.rollback();
+        return errorResponse(res, 'Arrival / Closing Odometer is strictly mandatory for Per-KM Market Truck settlement', null, 400);
+      }
+      if (endOdo < startOdo) {
+        await transaction.rollback();
+        return errorResponse(res, `Arrival Odometer (${endOdo} KM) cannot be less than Departure Odometer (${startOdo} KM)`, null, 400);
+      }
+      totalRunKm = endOdo - startOdo;
+      const effectiveRate = parseFloat(hire_rate_per_km !== undefined && hire_rate_per_km !== null && hire_rate_per_km !== ''
+        ? hire_rate_per_km
+        : (trip.hire_rate_per_km || 0));
+      effectiveVehicleCharge = roundToTwo(totalRunKm * effectiveRate);
+
+      // Deductions
+      const totalCompanyDeductions = totalAdvance + totalExpenses;
+      netPayableToVendor = roundToTwo(effectiveVehicleCharge - totalCompanyDeductions);
+      balance = Math.abs(netPayableToVendor);
+
+      if (netPayableToVendor > 0) {
+        settlementType = 'PAYABLE_TO_VENDOR';
+      } else if (netPayableToVendor < 0) {
+        settlementType = 'RECOVER_FROM_VENDOR';
+      } else {
+        settlementType = 'BALANCED';
+      }
+      profitMargin = roundToTwo(parseFloat(trip.expected_revenue || 0) - effectiveVehicleCharge);
+    } else if (isVendorOrMarket) {
+      // Agreed Vehicle Hire Charge (Fixed Lump-Sum)
       effectiveVehicleCharge = parseFloat(
         vehicle_charge !== undefined && vehicle_charge !== null && vehicle_charge !== ''
           ? vehicle_charge
@@ -1268,6 +1312,11 @@ const settleTrip = async (req, res) => {
       driver_allowance: isVendorOrMarket ? 0 : allowance,
       vehicle_charge: isVendorOrMarket ? effectiveVehicleCharge : 0,
       vehicle_ownership: ownership,
+      hire_pricing_mode: isPerKm ? 'PER_KM' : 'FIXED',
+      hire_rate_per_km: isPerKm ? parseFloat(trip.hire_rate_per_km || hire_rate_per_km || 0) : 0,
+      start_odometer: startOdo,
+      end_odometer: endOdo,
+      total_run_km: totalRunKm,
       net_payable_to_vendor: isVendorOrMarket ? netPayableToVendor : 0,
       profit_margin: profitMargin,
       balance_payable_or_receivable: balance,
@@ -1277,13 +1326,21 @@ const settleTrip = async (req, res) => {
       settled_by: req.user.id,
     }, { transaction });
 
-    await trip.update({
+    const tripUpdates = {
       settlement_status: 'SETTLED',
       vehicle_charge: isVendorOrMarket ? effectiveVehicleCharge : (trip.vehicle_charge || 0),
       total_expenses: totalExpenses,
       driver_advance: totalAdvance,
       status: 'COMPLETED',
-    }, { transaction });
+    };
+    if (endOdo > 0) {
+      tripUpdates.end_odometer = endOdo;
+    }
+    await trip.update(tripUpdates, { transaction });
+
+    if (trip.vehicle && endOdo > (trip.vehicle.current_odometer || 0)) {
+      await trip.vehicle.update({ current_odometer: endOdo }, { transaction });
+    }
 
     await transaction.commit();
 
